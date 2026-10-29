@@ -12,8 +12,7 @@ const CSP_DIRECTIVES = [
 
 const CSP = CSP_DIRECTIVES.join("; ");
 
-export function withSecurityHeaders(response: Response): Response {
-  const headers = new Headers(response.headers);
+export function applySecurityHeaders(headers: Headers): void {
   headers.set("content-security-policy", CSP);
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");
@@ -23,9 +22,4 @@ export function withSecurityHeaders(response: Response): Response {
     "max-age=31536000; includeSubDomains",
   );
   headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
 }

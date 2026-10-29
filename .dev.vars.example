@@ -1,18 +1,17 @@
 # Local development secrets for La Fabrique.
 # Copy this file to `.dev.vars` (gitignored) and fill in. Never commit real
-# values. These variables are picked up by `wrangler dev`.
+# values. These variables are picked up by `wrangler dev`. In production they
+# are Worker secrets (`npx wrangler secret put <NAME>`).
 
-# Commit SHA shown by /api/version. In CI/CD the deploy workflow passes the
-# real commit via `--var COMMIT_SHA:<sha>`; locally the default "dev" is fine.
+# Commit SHA shown by /api/version. The deploy workflow passes the real
+# commit; locally the default "dev" from wrangler.jsonc is fine.
 # COMMIT_SHA=dev
 
-# Comma-separated GitHub logins granted the initial super_admin role.
-# Used from F0.2 onward (GitHub login + role whitelist).
-# SUPER_ADMINS=your-github-login
+# Comma-separated GitHub logins that are always super admins.
+SUPER_ADMINS=
 
-# GitHub App credentials (used from F0.2 onward).
-# GITHUB_APP_ID=
-# GITHUB_APP_CLIENT_ID=
-# GITHUB_APP_CLIENT_SECRET=
-# GITHUB_APP_WEBHOOK_SECRET=
-# GITHUB_APP_PRIVATE_KEY=
+# GitHub App "La Fabrique" (Settings > Developer settings > GitHub Apps).
+# For local sign-in, add http://localhost:8787/auth/callback to the App's
+# callback URLs.
+GITHUB_APP_CLIENT_ID=
+GITHUB_APP_CLIENT_SECRET=
