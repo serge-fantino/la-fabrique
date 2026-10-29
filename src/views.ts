@@ -16,11 +16,11 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function formatDate(iso: string): string {
+export function formatDate(iso: string): string {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 }
 
-function csrfField(viewer: Viewer): string {
+export function csrfField(viewer: Viewer): string {
   return `<input type="hidden" name="csrf" value="${escapeHtml(viewer.csrfToken)}" />`;
 }
 
@@ -31,9 +31,10 @@ function roleOptions(selected?: Role): string {
   ).join("");
 }
 
-function layout(title: string, body: string, viewer?: Viewer): string {
+export function layout(title: string, body: string, viewer?: Viewer): string {
   const nav = viewer
     ? `<nav class="nav">
+        <a href="/projects">Projects</a>
         ${viewer.role === "super_admin" ? `<a href="/people">People</a>` : ""}
         <span class="who"><span class="mono">@${escapeHtml(viewer.login)}</span>
           <span class="pill">${ROLE_LABELS[viewer.role]}</span></span>
@@ -65,8 +66,10 @@ ${body}
 </html>`;
 }
 
-export function homePage(viewer?: Viewer): string {
-  const intro = `<header class="hero">
+export function homePage(): string {
+  return layout(
+    "La Fabrique",
+    `<header class="hero">
         <p class="eyebrow">The control panel</p>
         <h1>La Fabrique</h1>
         <p class="lede">
@@ -74,18 +77,12 @@ export function homePage(viewer?: Viewer): string {
           request workflow &mdash; from the Product Engineer's need to the
           version in production.
         </p>
-      </header>`;
-  const action = viewer
-    ? `<section>
-        <p>Signed in as <span class="mono">@${escapeHtml(viewer.login)}</span>,
-          ${ROLE_LABELS[viewer.role]}.</p>
-        <p class="muted">Projects arrive with the next stories.</p>
-      </section>`
-    : `<section>
+      </header>
+      <section>
         <p>Access is by invitation: a super admin grants a role to your GitHub account.</p>
         <p><a class="button" href="/auth/login">Sign in with GitHub</a></p>
-      </section>`;
-  return layout("La Fabrique", `${intro}\n${action}`, viewer);
+      </section>`,
+  );
 }
 
 export function noAccessPage(): string {

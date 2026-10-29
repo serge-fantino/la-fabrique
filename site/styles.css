@@ -305,3 +305,73 @@ th {
     padding: 0.25rem 0;
   }
 }
+
+.pill.ok {
+  background: color-mix(in srgb, var(--bon) 14%, transparent);
+  color: var(--bon);
+}
+
+.pill.warn {
+  background: color-mix(in srgb, var(--moyen) 28%, transparent);
+  color: var(--encre);
+}
+
+.pill.alert {
+  background: color-mix(in srgb, var(--alerte) 12%, transparent);
+  color: var(--alerte);
+}
+
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+}
+
+.links a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.problems {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  color: var(--alerte);
+}
+
+.problems li {
+  margin: 0.25rem 0;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--encre-faint);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .facts dd {
+    margin-bottom: 0.5rem;
+  }
+}

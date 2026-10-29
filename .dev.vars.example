@@ -15,3 +15,8 @@ SUPER_ADMINS=
 # callback URLs.
 GITHUB_APP_CLIENT_ID=
 GITHUB_APP_CLIENT_SECRET=
+
+# GitHub App private key (PEM, as downloaded) and webhook secret, used to read
+# project repositories and to receive push events.
+GITHUB_APP_PRIVATE_KEY=
+GITHUB_APP_WEBHOOK_SECRET=

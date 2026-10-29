@@ -1,0 +1,53 @@
+import { safeEqual } from "./crypto";
+import type { Env } from "./env";
+import { json } from "./http";
+import { checkPushedCommit, findProject } from "./projects";
+
+async function signatureOf(secret: string, body: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return `sha256=${[...new Uint8Array(mac)].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+interface PushPayload {
+  ref?: string;
+  after?: string;
+  repository?: { full_name?: string; default_branch?: string };
+}
+
+export async function handleWebhook(request: Request, env: Env): Promise<Response> {
+  if (!env.GITHUB_APP_WEBHOOK_SECRET) return json({ error: "webhook not configured" }, { status: 503 });
+
+  const body = await request.text();
+  const signature = request.headers.get("x-hub-signature-256") ?? "";
+  if (!safeEqual(signature, await signatureOf(env.GITHUB_APP_WEBHOOK_SECRET, body))) {
+    return json({ error: "bad signature" }, { status: 401 });
+  }
+
+  const event = request.headers.get("x-github-event");
+  if (event === "ping") return json({ ok: true });
+  if (event !== "push") return json({ ignored: event }, { status: 202 });
+
+  const payload = JSON.parse(body) as PushPayload;
+  const repo = payload.repository?.full_name;
+  const branch = payload.ref?.startsWith("refs/heads/") ? payload.ref.slice("refs/heads/".length) : null;
+  const sha = payload.after;
+  if (!repo || !branch || !sha || /^0+$/.test(sha)) return json({ ignored: "push" }, { status: 202 });
+
+  const project = await findProject(env.DB, repo);
+  if (!project) return json({ ignored: "unknown project" }, { status: 202 });
+
+  const production = project.check?.config?.branches?.production ?? payload.repository?.default_branch;
+  if (branch !== production) return json({ ignored: "not the production branch" }, { status: 202 });
+
+  const outcome = await checkPushedCommit(env, project, branch, sha);
+  return outcome.ok
+    ? json({ checked: sha, errors: outcome.check.errors.length })
+    : json({ error: outcome.message }, { status: 502 });
+}
