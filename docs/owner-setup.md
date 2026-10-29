@@ -92,7 +92,37 @@ GitHub logins with a role. Someone who signs in without a role sees "No
 access yet"; their request appears under **Access requests** on the People
 page. Every change is written to the activity log.
 
-## 5. Later
+## 5. Projects (F0.3)
+
+La Fabrique reads a project's repository as the GitHub App itself
+(installation tokens), so it needs the App's private key, and it listens
+to pushes through the App's webhook.
+
+On the GitHub App's settings page:
+
+1. **Private key**: *Generate a private key*; a `.pem` file downloads.
+2. **Webhook**: tick *Active*, set the URL to
+   `https://la-fabrique.<your-subdomain>.workers.dev/api/github/webhook`,
+   and set a *Webhook secret* (any long random string, for example
+   `openssl rand -hex 32`).
+3. **Permissions & events &rarr; Subscribe to events**: tick *Push*.
+4. Make sure the App is installed on the repositories to pilot.
+
+Then give the Worker the two new secrets:
+
+```bash
+npx wrangler secret put GITHUB_APP_PRIVATE_KEY < path/to/la-fabrique.private-key.pem
+npx wrangler secret put GITHUB_APP_WEBHOOK_SECRET   # the webhook secret
+```
+
+The key is used as GitHub gives it (PKCS#1); nothing to convert. Delete
+the downloaded `.pem` once the secret is set.
+
+Then, as a super admin: **Projects &rarr; Add a project**, pick the
+repository. Its page shows the `.fabrique.json` status; every push to its
+production branch re-checks the file.
+
+## 6. Later
 
 A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
 attached from the Workers dashboard; add its `/auth/callback` to the GitHub

@@ -4,6 +4,11 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { css, html, json, redirect, text } from "./http";
 import { changePeople, showPeople } from "./people";
+import { createProject, recheckProject, showNewProject, showProject, showProjects } from "./project-routes";
+import { isRepoName } from "./projects";
+import { handleWebhook } from "./webhook";
+
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check)?$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import stylesCss from "../site/styles.css";
@@ -58,6 +63,8 @@ export default {
         return method === "GET" ? finishLogin(request, env) : methodNotAllowed();
       case "/no-access":
         return html(noAccessPage());
+      case "/api/github/webhook":
+        return method === "POST" ? handleWebhook(request, env) : methodNotAllowed();
     }
 
     const state = await currentViewer(request, env);
@@ -66,10 +73,35 @@ export default {
     }
     const viewer = state.kind === "signed_in" ? state.viewer : undefined;
 
+    const projectRoute = PROJECT_ROUTE.exec(pathname);
+    if (projectRoute) {
+      const repo = projectRoute[1] ?? "";
+      if (!viewer) return redirect("/");
+      if (!isRepoName(repo)) return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
+      if (!projectRoute[2]) return method === "GET" ? showProject(request, env, viewer, repo) : methodNotAllowed();
+      if (method !== "POST") return methodNotAllowed();
+      if (viewer.role !== "super_admin") return forbidden(viewer);
+      return (await protectedForm(request, viewer)) ? recheckProject(env, viewer, repo) : forbidden(viewer);
+    }
+
     switch (pathname) {
       case "/":
       case "/index.html":
-        return html(homePage(viewer));
+        return viewer ? showProjects(env, viewer) : html(homePage());
+
+      case "/projects": {
+        if (!viewer) return redirect("/");
+        if (method === "GET") return showProjects(env, viewer);
+        if (method !== "POST") return methodNotAllowed();
+        if (viewer.role !== "super_admin") return forbidden(viewer);
+        const form = await protectedForm(request, viewer);
+        return form ? createProject(form, env, viewer) : forbidden(viewer);
+      }
+
+      case "/projects/new":
+        if (!viewer) return redirect("/");
+        if (viewer.role !== "super_admin") return forbidden(viewer);
+        return method === "GET" ? showNewProject(request, env, viewer) : methodNotAllowed();
 
       case "/auth/logout": {
         if (method !== "POST") return methodNotAllowed();
