@@ -1,0 +1,47 @@
+{
+  "nom": "L'épicerie extraordinaire",
+  "description": "Méta-boutique : de vrais produits de drive, triés par des règles explicites. On montre aussi ce qu'on a retiré.",
+  "branches": {
+    "production": "main",
+    "integration": "integration",
+    "travail": ["feature/*", "refacto/*"]
+  },
+  "environnements": {
+    "int": { "url": "https://epicerie-extraordinaire-int.serge-fantino.workers.dev", "version": "/api/version" },
+    "production": { "url": "https://epicerieextraordinaire.com", "version": "/api/version" }
+  },
+  "workflows": {
+    "ci": "ci.yml",
+    "deploiement_int": "deploy-int.yml",
+    "migrations_production": "migrations-prod.yml",
+    "promouvoir": null,
+    "claude": null
+  },
+  "version": { "fichier": "site/static/nouveautes.json", "forme": "v1.N" },
+  "documentation": [
+    { "titre": "Le projet (principes, périmètre, règles)", "chemin": "CLAUDE.md" },
+    { "titre": "Installer et exploiter", "chemin": "README.md" },
+    { "titre": "Synchronisation entre appareils", "chemin": "docs/architecture-synchro.md" },
+    { "titre": "Store V2", "chemin": "docs/store-v2.md" },
+    { "titre": "Refonte technique", "chemin": "docs/refactoring/" }
+  ],
+  "demandes": {
+    "etiquettes": { "demande": "demande", "prete": "prete-pour-claude", "a_valider": "a-valider-sur-int" },
+    "rubriques": [
+      { "cle": "contexte", "titre": "Contexte", "obligatoire": true,
+        "aide": "Ce qui se passe aujourd'hui, pour qui, et pourquoi ça ne va pas." },
+      { "cle": "besoin", "titre": "Besoin", "obligatoire": true,
+        "aide": "Ce que la personne doit pouvoir faire, dit simplement. Pas la solution technique." },
+      { "cle": "criteres", "titre": "Critères d'acceptation", "obligatoire": true,
+        "aide": "Une ligne par critère, vérifiable sur int (« Quand je…, je vois… »)." },
+      { "cle": "ecrans", "titre": "Écrans concernés",
+        "aide": "App (/app/…) ou site ; le style V2 s'applique à tout écran repris." },
+      { "cle": "donnees_personnelles", "titre": "Données personnelles", "obligatoire": true,
+        "aide": "Aucune, ou laquelle : elle doit être décrite dans confidentialite.html, ajoutée à l'export, à l'import et à la suppression du compte. Donnée de santé ou de conviction : accord explicite, appareil par défaut." },
+      { "cle": "quoi_de_neuf", "titre": "Texte « Quoi de neuf »",
+        "aide": "Une ou deux phrases pour un utilisateur curieux, sans jargon. Vide si rien de visible ([coulisses])." },
+      { "cle": "questions", "titre": "Questions ouvertes",
+        "aide": "Ce qui reste à trancher avant de coder." }
+    ]
+  }
+}
