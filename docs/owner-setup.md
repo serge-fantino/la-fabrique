@@ -47,14 +47,55 @@ Merge the F0.1 PR into `main`. The `deploy` workflow runs:
 Visit `https://la-fabrique.<your-subdomain>.workers.dev/api/version`; it
 should answer with the deployed commit SHA.
 
-## 4. Later lots
+## 4. GitHub sign-in (F0.2)
 
-- **F0.2 (GitHub login, roles).** Create the GitHub App *La Fabrique* with
-  the permissions listed in `CLAUDE.md`, install it on the pilot repository,
-  and add its credentials to the Worker as secrets (`wrangler secret put`
-  for each entry listed in `.dev.vars.example`).
-- A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
-  attached from the Workers dashboard once the first deploy succeeds.
+### Create the GitHub App
+
+GitHub &rarr; Settings &rarr; Developer settings &rarr; GitHub Apps &rarr;
+*New GitHub App*:
+
+| Field | Value |
+| --- | --- |
+| GitHub App name | `La Fabrique` (must be unique on GitHub; add a suffix if taken) |
+| Homepage URL | `https://la-fabrique.<your-subdomain>.workers.dev` |
+| Callback URL | `https://la-fabrique.<your-subdomain>.workers.dev/auth/callback` (add one line per address you use, e.g. a custom domain later) |
+| Expire user authorization tokens | checked |
+| Request user authorization (OAuth) during installation | unchecked |
+| Enable Device Flow | unchecked |
+| Webhook &rarr; Active | unchecked for now (webhooks arrive with F0.3) |
+| Where can this GitHub App be installed? | Only on this account |
+
+Repository permissions (the minimum, from `CLAUDE.md`): Metadata read,
+Contents read, Issues read and write, Pull requests read, Actions read and
+write, Checks read. No account or organization permission.
+
+After creating it, on the App page: note the **Client ID**, then
+*Generate a new client secret*. Then *Install App* on the pilot repository
+(`epicerie-extraordinaire`); sign-in itself does not need it, F0.3 does.
+
+### Give the Worker its secrets
+
+```bash
+npx wrangler secret put GITHUB_APP_CLIENT_ID      # the Client ID
+npx wrangler secret put GITHUB_APP_CLIENT_SECRET  # the client secret
+npx wrangler secret put SUPER_ADMINS              # your GitHub login(s), comma-separated
+```
+
+Secrets survive deploys. Until the two GitHub App secrets are set,
+*Sign in with GitHub* answers "Sign-in unavailable".
+
+### Grant roles
+
+Sign in with an account listed in `SUPER_ADMINS`, open **People**, and add
+GitHub logins with a role. Someone who signs in without a role sees "No
+access yet"; their request appears under **Access requests** on the People
+page. Every change is written to the activity log.
+
+## 5. Later
+
+A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
+attached from the Workers dashboard; add its `/auth/callback` to the GitHub
+App's callback URLs.
 
 ## Local development
 
