@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "la-fabrique",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.html", "**/*.css"],
+      "fallthrough": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "la-fabrique-db",
+      "database_id": "b39b55e1-f116-4efd-8834-efddb7b00a69",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "COMMIT_SHA": "dev"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

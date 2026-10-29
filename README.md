@@ -7,3 +7,5 @@ Une couche fine sur GitHub : les stories restent des issues, le code des branche
 Principes, rôles et architecture : [CLAUDE.md](CLAUDE.md).
 
 Premier projet piloté : [L'épicerie extraordinaire](https://github.com/serge-fantino/epicerie-extraordinaire).
+
+Mise en route (anglais) : [docs/owner-setup.md](docs/owner-setup.md).
