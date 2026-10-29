@@ -37,12 +37,13 @@ Minimum token scope: *Account &rarr; Workers Scripts &rarr; Edit*,
 
 ## 3. First deploy
 
-Merge the F0.1 PR into `main`. The `deploy` workflow runs:
+Every push to `main` runs the `deploy` workflow:
 
 1. `npm ci`, typecheck, tests.
-2. `wrangler deploy` &mdash; publishes the Worker with the merge-commit SHA.
-3. `wrangler d1 migrations apply la-fabrique-db --remote` &mdash; applies the
-   initial schema.
+2. `wrangler d1 migrations apply la-fabrique-db --remote` &mdash; applies
+   pending migrations first, so new code never runs on an old schema
+   (migrations must stay additive).
+3. `wrangler deploy` &mdash; publishes the Worker with the commit SHA.
 
 Visit `https://la-fabrique.<your-subdomain>.workers.dev/api/version`; it
 should answer with the deployed commit SHA.
