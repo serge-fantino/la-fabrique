@@ -6,6 +6,8 @@ Tous les champs sont facultatifs sauf `nom` ; un champ absent masque la fonction
 
 ## Exemple (L'épicerie extraordinaire)
 
+Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples/epicerie.fabrique.json`](exemples/epicerie.fabrique.json) (à recopier quand l'original change ; il sert aussi de jeu de test).
+
 ```json
 {
   "nom": "L'épicerie extraordinaire",
