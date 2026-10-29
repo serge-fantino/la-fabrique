@@ -15,8 +15,7 @@
     {
       "binding": "DB",
       "database_name": "la-fabrique-db",
-      // Replace with the real D1 id after `wrangler d1 create la-fabrique-db`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "b39b55e1-f116-4efd-8834-efddb7b00a69",
       "migrations_dir": "migrations"
     }
   ],
