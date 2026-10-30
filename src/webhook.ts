@@ -2,6 +2,7 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { json } from "./http";
 import { activityChanged } from "./activity";
+import { deliveryChanged } from "./delivery";
 import { productionChanged } from "./production";
 import { branchKind, checkPushedCommit, findProject } from "./projects";
 import { markStale } from "./snapshots";
@@ -57,6 +58,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   }
   if (event === "workflow_run") {
     await productionChanged(env, project.repo);
+    await deliveryChanged(env, project.repo);
   await activityChanged(env, project.repo);
     return json({ refresh: "production" });
   }

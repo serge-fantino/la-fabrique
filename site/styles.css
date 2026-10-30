@@ -759,12 +759,14 @@ textarea {
 
 .bar-commits,
 .bar-added,
+.bar-success,
 .key-added {
   fill: #2f8f63;
   background: #2f8f63;
 }
 
 .bar-removed,
+.bar-failure,
 .key-removed {
   fill: var(--accent);
   background: var(--accent);
@@ -825,4 +827,39 @@ textarea {
 .branches a[aria-current="page"] code {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--encre);
+}
+
+.run-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.run {
+  display: inline-block;
+  width: 14px;
+  height: 22px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--encre) 18%, transparent);
+}
+
+.run-success {
+  background: #2f8f63;
+}
+
+.run-failure {
+  background: var(--accent);
+}
+
+.run-running {
+  background: var(--moyen);
+}
+
+.workflow {
+  border-top: 1px solid var(--rule);
+  margin-top: 2rem;
+}
+
+.nowrap {
+  white-space: nowrap;
 }
