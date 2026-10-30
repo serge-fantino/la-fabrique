@@ -1,3 +1,4 @@
+import { can } from "./rights";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
@@ -7,10 +8,9 @@ import { describeFailure, type Project } from "./projects";
 import { readSnapshot, writeSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
 
-const PRIORITY_ROLES: readonly Role[] = ["super_admin", "tech_lead", "product_engineer"];
 
 export function canPrioritize(role: Role): boolean {
-  return PRIORITY_ROLES.includes(role);
+  return can(role, "request");
 }
 
 // Colours of the priority labels GitHub creates, highest first.

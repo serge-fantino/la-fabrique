@@ -1,3 +1,4 @@
+import { can } from "./rights";
 import type { Env } from "./env";
 import { listInstalledRepos } from "./github-app";
 import { html, json, redirect } from "./http";
@@ -15,7 +16,8 @@ import {
 } from "./projects";
 import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
-import { loadProduction, productionReady } from "./production";
+import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
+import { readSnapshot } from "./snapshots";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
 import { requestFormPage, requestsPage } from "./requests-views";
@@ -370,8 +372,10 @@ export async function showSetup(
     loadReleases(env, project, check, view.ref),
     loadStories(env, project),
   ]);
+  const production = await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION);
   const items = setupChecklist({
     check,
+    versions: production?.data.versions ?? null,
     releases: releases.failure ? null : releases.releases,
     stories: stories.failure && !stories.stories.length ? null : stories.stories,
     branches: view.knownBranches,
@@ -403,7 +407,7 @@ export async function showSetup(
 }
 
 function canEditConfig(role: Viewer["role"]): boolean {
-  return role === "super_admin" || role === "tech_lead";
+  return can(role, "launch_claude");
 }
 
 const PROPOSE_FAILURES: Record<string, string> = {

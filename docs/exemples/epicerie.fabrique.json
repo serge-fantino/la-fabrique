@@ -7,8 +7,8 @@
     "travail": ["feature/*", "refacto/*"]
   },
   "environnements": {
-    "int": { "url": "https://epicerie-extraordinaire-int.serge-fantino.workers.dev", "version": "/api/version" },
-    "production": { "url": "https://epicerieextraordinaire.com", "version": "/api/version" }
+    "int": { "url": "https://epicerie-extraordinaire-int.serge-fantino.workers.dev", "version": "/api/version", "type": "integration", "signalement": true },
+    "production": { "url": "https://epicerieextraordinaire.com", "version": "/api/version", "type": "production", "signalement": false }
   },
   "workflows": {
     "ci": "ci.yml",

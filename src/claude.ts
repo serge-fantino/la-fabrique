@@ -1,3 +1,4 @@
+import { can } from "./rights";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
@@ -6,11 +7,10 @@ import { productionBranch, type Project } from "./projects";
 import { applyIssueEvent, type RestIssue } from "./stories";
 import { wordingFor } from "./wording";
 
-const CLAUDE_ROLES: readonly Role[] = ["super_admin", "tech_lead"];
 export const DEFAULT_CAP = 2;
 
 export function canLaunchClaude(role: Role): boolean {
-  return CLAUDE_ROLES.includes(role);
+  return can(role, "launch_claude");
 }
 
 export function claudeWorkflow(project: Project): string | null {

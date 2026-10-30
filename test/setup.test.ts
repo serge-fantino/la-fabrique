@@ -82,6 +82,35 @@ describe("setupChecklist", () => {
     expect(items.find((item) => item.key === "production")?.found).toBe("Not declared: La Fabrique uses the default branch, `main`.");
   });
 
+  it("warns when an environment answers another environnement than its type", () => {
+    const config = {
+      nom: "W",
+      environnements: {
+        int: { url: "https://int.example", version: "/api/version", type: "integration" as const, signalement: true },
+        production: { url: "https://example", version: "/api/version", type: "production" as const },
+      },
+    };
+    const versions = [
+      { environment: "int", url: "https://int.example", version: "1.2", answers: "production" },
+      { environment: "production", url: "https://example", version: "1.1", answers: "production" },
+    ];
+    const item = setupChecklist({ check: check(config), releases: null, stories: [], branches: [], versions }).find(
+      (entry) => entry.key === "environments",
+    );
+    expect(item?.state).toBe("missing");
+    expect(item?.found).toBe(
+      "Version read on `int`, `production`. `int` is declared `integration` but answers `production`. The project's app reports defects from `int`.",
+    );
+    const fine = setupChecklist({
+      check: check(config),
+      releases: null,
+      stories: [],
+      branches: [],
+      versions: [{ ...versions[0]!, answers: "int" }, versions[1]!],
+    }).find((entry) => entry.key === "environments");
+    expect(fine?.state).toBe("done");
+  });
+
   it("wants at least one released entry, with its date and time", () => {
     const releases = parseReleases(JSON.stringify([{ version: "0.2", date: "2026-10-30", changements: [] }]));
     const item = setupChecklist({

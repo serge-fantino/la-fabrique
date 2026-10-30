@@ -248,12 +248,11 @@ describe("Validating on int", () => {
     expect(page).toContain(`#90</a> Monday is missing <span class="pill alert">Open</span>`);
   });
 
-  it("lets a tech lead read but not validate", async () => {
+  it("lets a tech lead validate too: each role has the rights of the ones below", async () => {
     await seed();
     await grantRole("lead", "tech_lead");
-    const { cookie, csrf } = await signIn("lead");
+    const { cookie } = await signIn("lead");
     const page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
-    expect(page).not.toContain("to-test/validate");
-    expect((await post(`/projects/${REPO}/to-test/validate`, { csrf, issue: "31" }, cookie)).status).toBe(403);
+    expect(page).toContain("to-test/validate");
   });
 });

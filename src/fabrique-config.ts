@@ -7,7 +7,7 @@ export interface FabriqueConfig {
   langue?: "fr" | "en";
   description?: string;
   branches?: { production?: string; integration?: string; travail?: string[] };
-  environnements?: Record<string, { url: string; version?: string }>;
+  environnements?: Record<string, Environment>;
   workflows?: Record<string, string | null>;
   version?: { fichier?: string; forme?: string };
   documentation?: { titre: string; chemin: string }[];
@@ -20,6 +20,20 @@ export interface FabriqueConfig {
   cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
   // Claude launched from La Fabrique: how many runs at once, at most.
   claude?: { plafond?: number };
+}
+
+export const ENVIRONMENT_TYPES = ["integration", "production"] as const;
+export type EnvironmentType = (typeof ENVIRONMENT_TYPES)[number];
+
+export interface Environment {
+  url: string;
+  version?: string;
+  // What the environment is for; the version path answers the same
+  // `environnement` (checked by Setup and before a report).
+  type?: EnvironmentType;
+  // Whether the project's app may report defects from it (never on
+  // production: its data are real).
+  signalement?: boolean;
 }
 
 export const READY_CHECKS = ["criteres", "epique", "priorite", "etiquette_prete"] as const;
@@ -114,15 +128,24 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
           errors.push(`\`environnements.${name}.url\` must be an http(s) address.`);
           continue;
         }
+        const checked: Environment = { url: environment["url"] };
         const version = environment["version"];
-        if (version !== undefined && !(typeof version === "string" && version.startsWith("/"))) {
-          errors.push(`\`environnements.${name}.version\` must be a path starting with "/".`);
-          config.environnements[name] = { url: environment["url"] };
-          continue;
+        if (version !== undefined) {
+          if (typeof version === "string" && version.startsWith("/")) checked.version = version;
+          else errors.push(`\`environnements.${name}.version\` must be a path starting with "/".`);
         }
-        config.environnements[name] = version === undefined
-          ? { url: environment["url"] }
-          : { url: environment["url"], version };
+        const type = environment["type"];
+        if (type !== undefined) {
+          if ((ENVIRONMENT_TYPES as readonly unknown[]).includes(type)) checked.type = type as EnvironmentType;
+          else errors.push(`\`environnements.${name}.type\` must be "integration" or "production".`);
+        }
+        const reporting = environment["signalement"];
+        if (reporting !== undefined) {
+          if (typeof reporting !== "boolean") errors.push(`\`environnements.${name}.signalement\` must be true or false.`);
+          else if (reporting && checked.type === "production") errors.push(`\`environnements.${name}.signalement\` cannot be true on production.`);
+          else checked.signalement = reporting;
+        }
+        config.environnements[name] = checked;
       }
     }
   }

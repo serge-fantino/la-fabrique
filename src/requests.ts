@@ -1,3 +1,4 @@
+import { can } from "./rights";
 import { wordingFor, type Wording } from "./wording";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
@@ -9,10 +10,8 @@ import type { Project } from "./projects";
 import { userToken } from "./session";
 import { applyIssueEvent, loadStories, type RestIssue, type Story } from "./stories";
 
-export const REQUEST_ROLES: readonly Role[] = ["super_admin", "product_engineer", "tech_lead"];
-
 export function canRequest(role: Role): boolean {
-  return REQUEST_ROLES.includes(role);
+  return can(role, "request");
 }
 
 export type Rubrique = NonNullable<NonNullable<FabriqueConfig["demandes"]>["rubriques"]>[number];

@@ -1,11 +1,7 @@
 import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
-
-const REPO = "acme/widget";
-const RETURN = "https://widget-int.example.com/auth/fabrique/retour";
-const LOCAL_RETURN = "http://localhost:8787/auth/fabrique/retour";
-const VERIFIER = "a-code-verifier-long-enough-to-be-accepted-by-pkce-0123456789";
+import { addProject, authorizePath, connect, LOCAL_RETURN, me, mockRepoAccess, mockUser, registerApp, REPO, RETURN, token, type Tokens } from "./oauth-helpers";
 
 beforeAll(() => {
   fetchMock.activate();
@@ -13,123 +9,6 @@ beforeAll(() => {
 });
 
 afterEach(() => fetchMock.assertNoPendingInterceptors());
-
-function base64url(bytes: ArrayBuffer): string {
-  let binary = "";
-  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function challenge(verifier: string): Promise<string> {
-  return base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-}
-
-async function addProject(): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
-    env.DB.prepare(
-      "INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', ?, ?, '[]', '[]')",
-    ).bind(REPO, "1".repeat(40), JSON.stringify({ nom: "The Widget" })),
-  ]);
-}
-
-// The super admin registers the project's app, as the owner does.
-async function registerApp(): Promise<{ clientId: string; clientSecret: string }> {
-  const { cookie, csrf } = await signIn("admin-one");
-  const response = await post(
-    "/apps",
-    { csrf, action: "register", name: "Widget app", repo: REPO, redirect_uris: `${RETURN}\n${LOCAL_RETURN}` },
-    cookie,
-  );
-  expect(response.status).toBe(200);
-  const page = await response.text();
-  const clientId = /<dt>client_id<\/dt><dd><code>([^<]+)<\/code>/.exec(page)?.[1] ?? "";
-  const clientSecret = /<dt>client_secret<\/dt><dd><code>([^<]+)<\/code>/.exec(page)?.[1] ?? "";
-  expect(clientId).not.toBe("");
-  expect(clientSecret).not.toBe("");
-  return { clientId, clientSecret };
-}
-
-async function authorizePath(clientId: string, scope = "defects:report", redirect = RETURN): Promise<string> {
-  const query = new URLSearchParams({
-    response_type: "code",
-    client_id: clientId,
-    redirect_uri: redirect,
-    scope,
-    state: "state-123",
-    code_challenge: await challenge(VERIFIER),
-    code_challenge_method: "S256",
-  });
-  return `/oauth/authorize?${query}`;
-}
-
-function mockRepoAccess(status = 200): void {
-  fetchMock.get("https://api.github.com").intercept({ method: "GET", path: `/repos/${REPO}` }).reply(status, JSON.stringify({ full_name: REPO }), {
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function mockUser(login: string): void {
-  fetchMock
-    .get("https://api.github.com")
-    .intercept({ method: "GET", path: "/user" })
-    .reply(200, JSON.stringify({ login, id: 7, name: "Mona Tester", avatar_url: "https://avatars.example.com/u/7" }), {
-      headers: { "content-type": "application/json" },
-    });
-}
-
-function token(fields: Record<string, string>, path = "/oauth/token"): Promise<Response> {
-  return SELF.fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(fields).toString(),
-  });
-}
-
-function me(accessToken: string): Promise<Response> {
-  return SELF.fetch(`${BASE}/api/me`, { headers: { authorization: `Bearer ${accessToken}` } });
-}
-
-interface Tokens {
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-  scope: string;
-  token_type: string;
-}
-
-// The whole flow for an account without a role, which only has to see the
-// repository on GitHub.
-async function connect(login = "mona"): Promise<{ app: { clientId: string; clientSecret: string }; tokens: Tokens; cookie: string; csrf: string }> {
-  await addProject();
-  const app = await registerApp();
-  const { cookie, csrf } = await signIn(login);
-  const path = await authorizePath(app.clientId);
-
-  mockRepoAccess();
-  const consent = await get(path, cookie);
-  expect(consent.status).toBe(200);
-
-  mockRepoAccess();
-  mockUser(login);
-  const approved = await post(path, { csrf, decision: "allow" }, cookie);
-  expect(approved.status).toBe(302);
-  const location = new URL(approved.headers.get("location") ?? "");
-  expect(location.origin + location.pathname).toBe(RETURN);
-  expect(location.searchParams.get("state")).toBe("state-123");
-  const code = location.searchParams.get("code") ?? "";
-
-  const response = await token({
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: RETURN,
-    code_verifier: VERIFIER,
-    client_id: app.clientId,
-    client_secret: app.clientSecret,
-  });
-  expect(response.status).toBe(200);
-  return { app, tokens: (await response.json()) as Tokens, cookie, csrf };
-}
 
 describe("Registering a project's app", () => {
   it("is for the super admin, shows the secret once, and lists the app with its return addresses", async () => {

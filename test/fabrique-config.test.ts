@@ -80,6 +80,27 @@ describe(".fabrique.json validation", () => {
     expect(result.config?.environnements).toEqual({ production: { url: "https://w.example" } });
   });
 
+  it("reads an environment's type and whether the app may report from it", () => {
+    const result = validateFabriqueConfig(
+      JSON.stringify({
+        nom: "W",
+        environnements: {
+          int: { url: "https://int.example", version: "/api/version", type: "integration", signalement: true },
+          production: { url: "https://example", type: "production", signalement: true },
+          staging: { url: "https://staging.example", type: "recette", signalement: "yes" },
+        },
+      }),
+      EXAMPLE_TREE,
+    );
+    expect(result.config?.environnements?.["int"]).toEqual({ url: "https://int.example", version: "/api/version", type: "integration", signalement: true });
+    expect(result.config?.environnements?.["production"]).toEqual({ url: "https://example", type: "production" });
+    expect(result.errors).toEqual([
+      "`environnements.production.signalement` cannot be true on production.",
+      "`environnements.staging.type` must be \"integration\" or \"production\".",
+      "`environnements.staging.signalement` must be true or false.",
+    ]);
+  });
+
   it("refuses duplicate request-form keys", () => {
     const raw = JSON.stringify({
       nom: "W",

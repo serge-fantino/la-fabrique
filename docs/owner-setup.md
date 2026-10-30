@@ -166,7 +166,11 @@ see its connected apps, and only for a project whose repository its GitHub
 account can see.
 
 Endpoints: `/.well-known/oauth-authorization-server`, `/oauth/authorize`,
-`/oauth/token` (`client_secret_post`), `/oauth/revoke`; API: `GET /api/me`.
+`/oauth/token` (`client_secret_post`), `/oauth/revoke`; API: `GET /api/me`,
+`POST /api/projects/{project}/defects`. Reports are accepted only from an
+environment declared with `"signalement": true` in the project's
+`.fabrique.json`, and whose version path answers that `environnement`.
+Screenshots are kept in D1 (no R2 bucket to create).
 
 ## 9. Later
 

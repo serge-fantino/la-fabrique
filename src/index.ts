@@ -15,6 +15,7 @@ import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
 import { d1KeyValue } from "./oauth-store";
+import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
 
 const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
@@ -110,6 +111,13 @@ const app = {
         const form = await protectedForm(request, person);
         return form ? changeApps(form, env, person) : html(messagePage("Not allowed", "This form expired: reload the page."), { status: 403 });
       }
+    }
+
+    const screenshot = SCREENSHOT_ROUTE.exec(pathname);
+    if (screenshot) {
+      if (method !== "GET") return methodNotAllowed();
+      const image = await serveScreenshot(env, screenshot[1] ?? "", screenshot[2] ?? "");
+      return image ?? text("Not found", 404);
     }
 
     const state = await currentViewer(request, env);

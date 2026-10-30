@@ -20,7 +20,9 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 - **Product Engineer** : écrit des demandes (formulaire guidé selon le modèle du projet), les précise avec Claude, les déclare « prêtes pour Claude », valide sur int.
 - **Tech lead** : relit les demandes et les PR, peut lancer Claude, suit la CI.
 - **Testeur** : voit int et les demandes à valider, coche les critères d'acceptation, signale un défaut (issue reliée).
-- Sans rôle : rien (connexion refusée poliment).
+- Sans rôle : signaler un défaut depuis l'app d'un projet dont le compte GitHub voit le dépôt (étiquette *to triage*, 20 par jour) ; rien d'autre (connexion à La Fabrique refusée poliment).
+
+Chaque rôle a les droits de ceux d'avant (`src/rights.ts`) : signaler un défaut (tout compte qui voit le projet) < testeur (int, critères, validation) < Product Engineer (demandes, priorités) < tech lead (Claude, Setup) < super admin (go, rôles, projets, apps).
 
 ## Architecture
 
@@ -57,6 +59,7 @@ Fin octobre 2026 :
 - lot F0 livré (#1, stories #2 à #8) : connexion GitHub et rôles, projets et `.fabrique.json`, documentation en ligne, stories, ce qui attend la production, nouvelle demande ;
 - lot F2 en cours (#18) : vélocité (F2.1), lecture d'une autre branche (F2.2), livraison (F2.4, en partie), feuille de route et versions (F2.6, en partie), La Fabrique pilotée par elle-même (F2.9), guide d'intégration, onglet Setup (F2.7), ce que la production va recevoir (F2.8), branche de référence dans l'en-tête (F2.10) ; architecture (F2.3) et tests (F2.5) attendent les réponses du propriétaire ;
 - lot F3 livré (#44, stories #45 à #49) : cycle de vie d'une story et *Definition of Ready* (`cycle` du `.fabrique.json`), à tester sur int, en développement, backlog et priorités (étiquettes GitHub posées par La Fabrique, journalisées), tableau de bord en page d'accueil ;
+- signaler un défaut depuis l'app d'un projet (#65) : La Fabrique fournisseur OAuth, *Connected apps*, `GET /api/me`, `POST /api/projects/{project}/defects` (contrat avec l'épicerie dans #65), `type` et `signalement` des environnements, droits par action ; le client de l'épicerie reste à enregistrer par le propriétaire ;
 - lot F1 livré côté La Fabrique (#57, stories #58 à #62) : validation sur int (critères cochés dans l'issue, validation, défaut signalé), « go » du super admin (workflow `promouvoir` du projet), « Launch Claude » sur une story prête (workflow `claude` du projet, plafond `claude.plafond`), journal par projet, workflows du projet dans Setup ; les workflows de l'épicerie attendent leur intégration (epicerie-extraordinaire#148) et leurs secrets (`FABRIQUE_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` ou `ANTHROPIC_API_KEY`).
 
 Mise en route et secrets : `docs/owner-setup.md`.

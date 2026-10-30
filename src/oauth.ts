@@ -2,12 +2,14 @@ import { AuthorizationError, type AuthRequest, type OAuthHelpers } from "@cloudf
 import { effectiveRole, ROLE_LABELS, type Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import { safeEqual } from "./crypto";
+import { DEFECT_ROUTE, reportDefectFromApp, reportingEnvironments } from "./defects";
 import type { Env } from "./env";
 import { fetchUser, refreshUserToken } from "./github";
 import { githubFetch } from "./github-app";
 import { cspWithFormTarget } from "./headers";
 import { html, json, redirect } from "./http";
 import { findProject, type Project } from "./projects";
+import { can } from "./rights";
 import { readSession, userToken, type Session } from "./session";
 import { escapeHtml, layout } from "./views";
 
@@ -27,6 +29,8 @@ export interface GrantProps {
   name: string | null;
   avatarUrl: string | null;
   repo: string;
+  // The app's name when it was connected, for the reports' signature.
+  app?: string;
 }
 
 export function oauthHelpers(env: Env): OAuthHelpers {
@@ -187,6 +191,7 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
     name: user?.name ?? null,
     avatarUrl: user?.avatarUrl ?? null,
     repo: project.repo,
+    app: appName,
   };
   const { redirectTo } = await helpers.completeAuthorization({
     request: authRequest,
@@ -240,10 +245,17 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
         name: props.name,
         avatar_url: props.avatarUrl,
         project: { id: projectId(props.repo), role },
-        can: { report_defect: Boolean(project) },
+        can: {
+          report_defect: project !== null && can(role, "report_defect") && Object.keys(await reportingEnvironments(env, project)).length > 0,
+        },
       },
       { headers: { "cache-control": "no-store" } },
     );
+  }
+  const defects = DEFECT_ROUTE.exec(pathname);
+  if (defects) {
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, { status: 405 });
+    return reportDefectFromApp(request, env, props, defects[1] ?? "");
   }
   return json({ error: "not_found" }, { status: 404 });
 }

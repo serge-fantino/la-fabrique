@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.36",
+    "date": "2026-10-30",
+    "heure": "14:40",
+    "titre": "Report a defect from the project's app",
+    "changements": [
+      "A project's app reports a defect from the page where it shows up: La Fabrique opens the issue with the page, version, component and screenshot, labels it bug, links it to the story on int when there is one, and signs it with the person's login.",
+      "Anyone whose GitHub account sees the project can report, a role or not; reports from an account without a role are labelled to triage. At most 20 a day per account.",
+      "Reports are accepted only from an environment declared with signalement in .fabrique.json and that says it is that environment; Setup warns when an environment answers another one than its type.",
+      "Rights now follow one ladder: each role can do what the ones below it do (a tech lead can validate on int)."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.35",
     "date": "2026-10-30",
     "heure": "14:05",
