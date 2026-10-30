@@ -13,7 +13,13 @@ export interface FabriqueConfig {
     etiquettes?: Record<string, string>;
     rubriques?: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[];
   };
+  // The lifecycle of a story: its Definition of Ready, and the priority
+  // labels, highest first.
+  cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
 }
+
+export const READY_CHECKS = ["criteres", "epique", "priorite", "etiquette_prete"] as const;
+export type ReadyCheck = (typeof READY_CHECKS)[number];
 
 export interface RepoTree {
   files: Set<string>;
@@ -215,6 +221,32 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
               ...(typeof rubrique["aide"] === "string" ? { aide: rubrique["aide"] } : {}),
             });
           });
+        }
+      }
+    }
+  }
+
+  const cycle = parsed["cycle"];
+  if (cycle !== undefined) {
+    if (!isObject(cycle)) {
+      errors.push("`cycle` must be an object.");
+    } else {
+      config.cycle = {};
+      const pret = cycle["pret"];
+      if (pret !== undefined) {
+        const known = new Set<string>(READY_CHECKS);
+        if (!Array.isArray(pret) || !pret.every((check) => typeof check === "string" && known.has(check))) {
+          errors.push(`\`cycle.pret\` must be a list among ${READY_CHECKS.map((check) => `\`${check}\``).join(", ")}.`);
+        } else {
+          config.cycle.pret = [...new Set(pret as ReadyCheck[])];
+        }
+      }
+      const priorites = cycle["priorites"];
+      if (priorites !== undefined) {
+        if (!Array.isArray(priorites) || !priorites.every(isText)) {
+          errors.push("`cycle.priorites` must be a list of GitHub labels, highest priority first.");
+        } else {
+          config.cycle.priorites = priorites as string[];
         }
       }
     }

@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.23",
+    "date": "2026-10-30",
+    "heure": "11:29",
+    "titre": "Where each story stands",
+    "changements": [
+      "Each story has a stage on the Stories board: Backlog, Ready, In development, On int or In production, computed from GitHub, with a stage filter.",
+      "A story in the backlog says what its Definition of Ready lacks; each project declares its own Definition of Ready and priority labels in its .fabrique.json (Setup explains how)."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.22",
     "date": "2026-10-30",
     "heure": "11:08",

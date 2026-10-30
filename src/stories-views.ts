@@ -1,6 +1,7 @@
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Story, StoryFilters, StoryGroup } from "./stories";
+import { missingForReady, STAGES, type CycleRules, type Stage } from "./lifecycle";
 import { projectUrl } from "./urls";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -22,16 +23,35 @@ function links(story: Story): string {
   return [...pulls, ...branches].join(" ");
 }
 
-function storyRow(story: Story, circuit: Set<string>): string {
+const STAGE_TONES: Record<Stage, string> = { backlog: "", ready: "ok", in_dev: "warn", on_int: "warn", done: "ok" };
+
+export function stagePill(stage: Stage): string {
+  const label = STAGES.find((candidate) => candidate.id === stage)?.label ?? stage;
+  return `<span class="pill stage-${stage}${STAGE_TONES[stage] ? ` ${STAGE_TONES[stage]}` : ""}">${label}</span>`;
+}
+
+interface StageInfo {
+  stages: Map<number, Stage>;
+  rules: CycleRules;
+}
+
+function stageCell(story: Story, info: StageInfo): string {
+  const stage = info.stages.get(story.number);
+  if (!stage) return statePill(story);
+  const missing = stage === "backlog" ? missingForReady(story, info.rules) : [];
+  return `${stagePill(stage)}${missing.length ? `<br /><span class="muted small">${escapeHtml(missing.join(", "))}</span>` : ""}`;
+}
+
+function storyRow(story: Story, circuit: Set<string>, info: StageInfo): string {
   return `<tr>
       <td class="mono number"><a href="${escapeHtml(story.url)}">#${story.number}</a></td>
       <td><a href="${escapeHtml(story.url)}">${escapeHtml(story.title)}</a><br />${labelChips(story, circuit)}</td>
-      <td>${statePill(story)}</td>
+      <td>${stageCell(story, info)}</td>
       <td class="links-cell">${links(story)}</td>
     </tr>`;
 }
 
-function groupSection(group: StoryGroup, circuit: Set<string>): string {
+function groupSection(group: StoryGroup, circuit: Set<string>, info: StageInfo): string {
   const epic = group.epic;
   const head = epic
     ? `<div class="group-head">
@@ -43,8 +63,8 @@ function groupSection(group: StoryGroup, circuit: Set<string>): string {
     : `<div class="group-head"><h2>Not in an epic</h2></div>`;
   const body = group.items.length
     ? `<table>
-        <thead><tr><th>#</th><th>Story</th><th>State</th><th>Pull requests and branches</th></tr></thead>
-        <tbody>${group.items.map((story) => storyRow(story, circuit)).join("")}</tbody>
+        <thead><tr><th>#</th><th>Story</th><th>Stage</th><th>Pull requests and branches</th></tr></thead>
+        <tbody>${group.items.map((story) => storyRow(story, circuit, info)).join("")}</tbody>
       </table>`
     : `<p class="muted">No story matches these filters.</p>`;
   return `<section>${head}${body}</section>`;
@@ -59,6 +79,8 @@ export function storiesPage(
   project: Project,
   data: {
     stories: Story[];
+    stages: Map<number, Stage>;
+    rules: CycleRules;
     groups: StoryGroup[];
     filters: StoryFilters;
     fetchedAt: string | null;
@@ -91,6 +113,11 @@ export function storiesPage(
           filters.state === "open",
         )}${option("closed", "Closed", filters.state === "closed")}</select>
       </label>
+      <label>Stage
+        <select name="stage">${option("", "Any stage", !filters.stage)}${STAGES.map((stage) =>
+          option(stage.id, stage.label, filters.stage === stage.id),
+        ).join("")}</select>
+      </label>
       <label class="check"><input type="checkbox" name="mine" value="1"${filters.mine ? " checked" : ""} /> Opened by me</label>
       <button type="submit" class="button quiet">Filter</button>
     </form>`;
@@ -105,7 +132,7 @@ export function storiesPage(
       ${notice(data.failure, "error")}
       ${form}
       ${meta}
-      ${data.groups.length ? data.groups.map((group) => groupSection(group, circuit)).join("") : `<p>No story matches these filters.</p>`}`,
+      ${data.groups.length ? data.groups.map((group) => groupSection(group, circuit, { stages: data.stages, rules: data.rules })).join("") : `<p>No story matches these filters.</p>`}`,
     viewer,
     [],
     projectContext(project),

@@ -59,7 +59,31 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `version.fichier`, `.forme` | Le fichier des notes de version, au format Fabrique (ci-dessous), et la forme des numéros (`v1.N`, `0.N`…). Il alimente Production (ce qui va sortir), Roadmap (calendrier) et Releases. |
 | `documentation[]` | Pages publiées dans La Fabrique : un fichier Markdown ou un dossier (tous ses `.md`), rendus depuis la branche de production. |
 | `demandes.etiquettes` | Étiquettes GitHub du circuit : demande écrite, prête pour Claude, à valider sur int. |
+| `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
+
+## Cycle d'une story
+
+La Fabrique calcule l'étape de chaque story à partir de GitHub, sans rien stocker :
+
+| Étape | Quand |
+|---|---|
+| *Backlog* | Ouverte, sa *Definition of Ready* n'est pas remplie. |
+| *Ready* | Ouverte, *Definition of Ready* remplie, aucun travail commencé. |
+| *In development* | Une branche de travail porte son numéro, ou une PR ouverte la cite. |
+| *On int* | Son travail est sur la branche d'intégration et pas encore en production. |
+| *In production* | Fermée. |
+
+`cycle.pret` liste les vérifications de la *Definition of Ready*, parmi : `criteres` (au moins un critère d'acceptation, sous un titre *Acceptance criteria* ou *Critères d'acceptation*), `epique` (sous-issue d'une épique), `priorite` (porte une étiquette de `cycle.priorites`), `etiquette_prete` (porte l'étiquette `demandes.etiquettes.prete`). Sans `cycle` : `criteres` et `epique`, et pas de priorité.
+
+```json
+"cycle": {
+  "pret": ["criteres", "epique", "priorite"],
+  "priorites": ["P1", "P2", "P3"]
+}
+```
+
+Les étiquettes de priorité sont des étiquettes GitHub ordinaires : La Fabrique les pose depuis le backlog et note qui a priorisé quoi dans son journal.
 
 ## Validation
 

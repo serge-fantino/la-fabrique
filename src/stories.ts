@@ -27,6 +27,13 @@ export interface Story {
   closedAt: string | null;
   pullRequests: LinkedPull[];
   branches: string[];
+  // Missing from snapshots written before acceptance criteria were read.
+  criteria?: Criterion[];
+}
+
+export interface Criterion {
+  text: string;
+  done: boolean;
 }
 
 export interface RestIssue {
@@ -39,6 +46,7 @@ export interface RestIssue {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  body?: string | null;
   pull_request?: unknown;
   parent_issue_url?: string | null;
   sub_issues_summary?: { total: number; completed: number };
@@ -69,6 +77,28 @@ export function branchIssue(name: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+const CRITERIA_HEADING = /^#{1,6}\s*(acceptance criteria|crit[eè]res d['’]acceptation)\b/i;
+const MAX_CRITERIA = 30;
+
+// The list under the "Acceptance criteria" (or "Critères d'acceptation")
+// heading of an issue; task-list items keep their checked state.
+export function acceptanceCriteria(body: string | null | undefined): Criterion[] {
+  const criteria: Criterion[] = [];
+  let inside = false;
+  for (const line of (body ?? "").split(/\r?\n/)) {
+    if (/^#{1,6}\s/.test(line)) {
+      if (inside) break;
+      inside = CRITERIA_HEADING.test(line);
+      continue;
+    }
+    if (!inside) continue;
+    const item = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.+?)\s*$/.exec(line);
+    if (item?.[2]) criteria.push({ text: item[2].slice(0, 300), done: (item[1] ?? " ").toLowerCase() === "x" });
+    if (criteria.length >= MAX_CRITERIA) break;
+  }
+  return criteria;
+}
+
 export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "branches">): Story {
   return {
     number: issue.number,
@@ -87,6 +117,7 @@ export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "
     closedAt: issue.closed_at,
     pullRequests: links?.pullRequests ?? [],
     branches: links?.branches ?? [],
+    criteria: acceptanceCriteria(issue.body),
   };
 }
 
@@ -166,6 +197,7 @@ export async function applyIssueEvent(env: Env, repo: string, action: string, is
     updated.subTotal = previous.subTotal;
     updated.subCompleted = previous.subCompleted;
   }
+  if (issue.body === undefined && previous?.criteria) updated.criteria = previous.criteria;
   await writeSnapshot(env.DB, repo, STORIES, [...others, updated], snapshot.fetchedAt);
 }
 
@@ -178,6 +210,7 @@ export interface StoryFilters {
   label: string | null;
   state: "open" | "closed" | "all";
   mine: boolean;
+  stage?: string | null;
 }
 
 export interface StoryGroup {
@@ -185,10 +218,16 @@ export interface StoryGroup {
   items: Story[];
 }
 
-export function groupStories(stories: Story[], filters: StoryFilters, viewerLogin: string): StoryGroup[] {
+export function groupStories(
+  stories: Story[],
+  filters: StoryFilters,
+  viewerLogin: string,
+  stages: Map<number, string> = new Map(),
+): StoryGroup[] {
   const byNumber = new Map(stories.map((story) => [story.number, story]));
   const isEpic = (story: Story) => story.subTotal > 0;
   const matches = (story: Story) =>
+    (!filters.stage || stages.get(story.number) === filters.stage) &&
     (filters.state === "all" || story.state === filters.state) &&
     (!filters.label || story.labels.includes(filters.label)) &&
     (!filters.mine || story.author === viewerLogin);
@@ -205,7 +244,7 @@ export function groupStories(stories: Story[], filters: StoryFilters, viewerLogi
     .sort((a, b) => a.number - b.number);
 
   if (filters.epic !== null) return groups.filter((group) => group.epic?.number === filters.epic);
-  const filtering = filters.label !== null || filters.mine || filters.state !== "all";
+  const filtering = filters.label !== null || filters.mine || filters.state !== "all" || Boolean(filters.stage);
   return [
     ...groups.filter((group) => group.items.length > 0 || (!filtering && group.epic !== null)),
     ...(loose.length ? [{ epic: null, items: loose }] : []),

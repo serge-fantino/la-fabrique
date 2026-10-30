@@ -28,6 +28,7 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { cycleRules, isStage, stagesOf, storiesOnInt } from "./lifecycle";
 import { setupChecklist } from "./setup";
 import { setupPage } from "./setup-views";
 
@@ -120,6 +121,7 @@ function parseFilters(url: URL): StoryFilters {
     label: url.searchParams.get("label") || null,
     state: state === "open" || state === "closed" ? state : "all",
     mine: url.searchParams.get("mine") === "1",
+    stage: isStage(url.searchParams.get("stage")) ? url.searchParams.get("stage") : null,
   };
 }
 
@@ -127,14 +129,19 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const filters = parseFilters(new URL(request.url));
-  const [{ stories, fetchedAt, failure }, { view, cookies }] = await Promise.all([
+  const [{ stories, fetchedAt, failure }, { view, cookies }, onInt] = await Promise.all([
     loadStories(env, project),
     projectView(request, env, project),
+    storiesOnInt(env, project),
   ]);
+  const rules = cycleRules(project.check?.config);
+  const stages = stagesOf(stories, rules, onInt);
   return html(
     storiesPage(viewer, view, {
       stories,
-      groups: groupStories(stories, filters, viewer.login),
+      stages,
+      rules,
+      groups: groupStories(stories, filters, viewer.login, stages),
       filters,
       fetchedAt,
       failure,
