@@ -2,7 +2,7 @@
   {
     "version": "0.50",
     "date": "2026-10-30",
-    "heure": "23:45",
+    "heure": "23:28",
     "titre": "Asking Claude starts with a button",
     "changements": [
       "On a card, Write the spec with Claude and Ask Claude for a change are buttons first: each unfolds what Claude will do, the field and Ask Claude (or Cancel); once sent, the widget that follows Claude's work takes their place."
