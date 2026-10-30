@@ -5,7 +5,7 @@ import type { Env } from "./env";
 import { css, html, json, redirect, script, text } from "./http";
 import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showActivity, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
-import { isRepoName } from "./projects";
+import { isBranchName, isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
@@ -92,7 +92,8 @@ export default {
       if (!isRepoName(repo) || !path) {
         return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       }
-      return showDoc(env, viewer, repo, path);
+      const ref = new URL(request.url).searchParams.get("ref");
+      return showDoc(env, viewer, repo, path, ref && isBranchName(ref) ? ref : null);
     }
 
     const projectRoute = PROJECT_ROUTE.exec(pathname);

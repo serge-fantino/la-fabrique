@@ -2,6 +2,7 @@ import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { validateFabriqueConfig, type ConfigCheckResult, type FabriqueConfig, type RepoTree } from "./fabrique-config";
 import { GitHubError, githubFetch, githubJson, installationToken } from "./github-app";
+import { isFresh, readSnapshot, writeSnapshot } from "./snapshots";
 
 export interface ConfigCheck {
   branch: string;
@@ -152,6 +153,29 @@ async function cachedCheck(db: D1Database, repo: string, sha: string): Promise<C
   return toProject({ ...row, repo, installation_id: 0, added_at: "", added_by: "" }).check;
 }
 
+async function readConfigAt(
+  token: string,
+  repo: string,
+  branch: string,
+  sha: string,
+): Promise<{ result: ConfigCheckResult; docPages: string[] }> {
+  const tree = await readTree(token, repo, sha);
+  let result: ConfigCheckResult = {
+    config: null,
+    errors: [`There is no \`.fabrique.json\` at the root of \`${branch}\`.`],
+  };
+  if (tree.files.has(".fabrique.json") || !tree.complete) {
+    const response = await githubFetch(
+      token,
+      `/repos/${repo}/contents/.fabrique.json?ref=${sha}`,
+      "application/vnd.github.raw+json",
+    );
+    if (response.ok) result = validateFabriqueConfig(await response.text(), tree);
+    else if (response.status !== 404) throw new GitHubError(response.status, "Could not read .fabrique.json");
+  }
+  return { result, docPages: listDocPages(result.config, tree) };
+}
+
 async function checkCommit(
   env: Env,
   token: string,
@@ -166,23 +190,7 @@ async function checkCommit(
     if (cached) return cached;
   }
 
-  const tree = await readTree(token, repo, sha);
-  const missing: ConfigCheckResult = {
-    config: null,
-    errors: [`There is no \`.fabrique.json\` at the root of \`${branch}\`.`],
-  };
-  let result = missing;
-  if (tree.files.has(".fabrique.json") || !tree.complete) {
-    const response = await githubFetch(
-      token,
-      `/repos/${repo}/contents/.fabrique.json?ref=${sha}`,
-      "application/vnd.github.raw+json",
-    );
-    if (response.ok) result = validateFabriqueConfig(await response.text(), tree);
-    else if (response.status !== 404) throw new GitHubError(response.status, "Could not read .fabrique.json");
-  }
-
-  const docPages = listDocPages(result.config, tree);
+  const { result, docPages } = await readConfigAt(token, repo, branch, sha);
   const row = await env.DB.prepare(
     `INSERT INTO project_configs (repo, branch, commit_sha, config, errors, committed_at, doc_pages)
      VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -259,4 +267,52 @@ export async function checkPushedCommit(
   } catch (error) {
     return { ok: false, message: describeFailure(error) };
   }
+}
+
+const BRANCH_MAX_AGE_MS = 60 * 1000;
+
+export function branchKind(branch: string): string {
+  return `branch:${branch}`;
+}
+
+const BRANCH_PATTERN = /^(?!.*\.\.)(?!\/)[A-Za-z0-9._/-]{1,200}$/;
+
+export function isBranchName(value: string): boolean {
+  return BRANCH_PATTERN.test(value);
+}
+
+// Another branch than production: checked like production, cached per
+// commit in its own snapshot, so the production reading never changes.
+export async function checkOtherBranch(env: Env, project: Project, branch: string): Promise<CheckOutcome> {
+  const snapshot = await readSnapshot<ConfigCheck>(env.DB, project.repo, branchKind(branch));
+  if (snapshot && isFresh(snapshot, BRANCH_MAX_AGE_MS)) return { ok: true, check: snapshot.data };
+  try {
+    const token = await installationToken(env, project.installationId);
+    const head = await branchHead(token, project.repo, branch);
+    if (snapshot?.data.commitSha === head.sha) {
+      await writeSnapshot(env.DB, project.repo, branchKind(branch), snapshot.data);
+      return { ok: true, check: snapshot.data };
+    }
+    const { result, docPages } = await readConfigAt(token, project.repo, branch, head.sha);
+    const check: ConfigCheck = {
+      branch,
+      commitSha: head.sha,
+      config: result.config,
+      errors: result.errors,
+      checkedAt: new Date().toISOString(),
+      committedAt: head.committedAt,
+      docPages,
+    };
+    await writeSnapshot(env.DB, project.repo, branchKind(branch), check);
+    return { ok: true, check };
+  } catch (error) {
+    if (error instanceof GitHubError && error.status === 404) {
+      return { ok: false, message: `There is no branch \`${branch}\` in ${project.repo}.` };
+    }
+    return { ok: false, message: describeFailure(error) };
+  }
+}
+
+export function productionBranch(project: Project): string | null {
+  return project.check?.config?.branches?.production ?? project.check?.branch ?? null;
 }

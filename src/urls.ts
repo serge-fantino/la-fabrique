@@ -6,8 +6,16 @@ export function projectUrl(repo: string): string {
   return `/projects/${repo}`;
 }
 
-export function docUrl(repo: string, path: string): string {
-  return `/projects/${repo}/docs/${encodePath(path)}`;
+function refQuery(ref: string | null | undefined): string {
+  return ref ? `?ref=${encodeURIComponent(ref)}` : "";
+}
+
+export function docUrl(repo: string, path: string, ref?: string | null): string {
+  return `/projects/${repo}/docs/${encodePath(path)}${refQuery(ref)}`;
+}
+
+export function projectRefUrl(repo: string, ref?: string | null): string {
+  return `/projects/${repo}${refQuery(ref)}`;
 }
 
 export function githubBlobUrl(repo: string, ref: string, path: string): string {
