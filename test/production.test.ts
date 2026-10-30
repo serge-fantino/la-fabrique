@@ -1,6 +1,6 @@
 import { env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { groupPending, mergedBranch, nextRelease, type CompareCommit } from "../src/production";
+import { groupPending, mergedBranch, nextRelease, waitingReleases, type CompareCommit } from "../src/production";
 import { get, grantRole, signIn } from "./helpers";
 
 const REPO = "acme/widget";
@@ -130,7 +130,17 @@ function mockStatus(ci: unknown, deploy: unknown): void {
     .reply(200, JSON.stringify({ numero: "1.167" }), JSON_HEADERS);
   github()
     .intercept({ path: `/repos/${REPO}/contents/site/nouveautes.json?ref=integration` })
-    .reply(200, JSON.stringify([{ version: "1.168", titre: "E-mails", changements: ["Bienvenue."] }]));
+    .reply(
+      200,
+      JSON.stringify([
+        { version: "1.169", titre: "Menu", changements: ["Ma cuisine.", "Préférences."] },
+        { version: "1.168", date: "2026-10-30", heure: "09:00", titre: "E-mails", changements: ["Bienvenue."] },
+        { version: "1.167", date: "2026-10-29", heure: "18:00", titre: "Avant", changements: ["Déjà là."] },
+      ]),
+    );
+  github()
+    .intercept({ path: `/repos/${REPO}/contents/site/nouveautes.json?ref=main` })
+    .reply(200, JSON.stringify([{ version: "1.167", date: "2026-10-29", heure: "18:00", titre: "Avant", changements: ["Déjà là."] }]));
 }
 
 async function seed(config: unknown = CONFIG): Promise<void> {
@@ -141,7 +151,10 @@ async function seed(config: unknown = CONFIG): Promise<void> {
     ).bind(REPO, JSON.stringify(config)),
     env.DB.prepare("INSERT INTO snapshots (repo, kind, data) VALUES (?, 'stories', ?)").bind(
       REPO,
-      JSON.stringify([{ number: 138, title: "E-mails aux utilisateurs" }]),
+      JSON.stringify([
+        { number: 132, title: "Epic: Messages", state: "open", url: "", parent: null, subTotal: 2, branches: [] },
+        { number: 138, title: "E-mails aux utilisateurs", state: "closed", url: "", parent: 132, subTotal: 0, branches: [] },
+      ]),
     ),
   ]);
 }
@@ -158,7 +171,13 @@ describe("What awaits production", () => {
     expect(page).toContain(`href="https://github.com/${REPO}/issues/138">#138</a> E-mails aux utilisateurs`);
     expect(page).toContain('>int</a> <span class="mono">1.168</span>');
     expect(page).toContain('>production</a> <span class="mono">1.167</span>');
-    expect(page).toContain('<span class="pill warn">Next</span> <span class="mono">1.168</span>');
+    expect(page).toContain("<strong>1 story, 2 versions, 3 changes</strong> waiting.");
+    expect(page).toContain('<a href="https://github.com/acme/widget/issues/132">#132</a> Epic: Messages');
+    expect(page).toContain("#138</a> E-mails aux utilisateurs <span class=\"pill ok\">Closed</span>");
+    // Both entries production lacks, the one dated for its go included.
+    expect(page).toContain('<span class="pill warn">Waiting</span> <span class="mono">1.169</span> · Menu');
+    expect(page).toContain('<span class="pill warn">Waiting</span> <span class="mono">1.168</span> · E-mails');
+    expect(page).not.toContain("Déjà là.");
     expect(page).toContain("Production migrations");
     expect(page).not.toMatch(/<form method="post"[^>]*production/);
   });
@@ -217,11 +236,34 @@ describe("What awaits production", () => {
     github()
       .intercept({ path: (path) => path.startsWith(`/repos/${REPO}/contents/site/nouveautes.json?ref=feature`) })
       .reply(200, JSON.stringify([{ version: "1.169", titre: "Menu", changements: ["Ma cuisine."] }]));
+    github()
+      .intercept({ path: `/repos/${REPO}/contents/site/nouveautes.json?ref=main` })
+      .reply(404, JSON.stringify({ message: "Not Found" }), JSON_HEADERS);
 
     const page = await (await get(`/projects/${REPO}/production?ref=feature/emails`, (await signIn("admin-one")).cookie)).text();
     expect(page).toContain("1 commit on <code>feature/emails</code> not in <code>main</code>");
     expect(page).toContain("Reference branch <code>feature/emails</code>");
     expect(page).not.toContain("Deployment to int");
     expect(page).toContain('<span class="mono">1.169</span>');
+  });
+});
+
+describe("waitingReleases", () => {
+  const notes = (...versions: [string, string | null][]) =>
+    JSON.stringify(versions.map(([version, heure]) => ({ version, heure, titre: version, changements: [`${version} change`] })));
+
+  it("lists every entry production lacks, newest first", () => {
+    expect(waitingReleases(notes(["0.4", null], ["0.3", "10:00"], ["0.2", "09:00"]), notes(["0.2", "09:00"])).map((r) => r.version)).toEqual([
+      "0.4",
+      "0.3",
+    ]);
+  });
+
+  it("falls back on the entries without a time when production has no file", () => {
+    expect(waitingReleases(notes(["0.4", null], ["0.3", "10:00"]), null).map((r) => r.version)).toEqual(["0.4"]);
+  });
+
+  it("ignores a file that is not release notes", () => {
+    expect(waitingReleases("not json", null)).toEqual([]);
   });
 });

@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.15",
+    "date": "2026-10-30",
+    "heure": "10:05",
+    "titre": "What production will get",
+    "changements": [
+      "The Production tab opens on what production will get: the stories the pending work refers to, by epic, and every release-notes entry production does not have yet, with a count of stories, versions and changes."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.14",
     "date": "2026-10-30",
     "heure": "10:00",
