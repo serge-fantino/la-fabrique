@@ -83,7 +83,7 @@ Two routes at the address you chose, for a signed-in person of your app, outside
   { "version": "1.169", "title": "…", "changes": ["…"], "on_int": false, "date": "2026-10-30", "stories": [] } ] }
 ```
 
-The versions on int carry the stories on int; a released version carries the stories closed since the previous one (a release note is linked to its stories by default). Without this route, the kit simply does not ask.
+The versions are the project's release notes: the entries on int, then those released. Each carries the stories its entry declares in `stories` ([format](/guide/fabrique-json#notes-de-version-format-fabrique)); an entry that does not declare them has none. Without this route, the kit simply does not ask.
 
 **`POST`**: the report, as the kit sends it.
 
@@ -94,7 +94,7 @@ The versions on int carry the stories on int; a released version carries the sto
   "screenshot": "data:image/png;base64,…", "story": 146, "release": "1.170" }
 ```
 
-`story` and `release` are what the person chose (both optional). La Fabrique links the issue to that story, and says which version it is about; without a story, it links the only story on int, if there is one.
+`story` and `release` are what the person chose (both optional). La Fabrique links the issue to that story, and says which version it is about; when the person says nothing, it links the only story the versions on int declare, if there is one.
 
 The relay:
 

@@ -56,7 +56,10 @@ function status(issues: number[], waiting: ProductionStatus["waiting"] = []): Pr
   };
 }
 
-async function seedInt(issues: number[], waiting: ProductionStatus["waiting"] = []): Promise<void> {
+// Work on int for `issues`; the first release-notes entry waiting there
+// declares them as its stories.
+async function seedInt(issues: number[], entries: ProductionStatus["waiting"] = [{ version: "1.170", title: "Menu", changes: [] }]): Promise<void> {
+  const waiting = entries.map((entry, index) => (index === 0 && entry.stories === undefined ? { ...entry, stories: issues } : entry));
   const now = new Date().toISOString();
   await env.DB.batch([
     env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, ?)").bind(REPO, JSON.stringify(status(issues, waiting)), now),
@@ -290,14 +293,23 @@ describe("Reporting a defect from the project's app", () => {
     expect((await report(tokens.access_token, { ...REPORT, environment: "production" })).status).toBe(403);
   });
 
-  it("lists what a report can be about: the version on int with its stories, the epic and defects left out", async () => {
+  it("lists what a report can be about: the release notes on int, each with the stories it declares, the epic and defects left out", async () => {
     const { tokens } = await connect();
-    await seedInt([146, 147, 140], [{ version: "1.170", title: "Menu", changes: ["Plan the week."] }]);
+    await seedInt([146, 147, 140], [
+      { version: "1.171", title: "Week", changes: ["Plan the week."], stories: [147, 140, 999] },
+      // An entry that does not declare its stories has none, whatever is on int.
+      { version: "1.170", title: "Menu", changes: [] },
+    ]);
     const response = await SELF.fetch(`${BASE}/api/projects/widget/targets`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
     expect(response.status).toBe(200);
-    const { versions } = (await response.json()) as { versions: { version: string; on_int: boolean; stories: { number: number }[] }[] };
-    expect(versions[0]).toMatchObject({ version: "1.170", on_int: true, title: "Menu", changes: ["Plan the week."] });
-    expect(versions[0]?.stories.map((story) => story.number)).toEqual([147, 146]);
+    const { versions } = (await response.json()) as { versions: { version: string; on_int: boolean; stories: { number: number; title: string }[] }[] };
+    expect(versions[0]).toMatchObject({ version: "1.171", on_int: true, title: "Week", changes: ["Plan the week."] });
+    expect(versions[0]?.stories).toEqual([
+      { number: 147, title: "Story 147", url: `https://github.com/${REPO}/issues/147` },
+      { number: 999, title: "", url: `https://github.com/${REPO}/issues/999` },
+    ]);
+    expect(versions[1]).toMatchObject({ version: "1.170", on_int: true, stories: [] });
+    expect(versions).toHaveLength(2);
     const other = await SELF.fetch(`${BASE}/api/projects/other/targets`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
     expect(other.status).toBe(403);
   });

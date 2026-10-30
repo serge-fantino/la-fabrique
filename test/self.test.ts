@@ -32,6 +32,10 @@ describe("La Fabrique as its own project", () => {
       expect(release.time, `version ${release.version} has no time`).toMatch(/^\d{2}:\d{2}$/);
       expect(release.changes.length, `version ${release.version} has no change`).toBeGreaterThan(0);
     }
+    // From 0.45, each entry declares the stories it brings (possibly none).
+    for (const release of releases.filter((candidate) => Number(candidate.version.split(".")[1]) >= 45)) {
+      expect(release.stories, `version ${release.version} does not declare its stories`).not.toBeNull();
+    }
     const stamps = releases.map((release) => `${release.date}T${release.time}`);
     expect(stamps).toEqual([...stamps].sort().reverse());
   });

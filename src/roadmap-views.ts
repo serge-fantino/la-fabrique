@@ -137,15 +137,27 @@ export function releasesPage(
 
   const article = (release: Release) => {
     const index = data.releases.indexOf(release);
-    const closed = release.upcoming ? [] : storiesBetween(data.stories, data.releases[index + 1], release);
+    // The stories the entry declares; without them, those closed since the
+    // previous version, as a hint.
+    const declared = release.stories?.map(
+      (number) => data.stories.find((story) => story.number === number) ?? { number, title: "", url: `https://github.com/${project.repo}/issues/${number}` },
+    );
+    const closed = declared || release.upcoming ? [] : storiesBetween(data.stories, data.releases[index + 1], release);
     return `<article class="release-note" id="v-${escapeHtml(release.version)}">
         <h3><span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""}</h3>
         <p class="muted">${release.upcoming ? `<span class="pill warn">Upcoming</span>` : `${release.time ? `<span class="mono">${escapeHtml(release.time)}</span>` : ""}`}</p>
         ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
         ${releaseLinks(project, release)}
         ${
+          declared?.length
+            ? `<p class="muted">Stories:</p><ul class="closed-stories">${declared
+                .map((story) => `<li><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)}</li>`)
+                .join("")}</ul>`
+            : ""
+        }
+        ${
           closed.length
-            ? `<p class="muted">Stories closed since the previous version:</p><ul class="closed-stories">${closed
+            ? `<p class="muted">Stories closed since the previous version (the entry does not say which are its own):</p><ul class="closed-stories">${closed
                 .map((story) => `<li><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)}</li>`)
                 .join("")}</ul>`
             : ""

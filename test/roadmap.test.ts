@@ -9,7 +9,7 @@ const SHA = "1111111111111111111111111111111111111111";
 
 const NOTES = JSON.stringify([
   { version: "1.168", date: "2026-10-30", titre: "E-mails", changements: ["Bienvenue."] },
-  { version: "1.167", date: "2026-10-29", heure: "23:19", titre: "Recettes", changements: ["Supprimer une recette."], liens: [{ app: "/app/recettes.html" }] },
+  { version: "1.167", date: "2026-10-29", heure: "23:19", titre: "Recettes", changements: ["Supprimer une recette."], liens: [{ app: "/app/recettes.html" }], stories: [49, "#50", 50, "x"] },
   { version: "1.166", date: "2026-10-29", heure: "21:37", titre: "Placards", changements: [] },
   { version: "1.0", date: "2026-10-22", titre: "Ouverture" },
 ]);
@@ -51,6 +51,9 @@ describe("Release notes and roadmap computations", () => {
       ["1.0", false],
     ]);
     expect(releases[1]?.links).toEqual(["/app/recettes.html"]);
+    // `stories`: the issues the entry declares; null when it does not say.
+    expect(releases[1]?.stories).toEqual([49, 50]);
+    expect(releases[0]?.stories).toBeNull();
     expect(parseReleases("{}")).toEqual([]);
   });
 
