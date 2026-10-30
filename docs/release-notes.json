@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.20",
+    "date": "2026-10-30",
+    "heure": "10:58",
+    "titre": "The red light keeps moving, Safari included",
+    "changements": [
+      "La Fabrique now reads the next page itself while the current one stays on screen, so the red loading light keeps sweeping until the page is there, in Safari too.",
+      "Back and forward work as before; a page that needs its own script is still loaded by the browser."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.19",
     "date": "2026-10-30",
     "heure": "10:46",
