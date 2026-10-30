@@ -16,6 +16,8 @@ import { showDoc } from "./docs";
 import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
 import { d1KeyValue } from "./oauth-store";
 import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
+import { CARD_ROUTE, cardRoute } from "./card-routes";
+import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
 const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
@@ -50,7 +52,8 @@ async function currentViewer(request: Request, env: Env): Promise<ViewerState> {
   if (!session) return { kind: "anonymous" };
   const role = await effectiveRole(env, session.login);
   if (!role) return { kind: "revoked" };
-  return { kind: "signed_in", viewer: { login: session.login, role, csrfToken: session.csrfToken } };
+  const perspective = await currentPerspective(env.DB, session.login, role);
+  return { kind: "signed_in", viewer: { login: session.login, role, csrfToken: session.csrfToken, perspective } };
 }
 
 // Every state-changing request carries the session's CSRF token in its form.
@@ -141,6 +144,13 @@ const app = {
         return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       }
       return showDoc(request, env, viewer, repo, path);
+    }
+
+    const cardMatch = CARD_ROUTE.exec(pathname);
+    if (cardMatch) {
+      if (!viewer) return redirect("/");
+      if (!isRepoName(cardMatch[1] ?? "")) return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
+      return cardRoute(request, env, viewer, cardMatch, () => protectedForm(request, viewer));
     }
 
     const projectRoute = PROJECT_ROUTE.exec(pathname);
@@ -247,6 +257,21 @@ const app = {
         if (!viewer) return redirect("/");
         if (viewer.role !== "super_admin") return forbidden(viewer);
         return method === "GET" ? showNewProject(request, env, viewer) : methodNotAllowed();
+
+      // The perspective chosen in the header; back to the page it was chosen on.
+      case "/perspective": {
+        if (method !== "POST") return methodNotAllowed();
+        if (!viewer) return redirect("/");
+        const form = await protectedForm(request, viewer);
+        if (!form) return forbidden(viewer);
+        const chosen = form.get("perspective");
+        if (isPerspective(chosen) && availablePerspectives(viewer.role).includes(chosen)) {
+          await choosePerspective(env.DB, viewer.login, chosen);
+        }
+        const referer = request.headers.get("referer");
+        const back = referer ? new URL(referer, request.url) : null;
+        return redirect(back && back.origin === new URL(request.url).origin ? `${back.pathname}${back.search}` : "/");
+      }
 
       case "/auth/logout": {
         if (method !== "POST") return methodNotAllowed();

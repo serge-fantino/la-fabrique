@@ -1028,7 +1028,8 @@ textarea {
 @media (max-width: 640px) {
   .nav .nav-home,
   .repo-name,
-  .subbar .who {
+  .subbar .who > .mono,
+  .subbar .who > .pill {
     display: none;
   }
 
@@ -1765,6 +1766,444 @@ table.backlog th.claude-col {
   flex-wrap: wrap;
   margin-top: 1.5rem;
 }
+
+/* Perspectives (la-fabrique#75): the switcher, and a tab outside the current one. */
+.perspective-menu .branch-panel {
+  left: auto;
+  right: 0;
+  width: min(16rem, calc(100vw - 2.5rem));
+}
+
+.menu-choice {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--encre);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-choice:hover,
+.menu-choice:focus-visible {
+  background: color-mix(in srgb, var(--encre) 6%, transparent);
+}
+
+.menu-choice[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.tabs a.outside {
+  font-style: italic;
+}
+
+/* The board of cards (la-fabrique#78): white cards on the background,
+   text and tags, nothing realistic. */
+.board-summary {
+  margin: 0;
+}
+
+.board-filters {
+  align-items: flex-end;
+}
+
+.board-filters fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.board-filters legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--encre-faint);
+}
+
+.board-filters .board-arrange {
+  padding-right: 0.75rem;
+  border-right: 1px solid var(--rule);
+}
+
+.board-show {
+  align-self: flex-end;
+}
+
+.board-show summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  background: var(--fond);
+}
+
+.board-show[open] {
+  flex-basis: 100%;
+}
+
+.board-show-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.board-clear {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Every field sends the form by itself; the button is for pages without the script. */
+.js .board-apply {
+  display: none;
+}
+
+.board-filters input[type="search"] {
+  width: 10rem;
+}
+
+.board-status:empty {
+  display: none;
+}
+
+/* The board takes the page's whole width and scrolls sideways. */
+.board-scroll {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  padding: 0 1.25rem 1rem;
+  overflow-x: auto;
+}
+
+.board-columns,
+.board-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  width: max-content;
+  min-width: 100%;
+}
+
+.board-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.board-column {
+  flex: 0 0 17rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-row > .board-cell,
+.board-row > .board-head,
+.board-row > .board-ghost {
+  flex: 0 0 17rem;
+}
+
+.board-row-head {
+  flex: 0 0 9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-top: 0.5rem;
+}
+
+.board-row + .board-row {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.75rem;
+}
+
+.board-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+
+.board-head-label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.board-add {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 1.3rem;
+  text-decoration: none;
+}
+
+.board-add:hover {
+  background: color-mix(in srgb, var(--encre) 6%, transparent);
+}
+
+.board-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex: 1;
+  min-height: 5rem;
+  padding: 0.4rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--encre) 4%, transparent);
+}
+
+.board-free .board-cell {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  align-items: start;
+  width: calc(100vw - 2.5rem);
+}
+
+.board-ghost {
+  padding-top: 0.25rem;
+}
+
+.board-new-value {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.board-new-value input {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-foot {
+  margin-top: 1rem;
+}
+
+.fiche {
+  position: relative;
+  padding: 0.6rem 0.75rem 0.7rem;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.fiche.archived {
+  opacity: 0.7;
+}
+
+.fiche[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.fiche-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  padding-right: 2.75rem;
+}
+
+.fiche-id {
+  font-size: 0.8rem;
+  color: var(--encre-faint);
+  text-decoration: none;
+}
+
+.fiche-top .pill {
+  font-size: 0.75rem;
+}
+
+.fiche-title {
+  margin: 0.35rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.fiche-title a {
+  color: var(--encre);
+  text-decoration: none;
+}
+
+.fiche-title a:hover {
+  text-decoration: underline;
+}
+
+.fiche-text {
+  margin: 0.3rem 0 0;
+  color: var(--encre-faint);
+  overflow-wrap: anywhere;
+}
+
+.fiche-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.45rem 0 0;
+}
+
+.fiche-grip {
+  display: none;
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--encre-faint);
+  font-size: 1.1rem;
+  cursor: grab;
+  touch-action: none;
+}
+
+.js .fiche-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fiche-grip:hover,
+.fiche-grip:focus-visible {
+  background: color-mix(in srgb, var(--encre) 6%, transparent);
+  color: var(--encre);
+}
+
+.fiche.dragging {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--encre) 18%, transparent);
+}
+
+.fiche.picked {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.fiche-placeholder {
+  border: 2px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 12px;
+}
+
+.pill.kind {
+  background: none;
+  border: 1px solid var(--rule);
+  color: var(--encre);
+}
+
+.pill.card-draft {
+  background: color-mix(in srgb, var(--encre) 7%, transparent);
+  color: var(--encre);
+}
+
+.pill.card-shaping {
+  background: color-mix(in srgb, var(--moyen) 18%, transparent);
+  color: #6a4b0c;
+}
+
+.pill.card-to_validate {
+  background: color-mix(in srgb, var(--moyen) 32%, transparent);
+  color: var(--encre);
+}
+
+.pill.card-validated {
+  background: color-mix(in srgb, var(--bon) 14%, transparent);
+  color: var(--bon);
+}
+
+.pill.card-dropped {
+  background: color-mix(in srgb, var(--alerte) 12%, transparent);
+  color: var(--alerte);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: 0.1em 0.55em;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--encre) 6%, transparent);
+  font-size: 0.8rem;
+}
+
+.tag-dim {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--encre-faint);
+}
+
+.term {
+  border-bottom: 1px dotted var(--accent);
+}
+
+.card-text {
+  margin: 1.25rem 0;
+  max-width: 68ch;
+}
+
+.card-actions {
+  margin: 1rem 0;
+}
+
+.card-history {
+  list-style: none;
+  padding: 0;
+}
+
+.card-history li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  min-height: 44px;
+  align-items: center;
+}
+
+.card-history a[aria-current="true"] {
+  font-weight: 600;
+}
+
+.card-form-tags {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0 1rem;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .perspective-menu .branch-panel {
+    left: 0;
+    right: auto;
+  }
 
 /* The project's app, in Setup. */
 .project-app {
