@@ -9,7 +9,7 @@ import { LOGO_SVG } from "./logo";
 import { isAsset, serveAsset } from "./assets";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
@@ -19,7 +19,7 @@ import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
 import { CARD_ROUTE, cardRoute } from "./card-routes";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
@@ -177,6 +177,11 @@ const app = {
         if (method !== "POST") return methodNotAllowed();
         const form = await protectedForm(request, viewer);
         return form ? launchClaudeOn(request, form, env, viewer, repo) : forbidden(viewer);
+      }
+      if (projectRoute[2] === "/app") {
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        return form ? projectAppAction(request, form, env, viewer, repo) : forbidden(viewer);
       }
       if (projectRoute[2] === "/log") {
         return method === "GET" ? showLog(request, env, viewer, repo) : methodNotAllowed();
@@ -351,6 +356,11 @@ function providerFor(origin: string): OAuthProvider<Env> {
       accessTokenTTL: ACCESS_TOKEN_TTL,
       refreshTokenTTL: REFRESH_TOKEN_TTL,
       disallowPublicClientRegistration: true,
+      // A refusal (expired code, wrong secret, revoked token) leaves a line
+      // in the Worker's logs, without any token or secret.
+      onError({ code, description, status, request }) {
+        console.warn(`OAuth ${status} ${code} on ${request ? new URL(request.url).pathname : "?"}: ${description}`);
+      },
     });
     providers.set(origin, provider);
   }

@@ -19,6 +19,7 @@ export type SetupKey =
   | "cycle"
   | "promotion"
   | "claude_workflow"
+  | "app"
   | "integration";
 
 export interface SetupItem {
@@ -35,6 +36,8 @@ export interface SetupInput {
   branches: string[];
   // From the last production read: what each environment answers.
   versions?: VersionState[] | null;
+  // The project's connected app, when Setup read it.
+  app?: { reporting: string[]; registered: boolean; missing: number; connections: number } | null;
 }
 
 // The `environnement` an environment answers fits its declared type:
@@ -49,7 +52,7 @@ function item(key: SetupKey, ok: boolean, found: string, optional = false): Setu
 
 // What a project needs for La Fabrique to follow it well, computed from
 // its own files and what GitHub says; integration is optional.
-export function setupChecklist({ check, releases, stories, branches, versions }: SetupInput): SetupItem[] {
+export function setupChecklist({ check, releases, stories, branches, versions, app }: SetupInput): SetupItem[] {
   const config = check?.config ?? null;
   const items: SetupItem[] = [];
 
@@ -217,6 +220,27 @@ export function setupChecklist({ check, releases, stories, branches, versions }:
       true,
     ),
   );
+
+  // Optional: the project's app reports defects from an environment.
+  if (app) {
+    const open = app.reporting.map((name) => `\`${name}\``).join(", ");
+    items.push(
+      item(
+        "app",
+        app.registered && app.reporting.length > 0 && app.missing === 0,
+        !app.reporting.length
+          ? app.registered
+            ? "Registered, but no environment has `signalement`: reports are refused."
+            : "No environment has `signalement`: the project's app does not report defects."
+          : !app.registered
+            ? `Reports open on ${open}, but no app is registered.`
+            : app.missing
+              ? `Registered; ${app.missing} return address${app.missing > 1 ? "es" : ""} of \`.fabrique.json\` missing.`
+              : `Registered, reports open on ${open}; ${app.connections ? `connected ${app.connections} time${app.connections > 1 ? "s" : ""}` : "not connected yet"}.`,
+        !app.reporting.length && !app.registered,
+      ),
+    );
+  }
 
   const integration = config?.branches?.integration;
   const intEnvironment = environments.find(([name]) => name !== "production" && name !== production)?.[0];

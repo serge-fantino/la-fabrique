@@ -7,7 +7,7 @@ import { json } from "./http";
 import { storiesOnInt } from "./lifecycle";
 import type { GrantProps } from "./oauth";
 import { readVersion } from "./production";
-import type { Environment } from "./fabrique-config";
+import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { checkOtherBranch, findProject, type Project } from "./projects";
 import { can } from "./rights";
 import { readSnapshot } from "./snapshots";
@@ -258,15 +258,19 @@ export async function serveScreenshot(env: Env, id: string, extension: string): 
 // integration branch, whose `.fabrique.json` may open reporting before it
 // reaches production. An environment production declares as production
 // stays closed whatever the other branch says.
-export async function reportingEnvironments(env: Env, project: Project): Promise<Record<string, Environment>> {
+export async function integrationConfig(env: Env, project: Project): Promise<FabriqueConfig | null> {
+  const integration = project.check?.config?.branches?.integration;
+  if (!integration) return null;
+  const branch = await checkOtherBranch(env, project, integration);
+  return branch.ok ? branch.check.config : null;
+}
+
+export async function reportingEnvironments(env: Env, project: Project, onIntegration?: FabriqueConfig | null): Promise<Record<string, Environment>> {
   const production = project.check?.config;
   const declared = { ...(production?.environnements ?? {}) };
-  const integration = production?.branches?.integration;
-  if (integration) {
-    const branch = await checkOtherBranch(env, project, integration);
-    for (const [name, environment] of Object.entries((branch.ok ? branch.check.config?.environnements : null) ?? {})) {
-      if (declared[name]?.type !== "production") declared[name] = environment;
-    }
+  const integration = onIntegration === undefined ? await integrationConfig(env, project) : onIntegration;
+  for (const [name, environment] of Object.entries(integration?.environnements ?? {})) {
+    if (declared[name]?.type !== "production") declared[name] = environment;
   }
   return Object.fromEntries(
     Object.entries(declared).filter(([, environment]) => environment.signalement && environment.type !== "production"),

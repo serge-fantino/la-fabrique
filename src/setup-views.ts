@@ -99,6 +99,11 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
       ${code(`"workflows": { "claude": "claude.yml" },
 "claude": { "plafond": 2 }`)}`,
   },
+  app: {
+    title: "Connected app (defect reports)",
+    why: "Optional. The project's own app reports a defect from the page where it shows up, in the name of the person using it; it never gets a GitHub token.",
+    how: `<p>Open reporting on an environment with <code>signalement</code>, say where the app comes back with <code>application.retour</code>, then register the app and put its identifiers in the project: everything is in <a href="#connected-app">Connected app</a> below.</p>`,
+  },
   integration: {
     title: "An integration branch and its environment",
     why: "Optional. Work is gathered and validated on int before the go; Production then shows exactly what int has that production lacks.",
@@ -118,7 +123,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "claude_workflow"]);
+const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "claude_workflow", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",
@@ -172,7 +177,7 @@ function lifecycleSection(viewer: Viewer, project: Project, form: LifecycleForm)
 export function setupPage(
   viewer: Viewer,
   project: Project,
-  data: { items: SetupItem[]; failure?: string | undefined; notice?: string | undefined; lifecycle: LifecycleForm },
+  data: { items: SetupItem[]; failure?: string | undefined; notice?: string | undefined; lifecycle: LifecycleForm; app?: string },
 ): string {
   const name = project.check?.config?.nom || project.repo;
   const count = (state: SetupState) => data.items.filter((entry) => entry.state === state).length;
@@ -208,6 +213,7 @@ export function setupPage(
         "the .fabrique.json format",
       )} is the reference.</p>
       <ul class="setup-list">${items}</ul>
+      ${data.app ?? ""}
       ${lifecycleSection(viewer, project, data.lifecycle)}`,
     viewer,
     [],

@@ -54,6 +54,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `branches.travail` | Motifs des branches de travail (une demande en cours y est reliée par son numéro d'issue). |
 | `environnements.<nom>.url`, `.version` | Adresse de l'environnement et chemin qui répond la version déployée (JSON avec `numero` ou `version`). Lu en direct, sans compte. |
 | `environnements.<nom>.type` | `integration` ou `production`. Le chemin de version répond aussi `environnement` (`int`, `production`…) : *Setup* signale un environnement qui ne répond pas ce que son type annonce. |
+| `application.nom`, `.retour`, `.local` | L'app du projet reliée à La Fabrique pour signaler un défaut : son nom sur la page de consentement, le chemin où elle revient (`/auth/fabrique/retour`) sur chaque environnement avec `signalement`, et son adresse locale en développement (`http://localhost:8787`). *Setup* en déduit ses adresses de retour et signale un écart. |
 | `environnements.<nom>.signalement` | `true` : l'app du projet peut signaler un défaut depuis cet environnement (ci-dessous). Jamais sur la production (`false`, et refusé avec `type: "production"`). Absent : `false`. |
 | `workflows.ci` | Workflow dont l'état est montré pour chaque branche. |
 | `workflows.deploiement_int`, `migrations_production` | Workflows suivis (état, dernier passage). |
@@ -96,6 +97,12 @@ L'onglet *Setup* de La Fabrique propose ce bloc sous forme de formulaire : il ou
 L'app du projet peut envoyer un défaut depuis la page où on le voit, au nom de la personne qui l'utilise, avec la page, le composant choisi, la version et, au choix, une capture. Elle se relie à La Fabrique en OAuth (code d'autorisation et PKCE, client confidentiel enregistré par le super admin dans *Settings → Connected apps*, seule portée `defects:report`) ; elle ne reçoit jamais de jeton GitHub. Le contrat (adresses, champs, réponses) est dans la-fabrique#65.
 
 La Fabrique n'accepte un défaut que d'un environnement déclaré avec `"signalement": true`, et seulement si son chemin de version répond le même `environnement` que celui du défaut. La déclaration est lue sur la branche déployée dans l'environnement : pour int, la branche d'intégration (un environnement que la production déclare de `type` `production` reste fermé). L'issue est créée par l'App de La Fabrique, avec l'étiquette `bug` (et `to triage` pour un compte sans rôle), reliée à la story en cours sur int quand il n'y en a qu'une, signée de la personne ; la capture est gardée par La Fabrique, à une adresse impossible à deviner. 20 défauts par jour au plus, par compte et par projet.
+
+Le super admin enregistre l'app depuis l'onglet *Setup* du projet (*Connected app*) : nom et adresses de retour sont pré-remplis d'après `application`, l'identifiant et le secret s'affichent une fois avec les commandes `wrangler secret put` à lancer dans le projet (`FABRIQUE_CLIENT_ID`, `FABRIQUE_CLIENT_SECRET`, et la variable `FABRIQUE_URL`). Il y renouvelle le secret sans couper les connexions, aligne les adresses sur `.fabrique.json`, ou retire l'app.
+
+```json
+"application": { "nom": "L'épicerie extraordinaire", "retour": "/auth/fabrique/retour", "local": "http://localhost:8787" }
+```
 
 Il suffit que le compte GitHub de la personne voie le dépôt : un rôle dans La Fabrique n'est pas nécessaire pour signaler.
 
