@@ -21,6 +21,7 @@ import {
   type CardLink,
   type CardRevision,
   type CardSpec,
+  type CardStatus,
   type CardTags,
   type FreeDimension,
 } from "./cards";
@@ -56,10 +57,11 @@ function tag(dimension: FreeDimension, value: string): string {
   return `<span class="tag"><span class="tag-dim">${DIMENSION_LABELS[dimension]}</span> ${escapeHtml(value)}</span>`;
 }
 
-export function cardPills(tags: Partial<CardTags>): string {
+// `status`: what stands for the status pill (the form that changes it).
+export function cardPills(tags: Partial<CardTags>, status?: string): string {
   const pills = [
     tags.kind ? `<span class="pill kind">${KIND_LABELS[tags.kind]}</span>` : "",
-    tags.status ? `<span class="pill card-${tags.status}">${STATUS_LABELS[tags.status]}</span>` : "",
+    status ?? (tags.status ? `<span class="pill card-${tags.status}">${STATUS_LABELS[tags.status]}</span>` : ""),
     ...FREE_DIMENSIONS.map((dimension) => (tags[dimension] ? tag(dimension, tags[dimension] ?? "") : "")),
   ];
   return pills.filter(Boolean).join(" ");
@@ -477,6 +479,19 @@ export interface CardPageData {
   events: JobEvent[];
 }
 
+// The status, changed in place; it also follows Claude's work by itself.
+function statusForm(viewer: Viewer, url: string, current: CardStatus): string {
+  return `<form method="post" action="${escapeHtml(url)}" class="card-status-form">${csrfField(viewer)}
+      <input type="hidden" name="action" value="status" />
+      <label class="visually-hidden" for="card-status">Status</label>
+      <select id="card-status" name="status" class="pill card-${current}" data-autosubmit
+        title="Moves by itself as the card's work goes: Shaping when Claude is asked, To validate when the need is clear, Validated when its story is made.">
+        ${CARD_STATUSES.map((status) => `<option value="${status}"${status === current ? " selected" : ""}>${STATUS_LABELS[status]}</option>`).join("")}
+      </select>
+      <noscript><button type="submit" class="button quiet">Set</button></noscript>
+    </form>`;
+}
+
 export function cardPage(viewer: Viewer, project: Project, data: CardPageData): string {
   const { card } = data;
   const base = projectUrl(project.repo);
@@ -586,7 +601,9 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       <p class="crumbs"><a href="${escapeHtml(base)}/board#card-${card.id}">Board</a> <span aria-hidden="true">›</span> <span class="mono">${cardRef(card.id)}</span></p>
       ${banner}
       <h1>${escapeHtml(heading)}</h1>
-      <p class="fiche-tags">${cardPills(tags)}${card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""}</p>
+      <div class="fiche-tags">${cardPills(tags, data.canWrite && !shown && !card.archivedAt ? statusForm(viewer, url, card.status) : undefined)}${
+        card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
+      }</div>
       <article class="markdown card-text">
 ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
       </article>

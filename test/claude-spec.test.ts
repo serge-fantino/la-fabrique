@@ -178,7 +178,23 @@ async function specOf(id: number): Promise<Record<string, unknown>> {
   return JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string | null }>())?.data ?? "{}").spec ?? {};
 }
 
+async function statusOf(id: number): Promise<string | undefined> {
+  return (await env.DB.prepare("SELECT status FROM cards WHERE id = ?").bind(id).first<{ status: string }>())?.status;
+}
+
 describe("A card's spec with Claude, in the background", () => {
+  it("moves a draft card to Shaping when Claude is asked, and says why in the log", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "status", status: "draft" }, cookie);
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    expect(await statusOf(id)).toBe("shaping");
+    const moved = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'card_moved' ORDER BY id DESC").first<{ details: string }>();
+    expect(JSON.parse(moved?.details ?? "{}")).toMatchObject({ changes: [{ dimension: "status", from: "draft", to: "shaping" }], reason: "Claude asked" });
+    claudeStream({}, { sections: SECTIONS, questions: ["Q ?"], enough: false, note: "v1" });
+    await runQueue();
+    expect(await statusOf(id)).toBe("shaping");
+  });
+
   it("saves the request at once, then writes the spec from the queue, with its log and its cost", async () => {
     const { cookie, csrf, id } = await writerWithCard();
     const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft", instruction: "Pensez au téléphone." }, cookie);
@@ -279,6 +295,8 @@ describe("A card's spec with Claude, in the background", () => {
     expect(again).toContain("This is round 3: ask only what blocks the specification.");
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
     expect(page).toContain("<strong>Claude knows enough to write the stories.</strong> Le besoin est clair : quatre semaines, mobile.");
+    // Claude knows enough: the card is to validate.
+    expect(await statusOf(id)).toBe("to_validate");
   });
 
   it("closes the questions when the person decides Claude knows enough, without losing them", async () => {
@@ -288,6 +306,7 @@ describe("A card's spec with Claude, in the background", () => {
     await runQueue();
     const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_enough", question_0: "Q1 ?", answer_0: "" }, cookie);
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=enough#spec`);
+    expect(await statusOf(id)).toBe("to_validate");
     expect(await specOf(id)).toMatchObject({ questions: [], closed: true, dialogue: [{ question: "Q1 ?", skipped: true }, { question: "Q2 ?", skipped: true }] });
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
     expect(page).toContain("You closed the questions");
@@ -426,6 +445,8 @@ describe("From a card to a story", () => {
     expect(String(sent["body"])).toContain(`Fiche d'origine : [C${id}](${BASE}/projects/${REPO}/cards/${id}) dans La Fabrique extraordinaire.`);
     expect(await env.DB.prepare("SELECT kind, ref FROM card_links WHERE card_id = ? AND kind = 'story'").bind(id).first()).toEqual({ kind: "story", ref: "212" });
     expect((await logActions()).map((entry) => entry.action)).toContain("card_story_created");
+    // Its story made, the card is validated.
+    expect(await statusOf(id)).toBe("validated");
 
     // Editing the card later keeps the story's link.
     await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "save", rev: "2", title: "Quick reorder, again", body: "Text", kind: "feature", status: "validated" }, cookie);

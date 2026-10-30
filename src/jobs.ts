@@ -1,4 +1,4 @@
-import { findCard, saveSpec } from "./cards";
+import { advanceStatus, findCard, saveSpec } from "./cards";
 import type { Env } from "./env";
 import { formatUsd } from "./llm";
 import { liveFor, type LiveEvent } from "./live";
@@ -258,6 +258,7 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
   await saveSpec(env.DB, current, job.login, outcome.spec, outcome.callId);
   await env.DB.prepare("UPDATE claude_jobs SET call_id = ? WHERE id = ?").bind(outcome.callId, job.id).run();
+  if (outcome.spec.enough) await advanceStatus(env.DB, job.repo, job.cardId, job.login, "to_validate", "Claude knows enough");
   const asks = outcome.spec.questions.length;
   const summary = outcome.spec.enough
     ? "Claude knows enough to write the stories."

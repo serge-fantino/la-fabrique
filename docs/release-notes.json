@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.51",
+    "date": "2026-10-31",
+    "heure": "00:15",
+    "titre": "A card's status, from its page and by itself",
+    "changements": [
+      "A card's status is changed right on its page, without Edit.",
+      "It also follows the card's work: Shaping when Claude is asked, To validate when Claude knows enough or the questions are closed, Validated when its story is made. It only moves forward, never off Dropped nor on an archived card, and the log says why."
+    ],
+    "stories": [80],
+    "liens": null
+  },
+  {
     "version": "0.50",
     "date": "2026-10-30",
     "heure": "23:28",
