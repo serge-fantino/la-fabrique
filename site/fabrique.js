@@ -121,6 +121,25 @@
     if (event.persisted) for (const form of document.querySelectorAll("form[data-sent]")) unbusy(form);
   });
 
+  // A panel that unfolds a form puts the cursor in its first field.
+  document.addEventListener(
+    "toggle",
+    (event) => {
+      const panel = event.target;
+      if (panel instanceof HTMLDetailsElement && panel.open && panel.hasAttribute("data-autofocus")) {
+        panel.querySelector("textarea, input:not([type=hidden])")?.focus();
+      }
+    },
+    true,
+  );
+
+  // "Cancel" folds the panel back into its button.
+  document.addEventListener("click", (event) => {
+    const close = event.target instanceof Element ? event.target.closest("[data-panel-close]") : null;
+    const panel = close?.closest("details");
+    if (panel) panel.open = false;
+  });
+
   // A form sent once: the button pressed says it is on its way.
   const unbusy = (form) => {
     delete form.dataset.sent;

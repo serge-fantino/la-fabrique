@@ -536,25 +536,34 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   if (data.canWrite && !shown && !working) {
     const claude = data.claude.usable
       ? spec
-        ? `<details class="claude-change"${data.ask === "change" ? " open" : ""}>
-            <summary>Ask Claude for a change</summary>
+        ? `<details class="claude-panel" data-autofocus${data.ask === "change" ? " open" : ""}>
+            <summary class="button quiet">Ask Claude for a change</summary>
             <form method="post" action="${escapeHtml(url)}#claude-job" data-busy="Sending…">${csrfField(viewer)}
               <div class="field">
                 <label for="change">What should change?</label>
                 <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the spec.</p>
                 <textarea id="change" name="instruction" rows="4" maxlength="4000" required aria-describedby="change_help">${escapeHtml(data.ask === "change" ? (data.instruction ?? "") : "")}</textarea>
               </div>
-              <button type="submit" class="button" name="action" value="spec_revise">Revise the spec</button>
+              <div class="card-actions">
+  <button type="submit" class="button" name="action" value="spec_revise">Ask Claude</button>
+                <button type="button" class="button quiet" data-panel-close>Cancel</button>
+              </div>
             </form>
           </details>`
-        : `<form method="post" action="${escapeHtml(url)}#claude-job" class="claude-draft" data-busy="Sending…">${csrfField(viewer)}
-            <div class="field">
-              <label for="draft">Anything to tell Claude first? <span class="muted">(optional)</span></label>
-              <p class="help" id="draft_help">Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know.</p>
-              <textarea id="draft" name="instruction" rows="3" maxlength="4000" aria-describedby="draft_help">${escapeHtml(data.ask === "draft" ? (data.instruction ?? "") : "")}</textarea>
-            </div>
-            <button type="submit" class="button" name="action" value="spec_draft">Write the spec with Claude</button>
-          </form>`
+        : `<details class="claude-panel" data-autofocus${data.ask === "draft" ? " open" : ""}>
+            <summary class="button">Write the spec with Claude</summary>
+            <form method="post" action="${escapeHtml(url)}#claude-job" data-busy="Sending…">${csrfField(viewer)}
+              <p class="help">Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know. It works in the background: you can leave the page.</p>
+              <div class="field">
+                <label for="draft">Anything to tell Claude first? <span class="muted">(optional)</span></label>
+                <textarea id="draft" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.ask === "draft" ? (data.instruction ?? "") : "")}</textarea>
+              </div>
+              <div class="card-actions">
+  <button type="submit" class="button" name="action" value="spec_draft">Ask Claude</button>
+                <button type="button" class="button quiet" data-panel-close>Cancel</button>
+              </div>
+            </form>
+          </details>`
       : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`;
     const story = spec
       ? data.missing.length
