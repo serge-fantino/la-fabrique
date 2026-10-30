@@ -41,6 +41,8 @@ export interface VersionState {
   environment: string;
   url: string;
   version: string | null;
+  // The `environnement` the version path answers, when it says one.
+  answers?: string | null;
 }
 
 export interface NextRelease {
@@ -205,7 +207,7 @@ export function waitingReleases(candidate: string, production: string | null): N
     .map(({ version, title, changes }) => ({ version, title, changes }));
 }
 
-async function readVersion(environment: string, url: string, path: string): Promise<VersionState> {
+export async function readVersion(environment: string, url: string, path: string): Promise<VersionState> {
   try {
     const response = await fetch(new URL(path, url).toString(), {
       headers: { accept: "application/json" },
@@ -214,7 +216,13 @@ async function readVersion(environment: string, url: string, path: string): Prom
     if (!response.ok) return { environment, url, version: null };
     const data = (await response.json()) as Record<string, unknown>;
     const version = data["numero"] ?? data["version"];
-    return { environment, url, version: typeof version === "string" || typeof version === "number" ? String(version) : null };
+    const answers = data["environnement"];
+    return {
+      environment,
+      url,
+      version: typeof version === "string" || typeof version === "number" ? String(version) : null,
+      answers: typeof answers === "string" ? answers : null,
+    };
   } catch {
     return { environment, url, version: null };
   }

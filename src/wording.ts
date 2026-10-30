@@ -16,6 +16,17 @@ const WORDS = {
     defectOnStory: (login: string, number: number) => `Défaut signalé par @${login} : #${number}`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude lancé sur cette demande par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
+    appDefectIntro: (environment: string, story: number | null) =>
+      `Défaut signalé depuis l'app, sur ${environment}${story ? `, en testant #${story}` : ""}.`,
+    onIntThen: (stories: number[]) => `Sur ${stories.length > 1 ? "int à ce moment-là" : "int"} : ${stories.map((n) => `#${n}`).join(", ")}.`,
+    context: "Contexte",
+    contextRows: { environment: "Environnement", version: "Version", page: "Page", component: "Composant", viewport: "Écran", userAgent: "Navigateur" },
+    deployment: "déploiement",
+    errors: "Erreurs",
+    screenshot: "Capture",
+    appDefectSignature: (login: string, app: string | null) =>
+      `Signalé par @${login}${app ? ` depuis ${app}` : ""}, via La Fabrique extraordinaire`,
+    toTriage: (login: string) => `@${login} n'a pas de rôle dans La Fabrique : à trier.`,
   },
   en: {
     requestSignature: (login: string) => `Request from @${login} via La Fabrique extraordinaire`,
@@ -30,6 +41,17 @@ const WORDS = {
     defectOnStory: (login: string, number: number) => `Defect reported by @${login}: #${number}`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude launched on this story by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
+    appDefectIntro: (environment: string, story: number | null) =>
+      `Defect reported from the app, on ${environment}${story ? `, while testing #${story}` : ""}.`,
+    onIntThen: (stories: number[]) => `On int at the time: ${stories.map((n) => `#${n}`).join(", ")}.`,
+    context: "Context",
+    contextRows: { environment: "Environment", version: "Version", page: "Page", component: "Component", viewport: "Screen", userAgent: "Browser" },
+    deployment: "deployment",
+    errors: "Errors",
+    screenshot: "Screenshot",
+    appDefectSignature: (login: string, app: string | null) =>
+      `Reported by @${login}${app ? ` from ${app}` : ""}, via La Fabrique extraordinaire`,
+    toTriage: (login: string) => `@${login} has no role in La Fabrique: to triage.`,
   },
 };
 

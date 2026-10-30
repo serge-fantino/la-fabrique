@@ -8,12 +8,11 @@ import { productionBranch, type Project } from "./projects";
 import { userToken } from "./session";
 import { readSnapshot } from "./snapshots";
 import { acceptanceCriteria, applyIssueEvent, setCriterion, type RestIssue } from "./stories";
+import { can } from "./rights";
 import { wordingFor } from "./wording";
 
-const VALIDATOR_ROLES: readonly Role[] = ["tester", "product_engineer", "super_admin"];
-
 export function canValidate(role: Role): boolean {
-  return VALIDATOR_ROLES.includes(role);
+  return can(role, "validate");
 }
 
 export type ValidationOutcome = { ok: true } | { ok: false; message: string; status: 409 | 422 | 502 };

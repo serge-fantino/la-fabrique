@@ -1,4 +1,5 @@
-import { globToRegExp } from "./production";
+import type { EnvironmentType } from "./fabrique-config";
+import { globToRegExp, type VersionState } from "./production";
 import type { ConfigCheck } from "./projects";
 import type { Release } from "./roadmap";
 import { branchIssue, type Story } from "./stories";
@@ -32,6 +33,14 @@ export interface SetupInput {
   releases: Release[] | null;
   stories: Story[] | null;
   branches: string[];
+  // From the last production read: what each environment answers.
+  versions?: VersionState[] | null;
+}
+
+// The `environnement` an environment answers fits its declared type:
+// `production` for production, anything else (int, local…) otherwise.
+export function answerFitsType(type: EnvironmentType, answers: string): boolean {
+  return type === "production" ? answers === "production" : answers !== "production";
 }
 
 function item(key: SetupKey, ok: boolean, found: string, optional = false): SetupItem {
@@ -40,7 +49,7 @@ function item(key: SetupKey, ok: boolean, found: string, optional = false): Setu
 
 // What a project needs for La Fabrique to follow it well, computed from
 // its own files and what GitHub says; integration is optional.
-export function setupChecklist({ check, releases, stories, branches }: SetupInput): SetupItem[] {
+export function setupChecklist({ check, releases, stories, branches, versions }: SetupInput): SetupItem[] {
   const config = check?.config ?? null;
   const items: SetupItem[] = [];
 
@@ -67,14 +76,28 @@ export function setupChecklist({ check, releases, stories, branches }: SetupInpu
 
   const environments = Object.entries(config?.environnements ?? {});
   const versioned = environments.filter(([, environment]) => environment.version).map(([name]) => name);
+  // An environment that answers another `environnement` than its type says.
+  const mismatched = environments.flatMap(([name, environment]) => {
+    const answers = versions?.find((version) => version.environment === name)?.answers;
+    return environment.type && answers && !answerFitsType(environment.type, answers)
+      ? [`\`${name}\` is declared \`${environment.type}\` but answers \`${answers}\``]
+      : [];
+  });
+  const reporting = environments.filter(([, environment]) => environment.signalement).map(([name]) => `\`${name}\``);
   items.push(
     item(
       "environments",
-      versioned.length > 0,
+      versioned.length > 0 && mismatched.length === 0,
       environments.length
-        ? versioned.length
-          ? `Version read on ${versioned.map((name) => `\`${name}\``).join(", ")}.`
-          : `${environments.length} environment${environments.length > 1 ? "s" : ""}, none with a version path.`
+        ? [
+            versioned.length
+              ? `Version read on ${versioned.map((name) => `\`${name}\``).join(", ")}.`
+              : `${environments.length} environment${environments.length > 1 ? "s" : ""}, none with a version path.`,
+            ...mismatched.map((text) => `${text}.`),
+            reporting.length ? `The project's app reports defects from ${reporting.join(", ")}.` : "",
+          ]
+            .filter(Boolean)
+            .join(" ")
         : "No environment declared.",
     ),
   );
