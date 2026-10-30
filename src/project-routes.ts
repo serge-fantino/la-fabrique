@@ -29,6 +29,7 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { canLaunchClaude, claudeCap, claudeLaunches, claudeWorkflow, launchClaude } from "./claude";
 import { giveGo, goSummary, lastGo } from "./go";
 import { LOG_GROUPS, readLog } from "./log";
 import { logPage } from "./log-views";
@@ -42,7 +43,7 @@ import { backlogPage } from "./backlog-views";
 import { inDevReady, loadInDev } from "./in-dev";
 import { inDevContent, inDevLoading, inDevPage } from "./in-dev-views";
 import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
-import { cycleRules, isStage, stagesOf, storiesOnInt } from "./lifecycle";
+import { cycleRules, isStage, stageOf, stagesOf, storiesOnInt } from "./lifecycle";
 import { setupChecklist } from "./setup";
 import { setupPage } from "./setup-views";
 
@@ -533,7 +534,10 @@ export async function showInDev(request: Request, env: Env, viewer: Viewer, repo
   return html(part ? content : inDevPage(viewer, view, content), { cookies });
 }
 
-const BACKLOG_NOTICES: Record<string, string> = { set: "Priority set on GitHub." };
+const BACKLOG_NOTICES: Record<string, string> = {
+  set: "Priority set on GitHub.",
+  claude: "Claude is starting on GitHub: its branch and pull request will show in In development.",
+};
 
 export async function showBacklog(
   request: Request,
@@ -544,10 +548,11 @@ export async function showBacklog(
 ): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const [{ view, cookies }, stories, onInt] = await Promise.all([
+  const [{ view, cookies }, stories, onInt, launches] = await Promise.all([
     projectView(request, env, project),
     loadStories(env, project),
     storiesOnInt(env, project),
+    claudeLaunches(env.DB, project.repo),
   ]);
   const rules = cycleRules(project.check?.config);
   const notice = new URL(request.url).searchParams.get("notice");
@@ -557,6 +562,7 @@ export async function showBacklog(
       stages: stagesOf(stories.stories, rules, onInt),
       rules,
       canPrioritize: canPrioritize(viewer.role),
+      claude: { show: canLaunchClaude(viewer.role) && claudeWorkflow(project) !== null, launches, cap: claudeCap(project) },
       fetchedAt: stories.fetchedAt,
       notice: notice ? BACKLOG_NOTICES[notice] : undefined,
       failure: failed?.message ?? stories.failure,
@@ -606,4 +612,23 @@ export async function showLog(request: Request, env: Env, viewer: Viewer, repo: 
   };
   const [{ view, cookies }, log] = await Promise.all([projectView(request, env, project), readLog(env.DB, project.repo, filters)]);
   return html(logPage(viewer, view, { ...log, filters }), { cookies });
+}
+
+// Launch Claude on a ready story: tech leads and super admins.
+export async function launchClaudeOn(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!canLaunchClaude(viewer.role)) {
+    return html(messagePage("Not allowed", "Only tech leads and super admins launch Claude.", viewer), { status: 403 });
+  }
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const issue = Number(form.get("issue"));
+  if (!Number.isInteger(issue) || issue <= 0) return redirect(`/projects/${project.repo}/backlog`);
+  const [stories, onInt] = await Promise.all([loadStories(env, project), storiesOnInt(env, project)]);
+  const story = stories.stories.find((candidate) => candidate.number === issue);
+  if (!story || stageOf(story, cycleRules(project.check?.config), onInt) !== "ready") {
+    return showBacklog(request, env, viewer, repo, { message: `Story #${issue} is not ready: its Definition of Ready comes first.`, status: 422 });
+  }
+  const outcome = await launchClaude(env, project, viewer.login, issue);
+  if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?notice=claude#issue-${issue}`);
+  return showBacklog(request, env, viewer, repo, outcome);
 }

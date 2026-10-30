@@ -14,6 +14,8 @@ const WORDS = {
     defectSignature: (login: string, version: string | null) =>
       `Signalé depuis La Fabrique extraordinaire par @${login}${version ? `, sur int en version ${version}` : ""}`,
     defectOnStory: (login: string, number: number) => `Défaut signalé par @${login} : #${number}`,
+    claudeLaunched: (login: string, url: string | null) =>
+      `Claude lancé sur cette demande par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
   },
   en: {
     requestSignature: (login: string) => `Request from @${login} via La Fabrique extraordinaire`,
@@ -26,6 +28,8 @@ const WORDS = {
     defectSignature: (login: string, version: string | null) =>
       `Reported from La Fabrique extraordinaire by @${login}${version ? `, on int at version ${version}` : ""}`,
     defectOnStory: (login: string, number: number) => `Defect reported by @${login}: #${number}`,
+    claudeLaunched: (login: string, url: string | null) =>
+      `Claude launched on this story by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
   },
 };
 
