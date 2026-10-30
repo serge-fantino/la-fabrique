@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.26",
+    "date": "2026-10-30",
+    "heure": "11:41",
+    "titre": "Backlog and priorities",
+    "changements": [
+      "A Backlog tab: the stories not started yet, by priority, the ready ones first, each with its epic and what its Definition of Ready lacks.",
+      "Super admins, tech leads and Product Engineers set a story's priority from the backlog: La Fabrique puts the priority label on GitHub and writes who changed it in its log.",
+      "The project tabs keep to one line."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.25",
     "date": "2026-10-30",
     "heure": "11:37",
