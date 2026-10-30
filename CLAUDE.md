@@ -27,7 +27,8 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 - **Un Worker Cloudflare** (TypeScript strict) sert les pages et l'API ; **sa propre base D1** (comptes, rôles, projets, journal des décisions). Aucune donnée d'un projet piloté n'y est copiée (pas de données des clients de l'épicerie).
 - **Une GitHub App « La Fabrique extraordinaire »** : connexion des personnes (OAuth de l'App, jetons utilisateur courts) et accès aux dépôts où elle est installée (jetons d'installation). Installer l'App sur un dépôt, puis le déclarer dans La Fabrique : c'est le lien avec un projet.
 - **Webhooks GitHub** de l'App (push, issues, workflow_run, pull_request) pour l'état en direct ; lecture à la demande sinon.
-- Front : HTML/CSS/JS sans build, comme l'épicerie ; style sobre (voir Design).
+- Front : HTML/CSS/JS sans build, comme l'épicerie ; pages rendues par le Worker, graphiques en SVG côté serveur ; style sobre (voir Design).
+- Lectures GitHub mises en cache dans D1 : par commit quand le contenu ne change plus (`.fabrique.json`, documentation, lignes modifiées par jour), sinon en instantanés par projet (`snapshots` : stories, production, activité, livraison, versions) rafraîchis par les webhooks et une courte durée de vie.
 
 Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture), Issues (lecture et écriture), Pull requests (lecture), Actions (lecture et écriture : déclencher un workflow du projet), Checks (lecture). Pas d'administration, pas de secrets.
 
@@ -36,11 +37,11 @@ Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture), Issu
 - Liste blanche par identifiant GitHub ; un compte GitHub sans rôle n'entre pas.
 - Lancer Claude coûte et écrit du code : réservé aux rôles qui le peuvent, plafond de demandes en cours par projet.
 - Aucun secret affiché ni journalisé ; les jetons GitHub restent côté Worker.
-- En-têtes de sécurité et CSP stricte dès le départ (aucun script en ligne).
+- En-têtes de sécurité et CSP stricte dès le départ : `script-src 'self'`, aucun script en ligne ni `eval` ; le seul script servi (`/request-draft.js`) garde le brouillon d'une demande sur l'appareil.
 
 ## Conventions
 
-- Interface, docs, issues et messages de commit en français ; vouvoiement ; ton direct.
+- Langue de base : l'anglais (équipe internationale) pour le code, l'interface, les nouveaux documents techniques, les issues, les PR et les messages de commit ; ton direct. Les fondations (ce fichier, `docs/fabrique-json.md`, l'épique F0) restent en français. Ce que La Fabrique écrit dans un projet piloté suit la langue de ce projet (une demande reprend ses rubriques et sa signature).
 - Ne jamais écrire d'identifiant, d'e-mail ou de secret dans le code : variables et secrets du Worker.
 - Stories : épique (étiquette `epique`) et stories numérotées `F<lot>.<n>` (`F0.1`…), chacune avec ses critères d'acceptation.
 
@@ -50,4 +51,9 @@ Sobre et lisible, au service du suivi : un tableau, des états en pastilles, des
 
 ## État
 
-Fondations seulement (octobre 2026) : ce fichier, `docs/fabrique-json.md`, l'épique et les stories du lot F0. Le code commence avec F0.1.
+Fin octobre 2026 :
+- lot F0 livré (#1, stories #2 à #8) : connexion GitHub et rôles, projets et `.fabrique.json`, documentation en ligne, stories, ce qui attend la production, nouvelle demande ;
+- lot F2 en cours (#18) : vélocité (F2.1), lecture d'une autre branche (F2.2), livraison (F2.4, en partie), feuille de route et versions (F2.6, en partie) ; architecture (F2.3) et tests (F2.5) attendent les réponses du propriétaire ;
+- lot F1 (lancer Claude, validation sur int, « go ») à venir.
+
+Mise en route et secrets : `docs/owner-setup.md`.
