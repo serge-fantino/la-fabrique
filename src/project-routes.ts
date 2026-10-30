@@ -29,6 +29,8 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { LOG_GROUPS, readLog } from "./log";
+import { logPage } from "./log-views";
 import { projectUrl } from "./urls";
 import { canValidate, readDefect, reportDefect, storyChecks, tickCriterion, validateStory } from "./validation";
 import { proposeCycle, readCycleForm } from "./config-change";
@@ -545,4 +547,19 @@ export async function showCard(env: Env, viewer: Viewer, repo: string): Promise<
   if (!project) return html("", { status: 404 });
   await Promise.all([loadProduction(env, project), loadStories(env, project)]);
   return html(cardHtml(await projectCard(env.DB, project, viewer.role)));
+}
+
+export async function showLog(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const params = new URL(request.url).searchParams;
+  const before = Number(params.get("before"));
+  const group = params.get("group");
+  const filters = {
+    group: LOG_GROUPS.some((candidate) => candidate.id === group) ? group : null,
+    actor: params.get("actor") || null,
+    before: Number.isInteger(before) && before > 0 ? before : null,
+  };
+  const [{ view, cookies }, log] = await Promise.all([projectView(request, env, project), readLog(env.DB, project.repo, filters)]);
+  return html(logPage(viewer, view, { ...log, filters }), { cookies });
 }

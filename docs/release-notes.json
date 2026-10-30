@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.31",
+    "date": "2026-10-30",
+    "heure": "12:54",
+    "titre": "Log",
+    "changements": [
+      "A Log tab: every decision taken in La Fabrique on a project, newest first, in words and with links to GitHub: requests written, criteria checked, stories validated, defects reported, priorities set, setup changes proposed.",
+      "Filter by kind of decision and by person; nothing in it can be changed or deleted."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.30",
     "date": "2026-10-30",
     "heure": "12:31",
