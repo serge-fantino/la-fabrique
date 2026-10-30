@@ -56,6 +56,6 @@ Fin octobre 2026 :
 - lot F0 livré (#1, stories #2 à #8) : connexion GitHub et rôles, projets et `.fabrique.json`, documentation en ligne, stories, ce qui attend la production, nouvelle demande ;
 - lot F2 en cours (#18) : vélocité (F2.1), lecture d'une autre branche (F2.2), livraison (F2.4, en partie), feuille de route et versions (F2.6, en partie), La Fabrique pilotée par elle-même (F2.9), guide d'intégration, onglet Setup (F2.7), ce que la production va recevoir (F2.8), branche de référence dans l'en-tête (F2.10) ; architecture (F2.3) et tests (F2.5) attendent les réponses du propriétaire ;
 - lot F3 livré (#44, stories #45 à #49) : cycle de vie d'une story et *Definition of Ready* (`cycle` du `.fabrique.json`), à tester sur int, en développement, backlog et priorités (étiquettes GitHub posées par La Fabrique, journalisées), tableau de bord en page d'accueil ;
-- lot F1 (lancer Claude, validation sur int, « go ») à venir.
+- lot F1 livré côté La Fabrique (#57, stories #58 à #62) : validation sur int (critères cochés dans l'issue, validation, défaut signalé), « go » du super admin (workflow `promouvoir` du projet), « Launch Claude » sur une story prête (workflow `claude` du projet, plafond `claude.plafond`), journal par projet, workflows du projet dans Setup ; les workflows de l'épicerie attendent leur intégration (epicerie-extraordinaire#148) et leurs secrets (`FABRIQUE_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` ou `ANTHROPIC_API_KEY`).
 
 Mise en route et secrets : `docs/owner-setup.md`.
