@@ -53,7 +53,7 @@ function claudeSection(viewer: Viewer, settings: ClaudeSettings, report: UsageRe
       ${
         settings.configured
           ? `<form method="post" action="${CLAUDE_CHECK_PATH}">${csrfField(viewer)}
-              <button type="submit" class="button quiet">Check the key</button>
+              <button type="submit" class="button quiet claude">Check the key</button>
               <span class="muted small">One tiny call to the model, counted like the others.</span>
             </form>`
           : ""

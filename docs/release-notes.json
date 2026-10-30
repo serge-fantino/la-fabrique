@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.53",
+    "date": "2026-10-31",
+    "heure": "00:35",
+    "titre": "What comes next on a spec, in one row",
+    "changements": [
+      "On a card's spec, what can come next is in one row: Split into stories with Claude first, Make one story on GitHub next to it, then Ask Claude for a change and Edit the spec by hand. A line says when to choose one story or several.",
+      "Every button that calls Claude carries a star, here, in Settings and on the backlog.",
+      "One panel at a time unfolds under the row, with its title."
+    ],
+    "stories": [80],
+    "liens": null
+  },
+  {
     "version": "0.52",
     "date": "2026-10-31",
     "heure": "00:17",

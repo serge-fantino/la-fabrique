@@ -586,7 +586,11 @@ describe("Split into stories", () => {
     const { cookie, csrf, id } = await withSplit();
     const response = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "discard" }, cookie);
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=split_discarded#spec`);
-    expect(await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text()).toContain("Split into stories with Claude");
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    // In one row, the split first, starred; one story next to it.
+    const row = page.slice(page.indexOf('<div class="spec-actions">'));
+    expect(row).toMatch(/<summary class="button claude">Split into stories with Claude<\/summary>[\s\S]*Make one story on GitHub[\s\S]*<summary class="button quiet claude">Ask Claude for a change/);
+    expect(row).toContain('<button type="submit" class="button claude" name="action" value="spec_split">Ask Claude</button>');
   });
 });
 
