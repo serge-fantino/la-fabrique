@@ -23,3 +23,11 @@ describe("GET /", () => {
     expect(await response.text()).toContain("No access yet");
   });
 });
+
+describe("Brand", () => {
+  it("serves the logo as the favicon", async () => {
+    const response = await SELF.fetch("https://la-fabrique.test/favicon.svg");
+    expect(response.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await response.text()).toContain("<svg");
+  });
+});

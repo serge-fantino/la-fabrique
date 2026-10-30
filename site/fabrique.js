@@ -116,9 +116,11 @@
   // Back and forward may restore a page from the cache, bar included.
   window.addEventListener("pageshow", stop);
 
+  // A menu in the header closes when one clicks elsewhere.
   document.addEventListener("click", (event) => {
-    const menu = document.querySelector("[data-branch-menu]");
-    if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    for (const menu of document.querySelectorAll("details[data-menu][open]")) {
+      if (event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    }
   });
 
   // What each page needs once it is shown.

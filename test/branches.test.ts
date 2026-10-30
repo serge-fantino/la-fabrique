@@ -228,3 +228,23 @@ describe("The reference branch of the header", () => {
     expect((await get("/styles.css?v=00000000")).headers.get("cache-control")).toBe("no-cache");
   });
 });
+
+describe("The project menu of the header", () => {
+  it("appears with several projects and keeps the current tab", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES ('acme/other', 99, 'admin-one')"),
+      env.DB.prepare(
+        `INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', ?, ?, '[]', '[]')`,
+      ).bind(REPO, MAIN_SHA, JSON.stringify({ nom: "Widget" })),
+      env.DB.prepare(
+        `INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES ('acme/other', 'main', ?, ?, '[]', '[]')`,
+      ).bind(INT_SHA, JSON.stringify({ nom: "Other" })),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', '[]', ?)").bind(REPO, new Date().toISOString()),
+    ]);
+    const page = await (await get(`/projects/${REPO}/backlog`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain('<details class="branch-menu project-menu" data-menu>');
+    expect(page).toContain('<a href="/projects/acme/other/backlog">Other');
+    expect(page).toContain(`<a href="/projects/${REPO}/backlog" aria-current="true">Widget`);
+  });
+});

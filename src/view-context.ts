@@ -1,7 +1,7 @@
 import { knownBranches } from "./branches";
 import type { Env } from "./env";
 import type { ProjectView } from "./project-views";
-import type { Project } from "./projects";
+import { listProjects, type Project } from "./projects";
 import { referenceBranch } from "./reference";
 
 // What every project page needs: the reference branch chosen in the header
@@ -12,8 +12,15 @@ export async function projectView(
   project: Project,
 ): Promise<{ view: ProjectView; cookies: string[] }> {
   const { ref, cookie } = referenceBranch(request, project);
+  const [branches, projects] = await Promise.all([knownBranches(env, project, ref), listProjects(env.DB)]);
   return {
-    view: { ...project, ref, knownBranches: await knownBranches(env, project, ref), path: new URL(request.url).pathname },
+    view: {
+      ...project,
+      ref,
+      knownBranches: branches,
+      path: new URL(request.url).pathname,
+      projects: projects.map((other) => ({ repo: other.repo, name: other.check?.config?.nom || other.repo })),
+    },
     cookies: cookie ? [cookie] : [],
   };
 }

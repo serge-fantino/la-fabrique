@@ -86,7 +86,7 @@ describe("To test", () => {
     const page = await (await get(`/projects/${REPO}/to-test`, (await signIn("admin-one")).cookie)).text();
     expect(page).toContain('aria-current="page">To test</a>');
     expect(page).toContain("<strong>2 stories and 2 changes to test</strong> on <code>integration</code>, waiting since <span class=\"mono\">2026-10-29 08:00 UTC</span>; it runs <span class=\"mono\">1.169</span>.");
-    expect(page).toContain('<a class="button" href="https://int.widget.example">Open int</a>');
+    expect(page).toContain('<a target="_blank" rel="noopener noreferrer" class="button" href="https://int.widget.example">Open int</a>');
     expect(page).toContain("#30</a> Epic: Weekly menu</h3>");
     expect(page).toContain("Seven days show");
     expect(page).toContain('<button type="submit" class="criterion" aria-pressed="true"><span class="box" aria-hidden="true">✓</span><span>Meals can move');

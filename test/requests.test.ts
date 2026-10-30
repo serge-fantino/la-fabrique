@@ -99,7 +99,7 @@ describe("New request", () => {
 
     const mine = await (await get(`/projects/${REPO}/requests?created=42`, cookie)).text();
     expect(mine).toContain('data-draft-clear="lf-request:acme/widget"');
-    expect(mine).toContain(`<a href="https://github.com/${REPO}/issues/42">Mes recettes favorites</a>`);
+    expect(mine).toContain(`<a target="_blank" rel="noopener noreferrer" href="https://github.com/${REPO}/issues/42">Mes recettes favorites</a>`);
     expect(mine).toContain("Issue open");
   });
 

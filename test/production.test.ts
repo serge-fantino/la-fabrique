@@ -172,7 +172,7 @@ describe("What awaits production", () => {
     expect(page).toContain('>int</a> <span class="mono">1.168</span>');
     expect(page).toContain('>production</a> <span class="mono">1.167</span>');
     expect(page).toContain("<strong>1 story, 2 versions, 3 changes</strong> waiting.");
-    expect(page).toContain('<a href="https://github.com/acme/widget/issues/132">#132</a> Epic: Messages');
+    expect(page).toContain('<a target="_blank" rel="noopener noreferrer" href="https://github.com/acme/widget/issues/132">#132</a> Epic: Messages');
     expect(page).toContain("#138</a> E-mails aux utilisateurs <span class=\"pill ok\">Closed</span>");
     // Both entries production lacks, the one dated for its go included.
     expect(page).toContain('<span class="pill warn">Waiting</span> <span class="mono">1.169</span> · Menu');
@@ -190,7 +190,7 @@ describe("What awaits production", () => {
     expect(banner).toBeGreaterThan(-1);
     expect(page.indexOf("CI failed on integration.")).toBeGreaterThan(banner);
     expect(page.indexOf("CI failed on integration.")).toBeLessThan(page.indexOf("<h2>Versions</h2>"));
-    expect(page).toContain(`<a href="https://github.com/${REPO}/actions/runs/1">See the run</a>`);
+    expect(page).toContain(`<a target="_blank" rel="noopener noreferrer" href="https://github.com/${REPO}/actions/runs/1">See the run</a>`);
   });
 
   it("does not count a green run on an older commit", async () => {

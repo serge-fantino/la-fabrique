@@ -40,6 +40,8 @@ export interface ProjectView extends Project {
   ref: string | null;
   knownBranches: string[];
   path: string;
+  // Every project, for the header's project menu.
+  projects?: { repo: string; name: string }[];
 }
 
 function asView(project: Project): ProjectView | null {
@@ -56,7 +58,7 @@ function branchMenu(view: ProjectView): string {
     const href = `${view.path}?ref=${branch === production ? "" : encodeURIComponent(branch)}`;
     return `<li><a href="${escapeHtml(href)}"${branch === current ? ' aria-current="true"' : ""}><code>${escapeHtml(branch)}</code>${tag}</a></li>`;
   };
-  return `<details class="branch-menu" data-branch-menu data-branches="${escapeHtml(projectUrl(view.repo))}/branches" data-path="${escapeHtml(view.path)}" data-current="${escapeHtml(current)}" data-production="${escapeHtml(production)}"${integration ? ` data-integration="${escapeHtml(integration)}"` : ""}>
+  return `<details class="branch-menu" data-branch-menu data-menu data-branches="${escapeHtml(projectUrl(view.repo))}/branches" data-path="${escapeHtml(view.path)}" data-current="${escapeHtml(current)}" data-production="${escapeHtml(production)}"${integration ? ` data-integration="${escapeHtml(integration)}"` : ""}>
       <summary><span class="muted">Branch</span> <code>${escapeHtml(current)}</code></summary>
       <div class="branch-panel">
         <form method="get" action="${escapeHtml(view.path)}" class="branch-search">
@@ -71,9 +73,29 @@ function branchMenu(view: ProjectView): string {
 }
 
 // Left part of the line under the bar: the project, and its reference branch.
+// With several projects, the name opens a menu to switch to another one,
+// on the same tab.
+function projectMenu(view: ProjectView, name: string): string {
+  const projects = view.projects ?? [];
+  if (projects.length < 2) return `<a class="project-name" href="${escapeHtml(projectUrl(view.repo))}">${escapeHtml(name)}</a>`;
+  const rest = view.path.slice(projectUrl(view.repo).length);
+  const tab = rest.startsWith("/docs/") ? "" : rest;
+  const items = projects
+    .map((other) => {
+      const current = other.repo.toLowerCase() === view.repo.toLowerCase();
+      return `<li><a href="${escapeHtml(projectUrl(other.repo) + tab)}"${current ? ' aria-current="true"' : ""}>${escapeHtml(other.name)} <span class="mono muted small">${escapeHtml(other.repo)}</span></a></li>`;
+    })
+    .join("");
+  return `<details class="branch-menu project-menu" data-menu>
+      <summary><span class="project-name">${escapeHtml(name)}</span></summary>
+      <div class="branch-panel"><ul class="branch-list">${items}</ul></div>
+    </details>`;
+}
+
 export function projectContext(project: Project): string {
   const view = asView(project);
-  return `<a class="project-name" href="${escapeHtml(projectUrl(project.repo))}">${escapeHtml(project.check?.config?.nom || project.repo)}</a>
+  const name = project.check?.config?.nom || project.repo;
+  return `${view ? projectMenu(view, name) : `<a class="project-name" href="${escapeHtml(projectUrl(project.repo))}">${escapeHtml(name)}</a>`}
       <span class="mono muted repo-name">${escapeHtml(project.repo)}</span>
       ${view ? branchMenu(view) : ""}`;
 }

@@ -46,6 +46,15 @@ export function script(body: string, headers: Record<string, string> = {}): Resp
   });
 }
 
+export function svg(body: string): Response {
+  return respond(body, {
+    headers: {
+      "content-type": "image/svg+xml",
+      "cache-control": "public, max-age=86400",
+    },
+  });
+}
+
 export function json(data: unknown, options: ResponseOptions = {}): Response {
   return respond(JSON.stringify(data), {
     ...options,

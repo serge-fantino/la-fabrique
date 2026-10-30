@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.30",
+    "date": "2026-10-30",
+    "heure": "12:31",
+    "titre": "A logo, a project menu",
+    "changements": [
+      "La Fabrique has a logo: a sawtooth-roofed workshop, also in the browser tab.",
+      "With several projects, the project's name in the header opens a menu to switch to another one, on the same tab.",
+      "Links to GitHub and to the projects' environments open in a new tab."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.29",
     "date": "2026-10-30",
     "heure": "12:26",
