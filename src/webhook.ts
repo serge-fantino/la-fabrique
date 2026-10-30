@@ -2,6 +2,7 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { json } from "./http";
 import { checkPushedCommit, findProject } from "./projects";
+import { applyIssueEvent, storiesChanged, type RestIssue } from "./stories";
 
 async function signatureOf(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -15,12 +16,16 @@ async function signatureOf(secret: string, body: string): Promise<string> {
   return `sha256=${[...new Uint8Array(mac)].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-interface PushPayload {
+interface Payload {
+  action?: string;
   ref?: string;
   after?: string;
   repository?: { full_name?: string; default_branch?: string };
   head_commit?: { timestamp?: string } | null;
+  issue?: RestIssue;
 }
+
+const STORY_EVENTS = new Set(["sub_issues", "pull_request", "create", "delete"]);
 
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) return json({ error: "webhook not configured" }, { status: 503 });
@@ -31,18 +36,27 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     return json({ error: "bad signature" }, { status: 401 });
   }
 
-  const event = request.headers.get("x-github-event");
+  const event = request.headers.get("x-github-event") ?? "";
   if (event === "ping") return json({ ok: true });
+
+  const payload = JSON.parse(body) as Payload;
+  const repo = payload.repository?.full_name;
+  const project = repo ? await findProject(env.DB, repo) : null;
+  if (!project) return json({ ignored: "unknown project" }, { status: 202 });
+
+  if (event === "issues" && payload.issue) {
+    await applyIssueEvent(env, project.repo, payload.action ?? "", payload.issue);
+    return json({ updated: payload.issue.number });
+  }
+  if (STORY_EVENTS.has(event)) {
+    await storiesChanged(env, project.repo);
+    return json({ refresh: "stories" });
+  }
   if (event !== "push") return json({ ignored: event }, { status: 202 });
 
-  const payload = JSON.parse(body) as PushPayload;
-  const repo = payload.repository?.full_name;
   const branch = payload.ref?.startsWith("refs/heads/") ? payload.ref.slice("refs/heads/".length) : null;
   const sha = payload.after;
-  if (!repo || !branch || !sha || /^0+$/.test(sha)) return json({ ignored: "push" }, { status: 202 });
-
-  const project = await findProject(env.DB, repo);
-  if (!project) return json({ ignored: "unknown project" }, { status: 202 });
+  if (!branch || !sha || /^0+$/.test(sha)) return json({ ignored: "push" }, { status: 202 });
 
   const production = project.check?.config?.branches?.production ?? payload.repository?.default_branch;
   if (branch !== production) return json({ ignored: "not the production branch" }, { status: 202 });

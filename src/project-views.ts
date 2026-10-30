@@ -5,6 +5,24 @@ import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views"
 
 const projectPath = projectUrl;
 
+export type ProjectTab = "overview" | "stories";
+
+const TABS: { id: ProjectTab; label: string; path: string }[] = [
+  { id: "overview", label: "Overview", path: "" },
+  { id: "stories", label: "Stories", path: "/stories" },
+];
+
+export function projectHeader(project: Project, active: ProjectTab, heading?: string): string {
+  const name = project.check?.config?.nom || project.repo;
+  const tabs = TABS.map(
+    (tab) =>
+      `<a href="${escapeHtml(projectUrl(project.repo) + tab.path)}"${tab.id === active ? ' aria-current="page"' : ""}>${tab.label}</a>`,
+  ).join("");
+  return `<p class="eyebrow mono">${escapeHtml(project.repo)}</p>
+      <h1>${escapeHtml(heading ?? name)}</h1>
+      <nav class="tabs" aria-label="Project">${tabs}</nav>`;
+}
+
 function statusPill(check: ConfigCheck | null): string {
   if (!check) return `<span class="pill warn">Not checked</span>`;
   if (check.errors.length === 0) return `<span class="pill ok">Valid</span>`;
@@ -17,7 +35,7 @@ function withCode(text: string): string {
   return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-function notice(text: string | undefined, tone: "ok" | "error"): string {
+export function notice(text: string | undefined, tone: "ok" | "error"): string {
   return text ? `<p class="notice ${tone}" role="status">${escapeHtml(text)}</p>` : "";
 }
 
@@ -183,8 +201,7 @@ export function projectPage(
 
   return layout(
     `${config?.nom || project.repo} · La Fabrique extraordinaire`,
-    `<p class="eyebrow mono">${escapeHtml(project.repo)}</p>
-      <h1>${escapeHtml(config?.nom || project.repo)}</h1>
+    `${projectHeader(project, "overview")}
       ${config?.description ? `<p class="lede">${escapeHtml(config.description)}</p>` : ""}
       <p class="links">${links.join("")}</p>
       ${known ? notice(known.text, known.tone) : ""}

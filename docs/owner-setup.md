@@ -105,7 +105,9 @@ On the GitHub App's settings page:
    `https://la-fabrique.<your-subdomain>.workers.dev/api/github/webhook`,
    and set a *Webhook secret* (any long random string, for example
    `openssl rand -hex 32`).
-3. **Permissions & events &rarr; Subscribe to events**: tick *Push*.
+3. **Permissions & events &rarr; Subscribe to events**: tick *Push*, and for
+   the stories board (F0.5) *Issues*, *Sub issues*, *Pull request*, *Create*
+   and *Delete*.
 4. Make sure the App is installed on the repositories to pilot.
 
 Then give the Worker the two new secrets:

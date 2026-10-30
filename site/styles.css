@@ -194,6 +194,7 @@ a:hover {
 
 input,
 select {
+  max-width: 100%;
   font: inherit;
   min-height: 44px;
   padding: 0 0.75rem;
@@ -483,4 +484,107 @@ th {
     display: table-cell;
     padding: 0.4rem 0.75rem 0.4rem 0;
   }
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.5rem;
+  border-bottom: 1px solid var(--rule);
+  margin: 0 0 1.5rem;
+}
+
+.tabs a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--encre-faint);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tabs a:hover {
+  color: var(--encre);
+}
+
+.tabs a[aria-current="page"] {
+  color: var(--encre);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.filters label {
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.filters label.check {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+}
+
+.filters input[type="checkbox"] {
+  min-height: auto;
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 2.25rem 0 0.5rem;
+}
+
+.group-head h2 {
+  margin: 0;
+}
+
+progress {
+  width: 8rem;
+  height: 0.5rem;
+  accent-color: var(--bon);
+}
+
+.chip {
+  display: inline-block;
+  margin: 0.1rem 0.25rem 0.1rem 0;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.chip.circuit {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.links-cell {
+  font-size: 0.85rem;
+}
+
+.link-item {
+  display: inline-block;
+  margin-right: 0.75rem;
+  white-space: nowrap;
+}
+
+.number {
+  white-space: nowrap;
 }
