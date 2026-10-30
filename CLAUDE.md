@@ -43,7 +43,8 @@ Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture), Issu
 
 - Langue de base : l'anglais (équipe internationale) pour le code, l'interface, les nouveaux documents techniques, les issues, les PR et les messages de commit ; ton direct. Les fondations (ce fichier, `docs/fabrique-json.md`, l'épique F0) restent en français. Ce que La Fabrique écrit dans un projet piloté suit la langue de ce projet (une demande reprend ses rubriques et sa signature).
 - Ne jamais écrire d'identifiant, d'e-mail ou de secret dans le code : variables et secrets du Worker.
-- Stories : épique (étiquette `epique`) et stories numérotées `F<lot>.<n>` (`F0.1`…), chacune avec ses critères d'acceptation.
+- Stories : épique (étiquette `epique`) et stories numérotées `F<lot>.<n>` (`F0.1`…), chacune avec ses critères d'acceptation, rattachées à leur épique comme sous-issues.
+- La Fabrique se pilote elle-même (`.fabrique.json` à la racine). Notes de version au format Fabrique dans `docs/release-notes.json` (format : `docs/fabrique-json.md`) : toute PR qui change quelque chose de visible ajoute en tête une entrée `0.N+1`, en anglais, avec la date et l'heure (Paris) de sa fusion dans `main` (pas de branche d'intégration) ; `/api/version` répond ce numéro. Les tests (`test/self.test.ts`) vérifient le fichier.
 
 ## Design
 

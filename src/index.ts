@@ -14,6 +14,7 @@ const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import stylesCss from "../site/styles.css";
+import releaseNotes from "../docs/release-notes.json";
 import requestDraftJs from "../site/request-draft.js";
 
 type ViewerState = { kind: "anonymous" } | { kind: "revoked" } | { kind: "signed_in"; viewer: Viewer };
@@ -57,7 +58,7 @@ export default {
 
     switch (pathname) {
       case "/api/version":
-        return json({ commit: env.COMMIT_SHA });
+        return json({ numero: releaseNotes[0]?.version ?? null, commit: env.COMMIT_SHA });
       case "/styles.css":
         return css(stylesCss);
       case "/request-draft.js":

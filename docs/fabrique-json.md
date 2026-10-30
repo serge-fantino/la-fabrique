@@ -56,7 +56,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `workflows.deploiement_int`, `migrations_production` | Workflows suivis (état, dernier passage). |
 | `workflows.promouvoir` | Workflow `workflow_dispatch` que le « go » du super admin déclenche. `null` : pas de go depuis La Fabrique. |
 | `workflows.claude` | Workflow qui fait travailler Claude sur une demande (`workflow_dispatch` avec le numéro d'issue). `null` : pas de bouton « Lancer Claude ». |
-| `version.fichier`, `.forme` | Où lire le numéro de version lisible (« Quoi de neuf »). |
+| `version.fichier`, `.forme` | Le fichier des notes de version, au format Fabrique (ci-dessous), et la forme des numéros (`v1.N`, `0.N`…). Il alimente Production (ce qui va sortir), Roadmap (calendrier) et Releases. |
 | `documentation[]` | Pages publiées dans La Fabrique : un fichier Markdown ou un dossier (tous ses `.md`), rendus depuis la branche de production. |
 | `demandes.etiquettes` | Étiquettes GitHub du circuit : demande écrite, prête pour Claude, à valider sur int. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
@@ -64,3 +64,32 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 ## Validation
 
 La Fabrique vérifie le fichier à l'ajout du projet et à chaque push sur la branche de production : JSON valide, `nom` présent, workflows nommés existants dans `.github/workflows/`, chemins de documentation existants. Une erreur est montrée sur la page du projet, sans bloquer le reste.
+
+## Notes de version (format Fabrique)
+
+Le fichier nommé par `version.fichier` est un tableau JSON, **la version la plus récente en premier**. Une entrée par version mise en ligne :
+
+```json
+[
+  {
+    "version": "1.168",
+    "date": "2026-10-30",
+    "heure": "09:15",
+    "titre": "E-mails de bienvenue",
+    "changements": ["Un e-mail de bienvenue à l'inscription."],
+    "liens": [{ "app": "/app/accueil.html" }]
+  }
+]
+```
+
+| Champ | Sens |
+|---|---|
+| `version` | Le numéro, dans la forme de `version.forme`. Unique. |
+| `date`, `heure` | Jour (`AAAA-MM-JJ`) et heure (`HH:MM`, heure du projet) de mise en ligne. **Une entrée sans `heure` n'est pas encore en ligne** : elle s'écrit dès la branche de travail et reçoit son heure au moment de la mise en production. |
+| `titre` | Une ligne, facultative. |
+| `changements` | Les changements visibles, dits pour un utilisateur curieux, sans jargon. Toujours du texte. |
+| `liens` | Facultatif : `null`, ou des objets dont chaque valeur est un chemin du site en production (`/app/…`), pour « y aller ». |
+
+Un envoi sans rien de visible (outillage, tests, refonte interne) n'ajoute pas d'entrée. Le chemin de version des environnements (`environnements.*.version`) répond la version déployée (`numero`), qui doit être celle de la première entrée.
+
+Sans branche d'intégration, une entrée reçoit sa date et son heure quand elle part sur la branche de production.

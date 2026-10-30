@@ -1,0 +1,131 @@
+[
+  {
+    "version": "0.13",
+    "date": "2026-10-30",
+    "heure": "09:50",
+    "titre": "La Fabrique follows itself",
+    "changements": [
+      "La Fabrique extraordinaire can be added as a project of its own: its documentation, stories, delivery, activity and releases show like any other project's.",
+      "The version endpoint gives the version number as well as the deployed commit."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.12",
+    "date": "2026-10-30",
+    "heure": "02:40",
+    "titre": "Roadmap and releases",
+    "changements": [
+      "A Roadmap tab: a month calendar of versions released, stories closed and epics done, and each epic's progress day by day.",
+      "A Releases tab: every version's notes by day, with the stories closed since the previous version."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.11",
+    "date": "2026-10-30",
+    "heure": "02:34",
+    "titre": "Delivery",
+    "changements": [
+      "A Delivery tab: each workflow's runs over 30 days, share passed, median duration, current streak and last failure."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.10",
+    "date": "2026-10-30",
+    "heure": "02:28",
+    "titre": "Read a project on another branch",
+    "changements": [
+      "A branch selector on a project's page: read its documentation and its .fabrique.json on integration or a working branch, production staying the reference."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.9",
+    "date": "2026-10-30",
+    "heure": "02:23",
+    "titre": "Activity",
+    "changements": [
+      "An Activity tab: commits and lines changed per day over 30 or 90 days, and commits per author."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.8",
+    "date": "2026-10-30",
+    "heure": "02:12",
+    "titre": "Requests",
+    "changements": [
+      "Product Engineers, tech leads and super admins write a request from the project's own form; it becomes an issue under their name.",
+      "Drafts stay on the device until the request is sent; My requests shows where each one stands."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.7",
+    "date": "2026-10-30",
+    "heure": "02:06",
+    "titre": "What awaits production",
+    "changements": [
+      "A Production tab: the work on integration missing from production, grouped by merged branch, with versions, workflows and a clear ready or not ready."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.6",
+    "date": "2026-10-30",
+    "heure": "02:00",
+    "titre": "Stories",
+    "changements": [
+      "A Stories tab: issues grouped by epic, with their state, labels, pull requests and branches, and filters."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.5",
+    "date": "2026-10-30",
+    "heure": "01:43",
+    "titre": "Documentation online",
+    "changements": [
+      "A project's documentation reads in La Fabrique, from its production branch, with links between pages kept inside."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.4",
+    "date": "2026-10-30",
+    "heure": "01:36",
+    "titre": "La Fabrique extraordinaire",
+    "changements": ["The app is now called La Fabrique extraordinaire."],
+    "liens": null
+  },
+  {
+    "version": "0.3",
+    "date": "2026-10-30",
+    "heure": "00:34",
+    "titre": "Projects",
+    "changements": [
+      "Super admins add a project from the repositories where the GitHub App is installed; its .fabrique.json is checked, with readable errors."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.2",
+    "date": "2026-10-30",
+    "heure": "00:16",
+    "titre": "Sign in with GitHub",
+    "changements": [
+      "Sign in with GitHub; only people given a role get in, and super admins manage roles on the People page."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.1",
+    "date": "2026-10-29",
+    "heure": "23:42",
+    "titre": "First version",
+    "changements": ["La Fabrique is online, with its home page."],
+    "liens": null
+  }
+]
