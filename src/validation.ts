@@ -196,21 +196,31 @@ export async function storyChecks(db: D1Database, repo: string): Promise<Map<num
   const { results } = await db
     .prepare(
       `SELECT occurred_at, actor, action, issue_number, details FROM activity_log
-       WHERE repo = ? AND action IN ('story_validated', 'defect_reported') AND issue_number IS NOT NULL
+       WHERE repo = ? AND action IN ('story_validated', 'defect_reported', 'defect_linked')
        ORDER BY id`,
     )
     .bind(repo)
-    .all<{ occurred_at: string; actor: string; action: string; issue_number: number; details: string | null }>();
+    .all<{ occurred_at: string; actor: string; action: string; issue_number: number | null; details: string | null }>();
   const checks = new Map<number, StoryChecks>();
+  const entry = (story: number) => {
+    const found = checks.get(story) ?? { validated: null, defects: [] };
+    checks.set(story, found);
+    return found;
+  };
+  // A defect goes with the story of its latest link: the report, then triage.
+  const links = new Map<number, number | null>();
   for (const row of results) {
-    const entry = checks.get(row.issue_number) ?? { validated: null, defects: [] };
     const details = row.details ? (JSON.parse(row.details) as Record<string, unknown>) : {};
     if (row.action === "story_validated") {
-      entry.validated = { by: row.actor, at: row.occurred_at, version: typeof details["version"] === "string" ? details["version"] : null };
+      if (row.issue_number !== null) {
+        entry(row.issue_number).validated = { by: row.actor, at: row.occurred_at, version: typeof details["version"] === "string" ? details["version"] : null };
+      }
     } else if (typeof details["defect"] === "number") {
-      entry.defects.push(details["defect"]);
+      links.set(details["defect"], row.issue_number);
     }
-    checks.set(row.issue_number, entry);
+  }
+  for (const [defect, story] of links) {
+    if (story !== null) entry(story).defects.push(defect);
   }
   return checks;
 }

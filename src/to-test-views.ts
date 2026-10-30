@@ -1,3 +1,4 @@
+import { projectUrl } from "./urls";
 import { isEpic } from "./lifecycle";
 import type { NextRelease, ProductionStatus } from "./production";
 import { notice, progressive, projectContext, projectHeader } from "./project-views";
@@ -137,8 +138,23 @@ export interface ToTestData {
   // Without an integration branch: what the latest production version brought.
   latest: { release: Release; stories: Story[] } | null;
   failure?: string | undefined;
+  // Open defects not linked to a story yet, to triage.
+  unlinked?: { number: number; title: string; url: string; triage: boolean }[];
   // Without it (the latest production version), cards are read-only.
   actions?: Omit<CardActions, "all"> | undefined;
+}
+
+// Defects reported without a story: they go back to a feature by triage.
+function unlinkedDefects(project: Project, defects: NonNullable<ToTestData["unlinked"]>): string {
+  if (!defects.length) return "";
+  return `<h2>Defects not linked to a story</h2>
+    <ul class="defects">${defects
+      .map(
+        (defect) =>
+          `<li><a href="${escapeHtml(defect.url)}">#${defect.number}</a> ${escapeHtml(defect.title)}${defect.triage ? ` <span class="pill warn">to triage</span>` : ""}</li>`,
+      )
+      .join("")}</ul>
+    <p><a class="button quiet" href="${escapeHtml(projectUrl(project.repo))}/defects">Triage them</a></p>`;
 }
 
 // What the PO validates: the stories on int with their acceptance criteria,
@@ -194,6 +210,7 @@ export function toTestContent(project: Project, data: ToTestData): string {
     </div>
     <h2>Stories</h2>
     ${referred.length ? byEpic(project.repo, referred, all, actions) : `<p class="muted">The work waiting refers to no story; see the changes below.</p>`}
+    ${unlinkedDefects(project, data.unlinked ?? [])}
     <h2>Changes in the release notes</h2>
     ${changesList(releases)}`;
 }

@@ -1,6 +1,8 @@
 import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DAILY_CAP } from "../src/defects";
+import { toTestContent } from "../src/to-test-views";
+import { storyChecks } from "../src/validation";
 import type { ProductionStatus } from "../src/production";
 import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
 import { branchKind } from "../src/projects";
@@ -348,5 +350,105 @@ describe("Reporting a defect from the project's app", () => {
       environnements: { int: { url: INT_URL, version: "/api/version", type: "integration", signalement: false } },
     });
     expect(((await (await me(tokens.access_token)).json()) as { can: { report_defect: boolean } }).can.report_defect).toBe(false);
+  });
+});
+
+describe("Triage", () => {
+  // A defect reported while two stories are on int: linked to none.
+  async function reported(): Promise<void> {
+    const { tokens } = await connect();
+    await seedInt([146, 147], [{ version: "1.170", title: "Menu", changes: [] }]);
+    mockVersion();
+    mockGitHub();
+    await report(tokens.access_token, REPORT);
+  }
+
+  function mockTriage(sent: { story?: string; defect?: string; label?: boolean }): void {
+    const github = fetchMock.get("https://api.github.com");
+    github
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/147/comments` }).reply(201, (options) => {
+      sent.story = (JSON.parse(String(options.body)) as { body: string }).body;
+      return "{}";
+    });
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/150/comments` }).reply(201, (options) => {
+      sent.defect = (JSON.parse(String(options.body)) as { body: string }).body;
+      return "{}";
+    });
+    github.intercept({ method: "DELETE", path: `/repos/${REPO}/issues/150/labels/to%20triage` }).reply(200, () => {
+      sent.label = true;
+      return "[]";
+    });
+    github.intercept({ path: `/repos/${REPO}/issues/150` }).reply(
+      200,
+      JSON.stringify({
+        number: 150,
+        title: REPORT.title,
+        state: "open",
+        html_url: `https://github.com/${REPO}/issues/150`,
+        user: { login: "la-fabrique[bot]" },
+        labels: [{ name: "bug" }],
+        created_at: "2026-10-30T12:00:00Z",
+        updated_at: "2026-10-30T12:05:00Z",
+        closed_at: null,
+        body: "",
+      }),
+      JSON_HEADERS,
+    );
+  }
+
+  it("offers testers the same choice as the report form, the current link chosen", async () => {
+    await reported();
+    await grantRole("tess", "tester");
+    const page = await (await get(`/projects/${REPO}/defects`, (await signIn("tess")).cookie)).text();
+    expect(page).toContain("<summary>Triage</summary>");
+    expect(page).toContain('<option value="" selected>Not linked</option>');
+    expect(page).toContain('<optgroup label="1.170 · Menu (on int)"><option value="r:1.170">Version 1.170, no particular story</option>');
+    expect(page).toContain('<option value="s:147:1.170">#147 Story 147</option>');
+    expect(page).toContain('name="triaged" value="1" checked');
+  });
+
+  it("links a defect to a story, says it on GitHub, removes to triage, and To test follows", async () => {
+    await reported();
+    await grantRole("tess", "tester");
+    const { cookie, csrf } = await signIn("tess");
+    const sent: { story?: string; defect?: string; label?: boolean } = {};
+    mockTriage(sent);
+    const response = await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "s:147:1.170", triaged: "1", back: "?state=open" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/defects?state=open&notice=triaged`);
+    expect(sent.story).toBe("Defect #150 linked to this story by @tess");
+    expect(sent.defect).toBe("Linked to #147 (version 1.170) by @tess, via La Fabrique extraordinaire");
+    expect(sent.label).toBe(true);
+    expect(await logActions()).toContainEqual(expect.objectContaining({ actor: "tess", action: "defect_linked" }));
+
+    const page = await (await get(`/projects/${REPO}/defects`, cookie)).text();
+    expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> Story 147`);
+    expect(page).not.toContain('<span class="pill warn">to triage</span>');
+    expect(page).toContain('<option value="s:147:1.170" selected>');
+
+    const checks = await storyChecks(env.DB, REPO);
+    expect(checks.get(147)?.defects).toEqual([150]);
+  });
+
+  it("refuses a story that is not the project's, and the defect itself", async () => {
+    await reported();
+    const { cookie, csrf } = await signIn("admin-one");
+    const response = await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "s:150:" }, cookie);
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("#150 is not one of this project&#39;s stories.");
+  });
+
+  it("lists in To test the defects not linked to a story yet", () => {
+    const content = toTestContent({ repo: REPO, installationId: 99, addedAt: "", addedBy: "", check: null }, {
+      status: status([146]),
+      stories: [story(146)] as never,
+      environment: null,
+      latest: null,
+      unlinked: [{ number: 150, title: "Save does nothing", url: `https://github.com/${REPO}/issues/150`, triage: true }],
+    });
+    expect(content).toContain("<h2>Defects not linked to a story</h2>");
+    expect(content).toContain('#150</a> Save does nothing <span class="pill warn">to triage</span>');
+    expect(content).toContain(`href="/projects/${REPO}/defects">Triage them</a>`);
   });
 });
