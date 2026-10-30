@@ -119,29 +119,65 @@ function storyCell(row: DefectRow, repo: string, titles: Map<number, string>): s
   return `<a href="https://github.com/${escapeHtml(repo)}/issues/${row.story}">#${row.story}</a>${title ? ` ${escapeHtml(title)}` : ""}`;
 }
 
-// The same choice as the report form: a version and, under it, its
-// stories; the current link chosen already.
-export function triageChoices(targets: DefectTarget[], row: DefectRow, titles: Map<number, string>): string {
-  const current = row.story !== null ? `s:${row.story}` : row.release ? `r:${row.release}` : "";
-  let matched = current === "";
-  const option = (value: string, label: string) => {
-    const selected = value === current || (row.story !== null && value.startsWith(`s:${row.story}:`) && !matched);
-    if (selected) matched = true;
-    return `<option value="${escapeHtml(value)}"${selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+// The same choice as the report kit's form: the versions on int, then
+// those released, each with its stories, a search (by /fabrique.js) and the
+// older versions on demand. Radios, rendered here: it works without script.
+export function aboutPicker(targets: DefectTarget[], row: DefectRow, titles: Map<number, string>): string {
+  const current = row.story !== null ? `s:${row.story}:${row.release ?? ""}` : row.release ? `r:${row.release}` : "";
+  // Checked once: the story linked now, in whichever version lists it first.
+  let found = false;
+  const isCurrent = (value: string) => {
+    const hit = !found && (value === current || (row.story !== null && value.startsWith(`s:${row.story}:`)));
+    if (hit) found = true;
+    return hit;
   };
-  const groups = targets
-    .map((target) => {
-      const label = `${target.version}${target.title ? ` · ${target.title}` : ""}${target.on_int ? " (on int)" : target.date ? ` (${target.date})` : ""}`;
-      const release = target.version === "int" ? "" : target.version;
-      const stories = target.stories.map((story) => option(`s:${story.number}:${release}`, `#${story.number} ${story.title}`)).join("");
-      return `<optgroup label="${escapeHtml(label)}">${release ? option(`r:${release}`, `Version ${release}, no particular story`) : ""}${stories}</optgroup>`;
-    })
-    .join("");
-  // A story linked before and no longer among the targets stays choosable.
-  const kept = !matched && row.story !== null
-    ? `<optgroup label="Linked now">${option(`s:${row.story}:${row.release ?? ""}`, `#${row.story} ${titles.get(row.story) ?? ""}`)}</optgroup>`
-    : "";
-  return `<option value=""${current === "" ? " selected" : ""}>Not linked</option>${kept}${groups}`;
+  let count = 0;
+  const choice = (value: string, label: string, kind = "", attributes = "") => {
+    const id = `about-${++count}`;
+    return `<div class="about-choice${kind}"${attributes}><input type="radio" name="about" id="${id}" value="${escapeHtml(value)}"${
+      isCurrent(value) ? " checked" : ""
+    } /><label for="${id}">${label}</label></div>`;
+  };
+  let released = 0;
+  const blocks = targets.map((target) => {
+    if (!target.on_int) released++;
+    const release = target.version === "int" ? "" : target.version;
+    const changes = target.changes.join(" · ");
+    const head = release
+      ? choice(
+          `r:${release}`,
+          `<strong class="mono">${escapeHtml(target.version)}</strong>${target.title ? ` ${escapeHtml(target.title)}` : ""}${
+            target.on_int ? ` <span class="about-tag">on int</span>` : target.date ? ` <span class="about-date">${escapeHtml(target.date)}</span>` : ""
+          }`,
+          " about-version-choice",
+        )
+      : `<p class="about-version-choice"><strong>On int</strong></p>`;
+    const stories = target.stories
+      .map((story) => {
+        const label = `#${story.number} ${story.title}`;
+        return choice(`s:${story.number}:${release}`, escapeHtml(label), " about-story", ` data-about-story data-text="${escapeHtml(label.toLowerCase())}"`);
+      })
+      .join("");
+    const text = [target.version, target.title ?? "", ...target.changes].join(" ").toLowerCase();
+    return `<div class="about-version" data-about-block data-text="${escapeHtml(text)}"${target.on_int || released <= 2 ? " data-early" : ""}>${head}${
+      changes ? `<p class="about-changes">${escapeHtml(changes.length > 160 ? `${changes.slice(0, 157)}…` : changes)}</p>` : ""
+    }${stories}</div>`;
+  });
+  // A story linked before and no longer among the versions stays choosable.
+  const kept =
+    !found && row.story !== null
+      ? `<div class="about-version" data-about-block data-early data-text=""><p class="about-version-choice"><strong>Linked now</strong></p>${choice(
+          current,
+          escapeHtml(`#${row.story} ${titles.get(row.story) ?? ""}`),
+          " about-story",
+        )}</div>`
+      : "";
+  return `<fieldset class="about-picker" data-about-picker>
+      <legend>It is about</legend>
+      <input type="search" class="about-search" placeholder="Search a version, a story…" aria-label="Search a version, a story" data-about-search hidden />
+      <div class="about-choices">${choice("", "Not linked to a story")}${kept}${blocks.join("")}</div>
+      <button type="button" class="about-more" data-about-more hidden>Earlier versions</button>
+    </fieldset>`;
 }
 
 // Triage on the defect's page; `back` is "page" to come back to it.
@@ -156,7 +192,7 @@ export function triageForm(
   return `<form method="post" action="${escapeHtml(base)}" class="triage-form">${csrfField(viewer)}
         <input type="hidden" name="defect" value="${row.number}" />
         <input type="hidden" name="back" value="${escapeHtml(back)}" />
-        <label>It is about <select name="about">${triageChoices(targets, row, titles)}</select></label>
+        ${aboutPicker(targets, row, titles)}
         ${row.triage ? `<label class="check"><input type="checkbox" name="triaged" value="1" checked /> Triaged: remove <em>to triage</em></label>` : ""}
         <button type="submit" class="button quiet">Save</button>
       </form>`;

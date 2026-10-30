@@ -438,7 +438,7 @@ describe("Triage", () => {
     const list = await (await get(`/projects/${REPO}/defects`, cookie)).text();
     expect(list).toContain(`<a href="/projects/${REPO}/defects/150"><span class="mono">#150</span> ${REPORT.title}</a>`);
     expect(list).toContain(`<a href="/projects/${REPO}/defects/150#triage">Triage</a>`);
-    expect(list).not.toContain("<select name=\"about\">");
+    expect(list).not.toContain('name="about"');
 
     const screenshot = `${BASE}/screenshots/${"a".repeat(24)}.png`;
     mockLive({
@@ -457,9 +457,10 @@ describe("Triage", () => {
     expect(page).toContain("Seen on <strong>int</strong> too.");
     expect(page).toContain('<section id="triage" class="defect-triage">');
     expect(page).toContain('<input type="hidden" name="back" value="page" />');
-    expect(page).toContain('<option value="" selected>Not linked</option>');
-    expect(page).toContain('<optgroup label="1.170 · Menu (on int)"><option value="r:1.170">Version 1.170, no particular story</option>');
-    expect(page).toContain('<option value="s:147:1.170">#147 Story 147</option>');
+    expect(page).toContain('<fieldset class="about-picker" data-about-picker>');
+    expect(page).toContain('value="" checked /><label for="about-');
+    expect(page).toContain('<input type="radio" name="about" id="about-1" value="r:1.170" /><label for="about-1"><strong class="mono">1.170</strong> Menu <span class="about-tag">on int</span></label>');
+    expect(page).toMatch(/data-about-story data-text="#147 story 147"><input type="radio" name="about" id="(about-\d+)" value="s:147:1.170" \/><label for="\1">#147 Story 147<\/label>/);
     expect(page).toContain('name="triaged" value="1" checked');
     expect(page).toContain("reported defect");
   });
@@ -486,7 +487,8 @@ describe("Triage", () => {
     expect(page).toContain("Defect triaged: its story and version are saved, and said on GitHub.");
     expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> <strong>Story 147</strong>`);
     expect(page).toContain('<h2 id="need">Need</h2>');
-    expect(page).toContain('<option value="s:147:1.170" selected>');
+    expect(page).toContain('value="s:147:1.170" checked />');
+    expect(page).not.toContain('value="" checked');
     expect(page).toContain("triaged defect");
 
     const checks = await storyChecks(env.DB, REPO);
