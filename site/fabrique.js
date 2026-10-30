@@ -2,6 +2,7 @@
 // on its way, and the reference branch menu of a project's header. Pages
 // work the same without it.
 (() => {
+  const thisScript = document.currentScript;
   // Loading bar: switched on at once, while the page is still fully alive
   // (some browsers stop running its scripts once the next page is asked
   // for); the stylesheet waits a moment before showing it, so fast pages do
@@ -29,6 +30,30 @@
   });
   // Back and forward restore the page from the cache, bar included.
   window.addEventListener("pageshow", stop);
+
+  // Settings: what this device runs, against what the page expects.
+  const diagnostic = document.querySelector("[data-diagnostic]");
+  if (diagnostic) {
+    const running = thisScript ? new URL(thisScript.src).pathname + new URL(thisScript.src).search : "unknown";
+    const scriptOk = running === diagnostic.getAttribute("data-expected-script");
+    const loading = document.querySelector(".loading");
+    const stylesOk = Boolean(loading && getComputedStyle(loading).getPropertyValue("--scanner").trim());
+    diagnostic.textContent = `Script ${scriptOk ? "up to date" : `old copy (${running})`}; stylesheet ${
+      stylesOk ? "up to date" : "old copy"
+    }.`;
+  }
+  // Reload everything: also empty the Cache Storage, where there is one.
+  const refresh = document.querySelector("form[data-refresh]");
+  if (refresh) {
+    refresh.addEventListener("submit", async (event) => {
+      if (!("caches" in window)) return;
+      event.preventDefault();
+      try {
+        await Promise.all((await caches.keys()).map((key) => caches.delete(key)));
+      } catch {}
+      refresh.submit();
+    });
+  }
 
   // Branch menu: the full list is read once, when the menu first opens,
   // then filtered as one types.

@@ -39,6 +39,7 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     ? `<nav class="nav">
         <a href="/projects">Projects</a>
         ${viewer.role === "super_admin" ? `<a href="/people">People</a>` : ""}
+        <a href="/settings">Settings</a>
         <form method="post" action="/auth/logout">${csrfField(viewer)}
           <button type="submit" class="button quiet">Sign out</button>
         </form>

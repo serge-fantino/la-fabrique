@@ -63,10 +63,10 @@ export function text(body: string, status: number): Response {
   });
 }
 
-export function redirect(location: string, cookies: string[] = []): Response {
+export function redirect(location: string, cookies: string[] = [], headers: Record<string, string> = {}): Response {
   return respond(null, {
     status: 303,
-    headers: { location, "cache-control": "no-store" },
+    headers: { location, "cache-control": "no-store", ...headers },
     cookies,
   });
 }
