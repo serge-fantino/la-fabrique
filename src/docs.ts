@@ -3,12 +3,20 @@ import { githubFetch, GitHubError, installationToken } from "./github-app";
 import { html } from "./http";
 import { MAX_MARKDOWN_LENGTH, renderMarkdown } from "./markdown";
 import { docPage } from "./project-views";
-import { checkProject, describeFailure, findProject, type ConfigCheck, type Project } from "./projects";
+import {
+  checkOtherBranch,
+  checkProject,
+  describeFailure,
+  findProject,
+  productionBranch,
+  type ConfigCheck,
+  type Project,
+} from "./projects";
 import { docUrl, githubBlobUrl, githubContentsPath } from "./urls";
 import { messagePage, type Viewer } from "./views";
 
 // One GitHub read per file and commit; older commits are dropped.
-async function readMarkdown(env: Env, project: Project, sha: string, path: string): Promise<string> {
+async function readMarkdown(env: Env, project: Project, branch: string | null, sha: string, path: string): Promise<string> {
   const cached = await env.DB.prepare(
     "SELECT markdown FROM doc_cache WHERE repo = ? AND commit_sha = ? AND path = ?",
   )
@@ -27,10 +35,12 @@ async function readMarkdown(env: Env, project: Project, sha: string, path: strin
   if (markdown.length > MAX_MARKDOWN_LENGTH) return markdown;
 
   await env.DB.batch([
-    env.DB.prepare("DELETE FROM doc_cache WHERE repo = ? AND commit_sha <> ?").bind(project.repo, sha),
+    branch
+      ? env.DB.prepare("DELETE FROM doc_cache WHERE repo = ? AND branch = ? AND commit_sha <> ?").bind(project.repo, branch, sha)
+      : env.DB.prepare("DELETE FROM doc_cache WHERE repo = ? AND branch IS NULL AND commit_sha <> ?").bind(project.repo, sha),
     env.DB.prepare(
-      "INSERT OR REPLACE INTO doc_cache (repo, commit_sha, path, markdown) VALUES (?, ?, ?, ?)",
-    ).bind(project.repo, sha, path, markdown),
+      "INSERT OR REPLACE INTO doc_cache (repo, commit_sha, path, markdown, branch) VALUES (?, ?, ?, ?, ?)",
+    ).bind(project.repo, sha, path, markdown, branch),
   ]);
   return markdown;
 }
@@ -39,12 +49,18 @@ function notFound(viewer: Viewer, message: string): Response {
   return html(messagePage("Not found", message, viewer), { status: 404 });
 }
 
-export async function showDoc(env: Env, viewer: Viewer, repo: string, path: string): Promise<Response> {
+export async function showDoc(env: Env, viewer: Viewer, repo: string, path: string, ref: string | null): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer, "There is no such project in La Fabrique extraordinaire.");
 
-  let check: ConfigCheck | null = project.check;
-  if (!check || check.docPages === null) {
+  const production = productionBranch(project);
+  const other = ref && ref !== production ? ref : null;
+  let check: ConfigCheck | null = other ? null : project.check;
+  if (other) {
+    const outcome = await checkOtherBranch(env, project, other);
+    if (!outcome.ok) return html(messagePage("Documentation unavailable", outcome.message, viewer), { status: 404 });
+    check = outcome.check;
+  } else if (!check || check.docPages === null) {
     const outcome = await checkProject(env, project);
     if (!outcome.ok) return html(messagePage("Documentation unavailable", outcome.message, viewer), { status: 502 });
     check = outcome.check;
@@ -54,7 +70,7 @@ export async function showDoc(env: Env, viewer: Viewer, repo: string, path: stri
 
   let markdown: string;
   try {
-    markdown = await readMarkdown(env, project, check.commitSha, path);
+    markdown = await readMarkdown(env, project, other, check.commitSha, path);
   } catch (error) {
     return html(messagePage("Documentation unavailable", describeFailure(error), viewer), { status: 502 });
   }
@@ -66,9 +82,9 @@ export async function showDoc(env: Env, viewer: Viewer, repo: string, path: stri
       : renderMarkdown(markdown, {
           path,
           isPage: (candidate) => pages.includes(candidate),
-          pageUrl: (candidate) => docUrl(project.repo, candidate),
+          pageUrl: (candidate) => docUrl(project.repo, candidate, other),
           githubUrl: (candidate) => githubBlobUrl(project.repo, sha, candidate),
         });
 
-  return html(docPage(viewer, { ...project, check }, path, rendered));
+  return html(docPage(viewer, { ...project, check }, path, rendered, other));
 }

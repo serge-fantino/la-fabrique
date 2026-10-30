@@ -3,7 +3,8 @@ import type { Env } from "./env";
 import { json } from "./http";
 import { activityChanged } from "./activity";
 import { productionChanged } from "./production";
-import { checkPushedCommit, findProject } from "./projects";
+import { branchKind, checkPushedCommit, findProject } from "./projects";
+import { markStale } from "./snapshots";
 import { applyIssueEvent, storiesChanged, type RestIssue } from "./stories";
 
 async function signatureOf(secret: string, body: string): Promise<string> {
@@ -65,6 +66,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   const branch = payload.ref?.startsWith("refs/heads/") ? payload.ref.slice("refs/heads/".length) : null;
   const sha = payload.after;
   if (!branch || !sha || /^0+$/.test(sha)) return json({ ignored: "push" }, { status: 202 });
+  await markStale(env.DB, project.repo, branchKind(branch));
 
   const production = project.check?.config?.branches?.production ?? payload.repository?.default_branch;
   if (branch !== production) return json({ ignored: "not the production branch" }, { status: 202 });

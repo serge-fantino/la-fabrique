@@ -1,6 +1,6 @@
 import type { InstalledRepo } from "./github-app";
 import type { ConfigCheck, Project } from "./projects";
-import { docUrl, githubBlobUrl, projectUrl } from "./urls";
+import { docUrl, githubBlobUrl, projectRefUrl, projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
 const projectPath = projectUrl;
@@ -116,10 +116,10 @@ const PROJECT_NOTICES: Record<string, { tone: "ok" | "error"; text: string }> = 
   checked: { tone: "ok", text: "File checked again." },
 };
 
-function fileSection(viewer: Viewer, project: Project): string {
+function fileSection(viewer: Viewer, project: Project, ref: string | null = null): string {
   const check = project.check;
   const recheck =
-    viewer.role === "super_admin"
+    viewer.role === "super_admin" && !ref
       ? `<form method="post" action="${escapeHtml(projectPath(project.repo))}/check" class="inline">${csrfField(viewer)}
           <button type="submit" class="button quiet">Check again</button>
         </form>`
@@ -144,12 +144,12 @@ function pageName(path: string): string {
   return (path.split("/").pop() ?? path).replace(/\.md$/i, "");
 }
 
-function documentationSection(project: Project): string {
+function documentationSection(project: Project, ref: string | null = null): string {
   const entries = project.check?.config?.documentation ?? [];
   if (!entries.length) return "";
   const pages = project.check?.docPages ?? [];
   const link = (path: string, text: string) =>
-    `<a href="${escapeHtml(docUrl(project.repo, path))}">${escapeHtml(text)}</a>`;
+    `<a href="${escapeHtml(docUrl(project.repo, path, ref))}">${escapeHtml(text)}</a>`;
   const items = entries.map((entry) => {
     if (!entry.chemin.endsWith("/")) return `<li>${link(entry.chemin, entry.titre)}</li>`;
     const inFolder = pages.filter((page) => page.startsWith(entry.chemin));
@@ -188,12 +188,35 @@ function declaredSection(project: Project): string {
     </section>`;
 }
 
+function branchNav(project: Project, choices: string[], current: string | null): string {
+  if (choices.length < 2) return "";
+  const production = choices[0];
+  return `<nav class="branches" aria-label="Branch">
+      <span class="muted">Branch</span>
+      ${choices
+        .map((branch) => {
+          const ref = branch === production ? null : branch;
+          const active = (current ?? production) === branch;
+          return `<a href="${escapeHtml(projectRefUrl(project.repo, ref))}"${active ? ' aria-current="page"' : ""}><code>${escapeHtml(branch)}</code></a>`;
+        })
+        .join("")}
+    </nav>`;
+}
+
 export function projectPage(
   viewer: Viewer,
   project: Project,
-  options: { notice?: string | undefined; failure?: string | undefined } = {},
+  options: {
+    notice?: string | undefined;
+    failure?: string | undefined;
+    choices?: string[];
+    ref?: string | null;
+    branchCheck?: ConfigCheck | null;
+  } = {},
 ): string {
-  const config = project.check?.config;
+  const ref = options.ref ?? null;
+  const viewed: Project = ref ? { ...project, check: options.branchCheck ?? null } : project;
+  const config = viewed.check?.config ?? project.check?.config;
   const known = options.notice ? PROJECT_NOTICES[options.notice] : undefined;
   const links = [
     `<a href="https://github.com/${escapeHtml(project.repo)}">GitHub</a>`,
@@ -209,9 +232,17 @@ export function projectPage(
       <p class="links">${links.join("")}</p>
       ${known ? notice(known.text, known.tone) : ""}
       ${notice(options.failure, "error")}
-      ${documentationSection(project)}
-      ${fileSection(viewer, project)}
-      ${declaredSection(project)}`,
+      ${branchNav(project, options.choices ?? [], ref)}
+      ${
+        ref && viewed.check
+          ? `<p class="notice ok" role="status">Showing branch <code>${escapeHtml(ref)}</code> at <span class="mono">${escapeHtml(
+              viewed.check.commitSha.slice(0, 7),
+            )}</span>. The project list, Production and the webhooks keep following <code>${escapeHtml(options.choices?.[0] ?? "")}</code>.</p>`
+          : ""
+      }
+      ${documentationSection(viewed, ref)}
+      ${fileSection(viewer, viewed, ref)}
+      ${declaredSection(viewed)}`,
     viewer,
   );
 }
@@ -221,6 +252,7 @@ export function docPage(
   project: Project & { check: ConfigCheck },
   path: string,
   rendered: { html: string; title: string | null },
+  ref: string | null = null,
 ): string {
   const { check } = project;
   const name = check.config?.nom || project.repo;
@@ -239,7 +271,7 @@ export function docPage(
 
   return layout(
     `${title} · ${name} · La Fabrique extraordinaire`,
-    `<p class="crumbs"><a href="${escapeHtml(projectUrl(project.repo))}">${escapeHtml(name)}</a>${
+    `<p class="crumbs"><a href="${escapeHtml(projectRefUrl(project.repo, ref))}">${escapeHtml(name)}</a>${
       entry ? ` <span aria-hidden="true">›</span> ${escapeHtml(entry.titre)}` : ""
     }</p>
       <p class="doc-meta muted">${escapeHtml(path)} · ${version} ·
@@ -252,7 +284,7 @@ ${rendered.html}
           ? `<nav class="doc-siblings" aria-label="${escapeHtml(entry?.titre ?? "Section")}">
         <h2>Also in ${escapeHtml(entry?.titre ?? "this section")}</h2>
         <ul>${siblings
-          .map((page) => `<li><a href="${escapeHtml(docUrl(project.repo, page))}">${escapeHtml(pageName(page.slice(entry?.chemin.length ?? 0)))}</a></li>`)
+          .map((page) => `<li><a href="${escapeHtml(docUrl(project.repo, page, ref))}">${escapeHtml(pageName(page.slice(entry?.chemin.length ?? 0)))}</a></li>`)
           .join("")}</ul>
       </nav>`
           : ""

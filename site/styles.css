@@ -806,3 +806,23 @@ textarea {
     min-width: 600px;
   }
 }
+
+.branches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  margin: -0.5rem 0 1rem;
+}
+
+.branches a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.branches a[aria-current="page"] code {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--encre);
+}

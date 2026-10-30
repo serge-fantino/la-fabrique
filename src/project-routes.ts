@@ -2,7 +2,21 @@ import type { Env } from "./env";
 import { listInstalledRepos } from "./github-app";
 import { html, redirect } from "./http";
 import { newProjectPage, projectPage, projectsPage } from "./project-views";
-import { addProject, checkProject, describeFailure, findProject, isRepoName, listProjects, type Project } from "./projects";
+import {
+  addProject,
+  checkOtherBranch,
+  checkProject,
+  describeFailure,
+  findProject,
+  isBranchName,
+  isRepoName,
+  listProjects,
+  productionBranch,
+  type Project,
+} from "./projects";
+import { globToRegExp } from "./production";
+import { readSnapshot } from "./snapshots";
+import { STORIES, type Story } from "./stories";
 import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction } from "./production";
@@ -64,8 +78,31 @@ export async function showProject(request: Request, env: Env, viewer: Viewer, re
     if (outcome.ok) project = { ...project, check: outcome.check };
     else failure = outcome.message;
   }
-  const notice = new URL(request.url).searchParams.get("notice") ?? undefined;
-  return html(projectPage(viewer, project, { notice, failure }));
+  const url = new URL(request.url);
+  const notice = url.searchParams.get("notice") ?? undefined;
+  const choices = await branchChoices(env, project);
+  const requested = url.searchParams.get("ref");
+  const ref = requested && isBranchName(requested) && requested !== choices[0] ? requested : null;
+  if (!ref) return html(projectPage(viewer, project, { notice, failure, choices }));
+
+  const outcome = await checkOtherBranch(env, project, ref);
+  if (!outcome.ok) return html(projectPage(viewer, project, { failure: outcome.message, choices }), { status: 404 });
+  const listed = choices.includes(ref) ? choices : [...choices, ref];
+  return html(projectPage(viewer, project, { notice, choices: listed, ref, branchCheck: outcome.check }));
+}
+
+// Production first, then integration and the working branches the stories
+// board knows of.
+async function branchChoices(env: Env, project: Project): Promise<string[]> {
+  const production = productionBranch(project);
+  if (!production) return [];
+  const branches = project.check?.config?.branches;
+  const patterns = (branches?.travail ?? []).map(globToRegExp);
+  const stories = await readSnapshot<Story[]>(env.DB, project.repo, STORIES);
+  const working = [...new Set((stories?.data ?? []).flatMap((story) => story.branches))]
+    .filter((branch) => patterns.some((pattern) => pattern.test(branch)))
+    .sort();
+  return [...new Set([production, ...(branches?.integration ? [branches.integration] : []), ...working])];
 }
 
 export async function recheckProject(env: Env, viewer: Viewer, repo: string): Promise<Response> {
