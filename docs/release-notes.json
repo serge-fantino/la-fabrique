@@ -2,7 +2,7 @@
   {
     "version": "0.42",
     "date": "2026-10-30",
-    "heure": "18:30",
+    "heure": "18:25",
     "titre": "A card's spec with Claude, and the story made from it",
     "changements": [
       "On a card, Claude writes its functional spec in the project's own request sections, from the card, the project's CLAUDE.md, its other cards and its open stories; it asks its questions next to the spec. Revise with Claude by answering them or saying what should change, or edit the spec by hand. Every version is kept and can be restored.",
