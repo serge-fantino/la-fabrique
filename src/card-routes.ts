@@ -32,7 +32,7 @@ import { html, json, redirect } from "./http";
 import { allowance, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
 import { createRequest, issueBody, type RequestDraft } from "./requests";
-import { missingSections, readSpecForm, specRubriques, writeSpec } from "./specs";
+import { missingSections, readSpecForm, specRubriques, writeSpec, type Answer } from "./specs";
 import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
@@ -189,7 +189,7 @@ async function renderCard(
   viewer: Viewer,
   project: Project,
   card: Card,
-  extra: { failure?: string; instruction?: string; status?: number } = {},
+  extra: { failure?: string; instruction?: string; ask?: "draft" | "change"; status?: number } = {},
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const [revisions, links, calls, claude, { view, cookies }] = await Promise.all([
@@ -202,6 +202,7 @@ async function renderCard(
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
+  const asked = params.get("ask");
   const rubriques = specRubriques(project);
   const spend = calls.reduce(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
@@ -218,6 +219,7 @@ async function renderCard(
       notice: notice ? CARD_NOTICES[notice] : undefined,
       failure: extra.failure,
       instruction: extra.instruction,
+      ask: extra.ask ?? (asked === "draft" || asked === "change" ? asked : null),
       rubriques,
       claude: { usable: claude.ok, reason: claude.ok ? null : claude.reason },
       calls,
@@ -252,12 +254,27 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     await restoreRevision(env.DB, card, revision, viewer.login);
     return redirect(`${url}?notice=version_restored`);
   }
-  if (action === "spec_draft" || action === "spec_revise") {
+  if (action === "spec_draft" || action === "spec_revise" || action === "spec_answer") {
     const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    // Answers to Claude's questions, each with the question it answers.
+    const answers: Answer[] = [];
+    for (let index = 0; index < 10; index++) {
+      const question = String(form.get(`question_${index}`) ?? "").trim().slice(0, 1000);
+      const answer = String(form.get(`answer_${index}`) ?? "").trim().slice(0, 2000);
+      if (question && answer) answers.push({ question, answer });
+    }
+    const ask: "draft" | "change" | null = action === "spec_draft" ? "draft" : action === "spec_revise" ? "change" : null;
+    const keep: { instruction: string; ask?: "draft" | "change" } = ask ? { instruction, ask } : { instruction };
+    if (action === "spec_answer" && !answers.length && !instruction) {
+      return renderCard(request, env, viewer, project, card, { failure: "Answer at least one of Claude's questions.", status: 422 });
+    }
+    if (action === "spec_revise" && !instruction) {
+      return renderCard(request, env, viewer, project, card, { failure: "Say what should change.", ...keep, status: 422 });
+    }
     const allowed = await allowance(env, viewer.role, viewer.login);
-    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, instruction, status: 429 });
-    const outcome = await writeSpec(env, project, card, viewer.login, { mode: action === "spec_revise" ? "revise" : "draft", instruction });
-    if (!outcome.ok) return renderCard(request, env, viewer, project, card, { failure: outcome.message, instruction, status: 502 });
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, ...keep, status: 429 });
+    const outcome = await writeSpec(env, project, card, viewer.login, { mode: action === "spec_draft" ? "draft" : "revise", instruction, answers });
+    if (!outcome.ok) return renderCard(request, env, viewer, project, card, { failure: outcome.message, ...keep, status: 502 });
     // The card may have changed while Claude wrote: the spec goes on the newest version.
     const current = (await findCard(env.DB, project.repo, card.id)) ?? card;
     await saveSpec(env.DB, current, viewer.login, outcome.spec, outcome.callId);

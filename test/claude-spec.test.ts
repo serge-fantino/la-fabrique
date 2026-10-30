@@ -146,9 +146,13 @@ describe("A card's spec with Claude", () => {
 
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
     expect(page).toContain("<h3>Besoin</h3>");
-    expect(page).toContain("Pour combien de semaines en arrière ?");
+    // Each question has its answer field; the requests to Claude open in a modal window.
+    expect(page).toContain('<label for="answer_0">Pour combien de semaines en arrière ?</label>');
+    expect(page).toContain('<input type="hidden" name="question_0" value="Pour combien de semaines en arrière ?" />');
+    expect(page).toContain("Send my answers to Claude");
+    expect(page).toContain(`href="/projects/${REPO}/cards/${id}?ask=change#claude-change" data-dialog="claude-change">Ask Claude for a change</a>`);
+    expect(page).toContain('<dialog id="claude-change" class="modal" aria-labelledby="claude-change-title">');
     expect(page).toContain("1 call · $0.05");
-    expect(page).toContain("Revise with Claude");
     expect(page).toContain(`href="/projects/${REPO}/cards/${id}/story">Make the story on GitHub</a>`);
     const board = await (await get(`/projects/${REPO}/board?by=status`, cookie)).text();
     expect(board).toContain('<span class="fiche-cost mono" title="Claude on this card: 1 call · $0.05">$0.05</span>');
@@ -163,12 +167,52 @@ describe("A card's spec with Claude", () => {
     await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_revise", instruction: "Quatre semaines." }, cookie);
     const user = ((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "");
     expect(user).toContain("Reprendre le panier de la semaine dernière en un geste.");
-    expect(user).toContain("- Q1 ?");
     expect(user).toContain("Quatre semaines.");
     const page = await (await get(`/projects/${REPO}/cards/${id}?rev=2`, cookie)).text();
     expect(page).toContain("Reprendre le panier de la semaine dernière en un geste.");
     expect(page).toContain("Restore this version");
     expect((await env.DB.prepare("SELECT purpose FROM llm_calls ORDER BY id").all()).results).toEqual([{ purpose: "spec_draft" }, { purpose: "spec_revise" }]);
+  });
+
+  it("sends the answers to Claude's questions with the questions, keeps them, and does not ask again", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    claudeReply({}, { sections: SECTIONS, questions: ["Combien de semaines ?", "Sur le site aussi ?"], note: "v1" });
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeReply(sent, { sections: SECTIONS, questions: ["Et les produits retirés ?"], note: "v2" });
+    const response = await post(
+      `/projects/${REPO}/cards/${id}`,
+      { csrf, action: "spec_answer", question_0: "Combien de semaines ?", answer_0: "Quatre.", question_1: "Sur le site aussi ?", answer_1: "", instruction: "Pensez au mobile." },
+      cookie,
+    );
+    expect(response.status).toBe(303);
+    const user = ((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "");
+    expect(user).toContain("The person answers your questions:\n- Q: Combien de semaines ?\n  A: Quatre.");
+    expect(user).not.toContain("Sur le site aussi ?");
+    expect(user).toContain("Pensez au mobile.");
+    const spec = JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").spec;
+    expect(spec.questions).toEqual(["Et les produits retirés ?"]);
+    expect(spec.dialogue).toMatchObject([{ question: "Combien de semaines ?", answer: "Quatre." }]);
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("<summary>Questions answered (1)</summary>");
+
+    // The next call carries what was already answered.
+    const next: { body?: Record<string, unknown> } = {};
+    claudeReply(next, { sections: SECTIONS, questions: [], note: "v3" });
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_answer", question_0: "Et les produits retirés ?", answer_0: "Non." }, cookie);
+    const again = ((next.body?.["messages"] as { content: string }[])[0]?.content ?? "");
+    expect(again).toContain("Questions you asked before, and their answers:\n- Q: Combien de semaines ?\n  A: Quatre.");
+    expect(again).toContain("- Q: Et les produits retirés ?\n  A: Non.");
+  });
+
+  it("asks for an answer before calling Claude, and opens the request window without the script", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    const empty = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_answer", question_0: "Q ?", answer_0: " " }, cookie);
+    expect(empty.status).toBe(422);
+    expect(await empty.text()).toContain("Answer at least one of Claude&#39;s questions.");
+    const page = await (await get(`/projects/${REPO}/cards/${id}?ask=draft`, cookie)).text();
+    expect(page).toContain('<dialog id="claude-draft" class="modal" aria-labelledby="claude-draft-title" open>');
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM llm_calls").first())?.["n"]).toBe(0);
   });
 
   it("says why when Claude declines, and still counts the call", async () => {
@@ -179,6 +223,7 @@ describe("A card's spec with Claude", () => {
     const page = await response.text();
     expect(page).toContain("Claude declined this request.");
     expect(page).toContain(">Keep this.</textarea>");
+    expect(page).toContain('<dialog id="claude-draft" class="modal" aria-labelledby="claude-draft-title" open>');
     expect(await env.DB.prepare("SELECT outcome FROM llm_calls").first()).toEqual({ outcome: "refused" });
     expect((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string | null }>())?.data).toBeNull();
   });
