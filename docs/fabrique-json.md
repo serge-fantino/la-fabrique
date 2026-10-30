@@ -85,6 +85,8 @@ La Fabrique calcule l'étape de chaque story à partir de GitHub, sans rien stoc
 
 Les étiquettes de priorité sont des étiquettes GitHub ordinaires : La Fabrique les pose depuis le backlog et note qui a priorisé quoi dans son journal.
 
+L'onglet *Setup* de La Fabrique propose ce bloc sous forme de formulaire : il ouvre une PR qui ne change que `cycle` dans `.fabrique.json`, au nom de la personne, sur la branche d'intégration (ou de production).
+
 ## Validation
 
 La Fabrique vérifie le fichier à l'ajout du projet et à chaque push sur la branche de production : JSON valide, `nom` présent, workflows nommés existants dans `.github/workflows/`, chemins de documentation existants. Une erreur est montrée sur la page du projet, sans bloquer le reste.

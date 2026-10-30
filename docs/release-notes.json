@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.28",
+    "date": "2026-10-30",
+    "heure": "12:08",
+    "titre": "Change the story lifecycle from Setup",
+    "changements": [
+      "Setup has a Story lifecycle section: the Definition of Ready checks and the priority labels, read from the project's .fabrique.json.",
+      "Super admins and tech leads propose a change from there: La Fabrique opens a pull request on the project, under their GitHub name, that changes only the lifecycle; the project reviews and merges it as usual."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.27",
     "date": "2026-10-30",
     "heure": "11:46",

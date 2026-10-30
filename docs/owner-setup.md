@@ -124,13 +124,27 @@ Then, as a super admin: **Projects &rarr; Add a project**, pick the
 repository. Its page shows the `.fabrique.json` status; every push to its
 production branch re-checks the file.
 
-## 6. La Fabrique as its own project
+## 6. Changing a project's setup from La Fabrique
+
+The Setup tab can propose a change to a project's `.fabrique.json` (the
+story lifecycle: Definition of Ready and priority labels). La Fabrique
+never commits to a project's branch directly: it opens a pull request,
+under the name of the person who asked, on the integration branch (or the
+production branch), and the project reviews and merges it as usual.
+
+For that, on the GitHub App's page → *Permissions & events* → *Repository
+permissions*, set **Contents** and **Pull requests** to *Read and write*,
+save, then accept the new permissions on each installation (GitHub asks
+by e-mail or on the installation page). The person also needs write access
+to the repository.
+
+## 7. La Fabrique as its own project
 
 La Fabrique describes itself in its own `.fabrique.json`. To follow it in
 itself: on the GitHub App's page, *Install App* on `la-fabrique` as well,
 then **Projects → Add a project** and pick it.
 
-## 7. Later
+## 8. Later
 
 A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
 attached from the Workers dashboard; add its `/auth/callback` to the GitHub

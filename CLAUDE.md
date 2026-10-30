@@ -30,7 +30,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 - Front : HTML/CSS/JS sans build, comme l'épicerie ; pages rendues par le Worker, graphiques en SVG côté serveur ; style sobre (voir Design).
 - Lectures GitHub mises en cache dans D1 : par commit quand le contenu ne change plus (`.fabrique.json`, documentation, lignes modifiées par jour), sinon en instantanés par projet (`snapshots` : stories, production, activité, livraison, versions) rafraîchis par les webhooks et une courte durée de vie.
 
-Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture), Issues (lecture et écriture), Pull requests (lecture), Actions (lecture et écriture : déclencher un workflow du projet), Checks (lecture). Pas d'administration, pas de secrets.
+Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture et écriture : proposer un changement de `.fabrique.json`), Issues (lecture et écriture), Pull requests (lecture et écriture : ouvrir la PR de ce changement), Actions (lecture et écriture : déclencher un workflow du projet), Checks (lecture). Pas d'administration, pas de secrets. La Fabrique n'écrit jamais directement sur une branche d'un projet : un changement de sa configuration (cycle de vie depuis Setup) est une PR ouverte au nom de la personne, sur `integration` ou la branche de production, que le projet relit et fusionne.
 
 ## Sécurité
 

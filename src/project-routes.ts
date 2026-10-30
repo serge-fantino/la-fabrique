@@ -29,6 +29,7 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { proposeCycle, readCycleForm } from "./config-change";
 import { projectCard } from "./dashboard";
 import { cardHtml, dashboardPage } from "./dashboard-views";
 import { canPrioritize, setPriority } from "./backlog";
@@ -297,16 +298,24 @@ export async function showReleases(request: Request, env: Env, viewer: Viewer, r
 }
 
 // What the project needs for La Fabrique, read on the reference branch.
-export async function showSetup(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+const SETUP_NOTICES: Record<string, string> = { unchanged: "Nothing to change: the file already says this." };
+
+export async function showSetup(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  outcome?: { failure?: string; status?: number; proposed?: { number: number; url: string; base: string } },
+): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const { view, cookies } = await projectView(request, env, project);
   let check = project.check;
   let failure: string | undefined;
   if (view.ref) {
-    const outcome = await checkOtherBranch(env, project, view.ref);
-    if (outcome.ok) check = outcome.check;
-    else failure = outcome.message;
+    const branch = await checkOtherBranch(env, project, view.ref);
+    if (branch.ok) check = branch.check;
+    else failure = branch.message;
   }
   const [releases, stories] = await Promise.all([
     loadReleases(env, project, check, view.ref),
@@ -318,7 +327,61 @@ export async function showSetup(request: Request, env: Env, viewer: Viewer, repo
     stories: stories.failure && !stories.stories.length ? null : stories.stories,
     branches: view.knownBranches,
   });
-  return html(setupPage(viewer, view, { items, failure: failure ?? releases.failure ?? stories.failure }), { cookies });
+  const params = new URL(request.url).searchParams;
+  const pull = Number(params.get("pull"));
+  const proposed =
+    outcome?.proposed ??
+    (params.get("notice") === "proposed" && Number.isInteger(pull) && pull > 0
+      ? { number: pull, url: `https://github.com/${project.repo}/pull/${pull}`, base: params.get("base") ?? "" }
+      : undefined);
+  const rules = cycleRules(check?.config);
+  const noticeKey = params.get("notice");
+  return html(
+    setupPage(viewer, view, {
+      items,
+      notice: noticeKey ? SETUP_NOTICES[noticeKey] : undefined,
+      failure: outcome?.failure ?? failure ?? releases.failure ?? stories.failure,
+      lifecycle: {
+        canEdit: canEditConfig(viewer.role),
+        cycle: { pret: rules.checks, priorites: rules.priorities },
+        declared: Boolean(check?.config?.cycle),
+        base: project.check?.config?.branches?.integration ?? productionBranch(project) ?? "main",
+        proposed,
+      },
+    }),
+    { status: outcome?.status ?? 200, cookies },
+  );
+}
+
+function canEditConfig(role: Viewer["role"]): boolean {
+  return role === "super_admin" || role === "tech_lead";
+}
+
+const PROPOSE_FAILURES: Record<string, string> = {
+  signed_out: "GitHub no longer accepts your sign-in. Sign out and sign in again.",
+  refused:
+    "GitHub refused the change. The GitHub App needs Contents and Pull requests write permission on this repository (see the owner setup), and you need write access to it.",
+};
+
+// The lifecycle form: a pull request on the project, never a direct commit.
+export async function proposeLifecycle(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!canEditConfig(viewer.role)) {
+    return html(messagePage("Not allowed", "Your role does not let you change a project's setup.", viewer), { status: 403 });
+  }
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const read = readCycleForm(form);
+  if ("error" in read) return showSetup(request, env, viewer, repo, { failure: read.error, status: 422 });
+  const outcome = await proposeCycle(request, env, project, viewer.login, read.cycle);
+  if (outcome.ok) {
+    return redirect(`/projects/${project.repo}/setup?notice=proposed&pull=${outcome.number}&base=${encodeURIComponent(outcome.base)}#lifecycle`);
+  }
+  if (outcome.reason === "unchanged") return redirect(`/projects/${project.repo}/setup?notice=unchanged#lifecycle`);
+  const message =
+    outcome.reason === "invalid"
+      ? `The change would not be valid: ${outcome.message ?? ""}`
+      : `${PROPOSE_FAILURES[outcome.reason] ?? "GitHub refused the change."}${outcome.status ? ` (HTTP ${outcome.status})` : ""}`;
+  return showSetup(request, env, viewer, repo, { failure: message, status: outcome.reason === "invalid" ? 422 : 502 });
 }
 
 // What the PO validates on int (or what the latest version brought).
