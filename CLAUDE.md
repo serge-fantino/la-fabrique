@@ -37,7 +37,7 @@ Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture), Issu
 - Liste blanche par identifiant GitHub ; un compte GitHub sans rôle n'entre pas.
 - Lancer Claude coûte et écrit du code : réservé aux rôles qui le peuvent, plafond de demandes en cours par projet.
 - Aucun secret affiché ni journalisé ; les jetons GitHub restent côté Worker.
-- En-têtes de sécurité et CSP stricte dès le départ : `script-src 'self'`, aucun script en ligne ni `eval` ; deux scripts servis : `/fabrique.js` (barre de chargement, menu de la branche de référence) et `/request-draft.js` (brouillon d'une demande gardé sur l'appareil).
+- En-têtes de sécurité et CSP stricte dès le départ : `script-src 'self'`, aucun script en ligne ni `eval` ; deux scripts servis : `/fabrique.js` (barre de chargement, pages enchaînées sans quitter la page en cours, menu de la branche de référence) et `/request-draft.js` (brouillon d'une demande gardé sur l'appareil).
 
 ## Conventions
 

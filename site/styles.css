@@ -1266,3 +1266,8 @@ textarea {
   background: none;
   padding: 0;
 }
+
+/* Focus moves to the content after a page is shown in place. */
+main:focus {
+  outline: none;
+}
