@@ -2,7 +2,7 @@
   {
     "version": "0.44",
     "date": "2026-10-30",
-    "heure": "19:30",
+    "heure": "19:20",
     "titre": "A page for each defect",
     "changements": [
       "Defects tab: each defect opens on its own page, with the issue as GitHub has it (text, screenshot, comments), the story it is about in a preview (its text and how many criteria are met), and its history in the log.",
