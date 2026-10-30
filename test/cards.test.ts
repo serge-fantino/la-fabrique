@@ -168,6 +168,25 @@ describe("Cards", () => {
     expect((await move(session, { card: "9999", set_status: "validated" })).status).toBe(404);
   });
 
+  it("hides the empty lanes when asked: only the columns and rows that hold a card shown", async () => {
+    await seed();
+    const session = await writer();
+    await newCard(session, { title: "Pro reorder", segment: "pro", domain: "Basket" });
+    await newCard(session, { title: "Family menu", segment: "family", domain: "Menu" });
+
+    const all = await (await get(`/projects/${REPO}/board?by=status&then=segment`, session.cookie)).text();
+    expect(all).toContain('data-set-status="shaping"');
+    expect(all).toContain('name="empty" value="hide" data-autosubmit /> Hide empty lanes');
+
+    const hidden = await (await get(`/projects/${REPO}/board?by=status&then=segment&empty=hide&segment=pro`, session.cookie)).text();
+    expect(hidden).toContain('name="empty" value="hide" checked');
+    expect(hidden).toContain('data-cell data-set-status="draft" data-set-segment="pro"');
+    expect(hidden).not.toContain('data-set-status="shaping"');
+    expect(hidden).not.toContain('data-set-segment="family"');
+    expect(hidden).not.toContain('placeholder="New segment"');
+    expect(hidden).toContain(`board?by=status&amp;then=segment&amp;empty=hide">Clear the filters</a>`);
+  });
+
   it("adds a column before any card uses it", async () => {
     await seed();
     const session = await writer();
