@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.21",
+    "date": "2026-10-30",
+    "heure": "11:01",
+    "titre": "Loading light on more browsers",
+    "changements": [
+      "The red loading light now shows on older browsers too.",
+      "Pages keep following one another in place even when the host adds a script of its own to them.",
+      "Settings says whether pages follow in place on this device, and which browser it is."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.20",
     "date": "2026-10-30",
     "heure": "10:58",
