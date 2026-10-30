@@ -4,12 +4,12 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { css, html, json, redirect, script, text } from "./http";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/stories|\/production|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/stories|\/production|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
@@ -109,6 +109,9 @@ export default {
         if (method !== "POST") return methodNotAllowed();
         const form = await protectedForm(request, viewer);
         return form ? submitRequest(request, form, env, viewer, repo) : forbidden(viewer);
+      }
+      if (projectRoute[2] === "/activity") {
+        return method === "GET" ? showActivity(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/production") {
         return method === "GET" ? showProduction(env, viewer, repo) : methodNotAllowed();
