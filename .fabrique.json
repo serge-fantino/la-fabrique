@@ -1,0 +1,42 @@
+{
+  "nom": "La Fabrique extraordinaire",
+  "description": "The control panel for a software project built with Claude: documentation, stories, what awaits production, and a traceable request workflow.",
+  "branches": {
+    "production": "main",
+    "travail": ["claude/*", "feature/*"]
+  },
+  "environnements": {
+    "production": { "url": "https://la-fabrique.serge-fantino.workers.dev", "version": "/api/version" }
+  },
+  "workflows": {
+    "ci": "ci.yml",
+    "migrations_production": "deploy.yml",
+    "promouvoir": null,
+    "claude": null
+  },
+  "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
+  "documentation": [
+    { "titre": "The project (principles, roles, architecture)", "chemin": "CLAUDE.md" },
+    { "titre": "Read me", "chemin": "README.md" },
+    { "titre": "Formats and setup", "chemin": "docs/" }
+  ],
+  "demandes": {
+    "etiquettes": { "demande": "request", "prete": "ready-for-claude", "a_valider": "to-validate" },
+    "rubriques": [
+      { "cle": "context", "titre": "Context", "obligatoire": true,
+        "aide": "What happens today, for whom, and why it is not good enough." },
+      { "cle": "need", "titre": "Need", "obligatoire": true,
+        "aide": "What the person must be able to do, said simply. Not the technical solution." },
+      { "cle": "criteria", "titre": "Acceptance criteria", "obligatoire": true,
+        "aide": "One line per criterion, checkable in La Fabrique (\"When I…, I see…\")." },
+      { "cle": "screens", "titre": "Screens",
+        "aide": "Which pages or tabs are concerned." },
+      { "cle": "personal_data", "titre": "Personal data", "obligatoire": true,
+        "aide": "None, or which: La Fabrique keeps GitHub logins, roles and an activity log; anything new must be stated here." },
+      { "cle": "release_note", "titre": "Release note",
+        "aide": "One or two sentences for the release notes, without jargon. Empty if nothing is visible." },
+      { "cle": "questions", "titre": "Open questions",
+        "aide": "What remains to decide before coding." }
+    ]
+  }
+}

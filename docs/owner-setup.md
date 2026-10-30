@@ -124,7 +124,13 @@ Then, as a super admin: **Projects &rarr; Add a project**, pick the
 repository. Its page shows the `.fabrique.json` status; every push to its
 production branch re-checks the file.
 
-## 6. Later
+## 6. La Fabrique as its own project
+
+La Fabrique describes itself in its own `.fabrique.json`. To follow it in
+itself: on the GitHub App's page, *Install App* on `la-fabrique` as well,
+then **Projects → Add a project** and pick it.
+
+## 7. Later
 
 A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
 attached from the Workers dashboard; add its `/auth/callback` to the GitHub
