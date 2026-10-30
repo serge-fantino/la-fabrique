@@ -609,6 +609,8 @@ export interface BoardFilters {
 export interface BoardQuery {
   by: Axis;
   then: Axis;
+  // Only the columns and rows that hold a card shown.
+  hideEmpty: boolean;
   filters: BoardFilters;
 }
 
@@ -632,6 +634,7 @@ export function readBoardQuery(params: URLSearchParams): BoardQuery {
   return {
     by: axis,
     then: axis === "none" ? "none" : second,
+    hideEmpty: params.get("empty") === "hide",
     filters: {
       kind: isKind(kind) ? kind : null,
       status: isStatus(status) ? status : null,

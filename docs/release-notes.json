@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.48",
+    "date": "2026-10-30",
+    "heure": "23:00",
+    "titre": "Hide the empty lanes of the board",
+    "changements": [
+      "Board: \"Hide empty lanes\" (next to Columns and Then rows) shows only the columns and rows that hold a card, filters included; kept on the device with the rest of the arrangement."
+    ],
+    "stories": [78],
+    "liens": null
+  },
+  {
     "version": "0.47",
     "date": "2026-10-30",
     "heure": "21:40",
