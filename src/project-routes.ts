@@ -28,6 +28,8 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { setupChecklist } from "./setup";
+import { setupPage } from "./setup-views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
   return html(projectsPage(viewer, await listProjects(env.DB)));
@@ -269,4 +271,29 @@ export async function showReleases(request: Request, env: Env, viewer: Viewer, r
     }),
     { cookies },
   );
+}
+
+// What the project needs for La Fabrique, read on the reference branch.
+export async function showSetup(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const { view, cookies } = await projectView(request, env, project);
+  let check = project.check;
+  let failure: string | undefined;
+  if (view.ref) {
+    const outcome = await checkOtherBranch(env, project, view.ref);
+    if (outcome.ok) check = outcome.check;
+    else failure = outcome.message;
+  }
+  const [releases, stories] = await Promise.all([
+    loadReleases(env, project, check, view.ref),
+    loadStories(env, project),
+  ]);
+  const items = setupChecklist({
+    check,
+    releases: releases.failure ? null : releases.releases,
+    stories: stories.failure && !stories.stories.length ? null : stories.stories,
+    branches: view.knownBranches,
+  });
+  return html(setupPage(viewer, view, { items, failure: failure ?? releases.failure ?? stories.failure }), { cookies });
 }

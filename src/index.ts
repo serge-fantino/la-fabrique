@@ -4,12 +4,12 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { css, html, json, redirect, script, text } from "./http";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showSetup, showStories, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/setup|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
@@ -17,6 +17,23 @@ import stylesCss from "../site/styles.css";
 import releaseNotes from "../docs/release-notes.json";
 import requestDraftJs from "../site/request-draft.js";
 import fabriqueJs from "../site/fabrique.js";
+import fabriqueJsonGuide from "../docs/fabrique-json.md";
+import guideExample from "../docs/exemples/epicerie.fabrique.json";
+import { renderMarkdown } from "./markdown";
+import { GUIDE_PATH, guidePage } from "./setup-views";
+
+const GUIDE_EXAMPLE_PATH = "/guide/epicerie.fabrique.json";
+
+// La Fabrique's own format documentation, so a project's Setup tab links
+// stay inside it.
+function renderGuide(): { html: string; title: string | null } {
+  return renderMarkdown(fabriqueJsonGuide, {
+    path: "docs/fabrique-json.md",
+    isPage: (candidate) => candidate === "docs/exemples/epicerie.fabrique.json",
+    pageUrl: () => GUIDE_EXAMPLE_PATH,
+    githubUrl: () => GUIDE_PATH,
+  });
+}
 
 type ViewerState = { kind: "anonymous" } | { kind: "revoked" } | { kind: "signed_in"; viewer: Viewer };
 
@@ -114,6 +131,9 @@ export default {
         const form = await protectedForm(request, viewer);
         return form ? submitRequest(request, form, env, viewer, repo) : forbidden(viewer);
       }
+      if (projectRoute[2] === "/setup") {
+        return method === "GET" ? showSetup(request, env, viewer, repo) : methodNotAllowed();
+      }
       if (projectRoute[2] === "/branches") {
         return method === "GET" ? showBranches(env, repo) : methodNotAllowed();
       }
@@ -165,6 +185,14 @@ export default {
         if (!(await protectedForm(request, viewer))) return forbidden(viewer);
         return redirect("/", [await destroySession(request, env.DB)]);
       }
+
+      case GUIDE_PATH:
+        if (!viewer) return redirect("/");
+        return method === "GET" ? html(guidePage(viewer, renderGuide())) : methodNotAllowed();
+
+      case GUIDE_EXAMPLE_PATH:
+        if (!viewer) return redirect("/");
+        return method === "GET" ? json(guideExample) : methodNotAllowed();
 
       case "/people": {
         if (!viewer) return redirect("/");
