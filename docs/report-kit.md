@@ -15,7 +15,9 @@ The kit has two halves:
 | [`fabrique-report.css`](/kit/fabrique-report.css) | Its styles, all prefixed `fab-rep-`; colours and shapes in custom properties. |
 | [`fabrique-report-early.js`](/kit/fabrique-report-early.js) | Optional: keeps the page's errors from the start, so a report carries those that happened before the kit was loaded. |
 
-Copy them as they are (for instance into `vendor/fabrique/`); each starts with its version. Take them again from La Fabrique when it publishes a new one.
+Copy them as they are (for instance into `vendor/fabrique/`); each starts with its version.
+
+Keep the names as they are, without a version in them: declare the folder in `.fabrique.json` (`"application": { "kit": "vendor/fabrique" }`) and La Fabrique's *Setup* shows the version the project has against the latest, and proposes the update as a pull request (on the integration branch, under the name of the person who asks; the project reviews it, tries it and merges it). When a version also needs a change in the relay, the pull request says so.
 
 ## 2. Load the kit
 

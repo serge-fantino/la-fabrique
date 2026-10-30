@@ -6,6 +6,7 @@ import type { Env } from "./env";
 import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { html, redirect } from "./http";
 import { KIT_GUIDE_PATH, KIT_VERSION } from "./kit";
+import { compareVersions, type ProjectKit } from "./kit-update";
 import { AUTHORIZE_PATH, DEFECTS_SCOPE, DISCOVERY_PATH, oauthHelpers, projectId, projectName, REVOKE_PATH, TOKEN_PATH } from "./oauth";
 import { projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -137,7 +138,55 @@ function projectSide(link: AppLink, clientId: string | null): string {
       </ol>`;
 }
 
-export function appSection(viewer: Viewer, project: Project, link: AppLink): string {
+// The project's copy of the report kit: its version against La Fabrique's,
+// and a pull request to bring it up to date.
+export interface KitState {
+  kit: ProjectKit;
+  relay: string[];
+  proposed?: { number: number; url: string } | undefined;
+}
+
+function kitPart(viewer: Viewer, project: Project, state: KitState): string {
+  const { kit } = state;
+  const action = `${escapeHtml(projectUrl(project.repo))}/kit`;
+  const canPropose = can(viewer.role, "launch_claude");
+  const proposed = state.proposed
+    ? `<p class="notice ok" role="status">Pull request <a href="${escapeHtml(state.proposed.url)}">#${state.proposed.number}</a> opened on <code>${escapeHtml(kit.branch)}</code>: the kit is up to date once it is merged.</p>`
+    : "";
+  let line: string;
+  let offer = false;
+  if (!kit.folder) {
+    line = `Declare where the project keeps its copy, <code>"application": { "kit": "site/static/vendor/fabrique" }</code> in <code>.fabrique.json</code>, and La Fabrique checks its version and proposes updates.`;
+  } else if (kit.failure) {
+    line = `<code>${escapeHtml(kit.folder)}</code> could not be read: ${escapeHtml(kit.failure)}`;
+  } else if (!kit.files.length && kit.versioned.length) {
+    line = `<code>${escapeHtml(kit.folder)}</code> has ${kit.versioned.map((name) => `<code>${escapeHtml(name)}</code>`).join(", ")}: name them <code>fabrique-report.js</code>, <code>.css</code>, <code>-early.js</code> (no version in the name) and La Fabrique can update them.`;
+  } else if (!kit.files.length) {
+    line = `No kit in <code>${escapeHtml(kit.folder)}</code> on <code>${escapeHtml(kit.branch)}</code> yet.`;
+    offer = true;
+  } else if (kit.version && compareVersions(kit.version, KIT_VERSION) >= 0) {
+    line = `Kit ${escapeHtml(kit.version)} in <code>${escapeHtml(kit.folder)}</code> on <code>${escapeHtml(kit.branch)}</code>: up to date.`;
+  } else {
+    line = `Kit ${escapeHtml(kit.version ?? "of unknown version")} in <code>${escapeHtml(kit.folder)}</code> on <code>${escapeHtml(kit.branch)}</code>; <strong>${KIT_VERSION} is available</strong>.`;
+    offer = true;
+  }
+  const relay = offer && state.relay.length
+    ? `<p class="muted small">The relay on the app's server has to follow:</p><ul class="small">${state.relay.map((change) => `<li>${withCode(change)}</li>`).join("")}</ul>`
+    : "";
+  const button = offer
+    ? canPropose
+      ? `<form method="post" action="${action}">${csrfField(viewer)}<button type="submit" class="button">${kit.files.length ? `Propose the update to ${KIT_VERSION}` : `Propose the kit ${KIT_VERSION}`}</button></form>
+         <p class="muted small">A pull request on <code>${escapeHtml(kit.branch)}</code>, under your GitHub name, replacing the kit's files; the project reviews it, tries it on int and merges it.</p>`
+      : `<p class="muted small">Tech leads and super admins propose the update.</p>`
+    : "";
+  return `<h3>Report kit</h3>${proposed}<p>${line}</p>${relay}${button}`;
+}
+
+function withCode(text: string): string {
+  return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+export function appSection(viewer: Viewer, project: Project, link: AppLink, kit?: KitState): string {
   const admin = can(viewer.role, "go");
   const action = `${escapeHtml(projectUrl(project.repo))}/app`;
   const reporting = envNames(link);
@@ -210,6 +259,7 @@ export function appSection(viewer: Viewer, project: Project, link: AppLink): str
       <p class="muted">The project's own app can report defects in the name of the person using it, from the page where they show up. ${opened}</p>
       ${status}
       ${projectSide(link, link.app?.clientId ?? null)}
+      ${kit ? kitPart(viewer, project, kit) : ""}
     </section>`;
 }
 
