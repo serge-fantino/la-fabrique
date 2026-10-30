@@ -1,5 +1,6 @@
-import type { ProductionStatus, ProductionView, WorkflowState } from "./production";
-import { notice, projectContext, projectHeader } from "./project-views";
+import type { NextRelease, ProductionStatus, ProductionView, WorkflowState } from "./production";
+import type { Story } from "./stories";
+import { notice, projectContext, projectHeader, type ProjectView } from "./project-views";
 import type { Project } from "./projects";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -50,19 +51,71 @@ function versionsSection(status: ProductionStatus): string {
         }</span></li>`,
     )
     .join("");
-  const next = status.next
-    ? `<div class="release">
-        <p><span class="pill warn">Next</span> <span class="mono">${escapeHtml(status.next.version)}</span>${
-          status.next.title ? ` · ${escapeHtml(status.next.title)}` : ""
-        }</p>
-        ${status.next.changes.length ? `<ul>${status.next.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
-      </div>`
-    : "";
-  if (!versions && !next) return "";
+  if (!versions) return "";
   return `<section>
       <h2>Versions</h2>
-      ${versions ? `<ul class="versions">${versions}</ul>` : ""}
-      ${next}
+      <ul class="versions">${versions}</ul>
+    </section>`;
+}
+
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+function waitingEntries(status: ProductionStatus): NextRelease[] {
+  return status.waiting ?? (status.next ? [status.next] : []);
+}
+
+// The delta in product terms: the stories the pending work refers to, by
+// epic, and every release-notes entry production does not have yet.
+function waitingSection(repo: string, status: ProductionStatus, stories: Story[]): string {
+  if (status.aheadBy === 0) return "";
+  const byNumber = new Map(stories.map((story) => [story.number, story]));
+  const referred = [...new Set(status.groups.flatMap((group) => group.issues))]
+    .map((number) => byNumber.get(number))
+    .filter((story): story is Story => Boolean(story) && (story?.subTotal ?? 0) === 0);
+  const epics = new Map<number | null, Story[]>();
+  for (const story of referred) {
+    const epic = story.parent !== null && byNumber.has(story.parent) ? story.parent : null;
+    epics.set(epic, [...(epics.get(epic) ?? []), story]);
+  }
+  const order = [...epics.keys()].sort((a, b) => (a === null ? 1 : b === null ? -1 : a - b));
+  const storyLink = (story: Story) =>
+    `<li><a href="${escapeHtml(story.url || `https://github.com/${repo}/issues/${story.number}`)}">#${story.number}</a> ${escapeHtml(story.title)} ${
+      story.state === "closed" ? `<span class="pill ok">Closed</span>` : `<span class="pill warn">Open</span>`
+    }</li>`;
+  const storiesHtml = referred.length
+    ? order
+        .map((epic) => {
+          const head = epic === null ? "Without an epic" : `<a href="https://github.com/${escapeHtml(repo)}/issues/${epic}">#${epic}</a> ${escapeHtml(byNumber.get(epic)?.title ?? "")}`;
+          return `<div class="waiting-epic"><h4>${head}</h4><ul class="waiting-stories">${(epics.get(epic) ?? [])
+            .sort((a, b) => a.number - b.number)
+            .map(storyLink)
+            .join("")}</ul></div>`;
+        })
+        .join("")
+    : `<p class="muted">The pending commits refer to no story.</p>`;
+
+  const releases = waitingEntries(status);
+  const changes = releases.reduce((total, release) => total + release.changes.length, 0);
+  const releasesHtml = releases.length
+    ? releases
+        .map(
+          (release) => `<div class="release">
+            <p><span class="pill warn">Waiting</span> <span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""}</p>
+            ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
+          </div>`,
+        )
+        .join("")
+    : `<p class="muted">No release-notes entry waiting.</p>`;
+
+  return `<section class="waiting">
+      <h2>What production will get</h2>
+      <p class="waiting-count"><strong>${plural(referred.length, "story", "stories")}, ${plural(releases.length, "version")}, ${plural(changes, "change")}</strong> waiting.</p>
+      <div class="waiting-columns">
+        <div><h3>Stories</h3>${storiesHtml}</div>
+        <div><h3>Features</h3>${releasesHtml}</div>
+      </div>
     </section>`;
 }
 
@@ -112,12 +165,14 @@ function pendingSection(repo: string, status: ProductionStatus, titles: Map<numb
 export function productionPage(viewer: Viewer, project: Project, view: ProductionView): string {
   const name = project.check?.config?.nom || project.repo;
   const status = view.status;
-  const body = !project.check?.config?.branches?.integration
+  const ref = (project as Partial<ProjectView>).ref ?? null;
+  const body = !project.check?.config?.branches?.integration && !ref
     ? `<p>This project does not declare an integration branch (<code>branches.integration</code> in <code>.fabrique.json</code>).</p>`
     : !status
       ? `<p class="muted">Nothing could be read yet.</p>`
       : `${banner(status)}
         ${view.fetchedAt ? `<p class="muted">Read from GitHub <span class="mono">${formatDate(view.fetchedAt)}</span>; pushes and workflow runs refresh it.</p>` : ""}
+        ${waitingSection(project.repo, status, view.stories)}
         ${versionsSection(status)}
         ${workflowsSection(status)}
         ${pendingSection(project.repo, status, view.storyTitles)}`;

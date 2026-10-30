@@ -1181,3 +1181,34 @@ textarea {
     color: var(--encre);
   }
 }
+
+/* What production will get: stories and release-notes entries side by side. */
+.waiting-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.5rem 2rem;
+}
+
+.waiting h3 {
+  font-size: 1rem;
+  margin: 0.5rem 0;
+}
+
+.waiting h4 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.waiting-stories {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.waiting-stories li {
+  margin: 0.2rem 0;
+}
+
+.waiting .release + .release {
+  margin-top: 0.5rem;
+}

@@ -57,7 +57,11 @@ export interface ProductionStatus {
   groups: PendingGroup[];
   workflows: WorkflowState[];
   versions: VersionState[];
-  next: NextRelease | null;
+  // Release-notes entries of the candidate branch that production lacks,
+  // newest first.
+  waiting: NextRelease[];
+  /** @deprecated snapshots written before `waiting`. */
+  next?: NextRelease | null;
   ready: boolean;
   blockers: { text: string; url: string | null }[];
 }
@@ -163,26 +167,42 @@ function runState(key: string, file: string, branch: string, run: RestRun | unde
   };
 }
 
-// "Quoi de neuf" entries without an `heure` are not released yet.
-export function nextRelease(raw: string): NextRelease | null {
+function releaseEntries(raw: string | null): (NextRelease & { time: boolean })[] {
   let data: unknown;
   try {
-    data = JSON.parse(raw);
+    data = raw === null ? [] : JSON.parse(raw);
   } catch {
-    return null;
+    return [];
   }
-  const entries = Array.isArray(data) ? data : [];
-  for (const entry of entries) {
+  const entries: (NextRelease & { time: boolean })[] = [];
+  for (const entry of Array.isArray(data) ? data : []) {
     if (typeof entry !== "object" || entry === null) continue;
     const record = entry as Record<string, unknown>;
     const version = record["version"] ?? record["numero"];
-    if (typeof version !== "string" || record["heure"]) continue;
+    if (typeof version !== "string") continue;
     const changes = Array.isArray(record["changements"])
       ? record["changements"].filter((change): change is string => typeof change === "string")
       : [];
-    return { version, title: typeof record["titre"] === "string" ? record["titre"] : null, changes };
+    entries.push({ version, title: typeof record["titre"] === "string" ? record["titre"] : null, changes, time: Boolean(record["heure"]) });
   }
-  return null;
+  return entries;
+}
+
+// The first release-notes entry without an `heure`: not released yet.
+export function nextRelease(raw: string): NextRelease | null {
+  const entry = releaseEntries(raw).find((candidate) => !candidate.time);
+  return entry ? { version: entry.version, title: entry.title, changes: entry.changes } : null;
+}
+
+// Every entry of the candidate branch's release notes that production's
+// file does not have yet (an entry dated for its go is still waiting until
+// it is in production). Without production's file, the entries without an
+// `heure`.
+export function waitingReleases(candidate: string, production: string | null): NextRelease[] {
+  const released = production === null ? null : new Set(releaseEntries(production).map((entry) => entry.version));
+  return releaseEntries(candidate)
+    .filter((entry) => (released ? !released.has(entry.version) : !entry.time))
+    .map(({ version, title, changes }) => ({ version, title, changes }));
 }
 
 async function readVersion(environment: string, url: string, path: string): Promise<VersionState> {
@@ -277,14 +297,15 @@ async function fetchStatus(env: Env, project: Project, config: FabriqueConfig, c
       .map(([name, environment]) => readVersion(name, environment.url, environment.version ?? "")),
   );
 
-  let next: NextRelease | null = null;
+  let waiting: NextRelease[] = [];
   if (config.version?.fichier) {
-    const response = await githubFetch(
-      token,
-      githubContentsPath(repo, config.version.fichier, encodeURIComponent(integration)),
-      "application/vnd.github.raw+json",
-    );
-    if (response.ok) next = nextRelease(await response.text());
+    const file = config.version.fichier;
+    const read = async (branch: string) => {
+      const response = await githubFetch(token, githubContentsPath(repo, file, encodeURIComponent(branch)), "application/vnd.github.raw+json");
+      return response.ok ? response.text() : null;
+    };
+    const [candidateFile, productionFile] = await Promise.all([read(integration), read(production)]);
+    if (candidateFile !== null) waiting = waitingReleases(candidateFile, productionFile);
   }
 
   return {
@@ -295,7 +316,7 @@ async function fetchStatus(env: Env, project: Project, config: FabriqueConfig, c
     groups: groupPending(commits, config.branches?.travail ?? []),
     workflows,
     versions,
-    next,
+    waiting,
     ...readiness(integrationHead, compare.ahead_by, workflows),
   };
 }
@@ -305,30 +326,33 @@ export interface ProductionView {
   fetchedAt: string | null;
   failure?: string;
   storyTitles: Map<number, string>;
+  stories: Story[];
 }
 
 export async function loadProduction(env: Env, project: Project, ref: string | null = null): Promise<ProductionView> {
   const config = project.check?.config;
   const stories = await readSnapshot<Story[]>(env.DB, project.repo, STORIES);
-  const storyTitles = new Map((stories?.data ?? []).map((story) => [story.number, story.title]));
+  const storyList = stories?.data ?? [];
+  const storyTitles = new Map(storyList.map((story) => [story.number, story.title]));
   const candidate = ref ?? config?.branches?.integration;
-  if (!config || !candidate) return { status: null, fetchedAt: null, storyTitles };
+  if (!config || !candidate) return { status: null, fetchedAt: null, storyTitles, stories: storyList };
 
   const kind = onBranch(PRODUCTION, ref);
   const snapshot = await readSnapshot<ProductionStatus>(env.DB, project.repo, kind);
   if (snapshot && isFresh(snapshot, MAX_AGE_MS)) {
-    return { status: snapshot.data, fetchedAt: snapshot.fetchedAt, storyTitles };
+    return { status: snapshot.data, fetchedAt: snapshot.fetchedAt, storyTitles, stories: storyList };
   }
   try {
     const status = await fetchStatus(env, project, config, candidate);
     const fetchedAt = await writeSnapshot(env.DB, project.repo, kind, status);
-    return { status, fetchedAt, storyTitles };
+    return { status, fetchedAt, storyTitles, stories: storyList };
   } catch (error) {
     return {
       status: snapshot?.data ?? null,
       fetchedAt: snapshot?.fetchedAt ?? null,
       failure: describeFailure(error),
       storyTitles,
+      stories: storyList,
     };
   }
 }
