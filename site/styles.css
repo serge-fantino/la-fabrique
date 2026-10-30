@@ -1665,6 +1665,166 @@ table.backlog th.claude-col {
   font-size: 0.92rem;
 }
 
+/* A defect's page: its story in a bounded preview, its comments, triage. */
+.defect-story-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin: 0;
+}
+
+.defect-story-text {
+  max-height: 24rem;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+}
+
+.defect-story-text h1 {
+  font-size: 1.3rem;
+}
+
+.defect-triage {
+  margin: 1.25rem 0;
+}
+
+.triage-form {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  max-width: 40rem;
+}
+
+/* What a defect is about: the report kit's list, in La Fabrique's colours. */
+.about-picker {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.about-picker legend {
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.about-search {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 0.5rem;
+}
+
+.about-choices {
+  position: relative;
+  max-height: 26rem;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: 0.25rem 0.75rem;
+  background: #fff;
+}
+
+.about-version {
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.about-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.4rem 0;
+}
+
+.about-choice input {
+  flex: none;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+  accent-color: var(--encre);
+}
+
+.about-choice label {
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+p.about-version-choice {
+  margin: 0;
+  padding: 0.4rem 0;
+}
+
+.about-story {
+  padding-left: 1.4rem;
+}
+
+.about-changes {
+  margin: 0 0 0.15rem 1.8rem;
+  color: var(--encre-faint);
+  font-size: 0.85rem;
+}
+
+.about-tag,
+.about-date {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font: 600 0.72rem/1.4 var(--mono);
+  background: var(--rule);
+  color: var(--encre-faint);
+}
+
+.about-tag {
+  background: #f4e3b5;
+  color: #6a4b0c;
+}
+
+.about-more {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.about-version[hidden],
+.about-choice[hidden],
+.about-more[hidden],
+.about-search[hidden] {
+  display: none;
+}
+
+.defect-text img,
+.defect-comments img,
+.defect-shot {
+  max-width: 100%;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+
+.defect-comments {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.defect-comments > li {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.defect-comments > li > p:first-child {
+  margin: 0 0 0.25rem;
+}
+
 /* Brand: the mark and a two-line wordmark, like the épicerie's. */
 .brand {
   gap: 0.6rem;

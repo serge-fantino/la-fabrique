@@ -131,6 +131,52 @@
     setUpDiagnostic();
     setUpRefresh();
     setUpBranchMenu();
+    setUpAboutPicker();
+  }
+
+  // What a defect is about (triage): the same list as the report kit's form,
+  // with its search, and the older versions on demand. Without this script,
+  // every version is shown.
+  function setUpAboutPicker() {
+    for (const picker of document.querySelectorAll("[data-about-picker]")) {
+      const search = picker.querySelector("[data-about-search]");
+      const more = picker.querySelector("[data-about-more]");
+      const blocks = [...picker.querySelectorAll("[data-about-block]")];
+      let showAll = false;
+      const render = () => {
+        const query = search.value.trim().toLowerCase();
+        let hidden = 0;
+        for (const block of blocks) {
+          const matches = !query || (block.getAttribute("data-text") || "").includes(query);
+          let stories = 0;
+          for (const story of block.querySelectorAll("[data-about-story]")) {
+            const visible = !query || matches || (story.getAttribute("data-text") || "").includes(query);
+            story.hidden = !visible;
+            if (visible) stories++;
+          }
+          const early = block.hasAttribute("data-early") || Boolean(block.querySelector("input:checked"));
+          const visible = query ? matches || stories > 0 : showAll || early;
+          block.hidden = !visible;
+          if (!visible && !query) hidden++;
+        }
+        more.hidden = Boolean(query) || hidden === 0;
+      };
+      search.hidden = false;
+      search.addEventListener("input", render);
+      // Enter in the search must not send the triage.
+      search.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") event.preventDefault();
+      });
+      more.addEventListener("click", () => {
+        showAll = true;
+        render();
+      });
+      render();
+      // The current choice in sight, the page itself not scrolled.
+      const list = picker.querySelector(".about-choices");
+      const current = picker.querySelector("input:checked")?.closest(".about-choice");
+      if (list && current instanceof HTMLElement && current.offsetTop > list.clientHeight - 60) list.scrollTop = current.offsetTop - 40;
+    }
   }
 
   // Parts of a page read once it is shown (slow GitHub reads): the loading

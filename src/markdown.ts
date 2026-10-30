@@ -13,6 +13,9 @@ export interface LinkTargets {
   isPage(path: string): boolean;
   pageUrl(path: string): string;
   githubUrl(path: string): string;
+  // An image this site serves itself (allowed by its CSP): its address, or
+  // null to show a link instead.
+  imageUrl?(src: string): string | null;
 }
 
 interface RenderEnv {
@@ -70,11 +73,13 @@ md.renderer.rules.link_open = (tokens, idx, options, env: RenderEnv, self) => {
 };
 
 // Images from the repository or elsewhere are blocked by the CSP; they
-// become links to the image instead.
+// become links to the image instead, unless the site serves them.
 md.renderer.rules.image = (tokens, idx, _options, env: RenderEnv) => {
   const token = tokens[idx];
   const src = token?.attrGet("src") ?? "";
   const alt = token?.children?.map((child) => child.content).join("") || "image";
+  const own = env.targets.imageUrl?.(src);
+  if (own) return `<img src="${md.utils.escapeHtml(own)}" alt="${md.utils.escapeHtml(alt)}" loading="lazy" />`;
   const link = resolveLink(src, env.targets);
   return `<a class="image-link" href="${md.utils.escapeHtml(link.href)}" rel="noopener noreferrer">Image: ${md.utils.escapeHtml(alt)}</a>`;
 };
