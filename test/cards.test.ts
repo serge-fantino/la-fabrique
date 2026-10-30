@@ -187,6 +187,32 @@ describe("Cards", () => {
     expect(hidden).toContain(`board?by=status&amp;then=segment&amp;empty=hide">Clear the filters</a>`);
   });
 
+  it("changes a card's status from its page, never on an archived card, and Claude never moves a dropped one", async () => {
+    await seed();
+    const session = await writer();
+    const id = await newCard(session, { title: "Pro reorder" });
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, session.cookie)).text();
+    expect(page).toContain('<input type="hidden" name="action" value="status" />');
+    expect(page).toContain('<option value="draft" selected>Draft</option>');
+
+    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf: session.csrf, action: "status", status: "dropped" }, session.cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=status`);
+    const after = await (await get(`/projects/${REPO}/cards/${id}?notice=status`, session.cookie)).text();
+    expect(after).toContain("Status changed.");
+    expect(after).toContain('<option value="dropped" selected>Dropped</option>');
+    expect((await logActions()).map((entry) => entry.action)).toContain("card_moved");
+
+    const { advanceStatus } = await import("../src/cards");
+    expect(await advanceStatus(env.DB, REPO, id, "pe", "shaping", "Claude asked")).toBe(false);
+    await post(`/projects/${REPO}/cards/${id}`, { csrf: session.csrf, action: "status", status: "to_validate" }, session.cookie);
+    expect(await advanceStatus(env.DB, REPO, id, "pe", "shaping", "Claude asked")).toBe(false);
+    expect(await advanceStatus(env.DB, REPO, id, "pe", "validated", "story made")).toBe(true);
+
+    await post(`/projects/${REPO}/cards/${id}`, { csrf: session.csrf, action: "archive" }, session.cookie);
+    const archived = await (await get(`/projects/${REPO}/cards/${id}`, session.cookie)).text();
+    expect(archived).not.toContain('value="status"');
+  });
+
   it("adds a column before any card uses it", async () => {
     await seed();
     const session = await writer();
