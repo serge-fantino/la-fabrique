@@ -1,7 +1,9 @@
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { SetupItem, SetupKey, SetupState } from "./setup";
-import { escapeHtml, layout, type Viewer } from "./views";
+import { READY_CHECKS, type ReadyCheck } from "./fabrique-config";
+import { projectUrl } from "./urls";
+import { csrfField, escapeHtml, layout, type Viewer } from "./views";
 
 export const GUIDE_PATH = "/guide/fabrique-json";
 
@@ -102,7 +104,60 @@ function withCode(text: string): string {
   return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
-export function setupPage(viewer: Viewer, project: Project, data: { items: SetupItem[]; failure?: string | undefined }): string {
+const CHECK_LABELS: Record<ReadyCheck, string> = {
+  criteres: "Acceptance criteria written, under an Acceptance criteria heading",
+  epique: "Attached to an epic, as a sub-issue",
+  priorite: "Has a priority label",
+  etiquette_prete: "Carries the circuit's ready label (demandes.etiquettes.prete)",
+};
+
+export interface LifecycleForm {
+  canEdit: boolean;
+  cycle: { pret: ReadyCheck[]; priorites: string[] };
+  declared: boolean;
+  base: string;
+  proposed?: { number: number; url: string; base: string } | undefined;
+}
+
+// The story lifecycle, changed from here as a pull request on the project.
+function lifecycleSection(viewer: Viewer, project: Project, form: LifecycleForm): string {
+  const proposed = form.proposed
+    ? `<p class="notice ok" role="status">Pull request <a href="${escapeHtml(form.proposed.url)}">#${form.proposed.number}</a> opened on <code>${escapeHtml(form.proposed.base)}</code>: the lifecycle applies once it reaches production.</p>`
+    : "";
+  const checks = READY_CHECKS.map(
+    (check) => `<label class="check"><input type="checkbox" name="pret" value="${check}"${form.cycle.pret.includes(check) ? " checked" : ""}${
+      form.canEdit ? "" : " disabled"
+    } /> ${escapeHtml(CHECK_LABELS[check])} <code>${check}</code></label>`,
+  ).join("");
+  return `<section class="lifecycle" id="lifecycle">
+      <h2>Story lifecycle</h2>
+      ${proposed}
+      <p class="muted">A story is <em>Ready</em> when it passes the checks below; the priority labels sort the backlog, highest first. ${
+        form.declared ? "Read from the project's <code>.fabrique.json</code>." : "Not declared yet: the defaults are shown."
+      }</p>
+      <form method="post" action="${escapeHtml(projectUrl(project.repo))}/setup" class="lifecycle-form">
+        ${csrfField(viewer)}
+        <fieldset>
+          <legend>Definition of Ready</legend>
+          ${checks}
+        </fieldset>
+        <label for="priorites">Priority labels, highest first, separated by commas</label>
+        <input id="priorites" name="priorites" value="${escapeHtml(form.cycle.priorites.join(", "))}" placeholder="P1, P2, P3"${form.canEdit ? "" : " disabled"} />
+        ${
+          form.canEdit
+            ? `<p><button type="submit" class="button">Propose the change</button></p>
+               <p class="muted small">La Fabrique opens a pull request on <code>${escapeHtml(form.base)}</code> under your GitHub name, changing only <code>cycle</code> in <code>.fabrique.json</code>; the project reviews and merges it as usual.</p>`
+            : `<p class="muted small">Super admins and tech leads change it.</p>`
+        }
+      </form>
+    </section>`;
+}
+
+export function setupPage(
+  viewer: Viewer,
+  project: Project,
+  data: { items: SetupItem[]; failure?: string | undefined; notice?: string | undefined; lifecycle: LifecycleForm },
+): string {
   const name = project.check?.config?.nom || project.repo;
   const count = (state: SetupState) => data.items.filter((entry) => entry.state === state).length;
   const required = data.items.filter((entry) => entry.key !== "integration" && entry.key !== "cycle");
@@ -125,6 +180,7 @@ export function setupPage(viewer: Viewer, project: Project, data: { items: Setup
   return layout(
     `Setup · ${name} · La Fabrique extraordinaire`,
     `${projectHeader(project, "setup")}
+      ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
       <p class="setup-count"><strong>${done} of ${required.length} done</strong>${
         count("missing") ? ` · ${count("missing")} missing` : ""
@@ -135,7 +191,8 @@ export function setupPage(viewer: Viewer, project: Project, data: { items: Setup
         "le-fichier-fabriquejson",
         "the .fabrique.json format",
       )} is the reference.</p>
-      <ul class="setup-list">${items}</ul>`,
+      <ul class="setup-list">${items}</ul>
+      ${lifecycleSection(viewer, project, data.lifecycle)}`,
     viewer,
     [],
     projectContext(project),

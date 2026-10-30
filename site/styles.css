@@ -1559,3 +1559,29 @@ table.backlog th:nth-child(4) {
 .tile-link.tone-alert {
   border-left: 4px solid var(--alerte);
 }
+
+/* Setup: the story lifecycle form. */
+.lifecycle-form fieldset {
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: 0.25rem 1rem 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.lifecycle-form legend {
+  padding: 0 0.4rem;
+  font-weight: 500;
+}
+
+.lifecycle-form .check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  min-height: 44px;
+}
+
+.lifecycle-form input[name="priorites"] {
+  display: block;
+  width: min(100%, 24rem);
+  margin-top: 0.35rem;
+}

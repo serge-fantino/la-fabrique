@@ -6,7 +6,7 @@ import { html, json, redirect, text } from "./http";
 import { isAsset, serveAsset } from "./assets";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, prioritize, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, prioritize, proposeLifecycle, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
@@ -142,7 +142,10 @@ export default {
         return method === "GET" ? showToTest(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/setup") {
-        return method === "GET" ? showSetup(request, env, viewer, repo) : methodNotAllowed();
+        if (method === "GET") return showSetup(request, env, viewer, repo);
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        return form ? proposeLifecycle(request, form, env, viewer, repo) : forbidden(viewer);
       }
       if (projectRoute[2] === "/branches") {
         return method === "GET" ? showBranches(env, repo) : methodNotAllowed();
