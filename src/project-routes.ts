@@ -43,7 +43,7 @@ export async function createProject(form: FormData, env: Env, viewer: Viewer): P
 }
 
 function notFound(viewer: Viewer): Response {
-  return html(messagePage("Not found", "There is no such project in La Fabrique.", viewer), { status: 404 });
+  return html(messagePage("Not found", "There is no such project in La Fabrique extraordinaire.", viewer), { status: 404 });
 }
 
 export async function showProject(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {

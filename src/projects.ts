@@ -173,7 +173,7 @@ export function describeFailure(error: unknown): string {
   if (error instanceof GitHubError) {
     if (error.status === 0) return error.message;
     if ([401, 403, 404].includes(error.status)) {
-      return "La Fabrique cannot read this repository or branch. Is the GitHub App still installed on it?";
+      return "La Fabrique extraordinaire cannot read this repository or branch. Is the GitHub App still installed on it?";
     }
     return `GitHub did not answer as expected (HTTP ${error.status}). Try again later.`;
   }

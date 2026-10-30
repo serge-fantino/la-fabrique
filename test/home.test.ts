@@ -12,7 +12,7 @@ describe("GET /", () => {
     expect(csp).toContain("script-src 'none'");
 
     const body = await response.text();
-    expect(body).toContain("<title>La Fabrique</title>");
+    expect(body).toContain("<title>La Fabrique extraordinaire</title>");
     expect(body).toContain('href="/auth/login"');
     expect(body).not.toMatch(/<script\b/i);
   });

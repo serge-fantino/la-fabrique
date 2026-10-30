@@ -43,7 +43,7 @@ export function projectsPage(viewer: Viewer, projects: Project[]): string {
     : `<p>No project yet.${isSuperAdmin ? " Install the GitHub App on a repository, then add it here." : ""}</p>`;
 
   return layout(
-    "Projects · La Fabrique",
+    "Projects · La Fabrique extraordinaire",
     `<div class="title-row">
         <h1>Projects</h1>
         ${isSuperAdmin ? `<a class="button" href="/projects/new">Add a project</a>` : ""}
@@ -77,11 +77,11 @@ export function newProjectPage(
       : `<p>No repository left to add. Install the GitHub App on a repository first.</p>`;
 
   return layout(
-    "Add a project · La Fabrique",
+    "Add a project · La Fabrique extraordinaire",
     `<h1>Add a project</h1>
       ${notice(data.error ?? (data.notice ? NEW_PROJECT_NOTICES[data.notice] : undefined), "error")}
-      <p>A project is a repository where the GitHub App <em>La Fabrique</em> is installed.
-        La Fabrique reads its <code>.fabrique.json</code> on the production branch.</p>
+      <p>A project is a repository where the GitHub App <em>La Fabrique extraordinaire</em> is installed.
+        La Fabrique extraordinaire reads its <code>.fabrique.json</code> on the production branch.</p>
       ${form}`,
     viewer,
   );
@@ -168,7 +168,7 @@ export function projectPage(
   ];
 
   return layout(
-    `${config?.nom || project.repo} · La Fabrique`,
+    `${config?.nom || project.repo} · La Fabrique extraordinaire`,
     `<p class="eyebrow mono">${escapeHtml(project.repo)}</p>
       <h1>${escapeHtml(config?.nom || project.repo)}</h1>
       ${config?.description ? `<p class="lede">${escapeHtml(config.description)}</p>` : ""}

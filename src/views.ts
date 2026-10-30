@@ -56,7 +56,7 @@ export function layout(title: string, body: string, viewer?: Viewer): string {
   </head>
   <body>
     <header class="bar">
-      <a class="brand" href="/">La Fabrique</a>
+      <a class="brand" href="/">La Fabrique extraordinaire</a>
       ${nav}
     </header>
     <main>
@@ -68,10 +68,10 @@ ${body}
 
 export function homePage(): string {
   return layout(
-    "La Fabrique",
+    "La Fabrique extraordinaire",
     `<header class="hero">
         <p class="eyebrow">The control panel</p>
-        <h1>La Fabrique</h1>
+        <h1>La Fabrique extraordinaire</h1>
         <p class="lede">
           Documentation online, stories, what awaits production, and a traceable
           request workflow &mdash; from the Product Engineer's need to the
@@ -87,9 +87,9 @@ export function homePage(): string {
 
 export function noAccessPage(): string {
   return layout(
-    "No access yet · La Fabrique",
+    "No access yet · La Fabrique extraordinaire",
     `<h1>No access yet</h1>
-      <p>Your GitHub account does not have a role in La Fabrique.</p>
+      <p>Your GitHub account does not have a role in La Fabrique extraordinaire.</p>
       <p>Your request has been recorded. A super admin can grant you a role; you will
         get in at your next sign-in.</p>`,
   );
@@ -97,10 +97,10 @@ export function noAccessPage(): string {
 
 export function messagePage(title: string, message: string, viewer?: Viewer): string {
   return layout(
-    `${title} · La Fabrique`,
+    `${title} · La Fabrique extraordinaire`,
     `<h1>${escapeHtml(title)}</h1>
       <p>${escapeHtml(message)}</p>
-      <p><a href="/">Back to La Fabrique</a></p>`,
+      <p><a href="/">Back to La Fabrique extraordinaire</a></p>`,
     viewer,
   );
 }
@@ -112,7 +112,7 @@ const PEOPLE_NOTICES: Record<string, { tone: "ok" | "error"; text: string }> = {
   invalid_login: { tone: "error", text: "That is not a valid GitHub login." },
   invalid_role: { tone: "error", text: "Choose one of the four roles." },
   exists: { tone: "error", text: "This person already has a role. Change it in the list." },
-  unknown: { tone: "error", text: "This person has no role in La Fabrique." },
+  unknown: { tone: "error", text: "This person has no role in La Fabrique extraordinaire." },
   configured: {
     tone: "error",
     text: "This super admin is set in the Worker configuration (SUPER_ADMINS) and cannot be changed here.",
@@ -219,7 +219,7 @@ export function peoplePage(data: PeopleData): string {
     : "";
 
   return layout(
-    "People · La Fabrique",
+    "People · La Fabrique extraordinaire",
     `<h1>People</h1>
       ${notice ? `<p class="notice ${notice.tone}" role="status">${escapeHtml(notice.text)}</p>` : ""}
       <section>
