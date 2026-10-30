@@ -26,7 +26,7 @@ export function describe(entry: LogEntry, repo: string): string {
     case "story_validated":
       return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "defect_reported":
-      return `reported defect ${issue(d["defect"])} on ${story}${d["title"] ? `: “${text(d["title"])}”` : ""}`;
+      return `reported defect ${issue(d["defect"])}${story ? ` on ${story}` : ""}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>)` : ""}${d["title"] ? `: “${text(d["title"])}”` : ""}`;
     case "priority_set":
       return `set the priority of ${story}: ${text(d["from"]) || "none"} → ${text(d["to"]) || "none"}`;
     case "config_change_proposed":

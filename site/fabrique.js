@@ -106,7 +106,8 @@
   // without this script).
   document.addEventListener("change", (event) => {
     const field = event.target;
-    if (field instanceof HTMLSelectElement && field.hasAttribute("data-autosubmit") && field.form) field.form.requestSubmit();
+    const toggles = field instanceof HTMLSelectElement || (field instanceof HTMLInputElement && field.type === "checkbox");
+    if (toggles && field.hasAttribute("data-autosubmit") && field.form) field.form.requestSubmit();
   });
 
   window.addEventListener("popstate", () => {

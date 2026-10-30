@@ -40,11 +40,11 @@ describe("Perspectives", () => {
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/board`);
     const product = await (await get(`/projects/${REPO}/board`, session.cookie)).text();
     expect(product).toContain("<summary><span class=\"muted\">Perspective</span> Product</summary>");
-    expect(tabs(product)).toEqual(["Overview", "Board", "Stories", "Backlog", "To test", "Roadmap", "Releases", "Requests"]);
+    expect(tabs(product)).toEqual(["Overview", "Board", "Stories", "Backlog", "To test", "Defects", "Roadmap", "Releases", "Requests"]);
 
     await choose(session, "administration");
     const admin = await (await get(`/projects/${REPO}`, session.cookie)).text();
-    expect(tabs(admin)).toEqual(["Overview", "Production", "To test", "In development", "Delivery", "Activity", "Releases", "Log", "Setup"]);
+    expect(tabs(admin)).toEqual(["Overview", "Production", "To test", "Defects", "In development", "Delivery", "Activity", "Releases", "Log", "Setup"]);
   });
 
   it("keeps the tab one is on, marked, when it is outside the perspective", async () => {

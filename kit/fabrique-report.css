@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.0.0 — styles. Change the custom properties to match your app. */
+/*! FabriqueReport 1.1.0 — styles. Change the custom properties to match your app. */
 .fab-rep {
   --fab-rep-ink: #18211b;
   --fab-rep-paper: #ffffff;
@@ -260,5 +260,103 @@
 }
 
 .fab-rep-launch[hidden] {
+  display: none;
+}
+
+.fab-rep-about {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.fab-rep-about legend {
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.fab-rep-search {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--fab-rep-line);
+  border-radius: 12px;
+  font: 16px/1.35 var(--fab-rep-font);
+}
+
+.fab-rep-choices {
+  max-height: 38vh;
+  overflow: auto;
+  border: 1.5px solid var(--fab-rep-line);
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+
+.fab-rep-version {
+  padding: 6px 0;
+  border-top: 1px solid var(--fab-rep-line);
+}
+
+.fab-rep-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 0;
+  font-size: 15px;
+}
+
+.fab-rep-choice input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+}
+
+.fab-rep-choice label {
+  overflow-wrap: anywhere;
+}
+
+.fab-rep-story {
+  padding-left: 22px;
+}
+
+.fab-rep-changes {
+  margin: 0 0 2px 30px;
+  color: var(--fab-rep-muted);
+  font-size: 13px;
+}
+
+.fab-rep-tag,
+.fab-rep-date {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: 600 11px/1.4 ui-monospace, "IBM Plex Mono", monospace;
+  background: var(--fab-rep-line);
+  color: var(--fab-rep-muted);
+}
+
+.fab-rep-tag {
+  background: #f4e3b5;
+  color: #6a4b0c;
+}
+
+.fab-rep-link {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fab-rep-accent);
+  font: 600 14px/1 var(--fab-rep-font);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fab-rep-version[hidden],
+.fab-rep-choice[hidden],
+.fab-rep-link[hidden] {
   display: none;
 }

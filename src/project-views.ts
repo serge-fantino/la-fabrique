@@ -13,6 +13,7 @@ export type ProjectTab =
   | "backlog"
   | "in_dev"
   | "to_test"
+  | "defects"
   | "roadmap"
   | "releases"
   | "production"
@@ -29,6 +30,7 @@ const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "backlog", label: "Backlog", path: "/backlog" },
   { id: "in_dev", label: "In development", path: "/in-development" },
   { id: "to_test", label: "To test", path: "/to-test" },
+  { id: "defects", label: "Defects", path: "/defects" },
   { id: "roadmap", label: "Roadmap", path: "/roadmap" },
   { id: "releases", label: "Releases", path: "/releases" },
   { id: "production", label: "Production", path: "/production" },
