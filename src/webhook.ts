@@ -19,6 +19,7 @@ interface PushPayload {
   ref?: string;
   after?: string;
   repository?: { full_name?: string; default_branch?: string };
+  head_commit?: { timestamp?: string } | null;
 }
 
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
@@ -46,7 +47,10 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   const production = project.check?.config?.branches?.production ?? payload.repository?.default_branch;
   if (branch !== production) return json({ ignored: "not the production branch" }, { status: 202 });
 
-  const outcome = await checkPushedCommit(env, project, branch, sha);
+  const outcome = await checkPushedCommit(env, project, branch, {
+    sha,
+    committedAt: payload.head_commit?.timestamp ?? null,
+  });
   return outcome.ok
     ? json({ checked: sha, errors: outcome.check.errors.length })
     : json({ error: outcome.message }, { status: 502 });

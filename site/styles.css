@@ -375,3 +375,112 @@ th {
     margin-bottom: 0.5rem;
   }
 }
+
+.doc-list ul {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.doc-list li {
+  margin: 0.2rem 0;
+}
+
+.crumbs {
+  margin: 0 0 0.25rem;
+}
+
+.doc-meta {
+  font-size: 0.9rem;
+  margin: 0 0 2rem;
+  overflow-wrap: anywhere;
+}
+
+.doc-siblings {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.markdown {
+  max-width: 72ch;
+  overflow-wrap: break-word;
+}
+
+.markdown h1 {
+  font-size: clamp(1.8rem, 4vw, 2.3rem);
+}
+
+.markdown h2 {
+  font-size: 1.4rem;
+  margin-top: 2.25rem;
+}
+
+.markdown h3 {
+  font-size: 1.15rem;
+  margin-top: 1.75rem;
+}
+
+.markdown pre {
+  background: color-mix(in srgb, var(--encre) 6%, transparent);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown blockquote {
+  margin: 1rem 0;
+  padding: 0.25rem 1rem;
+  border-left: 3px solid var(--moyen);
+  color: var(--encre-faint);
+}
+
+.markdown table {
+  display: block;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.markdown th,
+.markdown td {
+  padding: 0.4rem 0.75rem 0.4rem 0;
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+
+.markdown img {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .markdown table {
+    display: block;
+  }
+
+  .markdown thead {
+    display: table-header-group;
+  }
+
+  .markdown tbody {
+    display: table-row-group;
+  }
+
+  .markdown tr {
+    display: table-row;
+    padding: 0;
+  }
+
+  .markdown td {
+    display: table-cell;
+    padding: 0.4rem 0.75rem 0.4rem 0;
+  }
+}

@@ -1,10 +1,9 @@
 import type { InstalledRepo } from "./github-app";
 import type { ConfigCheck, Project } from "./projects";
+import { docUrl, githubBlobUrl, projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
-function projectPath(repo: string): string {
-  return `/projects/${repo}`;
-}
+const projectPath = projectUrl;
 
 function statusPill(check: ConfigCheck | null): string {
   if (!check) return `<span class="pill warn">Not checked</span>`;
@@ -120,6 +119,29 @@ function fileSection(viewer: Viewer, project: Project): string {
     </section>`;
 }
 
+function pageName(path: string): string {
+  return (path.split("/").pop() ?? path).replace(/\.md$/i, "");
+}
+
+function documentationSection(project: Project): string {
+  const entries = project.check?.config?.documentation ?? [];
+  if (!entries.length) return "";
+  const pages = project.check?.docPages ?? [];
+  const link = (path: string, text: string) =>
+    `<a href="${escapeHtml(docUrl(project.repo, path))}">${escapeHtml(text)}</a>`;
+  const items = entries.map((entry) => {
+    if (!entry.chemin.endsWith("/")) return `<li>${link(entry.chemin, entry.titre)}</li>`;
+    const inFolder = pages.filter((page) => page.startsWith(entry.chemin));
+    return `<li>${escapeHtml(entry.titre)}
+        <ul>${inFolder.map((page) => `<li>${link(page, pageName(page.slice(entry.chemin.length)))}</li>`).join("")}</ul>
+      </li>`;
+  });
+  return `<section>
+      <h2>Documentation</h2>
+      <ul class="doc-list">${items.join("")}</ul>
+    </section>`;
+}
+
 function declaredSection(project: Project): string {
   const config = project.check?.config;
   if (!config) return "";
@@ -132,14 +154,6 @@ function declaredSection(project: Project): string {
       "Workflows",
       Object.entries(config.workflows)
         .map(([key, file]) => `<span class="mono">${escapeHtml(key)}</span>: ${file ? `<code>${escapeHtml(file)}</code>` : `<span class="muted">none</span>`}`)
-        .join("<br />"),
-    ]);
-  }
-  if (config.documentation?.length) {
-    rows.push([
-      "Documentation",
-      config.documentation
-        .map((entry) => `${escapeHtml(entry.titre)} <code>${escapeHtml(entry.chemin)}</code>`)
         .join("<br />"),
     ]);
   }
@@ -175,8 +189,54 @@ export function projectPage(
       <p class="links">${links.join("")}</p>
       ${known ? notice(known.text, known.tone) : ""}
       ${notice(options.failure, "error")}
+      ${documentationSection(project)}
       ${fileSection(viewer, project)}
       ${declaredSection(project)}`,
+    viewer,
+  );
+}
+
+export function docPage(
+  viewer: Viewer,
+  project: Project & { check: ConfigCheck },
+  path: string,
+  rendered: { html: string; title: string | null },
+): string {
+  const { check } = project;
+  const name = check.config?.nom || project.repo;
+  const entry = (check.config?.documentation ?? []).find((candidate) =>
+    candidate.chemin.endsWith("/") ? path.startsWith(candidate.chemin) : candidate.chemin === path,
+  );
+  const title = rendered.title ?? entry?.titre ?? pageName(path);
+  const siblings =
+    entry?.chemin.endsWith("/")
+      ? (check.docPages ?? []).filter((page) => page.startsWith(entry.chemin) && page !== path)
+      : [];
+  const version = `<code>${escapeHtml(check.branch)}</code> at
+      <a class="mono" href="https://github.com/${escapeHtml(project.repo)}/commit/${escapeHtml(check.commitSha)}">${escapeHtml(check.commitSha.slice(0, 7))}</a>${
+        check.committedAt ? `, <span class="mono">${formatDate(check.committedAt)}</span>` : ""
+      }`;
+
+  return layout(
+    `${title} · ${name} · La Fabrique extraordinaire`,
+    `<p class="crumbs"><a href="${escapeHtml(projectUrl(project.repo))}">${escapeHtml(name)}</a>${
+      entry ? ` <span aria-hidden="true">›</span> ${escapeHtml(entry.titre)}` : ""
+    }</p>
+      <p class="doc-meta muted">${escapeHtml(path)} · ${version} ·
+        <a href="${escapeHtml(githubBlobUrl(project.repo, check.commitSha, path))}">View on GitHub</a></p>
+      <article class="markdown">
+${rendered.html}
+      </article>
+      ${
+        siblings.length
+          ? `<nav class="doc-siblings" aria-label="${escapeHtml(entry?.titre ?? "Section")}">
+        <h2>Also in ${escapeHtml(entry?.titre ?? "this section")}</h2>
+        <ul>${siblings
+          .map((page) => `<li><a href="${escapeHtml(docUrl(project.repo, page))}">${escapeHtml(pageName(page.slice(entry?.chemin.length ?? 0)))}</a></li>`)
+          .join("")}</ul>
+      </nav>`
+          : ""
+      }`,
     viewer,
   );
 }
