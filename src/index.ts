@@ -1,4 +1,6 @@
+import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { effectiveRole } from "./accounts";
+import { APPS_PATH, changeApps, showApps } from "./apps";
 import { finishLogin, startLogin } from "./auth";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
@@ -11,10 +13,13 @@ import { createProject, recheckProject, showActivity, showBranches, showDelivery
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
+import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
+import { d1KeyValue } from "./oauth-store";
 
 const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
+import { applySecurityHeaders } from "./headers";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import releaseNotes from "../docs/release-notes.json";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
@@ -48,7 +53,7 @@ async function currentViewer(request: Request, env: Env): Promise<ViewerState> {
 }
 
 // Every state-changing request carries the session's CSRF token in its form.
-async function protectedForm(request: Request, viewer: Viewer): Promise<FormData | null> {
+async function protectedForm(request: Request, viewer: Pick<Viewer, "csrfToken">): Promise<FormData | null> {
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(request.url).origin) return null;
   let form: FormData;
@@ -71,7 +76,7 @@ function methodNotAllowed(): Response {
   return text("Method not allowed", 405);
 }
 
-export default {
+const app = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const { pathname } = new URL(request.url);
     const method = request.method;
@@ -92,6 +97,19 @@ export default {
         return html(noAccessPage());
       case "/api/github/webhook":
         return method === "POST" ? handleWebhook(request, env) : methodNotAllowed();
+      case AUTHORIZE_PATH:
+        return authorize(request, env);
+      case APPS_PATH: {
+        // Open to accounts without a role, which sign in only to connect
+        // an app and to disconnect it.
+        const session = await readSession(request, env.DB);
+        if (!session) return redirect(`/auth/login?next=${encodeURIComponent(APPS_PATH)}`);
+        const person = { login: session.login, role: await effectiveRole(env, session.login), csrfToken: session.csrfToken };
+        if (method === "GET") return showApps(request, env, person);
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, person);
+        return form ? changeApps(form, env, person) : html(messagePage("Not allowed", "This form expired: reload the page."), { status: 403 });
+      }
     }
 
     const state = await currentViewer(request, env);
@@ -271,5 +289,56 @@ export default {
     return html(messagePage("Not found", "There is nothing at this address.", viewer), {
       status: 404,
     });
+  },
+} satisfies ExportedHandler<Env>;
+
+// La Fabrique is also an OAuth provider for the projects' own apps
+// (la-fabrique#65): the library answers the token endpoint, discovery and
+// the API's tokens; everything else is the app above. Its store is the D1
+// base, so no other binding is needed.
+// The library binds tokens to the API's address (RFC 9728), which is the
+// address the Worker is called at: one provider per origin.
+const providers = new Map<string, OAuthProvider<Env>>();
+
+function providerFor(origin: string): OAuthProvider<Env> {
+  let provider = providers.get(origin);
+  if (!provider) {
+    provider = new OAuthProvider<Env>({
+      apiRoute: ["/api/me", "/api/projects/"],
+      apiHandler: {
+        fetch(request: Request, env: Env, ctx: ExecutionContext & { props?: unknown }) {
+          return api(request, env, ctx.props as GrantProps);
+        },
+      },
+      defaultHandler: app,
+      authorizeEndpoint: AUTHORIZE_PATH,
+      tokenEndpoint: TOKEN_PATH,
+      scopesSupported: [DEFECTS_SCOPE],
+      resourceMetadata: { resource: origin, resource_name: "La Fabrique extraordinaire" },
+      accessTokenTTL: ACCESS_TOKEN_TTL,
+      refreshTokenTTL: REFRESH_TOKEN_TTL,
+      disallowPublicClientRegistration: true,
+    });
+    providers.set(origin, provider);
+  }
+  return provider;
+}
+
+function withSecurityHeaders(response: Response): Response {
+  if (response.headers.has("content-security-policy") || response.status === 101) return response;
+  const copy = new Response(response.body, response);
+  applySecurityHeaders(copy.headers);
+  return copy;
+}
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const oauthEnv: Env = { ...env, OAUTH_KV: d1KeyValue(env.DB) };
+    const { pathname, origin } = new URL(request.url);
+    const provider = providerFor(origin);
+    if (pathname === REVOKE_PATH) return withSecurityHeaders(await revoke(request, provider, oauthEnv, ctx));
+    const response = await provider.fetch(request, oauthEnv, ctx);
+    if (pathname === DISCOVERY_PATH && request.method === "GET") return discovery(response, request);
+    return withSecurityHeaders(response);
   },
 } satisfies ExportedHandler<Env>;

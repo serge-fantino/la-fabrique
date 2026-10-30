@@ -27,6 +27,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "1.2.4",
     "markdown-it": "~14.3.3"
   }
 }

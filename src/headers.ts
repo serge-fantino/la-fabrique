@@ -12,8 +12,14 @@ const CSP_DIRECTIVES = [
 
 const CSP = CSP_DIRECTIVES.join("; ");
 
+// The consent form ends on the app's own address: browsers apply
+// `form-action` to the redirect after a form is sent.
+export function cspWithFormTarget(origin: string): string {
+  return CSP_DIRECTIVES.map((directive) => (directive === "form-action 'self'" ? `form-action 'self' ${origin}` : directive)).join("; ");
+}
+
 export function applySecurityHeaders(headers: Headers): void {
-  headers.set("content-security-policy", CSP);
+  if (!headers.has("content-security-policy")) headers.set("content-security-policy", CSP);
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-frame-options", "DENY");
   headers.set("referrer-policy", "strict-origin-when-cross-origin");

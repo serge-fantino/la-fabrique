@@ -29,6 +29,11 @@ export function settingsPage(viewer: Viewer, data: { version: string | null; com
         </dl>
       </section>
       <section>
+        <h2>Apps</h2>
+        <p>Apps of the projects you allowed to act in your name${viewer.role === "super_admin" ? ", and the apps registered in La Fabrique" : ""}.</p>
+        <p><a class="button quiet" href="/apps">Connected apps</a></p>
+      </section>
+      <section>
         <h2>Reload</h2>
         <p>If a page looks old after an update, reload everything: the browser forgets what it kept of La Fabrique (your session stays), then the page comes back from the server.</p>
         <form method="post" action="${REFRESH_PATH}" data-refresh>${csrfField(viewer)}

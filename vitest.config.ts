@@ -18,7 +18,7 @@ export default defineWorkersConfig(async () => {
           wrangler: { configPath: "./wrangler.jsonc" },
           miniflare: {
             compatibilityDate: "2025-10-01",
-            compatibilityFlags: ["nodejs_compat"],
+            compatibilityFlags: ["nodejs_compat", "global_fetch_strictly_public"],
             bindings: {
               COMMIT_SHA: "test-commit",
               SUPER_ADMINS: "Admin-One, @admin-two",
