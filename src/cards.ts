@@ -61,8 +61,20 @@ export interface CardSpec {
   at: string;
 }
 
+// Claude's proposal to split the spec into stories, to review before
+// anything goes to GitHub; edited by the person, then created.
+export interface CardSplit {
+  stories: { title: string; answers: Record<string, string> }[];
+  note?: string;
+  // When the spec that was split was written: a later spec makes the
+  // proposal out of date.
+  specAt: string;
+  at: string;
+}
+
 export interface CardData {
   spec?: CardSpec;
+  split?: CardSplit;
 }
 
 export interface Card extends CardTags {
@@ -404,6 +416,35 @@ export async function saveSpec(db: D1Database, card: Card, author: string, spec:
     }),
   ]);
   return rev;
+}
+
+// A split proposed (or edited), or dropped (null): a new version of the card.
+export async function saveSplit(db: D1Database, card: Card, author: string, split: CardSplit | null, callId: number | null = null): Promise<void> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data };
+  if (split) data.split = split;
+  else delete data.split;
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    ...(callId && split
+      ? [
+          activityStatement(db, {
+            actor: author,
+            action: "card_split_proposed",
+            repo: card.repo,
+            details: { card: card.id, title: card.title, stories: split.stories.length, call: callId },
+          }),
+        ]
+      : []),
+  ]);
+}
+
+export async function findCardById(db: D1Database, id: number): Promise<Card | null> {
+  const row = await db.prepare(`SELECT ${CARD_COLUMNS} FROM cards WHERE id = ?`).bind(id).first<CardRow>();
+  return row ? toCard(row) : null;
 }
 
 // An older version comes back as the newest one: nothing is lost.

@@ -394,7 +394,7 @@ describe("From a card to a story", () => {
     const preview = await (await get(`/projects/${REPO}/cards/${id}/story`, cookie)).text();
     expect(preview).toContain(">Besoin</h2>");
     expect(preview).toContain("Fiche d'origine : <a ");
-    expect(preview).toContain(`href="${BASE}/projects/${REPO}/cards/${id}"`);
+    expect(preview).toContain(`href="${BASE}/c/${id}?rev=2"`);
 
     let sent: Record<string, unknown> = {};
     fetchMock
@@ -423,20 +423,145 @@ describe("From a card to a story", () => {
     expect(sent["title"]).toBe("Reprendre le panier");
     expect(sent["labels"]).toEqual(["demande"]);
     expect(String(sent["body"])).toContain(`## Besoin\n\n${SECTIONS.besoin}`);
-    expect(String(sent["body"])).toContain(`Fiche d'origine : [C${id}](${BASE}/projects/${REPO}/cards/${id}) dans La Fabrique extraordinaire.`);
+    expect(String(sent["body"])).toContain(`Fiche d'origine : [C${id}, spec en version 2](${BASE}/c/${id}?rev=2) dans La Fabrique extraordinaire.`);
     expect(await env.DB.prepare("SELECT kind, ref FROM card_links WHERE card_id = ? AND kind = 'story'").bind(id).first()).toEqual({ kind: "story", ref: "212" });
     expect((await logActions()).map((entry) => entry.action)).toContain("card_story_created");
 
     // Editing the card later keeps the story's link.
     await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "save", rev: "2", title: "Quick reorder, again", body: "Text", kind: "feature", status: "validated" }, cookie);
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
-    expect(page).toContain(`<a target="_blank" rel="noopener noreferrer" href="https://github.com/${REPO}/issues/212">#212</a>`);
+    expect(page).toContain(`/issues/212">#212</a>`);
+    // The story as GitHub has it: its title and its stage.
+    expect(page).toContain('Reprendre le panier <span class="pill stage-');
+    expect(page).toContain("0 of 1 in production.");
+  });
+
+  it("keeps a permanent address for the card and the version of its spec", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    expect((await get(`/c/${id}?rev=1`, cookie)).headers.get("location")).toBe(`/projects/${REPO}/cards/${id}`);
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_save", rev: "1", s_besoin: "x" }, cookie);
+    expect((await get(`/c/${id}?rev=1`, cookie)).headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?rev=1`);
+    expect((await get(`/c/${id}`)).headers.get("location")).toBe(`/auth/login?next=${encodeURIComponent(`/c/${id}`)}`);
+    expect((await get("/c/9999", cookie)).status).toBe(404);
   });
 
   it("sends back to the spec while a required section is empty", async () => {
     const { cookie, id } = await writerWithCard();
     const response = await get(`/projects/${REPO}/cards/${id}/story`, cookie);
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}#spec`);
+  });
+});
+
+// GitHub creating issues, one per story, in order; `fail` the ones refused.
+function mockIssues(sent: Record<string, unknown>[], numbers: number[], fail: number[] = []): void {
+  for (const number of numbers) {
+    fetchMock
+      .get("https://api.github.com")
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues` })
+      .reply((options) => {
+        const body = JSON.parse(String(options.body)) as Record<string, unknown>;
+        sent.push(body);
+        if (fail.includes(number)) return { statusCode: 403, data: "{}", responseOptions: { headers: JSON_HEADERS } };
+        return {
+          statusCode: 201,
+          data: JSON.stringify({
+            number,
+            title: body["title"],
+            state: "open",
+            html_url: `https://github.com/${REPO}/issues/${number}`,
+            user: { login: "pe" },
+            labels: [{ name: "demande" }],
+            created_at: "2026-10-30T02:00:00Z",
+            updated_at: "2026-10-30T02:00:00Z",
+            closed_at: null,
+          }),
+          responseOptions: { headers: JSON_HEADERS },
+        };
+      });
+  }
+}
+
+const TWO_STORIES = {
+  stories: [
+    { title: "Reprendre la semaine dernière", sections: { ...SECTIONS, criteres: "- [ ] Quand je touche « Reprendre », la liste se remplit." } },
+    { title: "Choisir une autre semaine", sections: { ...SECTIONS, criteres: "- [ ] Quand je choisis une semaine, je vois ses articles." } },
+  ],
+  note: "La reprise d'abord, le choix ensuite.",
+};
+
+describe("Split into stories", () => {
+  async function withSplit(): Promise<{ cookie: string; csrf: string; id: number }> {
+    const session = await writerWithCard();
+    const fields = Object.fromEntries(Object.entries(SECTIONS).map(([key, value]) => [`s_${key}`, value]));
+    await post(`/projects/${REPO}/cards/${session.id}`, { csrf: session.csrf, action: "spec_save", rev: "1", ...fields }, session.cookie);
+    const response = await post(`/projects/${REPO}/cards/${session.id}`, { csrf: session.csrf, action: "spec_split", instruction: "Deux au plus." }, session.cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${session.id}#claude-job`);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, TWO_STORIES);
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
+    const user = ((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "");
+    expect(user).toContain("Split this specification into stories.");
+    expect(user).toContain("Deux au plus.");
+    return session;
+  }
+
+  it("has Claude propose stories in the background, shown on the card, nothing sent to GitHub", async () => {
+    const { cookie, id } = await withSplit();
+    const log = (await env.DB.prepare("SELECT text FROM claude_job_events ORDER BY id").all<{ text: string }>()).results.map((row) => row.text);
+    expect(log).toContain("Story 1: Reprendre la semaine dernière");
+    expect(log).toContain("Story 2: Choisir une autre semaine");
+    expect(log.at(-1)).toBe("Done: 2 stories proposed, to review before they go to GitHub. Cost $0.05.");
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("<strong>Claude proposes 2 stories</strong>: La reprise d&#39;abord, le choix ensuite.");
+    expect(page).toContain(`href="/projects/${REPO}/cards/${id}/stories">Review and create the stories</a>`);
+    const review = await (await get(`/projects/${REPO}/cards/${id}/stories`, cookie)).text();
+    expect(review).toContain('name="keep_0" value="1" checked');
+    expect(review).toContain('value="Choisir une autre semaine"');
+    expect(review).toContain("(story 2 sur 2)");
+  });
+
+  it("creates the checked stories, as edited, each linked to the card and its spec's version", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const sent: Record<string, unknown>[] = [];
+    mockIssues(sent, [301]);
+    const response = await post(
+      `/projects/${REPO}/cards/${id}/stories`,
+      { csrf, action: "create", keep_0: "1", title_0: "Reprendre ma semaine", title_1: "Choisir une autre semaine" },
+      cookie,
+    );
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=stories&created=1#stories`);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.["title"]).toBe("Reprendre ma semaine");
+    expect(String(sent[0]?.["body"])).toContain("Quand je touche « Reprendre », la liste se remplit.");
+    const rev = (await env.DB.prepare("SELECT rev FROM cards WHERE id = ?").bind(id).first<{ rev: number }>())?.rev ?? 0;
+    expect(String(sent[0]?.["body"])).toContain(`Fiche d'origine : [C${id}, spec en version ${rev - 1}](${BASE}/c/${id}?rev=${rev - 1}) dans La Fabrique extraordinaire.`);
+    expect((await env.DB.prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = 'story'").bind(id).all()).results).toEqual([{ ref: "301" }]);
+    expect(await specOf(id)).toBeTruthy();
+    expect(JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").split).toBeUndefined();
+  });
+
+  it("keeps what GitHub refused, and asks for the required sections first", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const missing = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "create", keep_0: "1", s_0_besoin: "" }, cookie);
+    expect(missing.status).toBe(422);
+    expect(await missing.text()).toContain("Fill in: Besoin.");
+
+    const sent: Record<string, unknown>[] = [];
+    mockIssues(sent, [301, 302], [302]);
+    const response = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "create", keep_0: "1", keep_1: "1" }, cookie);
+    expect(response.headers.get("location")).toContain(`/projects/${REPO}/cards/${id}/stories?notice=partial&created=1`);
+    expect(String(sent[0]?.["body"])).toContain("(story 1 sur 2)");
+    const split = JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").split;
+    expect(split.stories.map((story: { title: string }) => story.title)).toEqual(["Choisir une autre semaine"]);
+    const page = await (await get(response.headers.get("location") ?? "", cookie)).text();
+    expect(page).toContain("1 story created, then: GitHub refused to create the issue (HTTP 403). The others are still here.");
+  });
+
+  it("discards the proposal", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const response = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "discard" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=split_discarded#spec`);
+    expect(await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text()).toContain("Split into stories with Claude");
   });
 });
 

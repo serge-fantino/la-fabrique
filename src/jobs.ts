@@ -1,16 +1,16 @@
-import { findCard, saveSpec } from "./cards";
+import { findCard, saveSpec, saveSplit } from "./cards";
 import type { Env } from "./env";
-import { formatUsd } from "./llm";
+import { formatUsd, type Progress } from "./llm";
 import { liveFor, type LiveEvent } from "./live";
 import { findProject } from "./projects";
-import { specRubriques, writeSpec, type Answer } from "./specs";
+import { specRubriques, splitSpec, writeSpec, type Answer, type SpecReading } from "./specs";
 
 // Claude works in the background (docs/decisions/0001-claude-in-the-background.md).
 // A request is saved as a job at once, with what the person wrote, and
 // put on a queue; the queue's consumer runs it, detached from the browser,
 // writes its log and tells the card's open pages (CardLive).
 
-export type JobKind = "spec_draft" | "spec_revise" | "spec_answer";
+export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split";
 export type JobStatus = "queued" | "running" | "done" | "failed";
 
 export interface JobRequest {
@@ -48,6 +48,7 @@ const LABELS: Record<JobKind, string> = {
   spec_draft: "Claude is writing the spec",
   spec_revise: "Claude is revising the spec",
   spec_answer: "Claude is reading your answers",
+  spec_split: "Claude is splitting the spec into stories",
 };
 
 export function jobLabel(job: Pick<Job, "kind" | "status" | "error">): string {
@@ -212,58 +213,82 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   let lastThought = "";
   let lastAt = 0;
   const written = new Set<string>();
-  const outcome = await writeSpec(
-    env,
-    project,
-    card,
-    job.login,
-    { mode: job.kind === "spec_draft" ? "draft" : "revise", instruction: job.request.instruction, answers: job.request.answers },
-    {
-      read: (reading) => {
-        const parts = [reading.document, `${reading.cards} other card${reading.cards === 1 ? "" : "s"}`, `${reading.stories} open stor${reading.stories === 1 ? "y" : "ies"}`];
-        pending.push(say(env, running, `Reads ${parts.filter(Boolean).join(", ")}.`));
-      },
-      progress: (progress) => {
-        if (progress.type === "thinking") {
-          const thought = tail(progress.text);
-          if (!thought || thought === lastThought || Date.now() - lastAt < 4000) return;
-          lastThought = thought;
-          lastAt = Date.now();
-          pending.push(say(env, running, `Thinks: ${thought}`));
-          return;
-        }
-        for (const rubrique of rubriques) {
-          if (written.has(rubrique.cle) || !progress.text.includes(`"${rubrique.cle}"`)) continue;
-          written.add(rubrique.cle);
-          pending.push(say(env, running, `Writes: ${rubrique.titre}.`));
-        }
-        if (!written.has("questions") && /"questions"\s*:/.test(progress.text)) {
-          written.add("questions");
-          pending.push(say(env, running, "Writes its questions."));
-        }
-      },
+  let titles = 0;
+  const watch = {
+    read: (reading: SpecReading) => {
+      const parts = [reading.document, `${reading.cards} other card${reading.cards === 1 ? "" : "s"}`, `${reading.stories} open stor${reading.stories === 1 ? "y" : "ies"}`];
+      pending.push(say(env, running, `Reads ${parts.filter(Boolean).join(", ")}.`));
     },
-  );
-  await Promise.allSettled(pending);
+    progress: (progress: Progress) => {
+      if (progress.type === "thinking") {
+        const thought = tail(progress.text);
+        if (!thought || thought === lastThought || Date.now() - lastAt < 4000) return;
+        lastThought = thought;
+        lastAt = Date.now();
+        pending.push(say(env, running, `Thinks: ${thought}`));
+        return;
+      }
+      if (job.kind === "spec_split") {
+        // Each story's title, once written in full.
+        const found = [...progress.text.matchAll(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1] ?? "");
+        for (; titles < found.length; titles++) pending.push(say(env, running, `Story ${titles + 1}: ${found[titles]}`));
+        return;
+      }
+      for (const rubrique of rubriques) {
+        if (written.has(rubrique.cle) || !progress.text.includes(`"${rubrique.cle}"`)) continue;
+        written.add(rubrique.cle);
+        pending.push(say(env, running, `Writes: ${rubrique.titre}.`));
+      }
+      if (!written.has("questions") && /"questions"\s*:/.test(progress.text)) {
+        written.add("questions");
+        pending.push(say(env, running, "Writes its questions."));
+      }
+    },
+  };
 
-  if (!outcome.ok) {
+  const failed = async (outcome: { message: string; retryable: boolean }): Promise<"retry" | "failed"> => {
+    await Promise.allSettled(pending);
     if (outcome.retryable && running.attempts < MAX_ATTEMPTS) {
       await say(env, running, `${outcome.message} Trying again in ${RETRY_DELAY_SECONDS} s.`, "queued");
       return "retry";
     }
     await say(env, running, outcome.message, "failed", outcome.message);
     return "failed";
+  };
+  // The card may have changed meanwhile: the result goes on its newest version.
+  const finish = async (callId: number, summary: string, cost: number | null) => {
+    await Promise.allSettled(pending);
+    await env.DB.prepare("UPDATE claude_jobs SET call_id = ? WHERE id = ?").bind(callId, job.id).run();
+    await say(env, running, `Done: ${summary} Cost ${formatUsd(cost)}.`, "done");
+    return "done" as const;
+  };
+
+  if (job.kind === "spec_split") {
+    const outcome = await splitSpec(env, project, card, job.login, job.request.instruction, watch);
+    if (!outcome.ok) return failed(outcome);
+    const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
+    await saveSplit(env.DB, current, job.login, outcome.split, outcome.callId);
+    const count = outcome.split.stories.length;
+    return finish(outcome.callId, `${count} stor${count === 1 ? "y" : "ies"} proposed, to review before they go to GitHub.`, outcome.costMicros);
   }
-  // The card may have changed meanwhile: the spec goes on its newest version.
+
+  const outcome = await writeSpec(
+    env,
+    project,
+    card,
+    job.login,
+    { mode: job.kind === "spec_draft" ? "draft" : "revise", instruction: job.request.instruction, answers: job.request.answers },
+    watch,
+  );
+  if (!outcome.ok) return failed(outcome);
   const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
   await saveSpec(env.DB, current, job.login, outcome.spec, outcome.callId);
-  await env.DB.prepare("UPDATE claude_jobs SET call_id = ? WHERE id = ?").bind(outcome.callId, job.id).run();
   const asks = outcome.spec.questions.length;
-  const summary = outcome.spec.enough
-    ? "Claude knows enough to write the stories."
-    : `${asks} question${asks === 1 ? "" : "s"} for you.`;
-  await say(env, running, `Done: ${summary} Cost ${formatUsd(outcome.costMicros)}.`, "done");
-  return "done";
+  return finish(
+    outcome.callId,
+    outcome.spec.enough ? "Claude knows enough to write the stories." : `${asks} question${asks === 1 ? "" : "s"} for you.`,
+    outcome.costMicros,
+  );
 }
 
 // The queue's consumer: one job per message.

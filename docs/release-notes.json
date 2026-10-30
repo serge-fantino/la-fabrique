@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.51",
+    "date": "2026-10-31",
+    "heure": "00:30",
+    "titre": "From one card to several stories, reviewed before GitHub",
+    "changements": [
+      "Split into stories with Claude: from a card's spec, Claude proposes stories that can each be built, tested on int and shipped alone, each with its own criteria. It works in the background, like the spec, and nothing goes to GitHub yet.",
+      "Review and create the stories: uncheck those you do not want, edit their titles and sections, see exactly what GitHub will receive, then create the checked ones in one go. What GitHub refuses stays proposed; Save my edits and Discard the proposal are there too.",
+      "Each story links back to its card at a permanent address (/c/12) and to the version of the spec it came from; a story made from a split says which one it is (story 2 of 3).",
+      "The card lists its stories with their stage (backlog, in development, on int, in production) and how many are in production."
+    ],
+    "stories": [80],
+    "liens": null
+  },
+  {
     "version": "0.50",
     "date": "2026-10-30",
     "heure": "23:28",
