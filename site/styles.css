@@ -974,7 +974,8 @@ textarea {
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  background: color-mix(in srgb, var(--scanner) 12%, transparent);
+  /* Plain rgba, not color-mix: older browsers would draw nothing. */
+  background: rgba(227, 36, 27, 0.12);
 }
 
 /* Opacity, like the transform, runs on the compositor. */
@@ -990,8 +991,9 @@ textarea {
   left: 0;
   width: 25%;
   border-radius: 4px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--scanner) 55%, transparent) 30%, var(--scanner) 50%, color-mix(in srgb, var(--scanner) 55%, transparent) 70%, transparent);
-  box-shadow: 0 0 10px var(--scanner);
+  background: #e3241b;
+  background: linear-gradient(90deg, rgba(227, 36, 27, 0), rgba(227, 36, 27, 0.55) 30%, #e3241b 50%, rgba(227, 36, 27, 0.55) 70%, rgba(227, 36, 27, 0));
+  box-shadow: 0 0 10px #e3241b;
   will-change: transform;
   transform: translateX(-100%);
 }

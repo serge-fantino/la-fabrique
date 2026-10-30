@@ -16,8 +16,14 @@
   // The server still renders every page; only the body is swapped. A page
   // with its own script or another stylesheet is loaded by the browser.
   const stylesheetOf = (doc) => doc.querySelector('link[rel="stylesheet"][href^="/styles.css"]')?.getAttribute("href") ?? null;
+  // Only the site's own scripts count: a host may add its own (analytics),
+  // which the security policy blocks anyway.
+  const ownScripts = (doc) =>
+    [...doc.querySelectorAll("script[src]")]
+      .map((script) => script.getAttribute("src") || "")
+      .filter((src) => src.startsWith("/") && !src.startsWith("//"));
   const onlyThisScript = (doc) => {
-    const scripts = [...doc.querySelectorAll("script[src]")].map((script) => script.getAttribute("src"));
+    const scripts = ownScripts(doc);
     return scripts.length === 1 && scripts[0] === scriptSrc;
   };
   const withoutHash = (href) => href.split("#")[0];
@@ -121,9 +127,14 @@
     const scriptOk = scriptSrc === diagnostic.getAttribute("data-expected-script");
     const loading = document.querySelector(".loading");
     const stylesOk = Boolean(loading && getComputedStyle(loading).getPropertyValue("--scanner").trim());
+    const others = [...document.querySelectorAll("script[src]")]
+      .map((script) => script.getAttribute("src") || "")
+      .filter((src) => src !== scriptSrc);
     diagnostic.textContent = `Script ${scriptOk ? "up to date" : `old copy (${scriptSrc ?? "unknown"})`}; stylesheet ${
       stylesOk ? "up to date" : "old copy"
-    }.`;
+    }; pages ${onlyThisScript(document) ? "follow in place" : "load normally"}${
+      others.length ? ` (other scripts: ${others.join(", ")})` : ""
+    }; ${navigator.userAgent}.`;
   }
 
   // Reload everything: also empty the Cache Storage, where there is one.
