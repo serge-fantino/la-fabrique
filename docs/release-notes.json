@@ -2,7 +2,7 @@
   {
     "version": "0.14",
     "date": "2026-10-30",
-    "heure": "10:10",
+    "heure": "10:00",
     "titre": "Reference branch in the header",
     "changements": [
       "Choose a project's reference branch from a menu in the header, with a search over all its branches; like a checkout, it stays chosen on every tab until you go back to production.",
