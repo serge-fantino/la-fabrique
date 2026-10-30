@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.40",
+    "date": "2026-10-30",
+    "heure": "16:55",
+    "titre": "Defects tab, and what a defect is about",
+    "changements": [
+      "Each project has a Defects tab: the issues labelled bug, open or closed, with the story and the version each is about, who reported it, its screenshot, and those left to triage.",
+      "The report form of the project's app asks what the defect is about: the versions on int first, each with its stories, then the versions released with the stories they brought; a search finds an older one, and I don't know is always possible.",
+      "The issue is linked to the story chosen and says which version it is about; the report kit is now 1.1.0."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.39",
     "date": "2026-10-30",
     "heure": "16:15",

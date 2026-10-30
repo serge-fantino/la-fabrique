@@ -18,6 +18,7 @@ import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
 import { readSnapshot } from "./snapshots";
+import { defectRows, defectsPage, filterDefects, readDefectFilters } from "./defects-tab";
 import { appLink, appSection, changeProjectApp, type AppActionFailure } from "./project-app";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
@@ -661,4 +662,14 @@ export async function launchClaudeOn(request: Request, form: FormData, env: Env,
   const outcome = await launchClaude(env, project, viewer.login, issue);
   if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?notice=claude#issue-${issue}`);
   return showBacklog(request, env, viewer, repo, outcome);
+}
+
+// The project's defects: issues labelled bug, with their story and version.
+export async function showDefects(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const filters = readDefectFilters(new URL(request.url).searchParams);
+  const [{ view, cookies }, stories] = await Promise.all([projectView(request, env, project, viewer), loadStories(env, project)]);
+  const all = await defectRows(env, project, stories.stories);
+  return html(defectsPage(viewer, view, { rows: filterDefects(all, filters), all, stories: stories.stories, filters, failure: stories.failure }), { cookies });
 }

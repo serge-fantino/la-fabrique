@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.0.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.1.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.0.0";
+  var VERSION = "1.1.0";
   var QUEUE_KEY = "fabrique-report-queue";
   var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
   var PREFIX = "fab-rep";
@@ -50,6 +50,11 @@
       invalid: "Something is missing: ",
       failed: "The report could not be sent.",
       required: "Required",
+      about: "It is about",
+      unknown: "I don't know",
+      onInt: "on int",
+      older: "Earlier versions",
+      search: "Search a version, a story…",
     },
     fr: {
       report: "Signaler un défaut",
@@ -87,6 +92,11 @@
       invalid: "Il manque quelque chose : ",
       failed: "Le signalement n'a pas pu partir.",
       required: "Obligatoire",
+      about: "Ça concerne",
+      unknown: "Je ne sais pas",
+      onInt: "sur int",
+      older: "Versions précédentes",
+      search: "Chercher une version, une story…",
     },
   };
 
@@ -436,6 +446,123 @@
     });
   }
 
+  // --- What the report is about ---------------------------------------------------
+  // The relay answers GET {endpoint}?targets=1 with La Fabrique's targets: the
+  // versions on int, then those released, each with its stories.
+  function loadTargets() {
+    if (!options.endpoint) return Promise.resolve(null);
+    var address = options.endpoint + (options.endpoint.indexOf("?") >= 0 ? "&" : "?") + "targets=1";
+    return fetch(address, { credentials: "same-origin", headers: headers({ accept: "application/json" }) })
+      .then(function (response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function (data) {
+        return data && Array.isArray(data.versions) ? data.versions : null;
+      })
+      .catch(function () {
+        return null;
+      });
+  }
+
+  var choiceCount = 0;
+  function choice(value, labelChildren, checked, className) {
+    var id = cls("about-" + ++choiceCount);
+    var input = el("input", { type: "radio", name: cls("about"), id: id, value: value, checked: checked });
+    return el("div", { className: cls("choice") + (className ? " " + className : "") }, [input, el("label", { for: id }, labelChildren)]);
+  }
+
+  // The list of versions and stories, with a search; the versions on int and
+  // the two latest released first, the others on demand or when searched.
+  function aboutPicker(versions) {
+    var t = words();
+    var shown = 2;
+    var first = versions.filter(function (version) {
+      return version.on_int;
+    })[0];
+    var preset = first && first.stories && first.stories.length === 1 ? "s:" + first.stories[0].number + ":" + first.version : "";
+    var search = el("input", { type: "search", className: cls("search"), placeholder: t.search, "aria-label": t.search });
+    var list = el("div", { className: cls("choices") });
+    var more = el("button", { type: "button", className: cls("link"), text: t.older });
+    var showAll = false;
+    var unknown = choice("", [t.unknown], preset === "");
+
+    var blocks = versions.map(function (version, index) {
+      var released = versions.filter(function (other, at) {
+        return !other.on_int && at <= index;
+      }).length;
+      var text = [version.version, version.title || "", (version.changes || []).join(" ")].join(" ").toLowerCase();
+      var stories = (version.stories || []).map(function (story) {
+        var value = "s:" + story.number + ":" + version.version;
+        return {
+          node: choice(value, ["#" + story.number + " " + story.title], preset === value, cls("story")),
+          text: ("#" + story.number + " " + story.title).toLowerCase(),
+        };
+      });
+      var head = choice(
+        "v:" + version.version,
+        [
+          el("strong", { text: version.version }),
+          version.title ? " " + version.title : "",
+          version.on_int ? el("span", { className: cls("tag"), text: t.onInt }) : version.date ? el("span", { className: cls("date"), text: version.date }) : "",
+        ],
+        false,
+        cls("version-choice"),
+      );
+      var changes = (version.changes || []).join(" · ");
+      var node = el("div", { className: cls("version") }, [head, changes ? el("p", { className: cls("changes"), text: changes.length > 160 ? changes.slice(0, 157) + "…" : changes }) : null].concat(
+        stories.map(function (story) {
+          return story.node;
+        }),
+      ));
+      return { node: node, text: text, stories: stories, early: version.on_int || released <= shown };
+    });
+
+    function render() {
+      var query = search.value.trim().toLowerCase();
+      var hidden = 0;
+      blocks.forEach(function (block) {
+        var matches = !query || block.text.indexOf(query) >= 0;
+        var storyMatches = 0;
+        block.stories.forEach(function (story) {
+          var visible = !query || matches || story.text.indexOf(query) >= 0;
+          story.node.hidden = !visible;
+          if (visible) storyMatches++;
+        });
+        var visible = query ? matches || storyMatches > 0 : showAll || block.early;
+        block.node.hidden = !visible;
+        if (!visible && !query) hidden++;
+      });
+      more.hidden = Boolean(query) || hidden === 0;
+    }
+
+    list.appendChild(unknown);
+    blocks.forEach(function (block) {
+      list.appendChild(block.node);
+    });
+    search.addEventListener("input", render);
+    more.addEventListener("click", function () {
+      showAll = true;
+      render();
+    });
+    render();
+
+    var fieldset = el("fieldset", { className: cls("about") }, [el("legend", { text: t.about }), search, list, more]);
+    return {
+      node: fieldset,
+      // The story and the version chosen.
+      value: function () {
+        var checked = fieldset.querySelector("input[type=radio]:checked");
+        var value = checked ? checked.value : "";
+        if (value.indexOf("s:") === 0) {
+          var parts = value.split(":");
+          return { story: Number(parts[1]), release: parts.slice(2).join(":") === "int" ? null : parts.slice(2).join(":") };
+        }
+        if (value.indexOf("v:") === 0) return { story: null, release: value.slice(2) === "int" ? null : value.slice(2) };
+        return { story: null, release: null };
+      },
+    };
+  }
+
   // --- The form ---------------------------------------------------------------
   function context(node) {
     return {
@@ -469,6 +596,8 @@
       var fileInput = el("input", { type: "file", id: cls("file"), accept: "image/png,image/jpeg,image/*" });
       var fileLine = el("div", { className: cls("field") }, [el("label", { for: cls("file"), text: t.attach }), fileInput]);
       var status = el("p", { className: cls("status"), role: "status", "aria-live": "polite" });
+      var aboutHolder = el("div", { className: cls("about-holder") });
+      var picker = null;
       var send = el("button", { type: "submit", className: cls("button"), text: t.send });
       var cancel = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.cancel });
 
@@ -491,6 +620,7 @@
         field(cls("title"), t.title, titleInput, true),
         field(cls("seen"), t.seen, seenInput, true),
         field(cls("expected"), t.expected, expectedInput, false),
+        aboutHolder,
         captureLine,
         fileLine,
         captureNote,
@@ -509,6 +639,12 @@
         if (dataUrl) preview.src = dataUrl;
         else preview.removeAttribute("src");
       }
+
+      loadTargets().then(function (versions) {
+        if (!versions || !versions.length || !dialog.isConnected) return;
+        picker = aboutPicker(versions);
+        aboutHolder.appendChild(picker.node);
+      });
 
       loadCapture().then(function (capture) {
         if (!capture) return;
@@ -587,6 +723,11 @@
         if (options.version) body.version = options.version;
         if (options.deployment) body.deployment = options.deployment;
         if (image) body.screenshot = image;
+        if (picker) {
+          var about = picker.value();
+          if (about.story) body.story = about.story;
+          if (about.release) body.release = about.release;
+        }
         send.disabled = true;
         cancel.disabled = true;
         status.textContent = t.sending;

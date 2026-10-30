@@ -10,7 +10,7 @@ import { isAsset, serveAsset } from "./assets";
 import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
@@ -20,7 +20,7 @@ import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
 import { CARD_ROUTE, cardRoute } from "./card-routes";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
@@ -232,6 +232,9 @@ const app = {
       }
       if (projectRoute[2] === "/production") {
         return method === "GET" ? showProduction(request, env, viewer, repo) : methodNotAllowed();
+      }
+      if (projectRoute[2] === "/defects") {
+        return method === "GET" ? showDefects(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/stories") {
         return method === "GET" ? showStories(request, env, viewer, repo) : methodNotAllowed();
