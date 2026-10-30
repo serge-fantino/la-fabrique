@@ -29,6 +29,8 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { inDevReady, loadInDev } from "./in-dev";
+import { inDevContent, inDevLoading, inDevPage } from "./in-dev-views";
 import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
 import { cycleRules, isStage, stagesOf, storiesOnInt } from "./lifecycle";
 import { setupChecklist } from "./setup";
@@ -348,4 +350,20 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
     latest,
     failure: production.failure ?? stories.failure,
   };
+}
+
+// Who works on what: the stories in development, their branches and PRs.
+export async function showInDev(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const { view, cookies } = await projectView(request, env, project);
+  const params = new URL(request.url).searchParams;
+  const part = params.get("part") === "content";
+  if (!part && params.get("wait") !== "1" && !(await inDevReady(env, project))) {
+    return html(inDevPage(viewer, view, inDevLoading(view.path)), { cookies });
+  }
+  const [work, stories, onInt] = await Promise.all([loadInDev(env, project), loadStories(env, project), storiesOnInt(env, project)]);
+  const stages = stagesOf(stories.stories, cycleRules(project.check?.config), onInt);
+  const content = inDevContent(work, stories.stories, stages);
+  return html(part ? content : inDevPage(viewer, view, content), { cookies });
 }
