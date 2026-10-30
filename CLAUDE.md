@@ -1,10 +1,10 @@
-# La Fabrique
+# La Fabrique extraordinaire
 
 ## En une phrase
 
 Le poste de pilotage d'un projet logiciel construit avec Claude : sa documentation en ligne, ses stories, ce qui attend la production, et un circuit de demande **suivi, contrôlé et traçable**, du besoin écrit par un Product Engineer jusqu'à la version en production.
 
-Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-extraordinaire`). La Fabrique est générique : un autre projet s'y branche sans changer son code.
+Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-extraordinaire`). La Fabrique extraordinaire (« La Fabrique » en abrégé) est générique : un autre projet s'y branche sans changer son code.
 
 ## Principes (non négociables)
 
@@ -25,7 +25,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 ## Architecture
 
 - **Un Worker Cloudflare** (TypeScript strict) sert les pages et l'API ; **sa propre base D1** (comptes, rôles, projets, journal des décisions). Aucune donnée d'un projet piloté n'y est copiée (pas de données des clients de l'épicerie).
-- **Une GitHub App « La Fabrique »** : connexion des personnes (OAuth de l'App, jetons utilisateur courts) et accès aux dépôts où elle est installée (jetons d'installation). Installer l'App sur un dépôt, puis le déclarer dans La Fabrique : c'est le lien avec un projet.
+- **Une GitHub App « La Fabrique extraordinaire »** : connexion des personnes (OAuth de l'App, jetons utilisateur courts) et accès aux dépôts où elle est installée (jetons d'installation). Installer l'App sur un dépôt, puis le déclarer dans La Fabrique : c'est le lien avec un projet.
 - **Webhooks GitHub** de l'App (push, issues, workflow_run, pull_request) pour l'état en direct ; lecture à la demande sinon.
 - Front : HTML/CSS/JS sans build, comme l'épicerie ; style sobre (voir Design).
 

@@ -1,6 +1,6 @@
 # Owner setup
 
-One-time steps to run the La Fabrique Worker in production. Only the
+One-time steps to run the La Fabrique extraordinaire Worker in production. Only the
 repository owner (or someone with Cloudflare and GitHub admin rights) does
 this. Code never carries any identifier or secret &mdash; everything lives in
 Cloudflare secrets and GitHub Actions secrets.
@@ -57,7 +57,7 @@ GitHub &rarr; Settings &rarr; Developer settings &rarr; GitHub Apps &rarr;
 
 | Field | Value |
 | --- | --- |
-| GitHub App name | `La Fabrique` (must be unique on GitHub; add a suffix if taken) |
+| GitHub App name | `La Fabrique extraordinaire` (must be unique on GitHub; renaming it later changes nothing else) |
 | Homepage URL | `https://la-fabrique.<your-subdomain>.workers.dev` |
 | Callback URL | `https://la-fabrique.<your-subdomain>.workers.dev/auth/callback` (add one line per address you use, e.g. a custom domain later) |
 | Expire user authorization tokens | checked |

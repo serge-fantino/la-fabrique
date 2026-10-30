@@ -1,4 +1,4 @@
-# La Fabrique
+# La Fabrique extraordinaire
 
 Le poste de pilotage d'un projet logiciel construit avec Claude : documentation en ligne, stories, ce qui attend la production, et un circuit de demande suivi et traçable, du besoin écrit par un Product Engineer jusqu'à la version en production.
 
