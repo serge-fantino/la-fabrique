@@ -331,6 +331,11 @@ function providerFor(origin: string): OAuthProvider<Env> {
       accessTokenTTL: ACCESS_TOKEN_TTL,
       refreshTokenTTL: REFRESH_TOKEN_TTL,
       disallowPublicClientRegistration: true,
+      // A refusal (expired code, wrong secret, revoked token) leaves a line
+      // in the Worker's logs, without any token or secret.
+      onError({ code, description, status, request }) {
+        console.warn(`OAuth ${status} ${code} on ${request ? new URL(request.url).pathname : "?"}: ${description}`);
+      },
     });
     providers.set(origin, provider);
   }
