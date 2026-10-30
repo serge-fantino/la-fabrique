@@ -100,13 +100,16 @@ export function ownScreenshots(origin: string): (src: string) => string | null {
 }
 
 function storyPreview(project: Project, row: DefectRow, story: Story | undefined, body: string | null, images: (src: string) => string | null): string {
+  const change = row.change
+    ? `<blockquote class="defect-change"><span class="muted small">In the release note of <span class="mono">${escapeHtml(row.release ?? "")}</span></span><br />${escapeHtml(row.change)}</blockquote>`
+    : "";
   if (row.story === null) {
-    return `<p class="muted">Not linked to a story yet${row.release ? `; about version <span class="mono">${escapeHtml(row.release)}</span>` : ""}.</p>`;
+    return `${change}<p class="muted">Not linked to a story yet${row.release && !row.change ? `; about version <span class="mono">${escapeHtml(row.release)}</span>` : ""}.</p>`;
   }
   const url = story?.url ?? `https://github.com/${project.repo}/issues/${row.story}`;
   const criteria = story?.criteria ?? [];
   const done = criteria.filter((criterion) => criterion.done).length;
-  return `<div class="story-preview defect-story">
+  return `${change}<div class="story-preview defect-story">
       <p class="defect-story-head"><a href="${escapeHtml(url)}">#${row.story}</a> <strong>${escapeHtml(story?.title ?? "")}</strong>
         ${story ? (story.state === "closed" ? `<span class="pill ok">Closed</span>` : `<span class="pill">Open</span>`) : ""}
         ${row.release ? `<span class="pill mono">${escapeHtml(row.release)}</span>` : ""}

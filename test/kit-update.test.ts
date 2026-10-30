@@ -55,7 +55,8 @@ describe("The report kit's version", () => {
     expect(compareVersions("1.0.0", "1.1.0")).toBe(-1);
     expect(compareVersions("1.10.0", "1.9.3")).toBe(1);
     expect(compareVersions(KIT_VERSION, KIT_VERSION)).toBe(0);
-    expect(relayChanges("1.0.0")[0]).toContain("GET ?targets=1");
+    expect(relayChanges("1.0.0").join(" ")).toContain("GET ?targets=1");
+    expect(relayChanges("1.1.0").join(" ")).toContain("`change`");
     expect(relayChanges(KIT_VERSION)).toEqual([]);
   });
 

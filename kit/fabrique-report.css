@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.1.0 — styles. Change the custom properties to match your app. */
+/*! FabriqueReport 1.2.0 — styles. Change the custom properties to match your app. */
 .fab-rep {
   --fab-rep-ink: #18211b;
   --fab-rep-paper: #ffffff;
@@ -319,14 +319,14 @@
   overflow-wrap: anywhere;
 }
 
-.fab-rep-story {
+.fab-rep-story,
+.fab-rep-change {
   padding-left: 22px;
 }
 
-.fab-rep-changes {
-  margin: 0 0 2px 30px;
-  color: var(--fab-rep-muted);
-  font-size: 13px;
+.fab-rep-change {
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .fab-rep-tag,

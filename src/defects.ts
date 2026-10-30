@@ -46,6 +46,8 @@ export interface DefectReport {
   // a version (release note), or neither.
   story: number | null;
   release: string | null;
+  // The change chosen in that version's release note: its index.
+  change: number | null;
 }
 
 type Json = Record<string, unknown>;
@@ -136,6 +138,9 @@ export function readReport(data: unknown): { report: DefectReport } | { invalid:
   if (Number.isNaN(story)) invalid.push("story");
   const rawRelease = data["release"];
   if (rawRelease !== undefined && rawRelease !== null && (typeof rawRelease !== "string" || rawRelease.length > 40)) invalid.push("release");
+  const rawChange = data["change"];
+  const change = rawChange === undefined || rawChange === null ? null : Number.isInteger(rawChange) && (rawChange as number) >= 0 && (rawChange as number) < 100 ? (rawChange as number) : NaN;
+  if (Number.isNaN(change)) invalid.push("change");
 
   if (invalid.length) return { invalid };
   return {
@@ -154,6 +159,7 @@ export function readReport(data: unknown): { report: DefectReport } | { invalid:
       screenshot: screenshot === "invalid" ? null : screenshot,
       story: Number.isNaN(story) ? null : story,
       release: typeof rawRelease === "string" && rawRelease.trim() ? rawRelease.trim() : null,
+      change: Number.isNaN(change) ? null : change,
     },
   };
 }
@@ -178,7 +184,7 @@ export function defectBody(
     onInt: number[];
     screenshotUrl: string | null;
     triage: boolean;
-    release?: { version: string; title: string | null } | null;
+    release?: { version: string; title: string | null; change?: string | null } | null;
   },
 ): string {
   const words = wordingFor(project);
@@ -218,6 +224,7 @@ export function defectBody(
     ]
       .filter(Boolean)
       .join(" "),
+    ...(context.release?.change ? [`> ${context.release.change.replace(/\s+/g, " ")}`] : []),
     `## ${words.saw}\n\n${report.seen}`,
     `## ${words.expected}\n\n${report.expected || "—"}`,
     `## ${words.context}\n\n| | |\n|---|---|\n${lines.map(([label, value]) => `| ${label} | ${value} |`).join("\n")}`,
@@ -366,8 +373,15 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
   const triage = role === null;
   const targets = await defectTargets(env, project);
   const onInt = storiesOnIntOf(targets);
-  const story = report.story ?? (report.release === null && onInt.length === 1 ? (onInt[0] ?? null) : null);
-  const release = report.release ? { version: report.release, title: targets.find((target) => target.version === report.release)?.title ?? null } : null;
+  // A change of a version that declares a single story is about that story.
+  const target = report.release ? targets.find((candidate) => candidate.version === report.release) : undefined;
+  const change = target && report.change !== null ? (target.changes[report.change] ?? null) : null;
+  const story =
+    report.story ??
+    (report.release === null
+      ? onInt.length === 1 ? (onInt[0] ?? null) : null
+      : change && target?.stories.length === 1 ? (target.stories[0]?.number ?? null) : null);
+  const release = report.release ? { version: report.release, title: target?.title ?? null, change } : null;
   const screenshot = report.screenshot ? await storeScreenshot(env, project.repo, props.login, report.screenshot) : null;
   const screenshotUrl = screenshot ? new URL(`/screenshots/${screenshot}`, request.url).href : null;
   const body = defectBody(project, report, {
@@ -416,6 +430,7 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
       via: props.app ?? "app",
       triage,
       ...(report.release ? { release: report.release } : {}),
+      ...(change ? { change: change.slice(0, 500) } : {}),
       ...(screenshot ? { screenshot } : {}),
     },
   }).run();

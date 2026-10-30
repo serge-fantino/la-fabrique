@@ -56,7 +56,7 @@ Options (`FabriqueReport.configure`, `start`, or the `data-` attributes of the s
 
 API: `FabriqueReport.start()` (picking, then the form; resolves with the result, or `null` if cancelled), `status()` (the relay's `GET`), `flush()` (sends the reports kept offline; done at load and when the network is back), `errors()`, `version`.
 
-What it is about: the form asks the person which version and story the defect is about (**It is about**). The versions on int come first, each with its stories, then the versions released, newest first, each with the stories it brought; a search finds an older one; **I don't know** is always possible. When a single story is on int, it is chosen already.
+What it is about: the form asks the person what the defect is about (**It is about**): the release notes in detail, the versions on int first, then those released, newest first. Under each version, each of its changes can be chosen, then the stories it declares; a search finds an older one; **I don't know** is always possible. When a single story is on int, it is chosen already.
 
 Picking: the person touches or clicks a part; **Wider** goes to the enclosing part, **This one** confirms, **The whole page**, **Cancel** (or Escape). While picking, the page does not react to presses; it still scrolls.
 
@@ -91,10 +91,10 @@ The versions are the project's release notes: the entries on int, then those rel
 { "title": "…", "seen": "…", "expected": "…", "page": "/app/…",
   "component": { "selector": "…", "text": "…", "box": { "x": 0, "y": 0, "w": 0, "h": 0 } },
   "viewport": { "w": 390, "h": 844, "dpr": 3 }, "user_agent": "…", "errors": ["…"],
-  "screenshot": "data:image/png;base64,…", "story": 146, "release": "1.170" }
+  "screenshot": "data:image/png;base64,…", "story": 146, "release": "1.170", "change": 2 }
 ```
 
-`story` and `release` are what the person chose (both optional). La Fabrique links the issue to that story, and says which version it is about; when the person says nothing, it links the only story the versions on int declare, if there is one.
+`story`, `release` and `change` are what the person chose (all optional; `change` is the index of a change in that version's `changes`). La Fabrique links the issue to that story, says which version it is about and quotes the change; a change of a version that declares a single story links that story; when the person says nothing, it links the only story the versions on int declare, if there is one.
 
 The relay:
 

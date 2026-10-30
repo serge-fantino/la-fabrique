@@ -1690,6 +1690,15 @@ table.backlog th.claude-col {
   margin: 1.25rem 0;
 }
 
+.defect-change {
+  max-width: 68ch;
+  margin: 0 0 1rem;
+  padding: 0.5rem 1rem;
+  border-left: 3px solid var(--moyen);
+  background: #fff;
+  border-radius: 0 12px 12px 0;
+}
+
 .triage-form {
   display: grid;
   gap: 0.75rem;
@@ -1758,14 +1767,14 @@ p.about-version-choice {
   padding: 0.4rem 0;
 }
 
-.about-story {
+.about-story,
+.about-change {
   padding-left: 1.4rem;
 }
 
-.about-changes {
-  margin: 0 0 0.15rem 1.8rem;
-  color: var(--encre-faint);
-  font-size: 0.85rem;
+.about-change {
+  font-size: 0.92rem;
+  line-height: 1.35;
 }
 
 .about-tag,

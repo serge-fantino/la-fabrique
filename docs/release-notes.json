@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.46",
+    "date": "2026-10-30",
+    "heure": "20:30",
+    "titre": "A defect is about a change of the release note",
+    "changements": [
+      "What a defect is about shows each version's release note in detail: every change can be chosen, in the report form of the project's app (report kit 1.2.0) and in triage, as well as the stories the version declares. The change chosen is quoted in the issue, kept in the log, and shown on the defect's page and in the Defects list.",
+      "A change of a version that declares a single story links that story."
+    ],
+    "stories": [65],
+    "liens": null
+  },
+  {
     "version": "0.45",
     "date": "2026-10-30",
     "heure": "19:40",
