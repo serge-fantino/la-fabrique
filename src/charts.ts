@@ -77,7 +77,8 @@ export function barChart(options: {
     { value: maxUp, y: TOP },
     { value: maxUp / 2, y: TOP + (maxUp / 2) * scale },
     { value: 0, y: baseline },
-    ...(mirrored ? [{ value: -maxDown, y: baseline + maxDown * scale }] : []),
+    // The lower scale gets a line only when there is room to label it.
+    ...(mirrored && maxDown * scale >= 16 ? [{ value: -maxDown, y: baseline + maxDown * scale }] : []),
   ]
     .map(
       (line) =>

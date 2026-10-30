@@ -25,6 +25,8 @@ import { canRequest, createRequest, missingFields, myRequests, readDraft, type R
 import { requestFormPage, requestsPage } from "./requests-views";
 import { loadActivity, RANGES } from "./activity";
 import { activityPage } from "./activity-views";
+import { loadDelivery } from "./delivery";
+import { deliveryPage } from "./delivery-views";
 import { messagePage, type Viewer } from "./views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
@@ -208,4 +210,10 @@ export async function showActivity(request: Request, env: Env, viewer: Viewer, r
   const days = Number(new URL(request.url).searchParams.get("days"));
   const range = RANGES.find((candidate) => candidate === days) ?? RANGES[0];
   return html(activityPage(viewer, project, await loadActivity(env, project, range)));
+}
+
+export async function showDelivery(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  return html(deliveryPage(viewer, project, await loadDelivery(env, project)));
 }
