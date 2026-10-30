@@ -12,7 +12,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 2. **Chaque projet se décrit lui-même** dans un fichier `.fabrique.json` à la racine de son dépôt, versionné avec son code (format : `docs/fabrique-json.md`). Rien de propre à un projet dans le code de La Fabrique.
 3. **Les actions sensibles restent dans le projet.** Promouvoir, déployer, migrer, lancer Claude : ce sont des workflows GitHub du projet, avec ses propres secrets. La Fabrique les déclenche par l'API GitHub et n'a **jamais** de jeton de déploiement (Cloudflare, clés d'API d'un projet).
 4. **Traçabilité de bout en bout.** Fiche → demande → issue → branche → commits → déploiement sur int → validation → version en production → migrations : chaque étape est reliée et datée. Ce que GitHub ne garde pas (qui a validé quoi, qui a donné le go) est dans le journal de La Fabrique, jamais effacé ; les fiches gardent toutes leurs versions.
-5. **Personne d'autre que le super admin ne met en production.** Les rôles sont donnés dans La Fabrique, par identifiant GitHub.
+5. **Personne d'autre que le super admin ne met en production.** Les rôles sont donnés dans La Fabrique, par identifiant GitHub et par projet (F4.9, #84 : aujourd'hui encore un rôle par compte pour tous les projets) ; le super admin l'est pour tous.
 
 ## Rôles
 
@@ -24,7 +24,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 
 Chaque rôle a les droits de ceux d'avant (`src/rights.ts`) : signaler un défaut (tout compte qui voit le projet) < testeur (int, critères, validation) < Product Engineer (demandes, priorités) < tech lead (Claude, Setup) < super admin (go, rôles, projets, apps).
 
-**Perspectives** (F4.1, #75) : le rôle dit ce qu'on peut faire, la perspective ce qu'on voit (tableau de bord, onglets d'un projet). Un compte en a une ou plusieurs, données par le super admin, et passe de l'une à l'autre dans l'en-tête : Admin et Product Owner d'abord, puis Testeur, Tech lead, Architecte, DevOps ; « All » garde la vue complète. Une perspective masque, elle n'interdit rien.
+**Perspectives** (F4.1, #75) : le rôle dit ce qu'on peut faire, la perspective ce qu'on voit (tableau de bord, onglets d'un projet). Elles sont standard (les mêmes pour tous les projets) et portent le nom d'une activité, pas d'un rôle : Administration et Product management d'abord, puis Testing, Engineering, Architecture, Operations ; « All » garde la vue complète. Les perspectives d'une personne sur un projet suivent son rôle sur ce projet, sur la même échelle que les droits ; elle passe de l'une à l'autre dans l'en-tête. Une perspective masque, elle n'interdit rien.
 
 ## Architecture
 
@@ -64,6 +64,6 @@ Fin octobre 2026 :
 - signaler un défaut depuis l'app d'un projet (#65) : La Fabrique fournisseur OAuth, *Connected apps*, `GET /api/me`, `POST /api/projects/{project}/defects` (contrat avec l'épicerie dans #65), `type` et `signalement` des environnements, droits par action ; le client de l'épicerie reste à enregistrer par le propriétaire ;
 - lot F1 livré côté La Fabrique (#57, stories #58 à #62) : validation sur int (critères cochés dans l'issue, validation, défaut signalé), « go » du super admin (workflow `promouvoir` du projet), « Launch Claude » sur une story prête (workflow `claude` du projet, plafond `claude.plafond`), journal par projet, workflows du projet dans Setup ; les workflows de l'épicerie attendent leur intégration (epicerie-extraordinaire#148) et leurs secrets (`FABRIQUE_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` ou `ANTHROPIC_API_KEY`).
 
-- lot F4 décidé (#74, stories #75 à #82) : perspectives, tableau de bord par projet et par perspective, fiches de l'amont dans La Fabrique (tableau, validation, passage en story, lien jusqu'aux notes de version), domaines et glossaire (ubiquitous language).
+- lot F4 décidé (#74, stories #75 à #82 et #84) : rôles par projet, perspectives, tableau de bord par projet et par perspective, fiches de l'amont dans La Fabrique (tableau, validation, passage en story, lien jusqu'aux notes de version), domaines et glossaire (ubiquitous language).
 
 Mise en route et secrets : `docs/owner-setup.md`.
