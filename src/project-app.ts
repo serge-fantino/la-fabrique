@@ -5,6 +5,7 @@ import { integrationConfig, reportingEnvironments } from "./defects";
 import type { Env } from "./env";
 import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { html, redirect } from "./http";
+import { KIT_GUIDE_PATH, KIT_VERSION } from "./kit";
 import { AUTHORIZE_PATH, DEFECTS_SCOPE, DISCOVERY_PATH, oauthHelpers, projectId, projectName, REVOKE_PATH, TOKEN_PATH } from "./oauth";
 import { projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -132,6 +133,7 @@ function projectSide(link: AppLink, clientId: string | null): string {
           ${codeBlock(commands)}
           <p class="muted small"><code>--env</code> takes the name of the Worker's environment in its wrangler configuration; here, the environment's name in <code>.fabrique.json</code>.</p></li>
         <li>The app sends the person to <code>${AUTHORIZE_PATH}</code> (scope <code>${DEFECTS_SCOPE}</code>, PKCE S256), exchanges the code at <code>${TOKEN_PATH}</code> (<code>client_secret_post</code>), then calls <code>GET /api/me</code> and <code>POST /api/projects/{project}/defects</code> with the token; <code>${REVOKE_PATH}</code> disconnects. Everything is in <code>${DISCOVERY_PATH}</code>.</li>
+        <li>The <strong>Report a defect</strong> button: copy the report kit ${KIT_VERSION} (<a href="/kit/fabrique-report.js">fabrique-report.js</a>, <a href="/kit/fabrique-report.css">fabrique-report.css</a>, <a href="/kit/fabrique-report-early.js">fabrique-report-early.js</a>) into the app, and add its relay, two routes on the app's server that forward the reports with the person's token. <a href="${KIT_GUIDE_PATH}">How, step by step</a>.</li>
       </ol>`;
 }
 

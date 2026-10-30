@@ -7,6 +7,7 @@ import type { Env } from "./env";
 import { html, json, redirect, svg, text } from "./http";
 import { LOGO_SVG } from "./logo";
 import { isAsset, serveAsset } from "./assets";
+import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
@@ -86,6 +87,7 @@ const app = {
     const method = request.method;
 
     if (isAsset(pathname)) return method === "GET" || method === "HEAD" ? serveAsset(request, pathname) : methodNotAllowed();
+    if (isKitFile(pathname)) return method === "GET" || method === "HEAD" ? serveKitFile(pathname) : methodNotAllowed();
 
     switch (pathname) {
       case "/favicon.svg":
@@ -283,6 +285,23 @@ const app = {
       case GUIDE_PATH:
         if (!viewer) return redirect("/");
         return method === "GET" ? html(guidePage(viewer, renderGuide())) : methodNotAllowed();
+
+      case KIT_GUIDE_PATH:
+        if (!viewer) return redirect("/");
+        return method === "GET"
+          ? html(
+              guidePage(
+                viewer,
+                renderMarkdown(reportKitGuide, {
+                  path: "docs/report-kit.md",
+                  // Its links point at La Fabrique's own addresses.
+                  isPage: (candidate) => candidate.startsWith("kit/") || candidate.startsWith("guide/"),
+                  pageUrl: (candidate) => `/${candidate}`,
+                  githubUrl: () => KIT_GUIDE_PATH,
+                }),
+              ),
+            )
+          : methodNotAllowed();
 
       case "/guide/exemples/promouvoir.yml":
       case "/guide/exemples/claude.yml":
