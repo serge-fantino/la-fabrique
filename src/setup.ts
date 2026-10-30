@@ -16,6 +16,8 @@ export type SetupKey =
   | "epics"
   | "working_branches"
   | "cycle"
+  | "promotion"
+  | "claude_workflow"
   | "integration";
 
 export interface SetupItem {
@@ -168,6 +170,28 @@ export function setupChecklist({ check, releases, stories, branches }: SetupInpu
           }.`
         : "Not declared: Ready means acceptance criteria and an epic; no priority.",
       !cycle,
+    ),
+  );
+
+  // Optional: the go and Launch Claude start the project's own workflows.
+  const promotion = config?.workflows?.["promouvoir"];
+  items.push(
+    item(
+      "promotion",
+      typeof promotion === "string",
+      typeof promotion === "string" ? `\`${promotion}\`: the super admin gives the go from Production.` : "No `workflows.promouvoir`: promotion is done outside La Fabrique.",
+      true,
+    ),
+  );
+  const claude = config?.workflows?.["claude"];
+  items.push(
+    item(
+      "claude_workflow",
+      typeof claude === "string",
+      typeof claude === "string"
+        ? `\`${claude}\`, at most ${config?.claude?.plafond ?? 2} at once.`
+        : "No `workflows.claude`: Claude is not launched from La Fabrique.",
+      true,
     ),
   );
 

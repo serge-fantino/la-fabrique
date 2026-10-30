@@ -1,0 +1,85 @@
+# Mise en production au « go » (#59 de La Fabrique) : déclenché par le super admin depuis La Fabrique (onglet
+# Production), ou à la main (Actions > Promotion > Run workflow). Fait ce que l'on faisait à la main au go :
+# 1. l'entrée « Quoi de neuf » en tête (site/static/nouveautes.json) reçoit sa date et son heure de mise en ligne (Paris)
+#    si elle ne les a pas encore, commitée sur integration (« v1.N : mise en ligne ») : int passe en « v1.N » ;
+# 2. scripts/promouvoir.sh : main reçoit exactement integration (avance rapide), après verifier_version.py.
+# La suite est celle de tout push sur main : CI, déploiement par Workers Builds, migrations de production (migrations-prod.yml).
+# Jeton FABRIQUE_TOKEN (secret du dépôt ; jeton « fine-grained » limité à ce dépôt : Contents read and write) : un push
+# fait avec le GITHUB_TOKEN ne déclencherait ni la CI de main ni, après elle, les migrations. Sans lui : échec, rien ne bouge.
+name: Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version attendue en tête de « Quoi de neuf » (vide : celle qui s'y trouve)"
+        required: false
+      par:
+        description: "Qui a donné le go (identifiant GitHub, renseigné par La Fabrique)"
+        required: false
+
+concurrency:
+  group: promotion
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  promouvoir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Jeton de promotion
+        env:
+          FABRIQUE_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+        run: |
+          [ -n "$FABRIQUE_TOKEN" ] || { echo "::error::Secret FABRIQUE_TOKEN absent : rien n'est promu (voir l'en-tête de ce workflow)."; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: integration
+          fetch-depth: 0  # promouvoir.sh et verifier_version.py comparent à l'historique de main
+          token: ${{ secrets.FABRIQUE_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Dater l'entrée « Quoi de neuf »
+        env:
+          VERSION_ATTENDUE: ${{ inputs.version }}
+          PAR: ${{ inputs.par }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, re, subprocess, zoneinfo
+          chemin = "site/static/nouveautes.json"
+          texte = open(chemin, encoding="utf-8").read()
+          tete = json.loads(texte)[0]
+          attendue = os.environ.get("VERSION_ATTENDUE", "").strip().removeprefix("v")
+          if attendue and tete["version"] != attendue:
+              raise SystemExit(f"::error::En tête de « Quoi de neuf » : v{tete['version']}, pas v{attendue}.")
+          if "heure" in tete:
+              print(f"v{tete['version']} est déjà datée ({tete['date']} {tete['heure']}).")
+              raise SystemExit(0)
+          maintenant = datetime.datetime.now(zoneinfo.ZoneInfo("Europe/Paris"))
+          # Seule la première entrée change, le reste du fichier reste tel quel.
+          debut = texte.index("{")
+          fin = texte.index("}", texte.index('"date"', debut))
+          entree = re.sub(
+              r'"date": "\d{4}-\d{2}-\d{2}",',
+              f'"date": "{maintenant:%Y-%m-%d}",\n    "heure": "{maintenant:%H:%M}",',
+              texte[debut:fin], count=1)
+          open(chemin, "w", encoding="utf-8").write(texte[:debut] + entree + texte[fin:])
+          json.loads(open(chemin, encoding="utf-8").read())
+          par = os.environ.get("PAR", "").strip()
+          message = f"v{tete['version']} : mise en ligne" + (f"\n\nGo donné par @{par} depuis La Fabrique." if par else "")
+          subprocess.run(["git", "config", "user.name", "La Fabrique extraordinaire"], check=True)
+          subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
+          subprocess.run(["git", "commit", "-am", message], check=True)
+          subprocess.run(["git", "push", "origin", "HEAD:integration"], check=True)
+          print(f"v{tete['version']} datée du {maintenant:%Y-%m-%d %H:%M} sur integration.")
+          PY
+
+      - name: main reçoit integration
+        run: sh scripts/promouvoir.sh

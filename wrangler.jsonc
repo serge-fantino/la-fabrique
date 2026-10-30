@@ -7,7 +7,7 @@
   "rules": [
     {
       "type": "Text",
-      "globs": ["**/*.css", "**/site/*.js", "**/docs/*.md"],
+      "globs": ["**/*.css", "**/site/*.js", "**/docs/*.md", "**/docs/exemples/*.yml"],
       "fallthrough": true
     }
   ],

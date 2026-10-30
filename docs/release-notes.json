@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.34",
+    "date": "2026-10-30",
+    "heure": "13:07",
+    "titre": "The project's workflows in Setup",
+    "changements": [
+      "Setup says whether the project has a promotion workflow (for the go) and a Claude workflow (for Launch Claude), what they need, and shows the épicerie's as examples."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.33",
     "date": "2026-10-30",
     "heure": "13:05",

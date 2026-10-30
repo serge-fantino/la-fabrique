@@ -19,6 +19,8 @@ import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import releaseNotes from "../docs/release-notes.json";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
+import promotionExample from "../docs/exemples/promouvoir.yml";
+import claudeExample from "../docs/exemples/claude.yml";
 import { renderMarkdown } from "./markdown";
 import { GUIDE_PATH, guidePage } from "./setup-views";
 
@@ -225,6 +227,13 @@ export default {
       case GUIDE_PATH:
         if (!viewer) return redirect("/");
         return method === "GET" ? html(guidePage(viewer, renderGuide())) : methodNotAllowed();
+
+      case "/guide/exemples/promouvoir.yml":
+      case "/guide/exemples/claude.yml":
+        if (!viewer) return redirect("/");
+        return method === "GET"
+          ? text(pathname.endsWith("claude.yml") ? claudeExample : promotionExample, 200)
+          : methodNotAllowed();
 
       case GUIDE_EXAMPLE_PATH:
         if (!viewer) return redirect("/");

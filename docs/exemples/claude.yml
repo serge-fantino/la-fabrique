@@ -1,0 +1,87 @@
+# Claude travaille sur une demande prête (#60 de La Fabrique) : lancé par un tech lead ou le super admin depuis La
+# Fabrique (bouton « Launch Claude » d'une story Ready), ou à la main (Actions > Claude > Run workflow, numéro d'issue).
+# Il suit CLAUDE.md : branche feature/<numéro>-<sujet> depuis integration, tests, entrée « Quoi de neuf » sans heure
+# (ou [coulisses]), puis une PR vers integration et un commentaire sur l'issue. Il ne pousse jamais sur integration ni
+# sur main : un humain relit la PR et l'intègre (scripts/integrer.sh), puis on valide sur int.
+# Secrets du dépôt :
+# - CLAUDE_CODE_OAUTH_TOKEN (abonnement Claude : `claude setup-token`) ou ANTHROPIC_API_KEY (clé d'API) ;
+# - FABRIQUE_TOKEN (le même que la promotion, avec en plus Pull requests et Issues read and write) : la branche et la
+#   PR qu'il crée déclenchent la CI, ce que le GITHUB_TOKEN ne ferait pas.
+name: Claude
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Numéro de l'issue (la demande)"
+        required: true
+      par:
+        description: "Qui a lancé Claude (identifiant GitHub, renseigné par La Fabrique)"
+        required: false
+
+concurrency:
+  group: claude-${{ inputs.issue }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - name: Secrets
+        env:
+          FABRIQUE_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          [ -n "$FABRIQUE_TOKEN" ] || { echo "::error::Secret FABRIQUE_TOKEN absent (voir l'en-tête de ce workflow)."; exit 1; }
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY" ] || { echo "::error::Ni CLAUDE_CODE_OAUTH_TOKEN ni ANTHROPIC_API_KEY."; exit 1; }
+          case "$ISSUE" in ''|*[!0-9]*) echo "::error::Numéro d'issue invalide : $ISSUE"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: integration
+          fetch-depth: 0
+          token: ${{ secrets.FABRIQUE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Identité des commits
+        run: |
+          git config user.name "Claude (La Fabrique)"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+        with:
+          github_token: ${{ secrets.FABRIQUE_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
+          prompt: |
+            Tu travailles sur la demande #${{ inputs.issue }} de ce dépôt (${{ github.repository }}), lancée${{ inputs.par && format(' par @{0}', inputs.par) || '' }} depuis La Fabrique.
+            1. Lis-la avec ses commentaires : `gh issue view ${{ inputs.issue }} --comments`. Ses critères d'acceptation disent quand c'est fini.
+            2. Suis CLAUDE.md (principes, données personnelles, design V2, compatibilité avec la base en ligne, version de l'app).
+            3. Crée une branche `feature/${{ inputs.issue }}-<sujet court>` depuis integration (la branche actuelle) et fais le travail.
+            4. Vérifie : `npm run typecheck`, `npm test` ; `npm run e2e` si tu touches au Worker ou aux pages.
+            5. Ajoute l'entrée « Quoi de neuf » suivante, sans heure, si un utilisateur voit la différence ; sinon chaque commit porte `[coulisses]`.
+            6. Pousse la branche et ouvre une PR vers `integration` : `gh pr create --base integration`, titre clair, corps en français avec « Demande #${{ inputs.issue }} », ce qui est fait et comment le vérifier sur int.
+            7. Commente l'issue : la PR, ce qui est fait, ce qui reste ou ce qui t'a fait hésiter.
+            Ne pousse jamais sur integration ni sur main ; ne touche ni aux secrets ni aux workflows.

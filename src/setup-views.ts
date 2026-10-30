@@ -86,6 +86,19 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
   "priorites": ["P1", "P2", "P3"]
 }`)}`,
   },
+  promotion: {
+    title: "Promotion workflow (the go)",
+    why: "Optional. The super admin gives the go from the Production tab; the project's own workflow promotes, with its own secrets.",
+    how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>version</code> (the release to ship) and <code>par</code> (who gave the go). It promotes integration to production in the project's own way; its push must use a token that triggers the project's CI and deployment (the <code>GITHUB_TOKEN</code> does not). <a href="/guide/exemples/promouvoir.yml">The épicerie's, as an example</a>.</p>
+      ${code(`"workflows": { "promouvoir": "promouvoir.yml" }`)}`,
+  },
+  claude_workflow: {
+    title: "Claude workflow",
+    why: "Optional. Tech leads and super admins launch Claude on a ready story from the Backlog; the project's own workflow runs it, with its own key.",
+    how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>issue</code> (the story's number) and <code>par</code> (who launched it). It runs Claude Code on the issue, on a working branch, and opens a pull request; the secrets (<code>CLAUDE_CODE_OAUTH_TOKEN</code> or <code>ANTHROPIC_API_KEY</code>) stay in the project. <code>claude.plafond</code> caps the runs at once (2 by default). <a href="/guide/exemples/claude.yml">The épicerie's, as an example</a>.</p>
+      ${code(`"workflows": { "claude": "claude.yml" },
+"claude": { "plafond": 2 }`)}`,
+  },
   integration: {
     title: "An integration branch and its environment",
     why: "Optional. Work is gathered and validated on int before the go; Production then shows exactly what int has that production lacks.",
@@ -103,6 +116,9 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
 function withCode(text: string): string {
   return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
+
+// Items a project may leave out.
+const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "claude_workflow"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",
@@ -160,7 +176,7 @@ export function setupPage(
 ): string {
   const name = project.check?.config?.nom || project.repo;
   const count = (state: SetupState) => data.items.filter((entry) => entry.state === state).length;
-  const required = data.items.filter((entry) => entry.key !== "integration" && entry.key !== "cycle");
+  const required = data.items.filter((entry) => !OPTIONAL.has(entry.key));
   const done = required.filter((entry) => entry.state === "done").length;
   const items = data.items
     .map((entry) => {
