@@ -9,6 +9,8 @@ import { loadProduction } from "./production";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
 import { requestFormPage, requestsPage } from "./requests-views";
+import { loadActivity, RANGES } from "./activity";
+import { activityPage } from "./activity-views";
 import { messagePage, type Viewer } from "./views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
@@ -161,4 +163,12 @@ export async function submitRequest(
       ? "GitHub no longer accepts your sign-in. Sign out and sign in again; your draft stays on this device."
       : `GitHub refused to create the issue (HTTP ${outcome.status ?? "?"}). Your GitHub account may not have access to this repository.`;
   return html(requestFormPage(viewer, project, { rubriques, draft, error }), { status: 502 });
+}
+
+export async function showActivity(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const days = Number(new URL(request.url).searchParams.get("days"));
+  const range = RANGES.find((candidate) => candidate === days) ?? RANGES[0];
+  return html(activityPage(viewer, project, await loadActivity(env, project, range)));
 }

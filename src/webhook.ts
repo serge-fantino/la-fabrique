@@ -1,6 +1,7 @@
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { json } from "./http";
+import { activityChanged } from "./activity";
 import { productionChanged } from "./production";
 import { checkPushedCommit, findProject } from "./projects";
 import { applyIssueEvent, storiesChanged, type RestIssue } from "./stories";
@@ -55,6 +56,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   }
   if (event === "workflow_run") {
     await productionChanged(env, project.repo);
+  await activityChanged(env, project.repo);
     return json({ refresh: "production" });
   }
   if (event !== "push") return json({ ignored: event }, { status: 202 });

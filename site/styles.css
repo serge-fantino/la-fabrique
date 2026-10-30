@@ -680,3 +680,129 @@ textarea {
 .field.invalid textarea {
   border-color: var(--alerte);
 }
+
+.range {
+  display: flex;
+  gap: 1rem;
+}
+
+.range a,
+.range span {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.range span[aria-current] {
+  font-weight: 600;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.tile {
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.tile p {
+  margin: 0;
+}
+
+.tile-label {
+  font-size: 0.85rem;
+  color: var(--encre-faint);
+}
+
+.tile-value {
+  font-size: 1.6rem;
+  font-weight: 500;
+}
+
+.tile-detail {
+  font-size: 0.85rem;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-grid {
+  stroke: color-mix(in srgb, var(--encre) 10%, transparent);
+  stroke-width: 1;
+}
+
+.chart-zero {
+  stroke: color-mix(in srgb, var(--encre) 35%, transparent);
+}
+
+.chart-axis {
+  fill: var(--encre-faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.chart-hit {
+  fill: transparent;
+}
+
+.chart-hit:hover {
+  fill: color-mix(in srgb, var(--encre) 6%, transparent);
+}
+
+.bar-commits,
+.bar-added,
+.key-added {
+  fill: #2f8f63;
+  background: #2f8f63;
+}
+
+.bar-removed,
+.key-removed {
+  fill: var(--accent);
+  background: var(--accent);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.key {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+}
+
+.data-table {
+  margin: 1.5rem 0;
+}
+
+.data-table summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.chart-scroll {
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .chart {
+    min-width: 600px;
+  }
+}
