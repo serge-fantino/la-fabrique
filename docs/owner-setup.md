@@ -144,7 +144,31 @@ La Fabrique describes itself in its own `.fabrique.json`. To follow it in
 itself: on the GitHub App's page, *Install App* on `la-fabrique` as well,
 then **Projects → Add a project** and pick it.
 
-## 8. Later
+## 8. A project's app (connected apps)
+
+A project's own app can report defects in the name of the person using it
+(la-fabrique#65): La Fabrique is then an OAuth provider (authorization
+code, PKCE S256, confidential client, single scope `defects:report`). The
+app never gets a GitHub token. Clients, grants and tokens are kept in La
+Fabrique's D1 base (hashed or encrypted): nothing to create on Cloudflare.
+
+To register an app, as a super admin: **Settings → Connected apps**, then
+*Register an app*: its name (shown on the consent page), its project and
+its return addresses, one per line. La Fabrique shows the `client_id` and
+the `client_secret` once: store them as the app's own Worker secrets
+(L'épicerie: `FABRIQUE_CLIENT_ID`, `FABRIQUE_CLIENT_SECRET`, and the
+variable `FABRIQUE_URL` with La Fabrique's address). Lost secret: remove
+the app and register it again (every connection to it is revoked).
+
+Everyone sees the apps they connected on the same page and can disconnect
+them. An account without a role can sign in only to connect an app and to
+see its connected apps, and only for a project whose repository its GitHub
+account can see.
+
+Endpoints: `/.well-known/oauth-authorization-server`, `/oauth/authorize`,
+`/oauth/token` (`client_secret_post`), `/oauth/revoke`; API: `GET /api/me`.
+
+## 9. Later
 
 A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
 attached from the Workers dashboard; add its `/auth/callback` to the GitHub

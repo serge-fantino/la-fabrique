@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.35",
+    "date": "2026-10-30",
+    "heure": "14:05",
+    "titre": "Connected apps",
+    "changements": [
+      "A project's own app can connect to La Fabrique in the name of the person using it, after a consent page (“‹app› will be able to report defects in your name on ‹project›”); it never gets a GitHub token.",
+      "Settings → Connected apps lists the apps you connected, with a button to disconnect each; the super admin registers a project's app there and gets its identifiers once.",
+      "An account without a role can sign in to connect an app, for a project whose repository it can see on GitHub; the rest of La Fabrique still turns it away."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.34",
     "date": "2026-10-30",
     "heure": "13:07",

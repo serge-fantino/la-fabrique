@@ -61,6 +61,8 @@ export function refreshUserToken(
 export interface GitHubUser {
   login: string;
   id: number;
+  name?: string | null;
+  avatarUrl?: string | null;
 }
 
 export async function fetchUser(accessToken: string): Promise<GitHubUser | null> {
@@ -73,7 +75,12 @@ export async function fetchUser(accessToken: string): Promise<GitHubUser | null>
     },
   });
   if (!response.ok) return null;
-  const data = (await response.json()) as Partial<GitHubUser>;
+  const data = (await response.json()) as { login?: unknown; id?: unknown; name?: unknown; avatar_url?: unknown };
   if (typeof data.login !== "string" || typeof data.id !== "number") return null;
-  return { login: data.login, id: data.id };
+  return {
+    login: data.login,
+    id: data.id,
+    name: typeof data.name === "string" ? data.name : null,
+    avatarUrl: typeof data.avatar_url === "string" ? data.avatar_url : null,
+  };
 }
