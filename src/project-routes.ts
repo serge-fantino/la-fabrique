@@ -29,6 +29,8 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { projectUrl } from "./urls";
+import { canValidate, readDefect, reportDefect, storyChecks, tickCriterion, validateStory } from "./validation";
 import { proposeCycle, readCycleForm } from "./config-change";
 import { projectCard } from "./dashboard";
 import { cardHtml, dashboardPage } from "./dashboard-views";
@@ -385,17 +387,67 @@ export async function proposeLifecycle(request: Request, form: FormData, env: En
 }
 
 // What the PO validates on int (or what the latest version brought).
-export async function showToTest(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+export async function showToTest(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  failed?: { message: string; status: number },
+): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const { view, cookies } = await projectView(request, env, project);
   const params = new URL(request.url).searchParams;
   const part = params.get("part") === "content";
-  if (!part && params.get("wait") !== "1" && !(await productionReady(env, project, view.ref))) {
+  if (!failed && !part && params.get("wait") !== "1" && !(await productionReady(env, project, view.ref))) {
     return html(toTestPage(viewer, view, toTestLoading(view.path)), { cookies });
   }
-  const content = toTestContent(view, await toTestData(env, view));
-  return html(part ? content : toTestPage(viewer, view, content), { cookies });
+  const data = await toTestData(env, view);
+  const content = toTestContent(view, {
+    ...data,
+    failure: failed?.message ?? data.failure,
+    actions: {
+      viewer,
+      base: projectUrl(project.repo),
+      canValidate: canValidate(viewer.role),
+      checks: await storyChecks(env.DB, project.repo),
+    },
+  });
+  return html(part ? content : toTestPage(viewer, view, content), { cookies, status: failed?.status ?? 200 });
+}
+
+// Tick a criterion, validate a story, report a defect: written on GitHub,
+// and in the log.
+export async function toTestAction(
+  request: Request,
+  form: FormData,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  action: "criterion" | "validate" | "defect",
+): Promise<Response> {
+  if (!canValidate(viewer.role)) {
+    return html(messagePage("Not allowed", "Your role does not let you validate on int.", viewer), { status: 403 });
+  }
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const issue = Number(form.get("issue"));
+  if (!Number.isInteger(issue) || issue <= 0) return redirect(`/projects/${project.repo}/to-test`);
+  let outcome;
+  if (action === "criterion") {
+    const index = Number(form.get("index"));
+    if (!Number.isInteger(index) || index < 0) return redirect(`/projects/${project.repo}/to-test`);
+    outcome = await tickCriterion(request, env, project, viewer.login, issue, index, String(form.get("text") ?? ""), form.get("done") === "1");
+  } else if (action === "validate") {
+    outcome = await validateStory(request, env, project, viewer.login, issue);
+  } else {
+    const defect = readDefect(form);
+    outcome = defect
+      ? await reportDefect(request, env, project, viewer.login, issue, defect)
+      : ({ ok: false, message: "A defect needs a title and what you saw.", status: 422 } as const);
+  }
+  if (outcome.ok) return redirect(`/projects/${project.repo}/to-test#story-${issue}`);
+  return showToTest(request, env, viewer, repo, { message: outcome.message, status: outcome.status });
 }
 
 async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {

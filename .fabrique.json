@@ -20,6 +20,7 @@
     { "titre": "Read me", "chemin": "README.md" },
     { "titre": "Formats and setup", "chemin": "docs/" }
   ],
+  "langue": "en",
   "cycle": { "pret": ["criteres", "epique"], "priorites": ["P1", "P2", "P3"] },
   "demandes": {
     "etiquettes": { "demande": "request", "prete": "ready-for-claude", "a_valider": "to-validate" },

@@ -1,3 +1,4 @@
+import { wordingFor, type Wording } from "./wording";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
@@ -36,9 +37,9 @@ export function missingFields(draft: RequestDraft, rubriques: Rubrique[]): strin
 }
 
 // The issue keeps the project's own section titles, in the declared order.
-export function issueBody(draft: RequestDraft, rubriques: Rubrique[], login: string): string {
+export function issueBody(draft: RequestDraft, rubriques: Rubrique[], login: string, words: Wording = wordingFor()): string {
   const sections = rubriques.map((rubrique) => `## ${rubrique.titre}\n\n${draft.answers[rubrique.cle] || "—"}`);
-  return `${sections.join("\n\n")}\n\n---\nDemande de @${login} via La Fabrique extraordinaire`;
+  return `${sections.join("\n\n")}\n\n---\n${words.requestSignature(login)}`;
 }
 
 export type CreateOutcome =
@@ -61,7 +62,7 @@ export async function createRequest(
   const label = project.check?.config?.demandes?.etiquettes?.["demande"];
   const response = await githubPost(token, `/repos/${project.repo}/issues`, {
     title: draft.title,
-    body: issueBody(draft, rubriques, login),
+    body: issueBody(draft, rubriques, login, wordingFor(project)),
     ...(label ? { labels: [label] } : {}),
   });
   if (response.status === 401) return { ok: false, reason: "signed_out" };

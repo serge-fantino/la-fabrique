@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.29",
+    "date": "2026-10-30",
+    "heure": "12:26",
+    "titre": "Validate on int",
+    "changements": [
+      "On To test, testers, Product Engineers and super admins tick each acceptance criterion: it is ticked in the GitHub issue too.",
+      "Validate a story once every criterion is checked: the issue gets a comment with the int version, the to-validate label goes, and La Fabrique keeps who validated and when.",
+      "Report a defect from a story: it becomes a GitHub issue linked to the story, listed under it until fixed.",
+      "What La Fabrique writes in a project follows its language (langue in .fabrique.json)."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.28",
     "date": "2026-10-30",
     "heure": "12:08",

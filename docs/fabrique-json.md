@@ -48,6 +48,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | Champ | Sert à |
 |---|---|
 | `nom`, `description` | En-tête du projet dans La Fabrique. |
+| `langue` | `fr` ou `en` : la langue de ce que La Fabrique écrit dans le projet (signature d'une demande, commentaire de validation, défaut signalé). Sans elle : `fr`. |
 | `branches.production` | La branche en production (comparée à `integration`, versions). |
 | `branches.integration` | La branche déployée sur l'environnement de validation : « ce qui attend la production » = ses commits absents de `production`. |
 | `branches.travail` | Motifs des branches de travail (une demande en cours y est reliée par son numéro d'issue). |

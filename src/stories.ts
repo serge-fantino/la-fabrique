@@ -80,23 +80,49 @@ export function branchIssue(name: string): number | null {
 const CRITERIA_HEADING = /^#{1,6}\s*(acceptance criteria|crit[eè]res d['’]acceptation)\b/i;
 const MAX_CRITERIA = 30;
 
-// The list under the "Acceptance criteria" (or "Critères d'acceptation")
-// heading of an issue; task-list items keep their checked state.
-export function acceptanceCriteria(body: string | null | undefined): Criterion[] {
-  const criteria: Criterion[] = [];
+interface CriterionLine extends Criterion {
+  line: number;
+}
+
+// The lines under the "Acceptance criteria" (or "Critères d'acceptation")
+// heading of an issue: list items (task-list items keep their checked
+// state) or plain lines, as a request form writes them.
+function criteriaLines(lines: string[]): CriterionLine[] {
+  const criteria: CriterionLine[] = [];
   let inside = false;
-  for (const line of (body ?? "").split(/\r?\n/)) {
+  for (const [index, raw] of lines.entries()) {
+    const line = raw.replace(/\r$/, "");
     if (/^#{1,6}\s/.test(line)) {
       if (inside) break;
       inside = CRITERIA_HEADING.test(line);
       continue;
     }
     if (!inside) continue;
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) break;
     const item = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.+?)\s*$/.exec(line);
-    if (item?.[2]) criteria.push({ text: item[2].slice(0, 300), done: (item[1] ?? " ").toLowerCase() === "x" });
+    const text = item ? item[2] : line.trim();
+    if (!text || text === "—") continue;
+    criteria.push({ line: index, text: text.slice(0, 300), done: (item?.[1] ?? " ").toLowerCase() === "x" });
     if (criteria.length >= MAX_CRITERIA) break;
   }
   return criteria;
+}
+
+export function acceptanceCriteria(body: string | null | undefined): Criterion[] {
+  return criteriaLines((body ?? "").split("\n")).map(({ text, done }) => ({ text, done }));
+}
+
+// The body with criterion `index` (whose text must still be `text`) ticked
+// or not, written as a task-list item; null when the issue changed.
+export function setCriterion(body: string, index: number, text: string, done: boolean): string | null {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const criterion = criteriaLines(lines)[index];
+  if (!criterion || criterion.text !== text) return null;
+  const line = lines[criterion.line] ?? "";
+  const indent = /^\s*/.exec(line)?.[0] ?? "";
+  const bullet = /^\s*([-*+])\s/.exec(line)?.[1] ?? "-";
+  lines[criterion.line] = `${indent}${bullet} [${done ? "x" : " "}] ${criterion.text}`;
+  return lines.join("\n");
 }
 
 export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "branches">): Story {

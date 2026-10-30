@@ -3,6 +3,8 @@
 
 export interface FabriqueConfig {
   nom: string;
+  // The language La Fabrique writes in the project (issues, comments).
+  langue?: "fr" | "en";
   description?: string;
   branches?: { production?: string; integration?: string; travail?: string[] };
   environnements?: Record<string, { url: string; version?: string }>;
@@ -224,6 +226,12 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
         }
       }
     }
+  }
+
+  const langue = parsed["langue"];
+  if (langue !== undefined) {
+    if (langue === "fr" || langue === "en") config.langue = langue;
+    else errors.push("`langue` must be `fr` or `en`.");
   }
 
   const cycle = parsed["cycle"];
