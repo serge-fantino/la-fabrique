@@ -1,6 +1,6 @@
 import { barChart } from "./charts";
 import { WORKFLOW_LABELS, type DeliveryView, type Run, type WorkflowSummary } from "./delivery";
-import { notice, projectContext, projectHeader } from "./project-views";
+import { notice, progressive, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -80,8 +80,9 @@ function workflowSection(summary: WorkflowSummary, runs: Run[], days: string[]):
     </section>`;
 }
 
-export function deliveryPage(viewer: Viewer, project: Project, view: DeliveryView): string {
-  const name = project.check?.config?.nom || project.repo;
+// The figures alone: the whole page, or the part a progressive page reads
+// once it is shown.
+export function deliveryContent(view: DeliveryView): string {
   const body = view.summaries.length
     ? `<p class="legend"><span class="key key-added"></span> passed <span class="key key-removed"></span> failed
         <span class="muted">· last 30 days, UTC${view.fetchedAt ? `, read from GitHub <span class="mono">${formatDate(view.fetchedAt)}</span>` : ""}</span></p>
@@ -108,11 +109,22 @@ export function deliveryPage(viewer: Viewer, project: Project, view: DeliveryVie
       </section>`
     : `<p>This project declares no workflow (<code>workflows</code> in <code>.fabrique.json</code>).</p>`;
 
+  return `${notice(view.failure, "error")}
+      ${body}`;
+}
+
+// While GitHub is read, the page shows at once with a placeholder that the
+// shared script fills; without the script, a link waits for the figures.
+export function deliveryLoading(path: string): string {
+  return progressive(`${path}?part=content`, `${path}?wait=1`, "Reading the workflow runs from GitHub…");
+}
+
+export function deliveryPage(viewer: Viewer, project: Project, content: string): string {
+  const name = project.check?.config?.nom || project.repo;
   return layout(
     `Delivery · ${name} · La Fabrique extraordinaire`,
     `${projectHeader(project, "delivery")}
-      ${notice(view.failure, "error")}
-      ${body}`,
+      ${content}`,
     viewer,
     [],
     projectContext(project),

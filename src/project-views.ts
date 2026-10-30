@@ -104,6 +104,15 @@ function withCode(text: string): string {
   return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
+// A part of a page read after the page is shown (/fabrique.js fills it);
+// `fallback` gives the whole page once ready, for browsers without it.
+export function progressive(part: string, fallback: string, message: string): string {
+  return `<div class="progressive" data-fragment="${escapeHtml(part)}" aria-busy="true">
+      <p class="muted" role="status">${escapeHtml(message)} <a href="${escapeHtml(fallback)}" data-fragment-fallback>Show when ready</a></p>
+      <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+    </div>`;
+}
+
 export function notice(text: string | undefined, tone: "ok" | "error"): string {
   return text ? `<p class="notice ${tone}" role="status">${escapeHtml(text)}</p>` : "";
 }

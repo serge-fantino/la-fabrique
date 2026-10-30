@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.22",
+    "date": "2026-10-30",
+    "heure": "11:08",
+    "titre": "Delivery at once",
+    "changements": [
+      "Delivery shows at once, then fills in as GitHub answers, instead of a long wait on the first view; the workflows are read side by side.",
+      "The loading light has a hot orange core."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.21",
     "date": "2026-10-30",
     "heure": "11:01",
