@@ -27,6 +27,8 @@ import { loadActivity, RANGES } from "./activity";
 import { activityPage } from "./activity-views";
 import { loadDelivery } from "./delivery";
 import { deliveryPage } from "./delivery-views";
+import { epicProgress, loadReleases } from "./roadmap";
+import { releasesPage, roadmapPage } from "./roadmap-views";
 import { messagePage, type Viewer } from "./views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
@@ -216,4 +218,38 @@ export async function showDelivery(env: Env, viewer: Viewer, repo: string): Prom
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   return html(deliveryPage(viewer, project, await loadDelivery(env, project)));
+}
+
+function monthParam(request: Request): string {
+  const month = new URL(request.url).searchParams.get("month") ?? "";
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : new Date().toISOString().slice(0, 7);
+}
+
+export async function showRoadmap(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const [releases, stories] = await Promise.all([loadReleases(env, project), loadStories(env, project)]);
+  return html(
+    roadmapPage(viewer, project, {
+      month: monthParam(request),
+      releases: releases.releases,
+      stories: stories.stories,
+      epics: epicProgress(stories.stories, new Date().toISOString().slice(0, 10)),
+      failure: releases.failure ?? stories.failure,
+    }),
+  );
+}
+
+export async function showReleases(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const [releases, stories] = await Promise.all([loadReleases(env, project), loadStories(env, project)]);
+  return html(
+    releasesPage(viewer, project, {
+      month: monthParam(request),
+      releases: releases.releases,
+      stories: stories.stories,
+      failure: releases.failure ?? stories.failure,
+    }),
+  );
 }

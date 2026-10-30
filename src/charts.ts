@@ -59,13 +59,15 @@ export function barChart(options: {
   upClass: string;
   downClass?: string;
   height?: number;
+  // A fixed top of scale, such as an epic's number of stories.
+  max?: number;
 }): string {
   const { bars } = options;
   const mirrored = options.downClass !== undefined;
   const height = options.height ?? (mirrored ? 240 : 180);
   const plotWidth = WIDTH - LEFT - RIGHT;
   const plotHeight = height - TOP - BOTTOM;
-  const maxUp = niceMax(Math.max(0, ...bars.map((bar) => bar.up)));
+  const maxUp = options.max ?? niceMax(Math.max(0, ...bars.map((bar) => bar.up)));
   const maxDown = mirrored ? niceMax(Math.max(0, ...bars.map((bar) => bar.down ?? 0))) : 0;
   const scale = plotHeight / (maxUp + maxDown);
   const baseline = TOP + maxUp * scale;
@@ -75,7 +77,7 @@ export function barChart(options: {
 
   const grid = [
     { value: maxUp, y: TOP },
-    { value: maxUp / 2, y: TOP + (maxUp / 2) * scale },
+    ...(Number.isInteger(maxUp / 2) ? [{ value: maxUp / 2, y: TOP + (maxUp / 2) * scale }] : []),
     { value: 0, y: baseline },
     // The lower scale gets a line only when there is room to label it.
     ...(mirrored && maxDown * scale >= 16 ? [{ value: -maxDown, y: baseline + maxDown * scale }] : []),

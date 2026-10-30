@@ -5,11 +5,21 @@ import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views"
 
 const projectPath = projectUrl;
 
-export type ProjectTab = "overview" | "stories" | "production" | "delivery" | "activity" | "requests";
+export type ProjectTab =
+  | "overview"
+  | "stories"
+  | "roadmap"
+  | "releases"
+  | "production"
+  | "delivery"
+  | "activity"
+  | "requests";
 
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "overview", label: "Overview", path: "" },
   { id: "stories", label: "Stories", path: "/stories" },
+  { id: "roadmap", label: "Roadmap", path: "/roadmap" },
+  { id: "releases", label: "Releases", path: "/releases" },
   { id: "production", label: "Production", path: "/production" },
   { id: "delivery", label: "Delivery", path: "/delivery" },
   { id: "activity", label: "Activity", path: "/activity" },
