@@ -1,6 +1,7 @@
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { json } from "./http";
+import { productionChanged } from "./production";
 import { checkPushedCommit, findProject } from "./projects";
 import { applyIssueEvent, storiesChanged, type RestIssue } from "./stories";
 
@@ -52,7 +53,12 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     await storiesChanged(env, project.repo);
     return json({ refresh: "stories" });
   }
+  if (event === "workflow_run") {
+    await productionChanged(env, project.repo);
+    return json({ refresh: "production" });
+  }
   if (event !== "push") return json({ ignored: event }, { status: 202 });
+  await productionChanged(env, project.repo);
 
   const branch = payload.ref?.startsWith("refs/heads/") ? payload.ref.slice("refs/heads/".length) : null;
   const sha = payload.after;

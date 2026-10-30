@@ -5,6 +5,8 @@ import { newProjectPage, projectPage, projectsPage } from "./project-views";
 import { addProject, checkProject, describeFailure, findProject, isRepoName, listProjects } from "./projects";
 import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
+import { loadProduction } from "./production";
+import { productionPage } from "./production-views";
 import { messagePage, type Viewer } from "./views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
@@ -95,4 +97,10 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
       failure,
     }),
   );
+}
+
+export async function showProduction(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  return html(productionPage(viewer, project, await loadProduction(env, project)));
 }

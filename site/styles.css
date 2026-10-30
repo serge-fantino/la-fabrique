@@ -588,3 +588,54 @@ progress {
 .number {
   white-space: nowrap;
 }
+
+.banner {
+  font-size: 1.05rem;
+}
+
+.banner p,
+.banner ul {
+  margin: 0.25rem 0;
+}
+
+.versions {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+}
+
+.versions li {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.release {
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 0.25rem 1rem;
+}
+
+.pending-group {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.75rem;
+  margin-top: 1rem;
+}
+
+.pending-group h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.commits {
+  list-style: none;
+  padding: 0;
+  font-size: 0.92rem;
+}
+
+.commits li {
+  padding: 0.2rem 0;
+}
