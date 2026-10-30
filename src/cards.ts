@@ -49,6 +49,8 @@ export interface CardSpec {
   source: "claude" | "person";
   // What Claude said it did, in one sentence.
   note?: string;
+  // Claude's questions already answered, oldest first: it does not ask again.
+  dialogue?: { question: string; answer: string; at: string }[];
   at: string;
 }
 

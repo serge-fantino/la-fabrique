@@ -2373,6 +2373,7 @@ p.about-version-choice {
     left: 0;
     right: auto;
   }
+}
 
 /* The project's app, in Setup. */
 .project-app {
@@ -2420,25 +2421,74 @@ p.about-version-choice {
   padding-left: 1.2rem;
 }
 
-.claude-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  margin: 1.5rem 0 0.75rem;
-  padding: 1rem;
+/* A request to Claude, in a modal window (or shown in the page without
+   the script). */
+dialog.modal {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 1.25rem 1.5rem 1.5rem;
   border: 1px solid var(--rule);
-  border-radius: 16px;
+  border-radius: 22px;
   background: #fff;
+  color: var(--encre);
+  box-shadow: 0 20px 50px color-mix(in srgb, var(--encre) 22%, transparent);
 }
 
-.claude-form label {
+dialog.modal::backdrop {
+  background: color-mix(in srgb, var(--encre) 35%, transparent);
+}
+
+dialog.modal:not(:modal) {
+  position: static;
+  margin: 1.5rem 0;
+  box-shadow: none;
+}
+
+dialog.modal h2 {
+  margin: 0 0 0.5rem;
+}
+
+dialog.modal textarea {
+  width: 100%;
+}
+
+.spec-actions {
+  margin-top: 1.5rem;
+}
+
+form.spec-questions .field label {
   font-weight: 600;
 }
 
-.claude-form .help {
-  margin: 0;
+form.spec-questions textarea {
+  width: 100%;
+  background: #fff;
+}
+
+form[aria-busy="true"] button[type="submit"] {
+  opacity: 0.75;
+  cursor: progress;
+}
+
+.spec-dialogue {
+  margin: 1rem 0;
+}
+
+.spec-dialogue summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
   color: var(--encre-faint);
-  font-size: 0.9rem;
+}
+
+.spec-dialogue dt {
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.spec-dialogue dd {
+  margin: 0.15rem 0 0;
 }
 
 .fiche-cost {

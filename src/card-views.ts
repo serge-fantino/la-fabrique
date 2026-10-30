@@ -346,21 +346,81 @@ export function spendLine(spend: Spend): string {
 }
 
 function specHtml(spec: CardSpec | undefined, rubriques: Rubrique[], repo: string): string {
-  if (!spec) return `<p class="muted">No spec yet. Claude can write a first one from the card, the project's principles and what the project already has.</p>`;
+  if (!spec) return `<p class="muted">No spec yet. Claude can write a first one from the card, the project's principles and what the project already has, and ask what it needs to know.</p>`;
   const sections = rubriques
     .map(
       (rubrique) => `<h3>${escapeHtml(rubrique.titre)}</h3>
         ${spec.answers[rubrique.cle]?.trim() ? `<div class="markdown">${renderCardText(spec.answers[rubrique.cle] ?? "", repo)}</div>` : `<p class="muted">—</p>`}`,
     )
     .join("");
-  const questions = spec.questions.length
-    ? `<div class="spec-questions"><h3>Claude asks</h3><ul>${spec.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ul>
-        <p class="muted small">Answer them below, in “Revise with Claude”.</p></div>`
-    : "";
   const by = spec.source === "claude" ? "Written with Claude" : "Edited by hand";
   return `<p class="muted small">${by} on <span class="mono">${formatDate(spec.at)}</span>.${spec.note ? ` ${escapeHtml(spec.note)}` : ""}</p>
-    <div class="spec">${sections}</div>
-    ${questions}`;
+    <div class="spec">${sections}</div>`;
+}
+
+// What Claude asked and was answered: it does not ask again.
+function dialogueHtml(spec: CardSpec | undefined): string {
+  const dialogue = spec?.dialogue ?? [];
+  if (!dialogue.length) return "";
+  return `<details class="spec-dialogue">
+      <summary>Questions answered (${dialogue.length})</summary>
+      <dl>${dialogue.map((turn) => `<dt>${escapeHtml(turn.question)}</dt><dd>${escapeHtml(turn.answer)}</dd>`).join("")}</dl>
+    </details>`;
+}
+
+// Claude's questions: read-only for those who cannot write, otherwise a
+// field under each one; the answers go back to Claude together.
+function questionsHtml(viewer: Viewer, url: string, spec: CardSpec | undefined, canAnswer: boolean): string {
+  const questions = spec?.questions ?? [];
+  if (!questions.length) return "";
+  if (!canAnswer) {
+    return `<div class="spec-questions"><h3>Claude asks</h3><ul>${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ul></div>`;
+  }
+  const fields = questions
+    .map(
+      (question, index) => `<div class="field">
+          <label for="answer_${index}">${escapeHtml(question)}</label>
+          <input type="hidden" name="question_${index}" value="${escapeHtml(question)}" />
+          <textarea id="answer_${index}" name="answer_${index}" rows="2" maxlength="2000"></textarea>
+        </div>`,
+    )
+    .join("");
+  return `<form method="post" action="${escapeHtml(url)}#spec" class="spec-questions" data-busy="Claude is reading your answers…">${csrfField(viewer)}
+      <input type="hidden" name="action" value="spec_answer" />
+      <h3>Claude asks</h3>
+      <p class="muted small">Answer what you can; leave the rest empty. Claude revises the spec with your answers, and may ask again.</p>
+      ${fields}
+      <div class="field">
+        <label for="answer_more">Anything else? <span class="muted">(optional)</span></label>
+        <textarea id="answer_more" name="instruction" rows="2" maxlength="4000"></textarea>
+      </div>
+      <div class="card-actions"><button type="submit" class="button">Send my answers to Claude</button><span class="muted small">Up to a minute.</span></div>
+    </form>`;
+}
+
+// A request to Claude in a modal window; without the script, the page
+// opens with it shown (`?ask=`).
+function claudeDialog(
+  viewer: Viewer,
+  url: string,
+  data: { id: string; action: string; title: string; intro: string; label: string; required: boolean; submit: string; busy: string; open: boolean; instruction: string },
+): string {
+  return `<dialog id="${data.id}" class="modal" aria-labelledby="${data.id}-title"${data.open ? " open" : ""}>
+      <form method="post" action="${escapeHtml(url)}#spec" data-busy="${escapeHtml(data.busy)}">${csrfField(viewer)}
+        <input type="hidden" name="action" value="${data.action}" />
+        <h2 id="${data.id}-title">${escapeHtml(data.title)}</h2>
+        <p class="muted">${data.intro}</p>
+        <div class="field">
+          <label for="${data.id}-text">${data.label}</label>
+          <textarea id="${data.id}-text" name="instruction" rows="5" maxlength="4000"${data.required ? " required" : ""}>${escapeHtml(data.instruction)}</textarea>
+        </div>
+        <div class="card-actions">
+          <button type="submit" class="button">${escapeHtml(data.submit)}</button>
+          <a href="${escapeHtml(url)}#spec" data-dialog-close>Cancel</a>
+          <span class="muted small">Up to a minute.</span>
+        </div>
+      </form>
+    </dialog>`;
 }
 
 export interface CardPageData {
@@ -378,6 +438,8 @@ export interface CardPageData {
   spend: Spend;
   missing: string[];
   instruction?: string | undefined;
+  // The request to Claude shown open (no script, or after a failure).
+  ask?: "draft" | "change" | null;
 }
 
 export function cardPage(viewer: Viewer, project: Project, data: CardPageData): string {
@@ -430,33 +492,51 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     )
     .join("");
 
-  // Claude: write the spec, then revise it; the story once it is complete.
+  // Claude: write the spec, answer its questions, ask for a change; the
+  // story once the required sections are there.
   let work = "";
+  const canAnswer = data.canWrite && !shown && data.claude.usable;
   if (data.canWrite && !shown) {
+    const open = (ask: string) => `<a class="button${ask === "change" ? " quiet" : ""}" href="${escapeHtml(url)}?ask=${ask}#claude-${ask}" data-dialog="claude-${ask}">`;
     const claude = data.claude.usable
       ? spec
-        ? `<form method="post" action="${escapeHtml(url)}" class="claude-form">${csrfField(viewer)}
-            <input type="hidden" name="action" value="spec_revise" />
-            <label for="instruction">Revise with Claude</label>
-            <p class="help" id="instruction_help">Answer its questions, correct what is wrong, ask for what is missing. Claude keeps the rest.</p>
-            <textarea id="instruction" name="instruction" rows="4" required maxlength="4000" aria-describedby="instruction_help">${escapeHtml(data.instruction ?? "")}</textarea>
-            <div class="card-actions"><button type="submit" class="button">Revise with Claude</button><span class="muted small">Up to a minute.</span></div>
-          </form>`
-        : `<form method="post" action="${escapeHtml(url)}" class="claude-form">${csrfField(viewer)}
-            <input type="hidden" name="action" value="spec_draft" />
-            <label for="instruction">Anything to tell Claude first? <span class="muted">(optional)</span></label>
-            <textarea id="instruction" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.instruction ?? "")}</textarea>
-            <div class="card-actions"><button type="submit" class="button">Write the spec with Claude</button><span class="muted small">Up to a minute.</span></div>
-          </form>`
+        ? `${open("change")}Ask Claude for a change</a>
+          ${claudeDialog(viewer, url, {
+            id: "claude-change",
+            action: "spec_revise",
+            title: "Ask Claude for a change",
+            intro: "Say what is wrong, what is missing, what to cut. Claude keeps the rest of the spec.",
+            label: "What should change?",
+            required: true,
+            submit: "Revise the spec",
+            busy: "Claude is revising the spec…",
+            open: data.ask === "change",
+            instruction: data.ask === "change" ? (data.instruction ?? "") : "",
+          })}`
+        : `${open("draft")}Write the spec with Claude</a>
+          ${claudeDialog(viewer, url, {
+            id: "claude-draft",
+            action: "spec_draft",
+            title: "Write the spec with Claude",
+            intro: "Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know.",
+            label: 'Anything to tell Claude first? <span class="muted">(optional)</span>',
+            required: false,
+            submit: "Write the spec",
+            busy: "Claude is writing the spec…",
+            open: data.ask === "draft",
+            instruction: data.ask === "draft" ? (data.instruction ?? "") : "",
+          })}`
       : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`;
     const story = spec
       ? data.missing.length
         ? `<p class="muted">To make the story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>`
-        : `<p><a class="button" href="${escapeHtml(url)}/story">Make the story on GitHub</a></p>`
+        : `<a class="button" href="${escapeHtml(url)}/story">Make the story on GitHub</a>`
       : "";
-    work = `${claude}
-      <div class="card-actions"><a href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a></div>
-      ${story}`;
+    work = `<div class="card-actions spec-actions">
+        ${claude}
+        <a href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
+      </div>
+      ${story ? `<div class="card-actions">${story}</div>` : ""}`;
   }
 
   return layout(
@@ -476,6 +556,8 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
       <section class="card-spec" id="spec">
         <h2>Spec</h2>
         ${specHtml(spec, data.rubriques, project.repo)}
+        ${questionsHtml(viewer, url, spec, canAnswer)}
+        ${dialogueHtml(spec)}
         ${work}
       </section>
       ${

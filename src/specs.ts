@@ -80,7 +80,12 @@ function systemPrompt(project: Project, rubriques: Rubrique[], document: { path:
     .join("\n");
   return `You help a product person turn a feature card into a functional specification for the software project "${config?.nom || project.repo}" (${project.repo}). The people who build and test it read your text: be precise, short and concrete. Write in ${language}.
 
-Rules:
+Your first job is to frame the need, like a product manager interviewing the person who wrote the card:
+- When the card leaves something essential open (who it is for, what triggers it, what counts as done, what happens at the edges, what it must not do), ask. Ask at most five questions, the most decisive first, each answerable in a sentence or two, and never one the card, the project's description or an earlier answer already settles.
+- Write the sections you can from what you know; leave a section empty rather than invent what nobody said.
+- When the answers settle the need, ask nothing more.
+
+Rules for the specification:
 - Describe what people must be able to do and see, not the technical solution.
 - Acceptance criteria: one per line, each one checkable by a tester ("When I…, I see…"), as a Markdown task list ("- [ ] …").
 - Keep to the card's scope. Whatever goes beyond it, or is not decided, goes in the open questions.
@@ -90,7 +95,7 @@ Rules:
 
 Answer with:
 - "sections": the specification, one entry per section below;
-- "questions": at most five questions to the person, whose answers would improve the specification (they are shown next to it, not in it);
+- "questions": your questions to the person, at most five, none already answered (they are shown under the specification, each with a field for the answer);
 - "note": one sentence on what you wrote or changed.
 
 The sections, in order:
@@ -124,6 +129,11 @@ function currentSpec(spec: CardSpec, rubriques: Rubrique[]): string {
   return rubriques.map((rubrique) => `## ${rubrique.titre} ("${rubrique.cle}")\n${spec.answers[rubrique.cle] || "(empty)"}`).join("\n\n");
 }
 
+export interface Answer {
+  question: string;
+  answer: string;
+}
+
 export type SpecOutcome = { ok: true; spec: CardSpec; callId: number; costMicros: number | null } | { ok: false; message: string };
 
 // Draft (no spec yet, or start again) or revise (the current spec and
@@ -133,17 +143,26 @@ export async function writeSpec(
   project: Project,
   card: Card,
   login: string,
-  request: { mode: "draft" | "revise"; instruction: string },
+  request: { mode: "draft" | "revise"; instruction: string; answers?: Answer[] },
 ): Promise<SpecOutcome> {
   const rubriques = specRubriques(project);
   const [document, context] = await Promise.all([projectDocument(env, project), cardContext(env, project, card)]);
   const current = card.data.spec;
+  const answers = (request.answers ?? []).filter((turn) => turn.answer.trim());
+  const earlier = current?.dialogue ?? [];
+  const history = earlier.length
+    ? `\nQuestions you asked before, and their answers:\n${earlier.map((turn) => `- Q: ${turn.question}\n  A: ${turn.answer}`).join("\n")}\n`
+    : "";
+  const now = [
+    answers.length ? `The person answers your questions:\n${answers.map((turn) => `- Q: ${turn.question}\n  A: ${turn.answer}`).join("\n")}` : "",
+    request.instruction ? `The person asks:\n<request>\n${request.instruction}\n</request>` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const ask =
     request.mode === "revise" && current
-      ? `${context}\nThe current specification:\n<spec>\n${currentSpec(current, rubriques)}\n</spec>\n${
-          current.questions.length ? `\nYour previous questions:\n${current.questions.map((question) => `- ${question}`).join("\n")}\n` : ""
-        }\nWhat the person asks now (answers to your questions, corrections):\n<request>\n${request.instruction || "Improve it."}\n</request>\n\nRevise the specification accordingly; keep what is not concerned.`
-      : `${context}${request.instruction ? `\nWhat the person adds:\n<request>\n${request.instruction}\n</request>\n` : ""}\nWrite the specification of this card.`;
+      ? `${context}\nThe current specification:\n<spec>\n${currentSpec(current, rubriques)}\n</spec>\n${history}\n${now || "Improve it."}\n\nRevise the specification accordingly; keep what is not concerned.`
+      : `${context}${history}${now ? `\n${now}\n` : ""}\nWrite the specification of this card.`;
 
   const outcome: CallOutcome<SpecAnswer> = await askJson<SpecAnswer>(
     env,
@@ -152,11 +171,21 @@ export async function writeSpec(
   );
   if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer." };
   const answer = outcome.value;
-  const answers = Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, String(answer.sections?.[rubrique.cle] ?? "").trim()]));
+  // The sections come from Claude; `answers` are the person's.
+  const sections = Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, String(answer.sections?.[rubrique.cle] ?? "").trim()]));
   const questions = (Array.isArray(answer.questions) ? answer.questions : []).map((question) => String(question).trim()).filter(Boolean).slice(0, 5);
+  const at = new Date().toISOString();
+  const dialogue = [...earlier, ...answers.map((turn) => ({ question: turn.question, answer: turn.answer.trim(), at }))].slice(-40);
   return {
     ok: true,
-    spec: { answers, questions, source: "claude", note: String(answer.note ?? "").trim().slice(0, 500), at: new Date().toISOString() },
+    spec: {
+      answers: sections,
+      questions,
+      source: "claude",
+      note: String(answer.note ?? "").trim().slice(0, 500),
+      ...(dialogue.length ? { dialogue } : {}),
+      at,
+    },
     callId: outcome.callId,
     costMicros: outcome.costMicros,
   };
@@ -167,5 +196,11 @@ export function readSpecForm(form: FormData, rubriques: Rubrique[], previous: Ca
   const answers = Object.fromEntries(
     rubriques.map((rubrique) => [rubrique.cle, String(form.get(`s_${rubrique.cle}`) ?? "").replace(/\r\n/g, "\n").trim().slice(0, 20_000)]),
   );
-  return { answers, questions: previous?.questions ?? [], source: "person", at: new Date().toISOString() };
+  return {
+    answers,
+    questions: previous?.questions ?? [],
+    source: "person",
+    ...(previous?.dialogue ? { dialogue: previous.dialogue } : {}),
+    at: new Date().toISOString(),
+  };
 }

@@ -115,7 +115,71 @@
     visit(location.href, false);
   });
   // Back and forward may restore a page from the cache, bar included.
-  window.addEventListener("pageshow", stop);
+  window.addEventListener("pageshow", (event) => {
+    stop();
+    // A page back from the cache: its busy forms can be sent again.
+    if (event.persisted) for (const form of document.querySelectorAll("form[data-sent]")) unbusy(form);
+  });
+
+  // A modal window opened by a link: [data-dialog] names the <dialog>.
+  // Without this script the link opens the page with the window shown.
+  // Listened to while capturing, before pages follow one another.
+  const openDialog = (dialog) => {
+    if (dialog.open) dialog.close();
+    dialog.showModal();
+    dialog.querySelector("textarea, input:not([type=hidden]), select")?.focus();
+  };
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      const opener = target?.closest("[data-dialog]");
+      const dialog = opener ? document.getElementById(opener.getAttribute("data-dialog")) : null;
+      if (dialog instanceof HTMLDialogElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        openDialog(dialog);
+        return;
+      }
+      const closer = target?.closest("[data-dialog-close]");
+      const open = closer?.closest("dialog");
+      if (open instanceof HTMLDialogElement) {
+        event.preventDefault();
+        event.stopPropagation();
+        open.close();
+      }
+    },
+    true,
+  );
+
+  // A form that waits for a slow answer (Claude): its button says so, and
+  // it is sent once.
+  const unbusy = (form) => {
+    delete form.dataset.sent;
+    form.removeAttribute("aria-busy");
+    const button = form.querySelector('button[type="submit"]');
+    if (button && button.dataset.label) {
+      button.textContent = button.dataset.label;
+      button.removeAttribute("aria-disabled");
+    }
+  };
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-busy") || event.defaultPrevented) return;
+    if (form.dataset.sent) {
+      event.preventDefault();
+      return;
+    }
+    form.dataset.sent = "1";
+    form.setAttribute("aria-busy", "true");
+    const button = form.querySelector('button[type="submit"]');
+    if (button) {
+      button.dataset.label = button.textContent;
+      button.textContent = form.getAttribute("data-busy");
+      button.setAttribute("aria-disabled", "true");
+    }
+  });
 
   // A menu in the header closes when one clicks elsewhere.
   document.addEventListener("click", (event) => {
@@ -132,6 +196,8 @@
     setUpRefresh();
     setUpBranchMenu();
     setUpAboutPicker();
+    // A window shown by the server (no script, or after a failure) becomes modal.
+    for (const dialog of document.querySelectorAll("dialog.modal[open]")) openDialog(dialog);
   }
 
   // What a defect is about (triage): the same list as the report kit's form
