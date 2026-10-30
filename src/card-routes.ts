@@ -32,7 +32,9 @@ import { html, json, redirect } from "./http";
 import { allowance, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
 import { createRequest, issueBody, type RequestDraft } from "./requests";
-import { missingSections, readSpecForm, specRubriques, writeSpec, type Answer } from "./specs";
+import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
+import { enqueue, isActive, jobEvents, latestJob, workingCards, type JobKind } from "./jobs";
+import { liveFor } from "./live";
 import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
@@ -40,7 +42,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit|\/spec|\/story)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -62,10 +64,11 @@ const BOARD_NOTICES: Record<string, string> = {
 export async function showBoard(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   const url = new URL(request.url);
   const board = readBoardQuery(url.searchParams);
-  const [cards, { view, cookies }, spends] = await Promise.all([
+  const [cards, { view, cookies }, spends, working] = await Promise.all([
     listCards(env.DB, project.repo),
     projectView(request, env, project, viewer),
     cardSpends(env.DB, project.repo),
+    workingCards(env.DB, project.repo),
   ]);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const notice = url.searchParams.get("notice");
@@ -77,6 +80,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       board,
       canWrite: canWriteCards(viewer),
       spends,
+      working,
       notice: notice ? BOARD_NOTICES[notice] : undefined,
     }),
     { cookies },
@@ -125,8 +129,8 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const moved = await moveCard(env.DB, card, viewer.login, { set, before: neighbour("before"), after: neighbour("after") }, known);
-  const spends = await cardSpends(env.DB, project.repo);
-  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id)) });
+  const [spends, working] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo)]);
+  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id)) });
 }
 
 function emptyInput(params: URLSearchParams): CardInput {
@@ -179,6 +183,7 @@ const CARD_NOTICES: Record<string, string> = {
   spec: "Spec written. Read it, then revise it with Claude or by hand.",
   spec_saved: "Spec saved.",
   story: "Story created on GitHub.",
+  enough: "Questions closed: Claude will not ask more unless you ask it to.",
 };
 
 // The card's page, also after a failed call to Claude (`failure`, with
@@ -192,13 +197,15 @@ async function renderCard(
   extra: { failure?: string; instruction?: string; ask?: "draft" | "change"; status?: number } = {},
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
-  const [revisions, links, calls, claude, { view, cookies }] = await Promise.all([
+  const [revisions, links, calls, claude, { view, cookies }, job] = await Promise.all([
     cardRevisions(env.DB, card.id),
     cardLinks(env.DB, card.id),
     cardCalls(env.DB, card.id),
     canWriteCards(viewer) ? allowance(env, viewer.role, viewer.login) : Promise.resolve({ ok: false as const, reason: "" }),
     projectView(request, env, project, viewer),
+    latestJob(env.DB, card.id),
   ]);
+  const events = job ? await jobEvents(env.DB, job.id) : [];
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
@@ -225,6 +232,8 @@ async function renderCard(
       calls,
       spend,
       missing: missingSections(card.data.spec, rubriques),
+      job,
+      events,
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -265,6 +274,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     }
     const ask: "draft" | "change" | null = action === "spec_draft" ? "draft" : action === "spec_revise" ? "change" : null;
     const keep: { instruction: string; ask?: "draft" | "change" } = ask ? { instruction, ask } : { instruction };
+    const kind: JobKind = action;
     if (action === "spec_answer" && !answers.length && !instruction) {
       return renderCard(request, env, viewer, project, card, { failure: "Answer at least one of Claude's questions.", status: 422 });
     }
@@ -273,12 +283,24 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     }
     const allowed = await allowance(env, viewer.role, viewer.login);
     if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, ...keep, status: 429 });
-    const outcome = await writeSpec(env, project, card, viewer.login, { mode: action === "spec_draft" ? "draft" : "revise", instruction, answers });
-    if (!outcome.ok) return renderCard(request, env, viewer, project, card, { failure: outcome.message, ...keep, status: 502 });
-    // The card may have changed while Claude wrote: the spec goes on the newest version.
-    const current = (await findCard(env.DB, project.repo, card.id)) ?? card;
-    await saveSpec(env.DB, current, viewer.login, outcome.spec, outcome.callId);
-    return redirect(`${url}?notice=spec#spec`);
+    // Saved at once, run in the background: leaving the page loses nothing.
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind, request: { instruction, answers }, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, ...keep, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
+  if (action === "job_retry") {
+    const last = await latestJob(env.DB, card.id);
+    if (!last || last.status !== "failed") return redirect(`${url}#spec`);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: last.kind, request: last.request, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
+  if (action === "spec_enough") {
+    if (!card.data.spec || isActive(await latestJob(env.DB, card.id))) return redirect(`${url}#spec`);
+    await saveSpec(env.DB, card, viewer.login, closeQuestions(card.data.spec));
+    return redirect(`${url}?notice=enough#spec`);
   }
   if (action === "spec_save") {
     if (Number(form.get("rev")) !== card.rev) {
@@ -385,6 +407,14 @@ export async function cardRoute(
   if (path === "cards/export") return method === "GET" ? downloadCards(env, project) : notAllowed();
   if (path === "cards") return method === "POST" ? withForm((data) => submitCard(request, data, env, viewer, project)) : notAllowed();
   if (id && match[4] === "/edit") return method === "GET" ? showCardForm(request, env, viewer, project, id) : notAllowed();
+  // The card's live connection: what Claude's job does, pushed (CardLive).
+  if (id && match[4] === "/live") {
+    if (method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("A WebSocket is expected.", { status: 426 });
+    const card = await findCard(env.DB, project.repo, id);
+    const live = liveFor(env, id);
+    if (!card || !live) return new Response("Not found", { status: 404 });
+    return live.fetch(request);
+  }
   if (id && match[4] === "/spec") return method === "GET" ? showSpecForm(request, env, viewer, project, id) : notAllowed();
   if (id && match[4] === "/story") {
     if (method === "GET") return storyRoute(request, env, viewer, project, id, null);

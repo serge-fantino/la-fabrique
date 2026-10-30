@@ -26,6 +26,19 @@
     "CLAUDE_DAILY_CALLS": "30",
     "CLAUDE_MONTHLY_BUDGET_USD": "20"
   },
+  // Claude works in the background (docs/decisions/0001-claude-in-the-background.md):
+  // a queue of its jobs (created by the deploy workflow if missing), and an
+  // object per card that pushes their progress to the open pages.
+  "queues": {
+    "producers": [{ "binding": "CLAUDE_QUEUE", "queue": "la-fabrique-claude" }],
+    "consumers": [
+      { "queue": "la-fabrique-claude", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "max_concurrency": 2, "retry_delay": 30 }
+    ]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CARD_LIVE", "class_name": "CardLive" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CardLive"] }],
   "observability": {
     "enabled": true
   }

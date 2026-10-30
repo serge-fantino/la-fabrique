@@ -49,8 +49,15 @@ export interface CardSpec {
   source: "claude" | "person";
   // What Claude said it did, in one sentence.
   note?: string;
-  // Claude's questions already answered, oldest first: it does not ask again.
-  dialogue?: { question: string; answer: string; at: string }[];
+  // Claude's questions already answered (or left, `skipped`), oldest first:
+  // it does not ask them again.
+  dialogue?: { question: string; answer: string; at: string; skipped?: boolean }[];
+  // How many times Claude wrote this spec; after three, only blocking questions.
+  rounds?: number;
+  // Claude said it knows enough (its note says why), or the person closed
+  // the questions: no more questions unless asked.
+  enough?: boolean;
+  closed?: boolean;
   at: string;
 }
 

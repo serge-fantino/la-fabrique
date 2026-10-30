@@ -10,6 +10,7 @@ import { isAsset, serveAsset } from "./assets";
 import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
 import { CLAUDE_CHECK_PATH, REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { checkKey, claudeSettings, usageReport } from "./llm";
+import { consumeJobs } from "./jobs";
 import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
@@ -434,7 +435,15 @@ function withSecurityHeaders(response: Response): Response {
   return copy;
 }
 
+// Claude's background jobs (src/jobs.ts) and the object that pushes their
+// progress to the card's open pages.
+export { CardLive } from "./live";
+
 export default {
+  async queue(batch: MessageBatch<{ job: number }>, env: Env): Promise<void> {
+    await consumeJobs(batch, env);
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const oauthEnv: Env = { ...env, OAUTH_KV: d1KeyValue(env.DB) };
     const { pathname, origin } = new URL(request.url);
@@ -444,4 +453,4 @@ export default {
     if (pathname === DISCOVERY_PATH && request.method === "GET") return discovery(response, request);
     return withSecurityHeaders(response);
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env, { job: number }>;

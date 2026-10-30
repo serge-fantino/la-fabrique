@@ -33,7 +33,10 @@ the repository (`Settings &rarr; Secrets and variables &rarr; Actions`):
 | `CLOUDFLARE_ACCOUNT_ID`| Cloudflare dashboard &rarr; any domain &rarr; right sidebar. |
 
 Minimum token scope: *Account &rarr; Workers Scripts &rarr; Edit*,
-*Account &rarr; D1 &rarr; Edit*.
+*Account &rarr; D1 &rarr; Edit*, *Account &rarr; Queues &rarr; Edit* (the
+workflow creates the queue of Claude's jobs if it is missing, and the Worker
+consumes it). The Durable Object that pushes a job's progress to the pages is
+created by the deploy itself, with the Workers permission.
 
 ## 3. First deploy
 
@@ -199,6 +202,15 @@ write and revise its spec. La Fabrique calls the Anthropic API with its
    use it and the quotas; for the super admin, what each project, person and
    card cost this month, the last calls, and **Check the key** (one tiny
    call).
+
+Claude works in the background (`docs/decisions/0001-claude-in-the-background.md`):
+a request is saved as a job (`claude_jobs`, its log in `claude_job_events`)
+and put on the queue `la-fabrique-claude`, which the Worker consumes (one
+job at a time per card, two at once at most, three attempts 30 seconds
+apart when Anthropic is busy). Each card has a Durable Object (`CardLive`)
+that pushes the job's progress to the pages open on it, over a WebSocket.
+The deploy workflow creates the queue when it is missing: add *Queues →
+Edit* to the token (section 2). Locally, `wrangler dev` simulates both.
 
 Every call is recorded in D1 (`llm_calls`: who, when, which card, model,
 tokens, cost in millionths of a dollar, outcome), never its content. The

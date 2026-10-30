@@ -1,8 +1,9 @@
-import { env, fetchMock, SELF } from "cloudflare:test";
+import { createExecutionContext, createMessageBatch, env, fetchMock, getQueueResult, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import example from "../docs/exemples/epicerie.fabrique.json";
 import { allowance, costMicros, usesOf } from "../src/llm";
 import type Anthropic from "@anthropic-ai/sdk";
+import worker from "../src/index";
 import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
 
 const REPO = "acme/widget";
@@ -114,19 +115,96 @@ describe("What a call costs", () => {
   });
 });
 
-describe("A card's spec with Claude", () => {
-  it("writes the spec from the card, the project's principles and its stories, and records the call", async () => {
+function bodyText(body: unknown): string {
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array || body instanceof ArrayBuffer) return new TextDecoder().decode(body);
+  return String(body);
+}
+
+// Claude's answer as the API streams it: a summary of its thinking, then
+// the JSON in two pieces.
+function claudeStream(
+  sent: { body?: Record<string, unknown> },
+  answer: unknown,
+  options: { stopReason?: string; status?: number } = {},
+): void {
+  fetchMock
+    .get("https://api.anthropic.com")
+    .intercept({ method: "POST", path: (path) => path.startsWith("/v1/messages") })
+    .reply((request) => {
+      sent.body = JSON.parse(bodyText(request.body)) as Record<string, unknown>;
+      if (options.status) {
+        return { statusCode: options.status, data: JSON.stringify({ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }), responseOptions: { headers: JSON_HEADERS } };
+      }
+      const text = JSON.stringify(answer);
+      const half = Math.floor(text.length / 2);
+      const events: [string, unknown][] = [
+        ["message_start", { type: "message_start", message: { id: "msg_test", type: "message", role: "assistant", model: "claude-opus-5-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1000, output_tokens: 1, cache_read_input_tokens: 5000, cache_creation_input_tokens: 1000 } } }],
+        ["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } }],
+        ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "The card is about reordering. Who is it for?" } }],
+        ["content_block_stop", { type: "content_block_stop", index: 0 }],
+        ["content_block_start", { type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }],
+        ["content_block_delta", { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: text.slice(0, half) } }],
+        ["content_block_delta", { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: text.slice(half) } }],
+        ["content_block_stop", { type: "content_block_stop", index: 1 }],
+        ["message_delta", { type: "message_delta", delta: { stop_reason: options.stopReason ?? "end_turn", stop_sequence: null, stop_details: null }, usage: { output_tokens: 2000 } }],
+        ["message_stop", { type: "message_stop" }],
+      ];
+      return {
+        statusCode: 200,
+        // ASCII only (escaped): the mock counts characters, not bytes.
+        data: events
+          .map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data).replace(/[\u007f-\uffff]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`)}\n\n`)
+          .join(""),
+        responseOptions: { headers: { "content-type": "text/event-stream" } },
+      };
+    });
+}
+
+// What the queue's consumer does: run the waiting jobs, as Cloudflare would.
+async function runQueue(): Promise<{ retried: number; acked: number }> {
+  const { results } = await env.DB.prepare("SELECT id FROM claude_jobs WHERE status IN ('queued', 'running') ORDER BY id").all<{ id: number }>();
+  const batch = createMessageBatch<{ job: number }>(
+    "la-fabrique-claude",
+    results.map((row) => ({ id: `m${row.id}`, timestamp: new Date(), attempts: 1, body: { job: row.id } })),
+  );
+  const ctx = createExecutionContext();
+  await worker.queue(batch, env);
+  const result = await getQueueResult(batch, ctx);
+  return { retried: result.retryMessages.length, acked: result.explicitAcks.length };
+}
+
+async function specOf(id: number): Promise<Record<string, unknown>> {
+  return JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string | null }>())?.data ?? "{}").spec ?? {};
+}
+
+describe("A card's spec with Claude, in the background", () => {
+  it("saves the request at once, then writes the spec from the queue, with its log and its cost", async () => {
     const { cookie, csrf, id } = await writerWithCard();
-    const sent: { body?: Record<string, unknown> } = {};
-    claudeReply(sent, { sections: SECTIONS, questions: ["Pour combien de semaines en arrière ?"], note: "Première version." });
     const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft", instruction: "Pensez au téléphone." }, cookie);
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=spec#spec`);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}#claude-job`);
+    expect(await env.DB.prepare("SELECT kind, status, login FROM claude_jobs").first()).toEqual({ kind: "spec_draft", status: "queued", login: "pe" });
+
+    // While it waits: the widget, its live connection, no form to send again.
+    const waiting = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(waiting).toContain('<strong data-job-label>Waiting for Claude</strong>');
+    expect(waiting).toContain(`data-live="/projects/${REPO}/cards/${id}/live"`);
+    expect(waiting).toContain("Pensez au téléphone.");
+    expect(waiting).not.toContain('value="spec_draft"');
+    const board = await (await get(`/projects/${REPO}/board?by=status`, cookie)).text();
+    expect(board).toContain('<span class="pill warn">Claude working</span>');
+
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, { sections: SECTIONS, questions: ["Pour combien de semaines en arrière ?"], enough: false, note: "Première version." });
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
 
     // What Claude received: the project's principles (cached), the card, the stories, the sections.
     const body = sent.body ?? {};
     expect(body["model"]).toBe("claude-opus-5-5");
+    expect(body["stream"]).toBe(true);
     expect(body["fallbacks"]).toBe("default");
+    expect(body["thinking"]).toEqual({ type: "adaptive", display: "summarized" });
     const system = (body["system"] as { text: string; cache_control: unknown }[])[0];
     expect(system?.cache_control).toEqual({ type: "ephemeral" });
     expect(system?.text).toContain("never sell anything for losing weight");
@@ -137,117 +215,173 @@ describe("A card's spec with Claude", () => {
     expect(user).toContain("#7 Existing basket story");
     expect(user).toContain("Pensez au téléphone.");
 
-    const card = await env.DB.prepare("SELECT data, rev FROM cards WHERE id = ?").bind(id).first<{ data: string; rev: number }>();
-    expect(card?.rev).toBe(2);
-    expect(JSON.parse(card?.data ?? "{}").spec).toMatchObject({ source: "claude", questions: ["Pour combien de semaines en arrière ?"], answers: { besoin: SECTIONS.besoin } });
-    const call = await env.DB.prepare("SELECT login, repo, card_id, purpose, model, input_tokens, cost_micros, outcome FROM llm_calls").first();
-    expect(call).toEqual({ login: "pe", repo: REPO, card_id: id, purpose: "spec_draft", model: "claude-opus-5-5", input_tokens: 1000, cost_micros: 50_000, outcome: "ok" });
-    expect((await logActions()).map((entry) => entry.action)).toEqual(["card_created", "card_spec_written"]);
+    expect(await specOf(id)).toMatchObject({ source: "claude", questions: ["Pour combien de semaines en arrière ?"], answers: { besoin: SECTIONS.besoin }, rounds: 1 });
+    expect(await env.DB.prepare("SELECT status FROM claude_jobs").first()).toEqual({ status: "done" });
+    const call = await env.DB.prepare("SELECT login, repo, card_id, purpose, input_tokens, cost_micros, outcome FROM llm_calls").first();
+    expect(call).toEqual({ login: "pe", repo: REPO, card_id: id, purpose: "spec_draft", input_tokens: 1000, cost_micros: 50_000, outcome: "ok" });
+    const log = (await env.DB.prepare("SELECT text FROM claude_job_events ORDER BY id").all<{ text: string }>()).results.map((row) => row.text);
+    expect(log).toEqual([
+      "Asked by @pe.",
+      "Claude starts.",
+      "Reads CLAUDE.md (0k characters), 0 other cards, 1 open story.",
+      "Thinks: Who is it for?",
+      "Writes: Contexte.",
+      "Writes: Besoin.",
+      "Writes: Critères d'acceptation.",
+      "Writes: Écrans concernés.",
+      "Writes: Données personnelles.",
+      "Writes: Texte « Quoi de neuf ».",
+      "Writes: Questions ouvertes.",
+      "Done: 1 question for you. Cost $0.05.",
+    ]);
 
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
     expect(page).toContain("<h3>Besoin</h3>");
-    // Each question has its answer field; the requests to Claude open in a modal window.
+    expect(page).not.toContain("data-live=");
     expect(page).toContain('<label for="answer_0">Pour combien de semaines en arrière ?</label>');
-    expect(page).toContain('<input type="hidden" name="question_0" value="Pour combien de semaines en arrière ?" />');
-    expect(page).toContain("Send my answers to Claude");
-    expect(page).toContain(`href="/projects/${REPO}/cards/${id}?ask=change#claude-change" data-dialog="claude-change">Ask Claude for a change</a>`);
-    expect(page).toContain('<dialog id="claude-change" class="modal" aria-labelledby="claude-change-title">');
+    expect(page).toContain('value="spec_enough" formnovalidate>Enough questions</button>');
     expect(page).toContain("1 call · $0.05");
-    expect(page).toContain(`href="/projects/${REPO}/cards/${id}/story">Make the story on GitHub</a>`);
-    const board = await (await get(`/projects/${REPO}/board?by=status`, cookie)).text();
-    expect(board).toContain('<span class="fiche-cost mono" title="Claude on this card: 1 call · $0.05">$0.05</span>');
   });
 
-  it("revises the spec with what the person asks, and keeps the previous version", async () => {
+  it("sends the answers with their questions, shows them while Claude works, keeps them, and does not ask again", async () => {
     const { cookie, csrf, id } = await writerWithCard();
-    claudeReply({}, { sections: SECTIONS, questions: ["Q1 ?"], note: "v1" });
     await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
-    const sent: { body?: Record<string, unknown> } = {};
-    claudeReply(sent, { sections: { ...SECTIONS, besoin: "Reprendre une des quatre dernières semaines." }, questions: [], note: "Quatre semaines." });
-    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_revise", instruction: "Quatre semaines." }, cookie);
-    const user = ((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "");
-    expect(user).toContain("Reprendre le panier de la semaine dernière en un geste.");
-    expect(user).toContain("Quatre semaines.");
-    const page = await (await get(`/projects/${REPO}/cards/${id}?rev=2`, cookie)).text();
-    expect(page).toContain("Reprendre le panier de la semaine dernière en un geste.");
-    expect(page).toContain("Restore this version");
-    expect((await env.DB.prepare("SELECT purpose FROM llm_calls ORDER BY id").all()).results).toEqual([{ purpose: "spec_draft" }, { purpose: "spec_revise" }]);
-  });
+    claudeStream({}, { sections: SECTIONS, questions: ["Combien de semaines ?", "Sur le site aussi ?"], enough: false, note: "v1" });
+    await runQueue();
 
-  it("sends the answers to Claude's questions with the questions, keeps them, and does not ask again", async () => {
-    const { cookie, csrf, id } = await writerWithCard();
-    claudeReply({}, { sections: SECTIONS, questions: ["Combien de semaines ?", "Sur le site aussi ?"], note: "v1" });
-    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
-    const sent: { body?: Record<string, unknown> } = {};
-    claudeReply(sent, { sections: SECTIONS, questions: ["Et les produits retirés ?"], note: "v2" });
-    const response = await post(
+    await post(
       `/projects/${REPO}/cards/${id}`,
       { csrf, action: "spec_answer", question_0: "Combien de semaines ?", answer_0: "Quatre.", question_1: "Sur le site aussi ?", answer_1: "", instruction: "Pensez au mobile." },
       cookie,
     );
-    expect(response.status).toBe(303);
+    // Sent: read-only while Claude works, even after leaving the page.
+    const waiting = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(waiting).toContain("<dt>Combien de semaines ?</dt><dd>Quatre.</dd>");
+    expect(waiting).not.toContain('name="answer_0"');
+
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, { sections: SECTIONS, questions: ["Et les produits retirés ?"], enough: false, note: "v2" });
+    await runQueue();
     const user = ((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "");
     expect(user).toContain("The person answers your questions:\n- Q: Combien de semaines ?\n  A: Quatre.");
     expect(user).not.toContain("Sur le site aussi ?");
     expect(user).toContain("Pensez au mobile.");
-    const spec = JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").spec;
-    expect(spec.questions).toEqual(["Et les produits retirés ?"]);
-    expect(spec.dialogue).toMatchObject([{ question: "Combien de semaines ?", answer: "Quatre." }]);
-    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
-    expect(page).toContain("<summary>Questions answered (1)</summary>");
+    expect(await specOf(id)).toMatchObject({ questions: ["Et les produits retirés ?"], dialogue: [{ question: "Combien de semaines ?", answer: "Quatre." }], rounds: 2 });
+    expect(await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text()).toContain("<summary>Questions answered (1)</summary>");
 
-    // The next call carries what was already answered.
+    // Third round: only blocking questions; and the history goes with it.
     const next: { body?: Record<string, unknown> } = {};
-    claudeReply(next, { sections: SECTIONS, questions: [], note: "v3" });
     await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_answer", question_0: "Et les produits retirés ?", answer_0: "Non." }, cookie);
+    claudeStream(next, { sections: SECTIONS, questions: [], enough: true, note: "Le besoin est clair : quatre semaines, mobile." });
+    await runQueue();
     const again = ((next.body?.["messages"] as { content: string }[])[0]?.content ?? "");
     expect(again).toContain("Questions you asked before, and their answers:\n- Q: Combien de semaines ?\n  A: Quatre.");
-    expect(again).toContain("- Q: Et les produits retirés ?\n  A: Non.");
+    expect(again).toContain("This is round 3: ask only what blocks the specification.");
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("<strong>Claude knows enough to write the stories.</strong> Le besoin est clair : quatre semaines, mobile.");
   });
 
-  it("asks for an answer before calling Claude, and opens the request window without the script", async () => {
+  it("closes the questions when the person decides Claude knows enough, without losing them", async () => {
     const { cookie, csrf, id } = await writerWithCard();
-    const empty = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_answer", question_0: "Q ?", answer_0: " " }, cookie);
-    expect(empty.status).toBe(422);
-    expect(await empty.text()).toContain("Answer at least one of Claude&#39;s questions.");
-    const page = await (await get(`/projects/${REPO}/cards/${id}?ask=draft`, cookie)).text();
-    expect(page).toContain('<dialog id="claude-draft" class="modal" aria-labelledby="claude-draft-title" open>');
-    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM llm_calls").first())?.["n"]).toBe(0);
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    claudeStream({}, { sections: SECTIONS, questions: ["Q1 ?", "Q2 ?"], enough: false, note: "v1" });
+    await runQueue();
+    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_enough", question_0: "Q1 ?", answer_0: "" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=enough#spec`);
+    expect(await specOf(id)).toMatchObject({ questions: [], closed: true, dialogue: [{ question: "Q1 ?", skipped: true }, { question: "Q2 ?", skipped: true }] });
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("You closed the questions");
+    expect(page).toContain("<dt>Q1 ?</dt><dd><span class=\"muted\">Left unanswered.</span></dd>");
+
+    // A later change: Claude is told to ask nothing.
+    const sent: { body?: Record<string, unknown> } = {};
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_revise", instruction: "Plus court." }, cookie);
+    claudeStream(sent, { sections: SECTIONS, questions: ["Q3 ?"], enough: false, note: "v2" });
+    await runQueue();
+    expect(((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "")).toContain("The person closed the questions: ask nothing more");
+    expect(await specOf(id)).toMatchObject({ questions: [], closed: true });
+  });
+
+  it("tries again when Anthropic is busy, then says why it failed, keeps the request and offers to try again", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft", instruction: "Gardez ceci." }, cookie);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      claudeStream({}, {}, { status: 529 });
+      expect(await runQueue()).toEqual(attempt < 3 ? { retried: 1, acked: 0 } : { retried: 0, acked: 1 });
+    }
+    expect(await env.DB.prepare("SELECT status, attempts FROM claude_jobs").first()).toEqual({ status: "failed", attempts: 3 });
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("Claude could not finish: The Anthropic API answered with an error (529).");
+    expect(page).toContain("Gardez ceci.");
+    expect(page).toContain('value="job_retry">Try again</button>');
+
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "job_retry" }, cookie);
+    const retried = await env.DB.prepare("SELECT kind, status, request FROM claude_jobs ORDER BY id DESC").first<{ kind: string; status: string; request: string }>();
+    expect(retried).toMatchObject({ kind: "spec_draft", status: "queued" });
+    expect(JSON.parse(retried?.request ?? "{}")).toMatchObject({ instruction: "Gardez ceci." });
   });
 
   it("says why when Claude declines, and still counts the call", async () => {
     const { cookie, csrf, id } = await writerWithCard();
-    claudeReply({}, {}, { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null }, content: [] });
-    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft", instruction: "Keep this." }, cookie);
-    expect(response.status).toBe(502);
-    const page = await response.text();
-    expect(page).toContain("Claude declined this request.");
-    expect(page).toContain(">Keep this.</textarea>");
-    expect(page).toContain('<dialog id="claude-draft" class="modal" aria-labelledby="claude-draft-title" open>');
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    claudeStream({}, {}, { stopReason: "refusal" });
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
     expect(await env.DB.prepare("SELECT outcome FROM llm_calls").first()).toEqual({ outcome: "refused" });
     expect((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string | null }>())?.data).toBeNull();
+    expect(await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text()).toContain("Claude could not finish: Claude declined this request.");
   });
 
-  it("refuses a tester, and a person past the quota, without calling Claude", async () => {
+  it("takes one request at a time per card, refuses a tester, and a person past the quota", async () => {
     const { cookie, csrf, id } = await writerWithCard();
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    const twice = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    expect(twice.status).toBe(409);
+    expect(await twice.text()).toContain("Claude is already working on this card");
+
     await grantRole("tess", "tester");
     const tester = await signIn("tess");
     expect((await post(`/projects/${REPO}/cards/${id}`, { csrf: tester.csrf, action: "spec_draft" }, tester.cookie)).status).toBe(403);
     const insert = env.DB.prepare("INSERT INTO llm_calls (login, purpose, cost_micros, outcome) VALUES ('pe', 'spec_draft', 1, 'ok')");
     await env.DB.batch([insert, insert, insert]);
+    await env.DB.prepare("UPDATE claude_jobs SET status = 'done'").run();
     const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
     expect(response.status).toBe(429);
     expect(await response.text()).toContain("You reached today&#39;s 3 calls to Claude.");
   });
 
-  it("saves a spec written by hand", async () => {
+  it("asks for an answer, and saves a spec written by hand", async () => {
     const { cookie, csrf, id } = await writerWithCard();
+    const empty = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_answer", question_0: "Q ?", answer_0: " " }, cookie);
+    expect(empty.status).toBe(422);
+    expect(await empty.text()).toContain("Answer at least one of Claude&#39;s questions.");
     const fields = Object.fromEntries(Object.entries(SECTIONS).map(([key, value]) => [`s_${key}`, value]));
     const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_save", rev: "1", ...fields }, cookie);
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=spec_saved#spec`);
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
     expect(page).toContain("Edited by hand");
     expect(page).toContain("No call yet.");
+  });
+
+  it("pushes the job's progress to the card's open page", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    const response = await SELF.fetch(`${BASE}/projects/${REPO}/cards/${id}/live`, { headers: { upgrade: "websocket", cookie } });
+    expect(response.status).toBe(101);
+    const socket = response.webSocket;
+    if (!socket) throw new Error("no WebSocket");
+    const received: { status: string; label: string; text?: string }[] = [];
+    socket.addEventListener("message", (event) => received.push(JSON.parse(String(event.data))));
+    socket.accept();
+    claudeStream({}, { sections: SECTIONS, questions: [], enough: true, note: "Clair." });
+    await runQueue();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    socket.close();
+    expect(received.at(0)).toMatchObject({ status: "queued", text: "Asked by @pe." });
+    expect(received).toContainEqual(expect.objectContaining({ status: "running", label: "Claude is writing the spec", text: "Claude starts." }));
+    expect(received.at(-1)).toMatchObject({ status: "done", text: "Done: Claude knows enough to write the stories. Cost $0.05." });
+
+    // Not signed in: no connection.
+    expect((await SELF.fetch(`${BASE}/projects/${REPO}/cards/${id}/live`, { headers: { upgrade: "websocket" }, redirect: "manual" })).status).toBe(303);
   });
 });
 

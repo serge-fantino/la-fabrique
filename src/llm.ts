@@ -126,7 +126,10 @@ export async function allowance(env: Env, role: Role, login: string, now = new D
   if (!settings.configured) return { ok: false, reason: "Claude is not set up in La Fabrique yet (no API key): see Settings." };
   if (!canUseClaude(role)) return { ok: false, reason: "Your role does not let you use Claude." };
   const [today, month] = await Promise.all([
-    env.DB.prepare("SELECT COUNT(*) AS n FROM llm_calls WHERE login = ? AND at >= ?").bind(login, startOfDay(now)).first<{ n: number }>(),
+    // A call that failed before Claude read anything (busy, network) does not count.
+    env.DB.prepare("SELECT COUNT(*) AS n FROM llm_calls WHERE login = ? AND at >= ? AND (outcome <> 'error' OR input_tokens > 0)")
+      .bind(login, startOfDay(now))
+      .first<{ n: number }>(),
     env.DB.prepare("SELECT COALESCE(SUM(cost_micros), 0) AS micros FROM llm_calls WHERE at >= ?").bind(startOfMonth(now)).first<{ micros: number }>(),
   ]);
   if ((today?.n ?? 0) >= settings.dailyCalls) {
@@ -152,6 +155,8 @@ export interface CallOutcome<T> {
   value: T | null;
   // What the person reads when it failed.
   message: string | null;
+  // A failure that may pass if tried again later (busy, network).
+  retryable?: boolean;
   callId: number;
   costMicros: number | null;
 }
@@ -197,11 +202,21 @@ function describeError(error: unknown): string {
   return "Could not reach the Anthropic API.";
 }
 
+// What Claude is doing, as it answers: summaries of its thinking, and its
+// answer so far.
+export type Progress = { type: "thinking"; text: string } | { type: "text"; text: string };
+
 export interface JsonRequest {
   system: string;
   user: string;
   schema: Record<string, unknown>;
   maxTokens?: number;
+  // Given: the answer is streamed, and each piece reported here.
+  progress?: (progress: Progress) => void;
+}
+
+function retryable(error: unknown): boolean {
+  return error instanceof Anthropic.RateLimitError || error instanceof Anthropic.InternalServerError || error instanceof Anthropic.APIConnectionError;
 }
 
 // One call that answers JSON in the given shape. The system prompt is
@@ -209,22 +224,32 @@ export interface JsonRequest {
 // price. A refused request goes to Anthropic's recommended fallback.
 export async function askJson<T>(env: Env, call: CallRecord, request: JsonRequest): Promise<CallOutcome<T>> {
   const settings = claudeSettings(env);
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "", maxRetries: 1, timeout: 120_000 });
+  // In a job, the queue tries again (later, and says so); otherwise once here.
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY ?? "", maxRetries: request.progress ? 0 : 1, timeout: 120_000 });
+  const params = {
+    model: settings.model,
+    max_tokens: request.maxTokens ?? 16000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default" as const,
+    output_config: { effort: "medium" as const, format: { type: "json_schema" as const, schema: request.schema } },
+    system: [{ type: "text" as const, text: request.system, cache_control: { type: "ephemeral" as const } }],
+    messages: [{ role: "user" as const, content: request.user }],
+  };
   let message: Anthropic.Beta.BetaMessage;
   try {
-    message = await client.beta.messages.create({
-      model: settings.model,
-      max_tokens: request.maxTokens ?? 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium", format: { type: "json_schema", schema: request.schema } },
-      system: [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: request.user }],
-    });
+    if (request.progress) {
+      const report = request.progress;
+      const stream = client.beta.messages.stream({ ...params, thinking: { type: "adaptive", display: "summarized" } });
+      stream.on("thinking", (_delta, snapshot) => report({ type: "thinking", text: snapshot }));
+      stream.on("text", (_delta, snapshot) => report({ type: "text", text: snapshot }));
+      message = await stream.finalMessage();
+    } else {
+      message = await client.beta.messages.create(params);
+    }
   } catch (error) {
     const text = describeError(error);
     const saved = await record(env, call, "error", [], settings.model, text);
-    return { ok: false, value: null, message: text, callId: saved.id, costMicros: saved.cost };
+    return { ok: false, value: null, message: text, retryable: retryable(error), callId: saved.id, costMicros: saved.cost };
   }
 
   const uses = usesOf(message, settings.model);
