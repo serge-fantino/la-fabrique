@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.25",
+    "date": "2026-10-30",
+    "heure": "11:37",
+    "titre": "In development",
+    "changements": [
+      "An In development tab: every story being worked on, with its branches, its pull request (draft or not), the CI result of its latest run and its last commit; work without a commit for 3 days is marked stalled.",
+      "Working branches that refer to no story are listed apart, with how to link them."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.24",
     "date": "2026-10-30",
     "heure": "11:32",
