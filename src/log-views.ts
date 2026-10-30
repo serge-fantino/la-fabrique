@@ -13,6 +13,8 @@ export function describe(entry: LogEntry, repo: string): string {
   const issue = (number: unknown) =>
     typeof number === "number" ? `<a href="https://github.com/${escapeHtml(repo)}/issues/${number}">#${number}</a>` : "";
   const story = issue(entry.issue);
+  const card = (id: unknown) =>
+    typeof id === "number" ? `<a class="mono" href="${escapeHtml(projectUrl(repo))}/cards/${id}">C${id}</a>` : "";
   const d = entry.details;
   switch (entry.action) {
     case "request_created":
@@ -37,6 +39,20 @@ export function describe(entry: LogEntry, repo: string): string {
       }`;
     case "claude_launched":
       return `launched Claude on ${story}`;
+    case "card_created":
+    case "card_edited":
+    case "card_archived":
+    case "card_restored": {
+      const verb = { card_created: "wrote", card_edited: "edited", card_archived: "archived", card_restored: "restored" }[entry.action];
+      return `${verb} card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    }
+    case "card_moved": {
+      const changes = Array.isArray(d["changes"]) ? (d["changes"] as { dimension?: unknown; from?: unknown; to?: unknown }[]) : [];
+      const said = changes.map((change) => `${text(change.dimension)}: ${text(change.from) || "not set"} → ${text(change.to) || "not set"}`).join(", ");
+      return `moved card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${said ? ` (${said})` : ""}`;
+    }
+    case "card_value_added":
+      return `added ${text(d["dimension"])} “${text(d["value"])}” to the board`;
     default:
       return `${escapeHtml(entry.action)}${story ? ` ${story}` : ""}`;
   }
