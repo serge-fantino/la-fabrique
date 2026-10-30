@@ -11,6 +11,9 @@ export interface BacklogData {
   stages: Map<number, Stage>;
   rules: CycleRules;
   canPrioritize: boolean;
+  // The Launch Claude column, for the roles that may and when the project
+  // declares its Claude workflow.
+  claude: { show: boolean; launches: Map<number, { by: string; at: string }>; cap: number };
   fetchedAt: string | null;
   notice?: string | undefined;
   failure?: string | undefined;
@@ -29,6 +32,18 @@ function priorityForm(viewer: Viewer, project: Project, story: Story, rules: Cyc
       <select name="priority" aria-label="Priority of #${story.number}" data-autosubmit>${options}</select>
       <button type="submit" class="button quiet" data-autosubmit-button>Set</button>
     </form>`;
+}
+
+function claudeCell(viewer: Viewer, project: Project, story: Story, stage: Stage, launched: { by: string; at: string } | undefined): string {
+  const last = launched
+    ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>`
+    : "";
+  if (stage !== "ready") return last || `<span class="muted small">not ready</span>`;
+  return `<form method="post" action="${escapeHtml(projectUrl(project.repo))}/backlog/claude" class="claude-form">
+      ${csrfField(viewer)}
+      <input type="hidden" name="issue" value="${story.number}" />
+      <button type="submit" class="button quiet">${launched ? "Launch again" : "Launch Claude"}</button>
+    </form>${last}`;
 }
 
 // The stories not started yet, by priority; within one, the ready ones first.
@@ -66,6 +81,7 @@ export function backlogPage(viewer: Viewer, project: Project, data: BacklogData)
           epic ? `<br /><span class="muted small">#${epic.number} ${escapeHtml(epic.title)}</span>` : ""
         }</td>
         <td>${stagePill(stage)}${missing.length ? `<br /><span class="muted small">${escapeHtml(missing.join(", "))}</span>` : ""}</td>
+        ${data.claude.show ? `<td>${claudeCell(viewer, project, story, stage, data.claude.launches.get(story.number))}</td>` : ""}
         ${
           data.rules.priorities.length
             ? `<td>${data.canPrioritize ? priorityForm(viewer, project, story, data.rules, current) : current ? `<span class="pill">${escapeHtml(current)}</span>` : `<span class="muted">none</span>`}</td>`
@@ -80,7 +96,7 @@ export function backlogPage(viewer: Viewer, project: Project, data: BacklogData)
       (group) => `<section>
         <h2>${group.priority ? escapeHtml(group.priority) : data.rules.priorities.length ? "No priority" : "Backlog"} <span class="muted mono">${group.items.length}</span></h2>
         <table class="backlog">
-          <thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.rules.priorities.length ? "<th>Priority</th>" : ""}</tr></thead>
+          <thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.claude.show ? '<th class="claude-col">Claude</th>' : ""}${data.rules.priorities.length ? "<th>Priority</th>" : ""}</tr></thead>
           <tbody>${group.items.map(row).join("")}</tbody>
         </table>
       </section>`,

@@ -18,6 +18,8 @@ export interface FabriqueConfig {
   // The lifecycle of a story: its Definition of Ready, and the priority
   // labels, highest first.
   cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
+  // Claude launched from La Fabrique: how many runs at once, at most.
+  claude?: { plafond?: number };
 }
 
 export const READY_CHECKS = ["criteres", "epique", "priorite", "etiquette_prete"] as const;
@@ -232,6 +234,16 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
   if (langue !== undefined) {
     if (langue === "fr" || langue === "en") config.langue = langue;
     else errors.push("`langue` must be `fr` or `en`.");
+  }
+
+  const claude = parsed["claude"];
+  if (claude !== undefined) {
+    const plafond = isObject(claude) ? claude["plafond"] : undefined;
+    if (!isObject(claude) || (plafond !== undefined && !(Number.isInteger(plafond) && (plafond as number) >= 1 && (plafond as number) <= 10))) {
+      errors.push("`claude.plafond` must be a whole number from 1 to 10.");
+    } else {
+      config.claude = plafond === undefined ? {} : { plafond: plafond as number };
+    }
   }
 
   const cycle = parsed["cycle"];

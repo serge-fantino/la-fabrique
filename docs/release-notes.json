@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.33",
+    "date": "2026-10-30",
+    "heure": "13:05",
+    "titre": "Launch Claude",
+    "changements": [
+      "Tech leads and super admins launch Claude on a ready story from the Backlog: La Fabrique starts the project's own Claude workflow with the issue number, labels the story ready for Claude and says so on the issue.",
+      "A cap of Claude runs at once per project (2 unless the project says otherwise); each launch is in the log."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.32",
     "date": "2026-10-30",
     "heure": "13:02",
