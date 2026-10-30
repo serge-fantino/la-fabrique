@@ -37,6 +37,7 @@ function roleOptions(selected?: Role): string {
 export function layout(title: string, body: string, viewer?: Viewer, scripts: string[] = [], context = ""): string {
   const nav = viewer
     ? `<nav class="nav">
+        <a class="nav-home" href="/">Dashboard</a>
         <a href="/projects">Projects</a>
         ${viewer.role === "super_admin" ? `<a href="/people">People</a>` : ""}
         <a href="/settings">Settings</a>

@@ -29,6 +29,8 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { projectCard } from "./dashboard";
+import { cardHtml, dashboardPage } from "./dashboard-views";
 import { canPrioritize, setPriority } from "./backlog";
 import { backlogPage } from "./backlog-views";
 import { inDevReady, loadInDev } from "./in-dev";
@@ -414,4 +416,18 @@ export async function prioritize(request: Request, form: FormData, env: Env, vie
   const outcome = await setPriority(env, project, viewer.login, issue, priority || null);
   if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?notice=set#issue-${issue}`);
   return showBacklog(request, env, viewer, repo, outcome);
+}
+
+export async function showDashboard(env: Env, viewer: Viewer): Promise<Response> {
+  const projects = await listProjects(env.DB);
+  const cards = await Promise.all(projects.map((project) => projectCard(env.DB, project, viewer.role)));
+  return html(dashboardPage(viewer, cards));
+}
+
+// One project's dashboard card, after reading GitHub again.
+export async function showCard(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return html("", { status: 404 });
+  await Promise.all([loadProduction(env, project), loadStories(env, project)]);
+  return html(cardHtml(await projectCard(env.DB, project, viewer.role)));
 }

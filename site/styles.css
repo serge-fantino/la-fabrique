@@ -1030,6 +1030,7 @@ textarea {
 }
 
 @media (max-width: 640px) {
+  .nav .nav-home,
   .repo-name,
   .brand-long,
   .subbar .who .pill {
@@ -1500,4 +1501,61 @@ table.backlog th:nth-child(4) {
   table.backlog {
     table-layout: auto;
   }
+}
+
+/* Dashboard: a card per project, its figures as links. */
+.project-card {
+  margin: 1.25rem 0 2rem;
+}
+
+.project-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.project-card-head h2 {
+  margin: 0;
+}
+
+.project-card-head h2 a {
+  color: var(--encre);
+  text-decoration: none;
+}
+
+.dashboard-tiles {
+  margin: 0.75rem 0 0;
+}
+
+.tile-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 44px;
+  color: var(--encre);
+  text-decoration: none;
+  background: #fff;
+}
+
+.tile-link:hover {
+  border-color: var(--encre);
+  color: var(--encre);
+}
+
+.tile-link .tile-value {
+  font-size: 1.35rem;
+  overflow-wrap: anywhere;
+}
+
+.tile-link.tone-ok {
+  border-left: 4px solid var(--bon);
+}
+
+.tile-link.tone-warn {
+  border-left: 4px solid var(--moyen);
+}
+
+.tile-link.tone-alert {
+  border-left: 4px solid var(--alerte);
 }
