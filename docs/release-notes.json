@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.27",
+    "date": "2026-10-30",
+    "heure": "11:46",
+    "titre": "Dashboard",
+    "changements": [
+      "The home page is now a dashboard: one card per project with what needs attention now (to test on int, production ready or not, in development and stalled work, ready to start, top priority in the backlog, CI on production, versions, last release), each figure leading to its tab.",
+      "What your role looks at comes first: testers see what to test, tech leads the CI and the work in progress, super admins production."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.26",
     "date": "2026-10-30",
     "heure": "11:41",

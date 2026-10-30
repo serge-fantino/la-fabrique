@@ -55,6 +55,7 @@ Sobre et lisible, au service du suivi : un tableau, des états en pastilles, des
 Fin octobre 2026 :
 - lot F0 livré (#1, stories #2 à #8) : connexion GitHub et rôles, projets et `.fabrique.json`, documentation en ligne, stories, ce qui attend la production, nouvelle demande ;
 - lot F2 en cours (#18) : vélocité (F2.1), lecture d'une autre branche (F2.2), livraison (F2.4, en partie), feuille de route et versions (F2.6, en partie), La Fabrique pilotée par elle-même (F2.9), guide d'intégration, onglet Setup (F2.7), ce que la production va recevoir (F2.8), branche de référence dans l'en-tête (F2.10) ; architecture (F2.3) et tests (F2.5) attendent les réponses du propriétaire ;
+- lot F3 livré (#44, stories #45 à #49) : cycle de vie d'une story et *Definition of Ready* (`cycle` du `.fabrique.json`), à tester sur int, en développement, backlog et priorités (étiquettes GitHub posées par La Fabrique, journalisées), tableau de bord en page d'accueil ;
 - lot F1 (lancer Claude, validation sur int, « go ») à venir.
 
 Mise en route et secrets : `docs/owner-setup.md`.
