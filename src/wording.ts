@@ -35,7 +35,8 @@ const WORDS = {
     appDefectSignature: (login: string, app: string | null) =>
       `Signalé par @${login}${app ? ` depuis ${app}` : ""}, via La Fabrique extraordinaire`,
     toTriage: (login: string) => `@${login} n'a pas de rôle dans La Fabrique : à trier.`,
-    fromCard: (ref: string, url: string) => `Fiche d'origine : [${ref}](${url}) dans La Fabrique extraordinaire.`,
+    fromCard: (ref: string, url: string, version: number, part?: { index: number; total: number }) =>
+      `Fiche d'origine : [${ref}, spec en version ${version}](${url}) dans La Fabrique extraordinaire${part ? ` (story ${part.index} sur ${part.total})` : ""}.`,
   },
   en: {
     requestSignature: (login: string) => `Request from @${login} via La Fabrique extraordinaire`,
@@ -69,7 +70,8 @@ const WORDS = {
     appDefectSignature: (login: string, app: string | null) =>
       `Reported by @${login}${app ? ` from ${app}` : ""}, via La Fabrique extraordinaire`,
     toTriage: (login: string) => `@${login} has no role in La Fabrique: to triage.`,
-    fromCard: (ref: string, url: string) => `From card [${ref}](${url}) in La Fabrique extraordinaire.`,
+    fromCard: (ref: string, url: string, version: number, part?: { index: number; total: number }) =>
+      `From card [${ref}, spec version ${version}](${url}) in La Fabrique extraordinaire${part ? ` (story ${part.index} of ${part.total})` : ""}.`,
   },
 };
 

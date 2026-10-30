@@ -1,4 +1,6 @@
-import { boardPage, cardFormPage, cardPage, cardRef, cardTile, cardUrl, specFormPage, storyPage } from "./card-views";
+import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { cycleRules, stagesOf, storiesOnInt } from "./lifecycle";
+import { loadStories } from "./stories";
 import {
   addValue,
   archiveCard,
@@ -21,9 +23,11 @@ import {
   linkStory,
   restoreRevision,
   saveSpec,
+  saveSplit,
   advanceStatus,
   setStatus,
   updateCard,
+  type CardSplit,
   type Card,
   type CardInput,
   type Dimension,
@@ -33,7 +37,7 @@ import type { Env } from "./env";
 import { html, json, redirect } from "./http";
 import { allowance, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
-import { createRequest, issueBody, type RequestDraft } from "./requests";
+import { createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
 import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
 import { enqueue, isActive, jobEvents, latestJob, workingCards, type JobKind } from "./jobs";
 import { liveFor } from "./live";
@@ -44,7 +48,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -186,6 +190,8 @@ const CARD_NOTICES: Record<string, string> = {
   spec_saved: "Spec saved.",
   story: "Story created on GitHub.",
   enough: "Questions closed: Claude will not ask more unless you ask it to.",
+  split_discarded: "Proposal discarded.",
+  stories: "Stories created on GitHub, each linked to this card.",
   status: "Status changed.",
 };
 
@@ -209,6 +215,18 @@ async function renderCard(
     latestJob(env.DB, card.id),
   ]);
   const events = job ? await jobEvents(env.DB, job.id) : [];
+  // The card's stories as GitHub has them (the stories' snapshot).
+  const storyStates = new Map<number, StoryState>();
+  const storyNumbers = links.filter((link) => link.kind === "story").map((link) => Number(link.ref));
+  if (storyNumbers.length) {
+    const [{ stories }, onInt] = await Promise.all([loadStories(env, project), storiesOnInt(env, project)]);
+    const stages = stagesOf(stories, cycleRules(project.check?.config), onInt);
+    for (const story of stories) {
+      if (storyNumbers.includes(story.number)) {
+        storyStates.set(story.number, { title: story.title, stage: stages.get(story.number) ?? null, closed: story.state === "closed" });
+      }
+    }
+  }
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
@@ -237,6 +255,8 @@ async function renderCard(
       missing: missingSections(card.data.spec, rubriques),
       job,
       events,
+      split: card.data.split,
+      storyStates,
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -302,6 +322,15 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
     return redirect(`${url}#claude-job`);
   }
+  if (action === "spec_split") {
+    if (!card.data.spec) return redirect(`${url}#spec`);
+    const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "spec_split", request: { instruction, answers: [] }, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
   if (action === "spec_enough") {
     if (!card.data.spec || isActive(await latestJob(env.DB, card.id))) return redirect(`${url}#spec`);
     await saveSpec(env.DB, card, viewer.login, closeQuestions(card.data.spec));
@@ -348,7 +377,7 @@ export async function showSpecForm(request: Request, env: Env, viewer: Viewer, p
 function storyDraft(request: Request, project: Project, card: Card, login: string, title: string): { draft: RequestDraft; origin: string; body: string } {
   const rubriques = specRubriques(project);
   const draft = { title, answers: card.data.spec?.answers ?? {} };
-  const origin = wordingFor(project).fromCard(cardRef(card.id), new URL(cardUrl(project.repo, card.id), request.url).toString());
+  const origin = wordingFor(project).fromCard(cardRef(card.id), new URL(cardPermalink(card.id, card.rev), request.url).toString(), card.rev);
   return { draft, origin, body: issueBody(draft, rubriques, login, wordingFor(project), origin) };
 }
 
@@ -391,6 +420,125 @@ export async function downloadCards(env: Env, project: Project): Promise<Respons
   });
 }
 
+// The stories Claude proposes, edited in the form: kept or not, title,
+// sections.
+function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]): { split: CardSplit; kept: number[] } {
+  const kept: number[] = [];
+  const stories = split.stories.map((story, index) => {
+    if (form.get(`keep_${index}`) === "1") kept.push(index);
+    const title = String(form.get(`title_${index}`) ?? story.title).replace(/\s+/g, " ").trim().slice(0, 200);
+    const answers = Object.fromEntries(
+      rubriques.map((rubrique) => [rubrique.cle, String(form.get(`s_${index}_${rubrique.cle}`) ?? story.answers[rubrique.cle] ?? "").replace(/\r\n/g, "\n").trim().slice(0, 20_000)]),
+    );
+    return { title, answers };
+  });
+  return { split: { ...split, stories }, kept };
+}
+
+// Review what Claude proposes, edit it, then create the stories on GitHub;
+// nothing goes there before.
+export async function splitRoute(request: Request, env: Env, viewer: Viewer, project: Project, id: number, form: FormData | null): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const card = await findCard(env.DB, project.repo, id);
+  if (!card) return notFound(viewer, "There is no such card in this project.");
+  const url = cardUrl(project.repo, card.id);
+  const split = card.data.split;
+  if (!split) return redirect(`${url}#spec`);
+  const rubriques = specRubriques(project);
+  const words = wordingFor(project);
+  const label = project.check?.config?.demandes?.etiquettes?.["demande"] ?? null;
+  const bodyOf = (story: CardSplit["stories"][number], index: number, total: number, rev: number) =>
+    issueBody(
+      { title: story.title, answers: story.answers },
+      rubriques,
+      viewer.login,
+      words,
+      words.fromCard(cardRef(card.id), new URL(cardPermalink(card.id, rev), request.url).toString(), rev, total > 1 ? { index, total } : undefined),
+    );
+  const page = async (shown: CardSplit, data: { kept?: number[]; errors?: Record<number, string>; error?: string; status?: number } = {}) => {
+    const { view, cookies } = await projectView(request, env, project, viewer);
+    const kept = data.kept ?? shown.stories.map((_story, index) => index);
+    return html(
+      splitPage(viewer, view, {
+        card,
+        split: shown,
+        rubriques,
+        label,
+        kept: new Set(kept),
+        bodies: shown.stories.map((story, index) => bodyOf(story, kept.indexOf(index) + 1, kept.length, card.rev)),
+        outdated: card.data.spec?.at !== shown.specAt,
+        errors: data.errors ?? {},
+        error: data.error,
+      }),
+      { cookies, status: data.status ?? 200 },
+    );
+  };
+  if (!form) {
+    const params = new URL(request.url).searchParams;
+    const created = Number(params.get("created")) || 0;
+    if (params.get("notice") === "partial") {
+      return page(split, { error: `${created} stor${created === 1 ? "y" : "ies"} created, then: ${(params.get("reason") ?? "GitHub refused").slice(0, 200)} The others are still here.` });
+    }
+    return page(split);
+  }
+
+  const action = String(form.get("action") ?? "");
+  if (action === "discard") {
+    await saveSplit(env.DB, card, viewer.login, null);
+    return redirect(`${url}?notice=split_discarded#spec`);
+  }
+  const edited = readSplitForm(form, split, rubriques);
+  if (action === "save") {
+    await saveSplit(env.DB, card, viewer.login, edited.split);
+    return redirect(`${url}/stories?notice=saved`);
+  }
+  if (action !== "create") return redirect(`${url}/stories`);
+
+  // Every kept story needs a title and the project's required sections.
+  const errors: Record<number, string> = {};
+  for (const index of edited.kept) {
+    const story = edited.split.stories[index];
+    if (!story) continue;
+    const missing = [...(story.title ? [] : ["Title"]), ...missingSections({ answers: story.answers, questions: [], source: "person", at: "" }, rubriques)];
+    if (missing.length) errors[index] = `Fill in: ${missing.join(", ")}.`;
+  }
+  if (!edited.kept.length) return page(edited.split, { kept: [], error: "Keep at least one story, or discard the proposal.", status: 422 });
+  if (Object.keys(errors).length) return page(edited.split, { kept: edited.kept, errors, status: 422 });
+
+  // The edits are kept first: a failure halfway loses nothing.
+  await saveSplit(env.DB, card, viewer.login, edited.split);
+  const saved = (await findCard(env.DB, project.repo, card.id)) ?? card;
+  const created: number[] = [];
+  for (const [position, index] of edited.kept.entries()) {
+    const story = edited.split.stories[index];
+    if (!story) continue;
+    const origin = words.fromCard(
+      cardRef(card.id),
+      new URL(cardPermalink(card.id, saved.rev), request.url).toString(),
+      saved.rev,
+      edited.kept.length > 1 ? { index: position + 1, total: edited.kept.length } : undefined,
+    );
+    const outcome = await createRequest(request, env, project, viewer.login, { title: story.title, answers: story.answers }, rubriques, origin);
+    if (!outcome.ok) {
+      // What was not created stays proposed.
+      const left = { ...edited.split, stories: edited.split.stories.filter((_story, at) => !created.includes(at)) };
+      const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
+      await saveSplit(env.DB, current, viewer.login, left);
+      const reason =
+        outcome.reason === "signed_out"
+          ? "GitHub no longer accepts your sign-in. Sign out and sign in again."
+          : `GitHub refused to create the issue (HTTP ${outcome.status ?? "?"}).`;
+      return redirect(`${url}/stories?notice=partial&created=${created.length}&reason=${encodeURIComponent(reason)}`);
+    }
+    await linkStory(env.DB, saved, viewer.login, outcome.number, outcome.url);
+    created.push(index);
+  }
+  const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
+  await saveSplit(env.DB, current, viewer.login, null);
+  await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "stories made");
+  return redirect(`${url}?notice=stories&created=${created.length}#stories`);
+}
+
 // One entry point for the routes above; the caller has checked the
 // session, the method's form and its CSRF token.
 export async function cardRoute(
@@ -429,6 +577,11 @@ export async function cardRoute(
     return live.fetch(request);
   }
   if (id && match[4] === "/spec") return method === "GET" ? showSpecForm(request, env, viewer, project, id) : notAllowed();
+  if (id && match[4] === "/stories") {
+    if (method === "GET") return splitRoute(request, env, viewer, project, id, null);
+    if (method === "POST") return withForm((data) => splitRoute(request, env, viewer, project, id, data));
+    return notAllowed();
+  }
   if (id && match[4] === "/story") {
     if (method === "GET") return storyRoute(request, env, viewer, project, id, null);
     if (method === "POST") return withForm((data) => storyRoute(request, env, viewer, project, id, data));

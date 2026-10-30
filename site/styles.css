@@ -2612,3 +2612,75 @@ form[aria-busy="true"] button[type="submit"] {
 .ref-banner form {
   margin-top: 0.5rem;
 }
+
+/* Claude's split of a spec into stories: the proposal on the card, and
+   the page where it is reviewed before going to GitHub. */
+.split-proposal {
+  margin: 1.25rem 0;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.split-proposal ol {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.split-story {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.split-story.invalid {
+  border-color: color-mix(in srgb, var(--alerte) 50%, transparent);
+}
+
+.split-story details summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.split-story details[open] summary {
+  color: var(--encre);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.split-keep {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.split-keep input {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.split-story textarea {
+  width: 100%;
+}
+
+.card-stories {
+  list-style: none;
+  padding: 0;
+}
+
+.card-stories li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-height: 44px;
+}

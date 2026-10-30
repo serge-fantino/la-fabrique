@@ -1,5 +1,5 @@
 import { cardRef } from "./card-views";
-import { DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec } from "./cards";
+import { DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit } from "./cards";
 import { readMarkdown } from "./docs";
 import type { Env } from "./env";
 import { askJson, type CallOutcome, type Progress } from "./llm";
@@ -73,14 +73,16 @@ function schemaFor(rubriques: Rubrique[]): Record<string, unknown> {
   };
 }
 
-// Stable for a project: cached across the calls on its cards.
+// Stable for a project: cached across the calls on its cards, whatever
+// the task (writing the spec, splitting it); what to answer is in the
+// request.
 function systemPrompt(project: Project, rubriques: Rubrique[], document: { path: string; text: string; cut: boolean } | null): string {
   const config = project.check?.config;
   const language = config?.langue === "en" ? "English" : "French";
   const sections = rubriques
     .map((rubrique) => `- "${rubrique.cle}": ${rubrique.titre}${rubrique.obligatoire ? " (required)" : ""}${rubrique.aide ? `. ${rubrique.aide}` : ""}`)
     .join("\n");
-  return `You help a product person turn a feature card into a functional specification for the software project "${config?.nom || project.repo}" (${project.repo}). The people who build and test it read your text: be precise, short and concrete. Write in ${language}.
+  return `You help a product person specify a feature, from its card, for the software project "${config?.nom || project.repo}" (${project.repo}). The people who build and test it read your text: be precise, short and concrete. Write in ${language}.
 
 Your first job is to frame the need, like a product manager interviewing the person who wrote the card:
 - When the card leaves something essential open (who it is for, what triggers it, what counts as done, what happens at the edges, what it must not do), ask. Ask at most five questions, the most decisive first, each answerable in a sentence or two, and never one the card, the project's description or an earlier answer already settles.
@@ -96,13 +98,7 @@ Rules for the specification:
 - Respect the project's principles below; when the card conflicts with one, say so.
 - Each section is Markdown, without a heading of its own. An empty string when there is nothing to say.
 
-Answer with:
-- "sections": the specification, one entry per section below;
-- "questions": your questions to the person, at most five, none already answered or left unanswered on purpose (they are shown under the specification, each with a field for the answer);
-- "enough": whether you know enough to write the stories;
-- "note": one sentence on what you wrote or changed.
-
-The sections, in order:
+The sections of a specification (and of each story), in order:
 ${sections}
 ${document ? `\nThe project's own description (${document.path}${document.cut ? ", cut to its beginning" : ""}):\n<document>\n${document.text}\n</document>` : ""}`;
 }
@@ -133,6 +129,12 @@ ${others.length ? `\nThe project's other cards, to spot overlaps:\n${others.join
 function currentSpec(spec: CardSpec, rubriques: Rubrique[]): string {
   return rubriques.map((rubrique) => `## ${rubrique.titre} ("${rubrique.cle}")\n${spec.answers[rubrique.cle] || "(empty)"}`).join("\n\n");
 }
+
+const SPEC_ANSWER = `Answer with:
+- "sections": the specification, one entry per section;
+- "questions": your questions to the person, at most five, none already answered or left unanswered on purpose (they are shown under the specification, each with a field for the answer);
+- "enough": whether you know enough to write the stories;
+- "note": one sentence on what you wrote or changed.`;
 
 export interface Answer {
   question: string;
@@ -182,8 +184,8 @@ export async function writeSpec(
     .join("\n\n");
   const ask =
     request.mode === "revise" && current
-      ? `${context}\nThe current specification:\n<spec>\n${currentSpec(current, rubriques)}\n</spec>\n${history}\n${now || "Improve it."}\n\nRevise the specification accordingly; keep what is not concerned.`
-      : `${context}${history}${now ? `\n${now}\n` : ""}\nWrite the specification of this card.`;
+      ? `${context}\nThe current specification:\n<spec>\n${currentSpec(current, rubriques)}\n</spec>\n${history}\n${now || "Improve it."}\n\nRevise the specification accordingly; keep what is not concerned.\n\n${SPEC_ANSWER}`
+      : `${context}${history}${now ? `\n${now}\n` : ""}\nWrite the specification of this card.\n\n${SPEC_ANSWER}`;
 
   const outcome: CallOutcome<SpecAnswer> = await askJson<SpecAnswer>(
     env,
@@ -239,4 +241,90 @@ export function closeQuestions(spec: CardSpec): CardSpec {
   const at = new Date().toISOString();
   const left = spec.questions.map((question) => ({ question, answer: "", at, skipped: true }));
   return { ...spec, questions: [], dialogue: [...(spec.dialogue ?? []), ...left].slice(-40), closed: true, at };
+}
+
+// ---- Split into stories ------------------------------------------------------
+
+interface SplitAnswer {
+  stories: { title: string; sections: Record<string, string> }[];
+  note: string;
+}
+
+function splitSchema(rubriques: Rubrique[]): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["stories", "note"],
+    properties: {
+      stories: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "sections"],
+          properties: {
+            title: { type: "string" },
+            sections: {
+              type: "object",
+              additionalProperties: false,
+              required: rubriques.map((rubrique) => rubrique.cle),
+              properties: Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, { type: "string" }])),
+            },
+          },
+        },
+      },
+      note: { type: "string" },
+    },
+  };
+}
+
+export type SplitOutcome =
+  | { ok: true; split: CardSplit; callId: number; costMicros: number | null }
+  | { ok: false; message: string; retryable: boolean };
+
+// Claude proposes stories that each can be built, tested on int and
+// shipped alone; nothing goes to GitHub before the person reviews them.
+export async function splitSpec(
+  env: Env,
+  project: Project,
+  card: Card,
+  login: string,
+  instruction: string,
+  watch: { read?: (reading: SpecReading) => void; progress?: (progress: Progress) => void } = {},
+): Promise<SplitOutcome> {
+  const spec = card.data.spec;
+  if (!spec) return { ok: false, message: "There is no spec to split yet.", retryable: false };
+  const rubriques = specRubriques(project);
+  const [document, read] = await Promise.all([projectDocument(env, project), cardContext(env, project, card)]);
+  watch.read?.({ document: document ? `${document.path} (${Math.round(document.text.length / 1000)}k characters)` : null, cards: read.cards, stories: read.stories });
+  const ask = `${read.text}
+The specification to split:
+<spec>
+${currentSpec(spec, rubriques)}
+</spec>
+${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+Split this specification into stories. Each story can be built, tested on int and put in production on its own, and gives people something they can see; together they cover the whole specification, without overlap. As few stories as make sense, from one to six: one story is a fine answer for a small feature.
+- "title": short, what the person can do once the story is there.
+- "sections": the story's own specification, in the same sections. Its acceptance criteria are its own: each criterion of the specification belongs to exactly one story. The context can be shared; say what this story adds. The release note says what this story makes visible.
+- "note": one sentence on how you split, and in which order to build the stories.`;
+  const outcome: CallOutcome<SplitAnswer> = await askJson<SplitAnswer>(
+    env,
+    { login, repo: project.repo, cardId: card.id, purpose: "spec_split" },
+    { system: systemPrompt(project, rubriques, document), user: ask, schema: splitSchema(rubriques), ...(watch.progress ? { progress: watch.progress } : {}) },
+  );
+  if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
+  const stories = (Array.isArray(outcome.value.stories) ? outcome.value.stories : [])
+    .slice(0, 8)
+    .map((story) => ({
+      title: String(story.title ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
+      answers: Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, String(story.sections?.[rubrique.cle] ?? "").trim()])),
+    }))
+    .filter((story) => story.title);
+  if (!stories.length) return { ok: false, message: "Claude proposed no story. Try again, or make one story from the whole spec.", retryable: false };
+  return {
+    ok: true,
+    split: { stories, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: spec.at, at: new Date().toISOString() },
+    callId: outcome.callId,
+    costMicros: outcome.costMicros,
+  };
 }

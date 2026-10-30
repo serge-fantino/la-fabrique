@@ -20,6 +20,8 @@ import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discov
 import { d1KeyValue } from "./oauth-store";
 import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
 import { CARD_ROUTE, cardRoute } from "./card-routes";
+import { cardUrl } from "./card-views";
+import { findCardById } from "./cards";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
 const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
@@ -148,6 +150,19 @@ const app = {
         return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       }
       return showDoc(request, env, viewer, repo, path);
+    }
+
+    // A card's permanent address (in the stories made from it): the same
+    // whatever the project's repository is called, with the version of
+    // its spec.
+    const permalink = /^\/c\/(\d{1,9})$/.exec(pathname);
+    if (permalink) {
+      const { search } = new URL(request.url);
+      if (!viewer) return redirect(`/auth/login?next=${encodeURIComponent(pathname + search)}`);
+      const card = await findCardById(env.DB, Number(permalink[1]));
+      if (!card) return html(messagePage("Not found", "There is no such card in La Fabrique extraordinaire.", viewer), { status: 404 });
+      const rev = Number(new URL(request.url).searchParams.get("rev"));
+      return redirect(`${cardUrl(card.repo, card.id)}${Number.isInteger(rev) && rev > 0 && rev !== card.rev ? `?rev=${rev}` : ""}`);
     }
 
     const cardMatch = CARD_ROUTE.exec(pathname);

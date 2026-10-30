@@ -59,6 +59,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return `${d["by"] === "claude" ? "wrote the spec of" : "edited the spec of"} card ${card(d["card"])}${d["by"] === "claude" ? " with Claude" : ""}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_version_restored":
       return `restored version ${text(d["version"])} of card ${card(d["card"])}`;
+    case "card_split_proposed":
+      return `had Claude propose ${text(d["stories"])} stories for card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_value_added":
