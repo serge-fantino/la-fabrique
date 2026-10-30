@@ -6,12 +6,12 @@ import { html, json, redirect, text } from "./http";
 import { isAsset, serveAsset } from "./assets";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, prioritize, proposeLifecycle, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, prioritize, proposeLifecycle, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/card|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/card|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
@@ -137,6 +137,12 @@ export default {
       }
       if (projectRoute[2] === "/in-development") {
         return method === "GET" ? showInDev(request, env, viewer, repo) : methodNotAllowed();
+      }
+      if (projectRoute[2]?.startsWith("/to-test/")) {
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        const action = projectRoute[2].slice("/to-test/".length) as "criterion" | "validate" | "defect";
+        return form ? toTestAction(request, form, env, viewer, repo, action) : forbidden(viewer);
       }
       if (projectRoute[2] === "/to-test") {
         return method === "GET" ? showToTest(request, env, viewer, repo) : methodNotAllowed();

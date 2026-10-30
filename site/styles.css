@@ -1585,3 +1585,77 @@ table.backlog th:nth-child(4) {
   width: min(100%, 24rem);
   margin-top: 0.35rem;
 }
+
+/* To test: a criterion is a button that ticks it on GitHub. */
+.criteria form {
+  margin: 0;
+  width: 100%;
+}
+
+.criteria button.criterion {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.35rem 0.4rem;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.criteria button.criterion:hover,
+.criteria button.criterion:focus-visible {
+  background: rgba(24, 33, 27, 0.05);
+}
+
+.criteria li.done button.criterion {
+  color: var(--encre-faint);
+}
+
+.test-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.test-actions form {
+  margin: 0;
+}
+
+.test-actions button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.defect-form[open] {
+  flex-basis: 100%;
+}
+
+.defect-form summary {
+  list-style: none;
+  display: inline-flex;
+}
+
+.defect-form summary::-webkit-details-marker {
+  display: none;
+}
+
+.defect-form form {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+  max-width: 36rem;
+}
+
+.defects {
+  margin: 0.25rem 0;
+  padding-left: 1.1rem;
+  font-size: 0.92rem;
+}
