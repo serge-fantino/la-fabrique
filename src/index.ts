@@ -4,6 +4,7 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { html, json, redirect, text } from "./http";
 import { isAsset, serveAsset } from "./assets";
+import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showSetup, showStories, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
@@ -187,6 +188,25 @@ export default {
       case GUIDE_EXAMPLE_PATH:
         if (!viewer) return redirect("/");
         return method === "GET" ? json(guideExample) : methodNotAllowed();
+
+      case SETTINGS_PATH: {
+        if (!viewer) return redirect("/");
+        if (method !== "GET") return methodNotAllowed();
+        const notice = new URL(request.url).searchParams.get("notice");
+        return html(settingsPage(viewer, { version: releaseNotes[0]?.version ?? null, commit: env.COMMIT_SHA, notice }));
+      }
+
+      case REFRESH_PATH:
+        if (method !== "POST") return methodNotAllowed();
+        if (!viewer) return redirect("/");
+        if (!(await protectedForm(request, viewer))) return forbidden(viewer);
+        return redirect(`${SETTINGS_PATH}?notice=refreshed`, [], refreshHeaders());
+
+      case SLOW_PATH:
+        if (!viewer) return redirect("/");
+        if (method !== "GET") return methodNotAllowed();
+        await slowPage();
+        return redirect(`${SETTINGS_PATH}?notice=tried`);
 
       case "/people": {
         if (!viewer) return redirect("/");

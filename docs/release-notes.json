@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.19",
+    "date": "2026-10-30",
+    "heure": "10:46",
+    "titre": "Settings",
+    "changements": [
+      "A Settings page: the version online, and whether this device runs the latest stylesheet and script.",
+      "Reload everything: the browser forgets what it kept of La Fabrique, and the page comes back from the server; your session stays.",
+      "Try a slow page, to see the loading bar at work."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.18",
     "date": "2026-10-30",
     "heure": "10:28",
