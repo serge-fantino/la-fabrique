@@ -31,7 +31,7 @@ function roleOptions(selected?: Role): string {
   ).join("");
 }
 
-export function layout(title: string, body: string, viewer?: Viewer): string {
+export function layout(title: string, body: string, viewer?: Viewer, scripts: string[] = []): string {
   const nav = viewer
     ? `<nav class="nav">
         <a href="/projects">Projects</a>
@@ -53,6 +53,7 @@ export function layout(title: string, body: string, viewer?: Viewer): string {
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" />
     <link rel="stylesheet" href="/styles.css" />
+    ${scripts.map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("")}
   </head>
   <body>
     <header class="bar">

@@ -80,6 +80,20 @@ export async function githubFetch(token: string, path: string, accept = "applica
   });
 }
 
+export async function githubPost(token: string, path: string, body: unknown): Promise<Response> {
+  return fetch(`${API}${path}`, {
+    method: "POST",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "user-agent": USER_AGENT,
+      "x-github-api-version": "2022-11-28",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function githubJson<T>(token: string, path: string): Promise<T> {
   const response = await githubFetch(token, path);
   if (!response.ok) throw new GitHubError(response.status, `GitHub answered ${response.status} for ${path}`);

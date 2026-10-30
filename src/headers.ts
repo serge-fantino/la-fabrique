@@ -1,6 +1,6 @@
 const CSP_DIRECTIVES = [
   "default-src 'none'",
-  "script-src 'none'",
+  "script-src 'self'",
   "style-src 'self' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data:",

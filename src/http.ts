@@ -35,6 +35,15 @@ export function css(body: string): Response {
   });
 }
 
+export function script(body: string): Response {
+  return respond(body, {
+    headers: {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "public, max-age=300",
+    },
+  });
+}
+
 export function json(data: unknown, options: ResponseOptions = {}): Response {
   return respond(JSON.stringify(data), {
     ...options,

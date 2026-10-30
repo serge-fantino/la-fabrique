@@ -2,11 +2,13 @@ import type { Env } from "./env";
 import { listInstalledRepos } from "./github-app";
 import { html, redirect } from "./http";
 import { newProjectPage, projectPage, projectsPage } from "./project-views";
-import { addProject, checkProject, describeFailure, findProject, isRepoName, listProjects } from "./projects";
+import { addProject, checkProject, describeFailure, findProject, isRepoName, listProjects, type Project } from "./projects";
 import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction } from "./production";
 import { productionPage } from "./production-views";
+import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
+import { requestFormPage, requestsPage } from "./requests-views";
 import { messagePage, type Viewer } from "./views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
@@ -103,4 +105,60 @@ export async function showProduction(env: Env, viewer: Viewer, repo: string): Pr
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   return html(productionPage(viewer, project, await loadProduction(env, project)));
+}
+
+function forbidden(viewer: Viewer): Response {
+  return html(messagePage("Not allowed", "Your role does not let you write requests.", viewer), { status: 403 });
+}
+
+function rubriquesOf(project: Project): Rubrique[] {
+  return project.check?.config?.demandes?.rubriques ?? [];
+}
+
+export async function showRequests(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const created = Number(new URL(request.url).searchParams.get("created"));
+  const { requests, failure } = await myRequests(env, project, viewer.login);
+  return html(
+    requestsPage(viewer, project, {
+      requests,
+      canCreate: canRequest(viewer.role),
+      created: Number.isInteger(created) && created > 0 ? created : undefined,
+      failure,
+    }),
+  );
+}
+
+export async function showRequestForm(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!canRequest(viewer.role)) return forbidden(viewer);
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  return html(requestFormPage(viewer, project, { rubriques: rubriquesOf(project) }));
+}
+
+export async function submitRequest(
+  request: Request,
+  form: FormData,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+): Promise<Response> {
+  if (!canRequest(viewer.role)) return forbidden(viewer);
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const rubriques = rubriquesOf(project);
+  if (!rubriques.length) return html(requestFormPage(viewer, project, { rubriques }), { status: 422 });
+
+  const draft = readDraft(form, rubriques);
+  const missing = missingFields(draft, rubriques);
+  if (missing.length) return html(requestFormPage(viewer, project, { rubriques, draft, missing }), { status: 422 });
+
+  const outcome = await createRequest(request, env, project, viewer.login, draft, rubriques);
+  if (outcome.ok) return redirect(`/projects/${project.repo}/requests?created=${outcome.number}`);
+  const error =
+    outcome.reason === "signed_out"
+      ? "GitHub no longer accepts your sign-in. Sign out and sign in again; your draft stays on this device."
+      : `GitHub refused to create the issue (HTTP ${outcome.status ?? "?"}). Your GitHub account may not have access to this repository.`;
+  return html(requestFormPage(viewer, project, { rubriques, draft, error }), { status: 502 });
 }

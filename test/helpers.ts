@@ -1,6 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import type { Role } from "../src/accounts";
-import { createSession } from "../src/session";
+import { createSession, type GitHubTokens } from "../src/session";
 
 export const BASE = "https://la-fabrique.test";
 
@@ -8,12 +8,16 @@ export async function grantRole(login: string, role: Role): Promise<void> {
   await env.DB.prepare("INSERT INTO accounts (github_login, role) VALUES (?, ?)").bind(login, role).run();
 }
 
-export async function signIn(login: string): Promise<{ cookie: string; csrf: string }> {
+export async function signIn(
+  login: string,
+  tokens: Partial<GitHubTokens> = {},
+): Promise<{ cookie: string; csrf: string }> {
   const session = await createSession(env.DB, login, 1, {
     accessToken: "gho_session_token",
     accessTokenExpiresAt: null,
     refreshToken: null,
     refreshTokenExpiresAt: null,
+    ...tokens,
   });
   return { cookie: session.cookie.split(";")[0] ?? "", csrf: session.csrfToken };
 }

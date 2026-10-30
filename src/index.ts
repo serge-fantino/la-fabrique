@@ -2,18 +2,19 @@ import { effectiveRole } from "./accounts";
 import { finishLogin, startLogin } from "./auth";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
-import { css, html, json, redirect, text } from "./http";
+import { css, html, json, redirect, script, text } from "./http";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showNewProject, showProject, showProduction, showProjects, showStories } from "./project-routes";
+import { createProject, recheckProject, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/stories|\/production)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/stories|\/production|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import stylesCss from "../site/styles.css";
+import requestDraftJs from "../site/request-draft.js";
 
 type ViewerState = { kind: "anonymous" } | { kind: "revoked" } | { kind: "signed_in"; viewer: Viewer };
 
@@ -59,6 +60,8 @@ export default {
         return json({ commit: env.COMMIT_SHA });
       case "/styles.css":
         return css(stylesCss);
+      case "/request-draft.js":
+        return script(requestDraftJs);
       case "/auth/login":
         return method === "GET" ? startLogin(request, env) : methodNotAllowed();
       case "/auth/callback":
@@ -98,6 +101,15 @@ export default {
       if (!viewer) return redirect("/");
       if (!isRepoName(repo)) return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       if (!projectRoute[2]) return method === "GET" ? showProject(request, env, viewer, repo) : methodNotAllowed();
+      if (projectRoute[2] === "/requests/new") {
+        return method === "GET" ? showRequestForm(env, viewer, repo) : methodNotAllowed();
+      }
+      if (projectRoute[2] === "/requests") {
+        if (method === "GET") return showRequests(request, env, viewer, repo);
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        return form ? submitRequest(request, form, env, viewer, repo) : forbidden(viewer);
+      }
       if (projectRoute[2] === "/production") {
         return method === "GET" ? showProduction(env, viewer, repo) : methodNotAllowed();
       }
