@@ -2,16 +2,15 @@
 // on its way, and the reference branch menu of a project's header. Pages
 // work the same without it.
 (() => {
-  // Loading bar: shown after a short delay so fast pages do not flash it.
+  // Loading bar: switched on at once, while the page is still fully alive
+  // (some browsers stop running its scripts once the next page is asked
+  // for); the stylesheet waits a moment before showing it, so fast pages do
+  // not flash it, and moves it on the compositor only.
   const bar = document.querySelector("[data-loading]");
-  let timer = 0;
   const start = () => {
-    if (!bar || timer) return;
-    timer = window.setTimeout(() => bar.classList.add("visible"), 150);
+    if (bar) bar.classList.add("visible");
   };
   const stop = () => {
-    window.clearTimeout(timer);
-    timer = 0;
     if (bar) bar.classList.remove("visible");
   };
 

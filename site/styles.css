@@ -960,22 +960,27 @@ textarea {
   margin-left: 0.25rem;
 }
 
-/* Loading bar: a light running back and forth while the next page comes. */
+/* Loading bar: a red light sweeping back and forth, like K2000's scanner,
+   while the next page comes. It shows after 150 ms, so fast pages do not
+   flash it, and only its transform moves (no script, no layout). */
 .loading {
+  --scanner: #e3241b;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 4px;
   z-index: 100;
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s;
+  background: color-mix(in srgb, var(--scanner) 12%, transparent);
 }
 
+/* Opacity, like the transform, runs on the compositor. */
 .loading.visible {
   opacity: 1;
+  transition: opacity 0.1s 0.15s;
 }
 
 .loading i {
@@ -983,27 +988,33 @@ textarea {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 30%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, transparent, var(--accent) 35%, var(--accent) 65%, transparent);
-  box-shadow: 0 0 8px var(--accent);
-  animation: loading 1.2s ease-in-out infinite alternate;
+  width: 25%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--scanner) 55%, transparent) 30%, var(--scanner) 50%, color-mix(in srgb, var(--scanner) 55%, transparent) 70%, transparent);
+  box-shadow: 0 0 10px var(--scanner);
+  will-change: transform;
+  transform: translateX(-100%);
 }
 
-@keyframes loading {
+.loading.visible i {
+  animation: scanner 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes scanner {
   from {
-    transform: translateX(-10%);
+    transform: translateX(0);
   }
   to {
-    transform: translateX(343%);
+    transform: translateX(300%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loading i {
+  .loading.visible i {
     width: 100%;
     animation: none;
-    opacity: 0.6;
+    transform: none;
+    opacity: 0.7;
   }
 }
 
