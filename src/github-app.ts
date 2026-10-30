@@ -80,6 +80,18 @@ export async function githubFetch(token: string, path: string, accept = "applica
   });
 }
 
+export async function githubDelete(token: string, path: string): Promise<Response> {
+  return fetch(`${API}${path}`, {
+    method: "DELETE",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "user-agent": USER_AGENT,
+      "x-github-api-version": "2022-11-28",
+    },
+  });
+}
+
 export async function githubPost(token: string, path: string, body: unknown): Promise<Response> {
   return fetch(`${API}${path}`, {
     method: "POST",

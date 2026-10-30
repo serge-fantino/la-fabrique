@@ -3,6 +3,7 @@
 // without it.
 (() => {
   const thisScript = document.currentScript;
+  document.documentElement.classList.add("js");
   const scriptSrc = thisScript ? thisScript.getAttribute("src") : null;
 
   // Loading bar: the stylesheet waits a moment before showing it, so fast
@@ -99,6 +100,13 @@
     event.preventDefault();
     url.search = new URLSearchParams(new FormData(form)).toString();
     visit(url.href, true);
+  });
+
+  // A select that sends its form when changed (the button is for pages
+  // without this script).
+  document.addEventListener("change", (event) => {
+    const field = event.target;
+    if (field instanceof HTMLSelectElement && field.hasAttribute("data-autosubmit") && field.form) field.form.requestSubmit();
   });
 
   window.addEventListener("popstate", () => {

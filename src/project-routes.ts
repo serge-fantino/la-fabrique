@@ -29,6 +29,8 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { canPrioritize, setPriority } from "./backlog";
+import { backlogPage } from "./backlog-views";
 import { inDevReady, loadInDev } from "./in-dev";
 import { inDevContent, inDevLoading, inDevPage } from "./in-dev-views";
 import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
@@ -366,4 +368,50 @@ export async function showInDev(request: Request, env: Env, viewer: Viewer, repo
   const stages = stagesOf(stories.stories, cycleRules(project.check?.config), onInt);
   const content = inDevContent(work, stories.stories, stages);
   return html(part ? content : inDevPage(viewer, view, content), { cookies });
+}
+
+const BACKLOG_NOTICES: Record<string, string> = { set: "Priority set on GitHub." };
+
+export async function showBacklog(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  failed?: { message: string; status: number },
+): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const [{ view, cookies }, stories, onInt] = await Promise.all([
+    projectView(request, env, project),
+    loadStories(env, project),
+    storiesOnInt(env, project),
+  ]);
+  const rules = cycleRules(project.check?.config);
+  const notice = new URL(request.url).searchParams.get("notice");
+  return html(
+    backlogPage(viewer, view, {
+      stories: stories.stories,
+      stages: stagesOf(stories.stories, rules, onInt),
+      rules,
+      canPrioritize: canPrioritize(viewer.role),
+      fetchedAt: stories.fetchedAt,
+      notice: notice ? BACKLOG_NOTICES[notice] : undefined,
+      failure: failed?.message ?? stories.failure,
+    }),
+    { status: failed?.status ?? 200, cookies },
+  );
+}
+
+export async function prioritize(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!canPrioritize(viewer.role)) {
+    return html(messagePage("Not allowed", "Your role does not let you set priorities.", viewer), { status: 403 });
+  }
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const issue = Number(form.get("issue"));
+  const priority = String(form.get("priority") ?? "");
+  if (!Number.isInteger(issue) || issue <= 0) return redirect(`/projects/${project.repo}/backlog`);
+  const outcome = await setPriority(env, project, viewer.login, issue, priority || null);
+  if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?notice=set#issue-${issue}`);
+  return showBacklog(request, env, viewer, repo, outcome);
 }
