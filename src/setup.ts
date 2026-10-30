@@ -15,6 +15,7 @@ export type SetupKey =
   | "requests"
   | "epics"
   | "working_branches"
+  | "cycle"
   | "integration";
 
 export interface SetupItem {
@@ -152,6 +153,21 @@ export function setupChecklist({ check, releases, stories, branches }: SetupInpu
       !patterns.length
         ? "No `branches.travail`."
         : `${working.length ? `${numbered.length} of ${working.length} working branch${working.length > 1 ? "es" : ""} carry an issue number` : "No working branch seen yet"}; ${linked} stor${linked === 1 ? "y" : "ies"} linked to pull requests.`,
+    ),
+  );
+
+  // Optional: without it, the default Definition of Ready and no priority.
+  const cycle = config?.cycle;
+  items.push(
+    item(
+      "cycle",
+      Boolean(cycle?.pret?.length && cycle.priorites?.length),
+      cycle
+        ? `Definition of Ready: ${(cycle.pret ?? ["criteres", "epique"]).map((check) => `\`${check}\``).join(", ")}; priorities: ${
+            cycle.priorites?.length ? cycle.priorites.map((label) => `\`${label}\``).join(", ") : "none"
+          }.`
+        : "Not declared: Ready means acceptance criteria and an epic; no priority.",
+      !cycle,
     ),
   );
 

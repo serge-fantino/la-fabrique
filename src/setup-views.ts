@@ -75,6 +75,15 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
     how: `<p>Declare the patterns of working branches; put the issue number in the branch name (<code>feature/42-sign-in</code>), or close the issue from the pull request (<code>Closes #42</code>).</p>
       ${code(`"branches": { "travail": ["feature/*", "claude/*"] }`)}`,
   },
+  cycle: {
+    title: "Definition of Ready and priorities",
+    why: "Optional. Each story's stage (Backlog, Ready, In development, On int, In production) depends on it, and the backlog is sorted by priority.",
+    how: `<p>List the checks a story must pass to be <em>Ready</em> (<code>criteres</code>: acceptance criteria under an <em>Acceptance criteria</em> heading; <code>epique</code>: a sub-issue of an epic; <code>priorite</code>: a priority label; <code>etiquette_prete</code>: the circuit's ready label), and the priority labels, highest first. ${guide("cycle-dune-story", "The lifecycle")}.</p>
+      ${code(`"cycle": {
+  "pret": ["criteres", "epique", "priorite"],
+  "priorites": ["P1", "P2", "P3"]
+}`)}`,
+  },
   integration: {
     title: "An integration branch and its environment",
     why: "Optional. Work is gathered and validated on int before the go; Production then shows exactly what int has that production lacks.",
@@ -96,7 +105,7 @@ function withCode(text: string): string {
 export function setupPage(viewer: Viewer, project: Project, data: { items: SetupItem[]; failure?: string | undefined }): string {
   const name = project.check?.config?.nom || project.repo;
   const count = (state: SetupState) => data.items.filter((entry) => entry.state === state).length;
-  const required = data.items.filter((entry) => entry.key !== "integration");
+  const required = data.items.filter((entry) => entry.key !== "integration" && entry.key !== "cycle");
   const done = required.filter((entry) => entry.state === "done").length;
   const items = data.items
     .map((entry) => {

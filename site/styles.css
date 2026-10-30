@@ -1309,3 +1309,7 @@ main:focus {
     animation: none;
   }
 }
+
+.small {
+  font-size: 0.85rem;
+}

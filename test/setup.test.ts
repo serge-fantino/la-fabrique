@@ -28,14 +28,16 @@ function states(items: SetupItem[]): Record<string, string> {
 }
 
 describe("setupChecklist", () => {
-  it("finds the épicerie all done, integration included", () => {
+  it("finds the épicerie all done, integration included; its lifecycle is optional until declared", () => {
     const items = setupChecklist({
       check: check(example as FabriqueConfig),
       releases: RELEASES,
       stories: STORIES,
       branches: ["main", "integration", "feature/138-emails"],
     });
-    expect(Object.values(states(items)).every((state) => state === "done")).toBe(true);
+    const found = states(items);
+    expect(found["cycle"]).toBe("optional");
+    expect(Object.entries(found).filter(([key]) => key !== "cycle").every(([, state]) => state === "done")).toBe(true);
   });
 
   it("finds La Fabrique done, with integration optional", () => {
@@ -67,6 +69,7 @@ describe("setupChecklist", () => {
       requests: "missing",
       epics: "missing",
       working_branches: "missing",
+      cycle: "optional",
       // Started, so no longer optional.
       integration: "missing",
     });
