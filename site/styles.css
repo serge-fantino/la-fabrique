@@ -50,10 +50,6 @@ body {
   align-items: center;
 }
 
-.brand-long {
-  margin-left: 0.28em;
-}
-
 .nav {
   display: flex;
   flex-wrap: wrap;
@@ -1032,8 +1028,7 @@ textarea {
 @media (max-width: 640px) {
   .nav .nav-home,
   .repo-name,
-  .brand-long,
-  .subbar .who .pill {
+  .subbar .who {
     display: none;
   }
 
@@ -1658,4 +1653,55 @@ table.backlog th:nth-child(4) {
   margin: 0.25rem 0;
   padding-left: 1.1rem;
   font-size: 0.92rem;
+}
+
+/* Brand: the mark and a two-line wordmark, like the épicerie's. */
+.brand {
+  gap: 0.6rem;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+
+.brand-words {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.brand-top {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.brand-bottom {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.brand-bottom .strike {
+  text-decoration: line-through;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 3px;
+}
+
+/* The project's name opens the project menu when there are several. */
+.project-menu summary {
+  border-color: transparent;
+  background: none;
+  padding-left: 0.25rem;
+}
+
+.project-menu .branch-list a {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  padding: 0.35rem 0.5rem;
 }

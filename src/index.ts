@@ -2,7 +2,8 @@ import { effectiveRole } from "./accounts";
 import { finishLogin, startLogin } from "./auth";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
-import { html, json, redirect, text } from "./http";
+import { html, json, redirect, svg, text } from "./http";
+import { LOGO_SVG } from "./logo";
 import { isAsset, serveAsset } from "./assets";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
@@ -76,6 +77,9 @@ export default {
     if (isAsset(pathname)) return method === "GET" || method === "HEAD" ? serveAsset(request, pathname) : methodNotAllowed();
 
     switch (pathname) {
+      case "/favicon.svg":
+      case "/favicon.ico":
+        return svg(LOGO_SVG);
       case "/api/version":
         return json({ numero: releaseNotes[0]?.version ?? null, commit: env.COMMIT_SHA });
       case "/auth/login":

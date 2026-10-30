@@ -111,7 +111,7 @@ describe("Stories board", () => {
     mockSync();
     const page = await (await get(`/projects/${REPO}/stories`, (await signIn("admin-one")).cookie)).text();
 
-    expect(page).toContain(`<a href="https://github.com/${REPO}/issues/1">#1</a> Epic one`);
+    expect(page).toContain(`<a target="_blank" rel="noopener noreferrer" href="https://github.com/${REPO}/issues/1">#1</a> Epic one`);
     expect(page).toContain("1/2 done");
     expect(page).toContain(`href="https://github.com/${REPO}/issues/3"`);
     expect(page).toContain('<span class="chip circuit">demande</span>');

@@ -1,6 +1,7 @@
 import { ROLE_LABELS, ROLES, type AccountRow, type Role } from "./accounts";
 import type { ActivityRow } from "./activity-log";
 import { assetUrl } from "./assets";
+import { logoMark } from "./logo";
 
 export interface Viewer {
   login: string;
@@ -32,6 +33,11 @@ function roleOptions(selected?: Role): string {
   ).join("");
 }
 
+// Links to GitHub and to the projects' environments open in a new tab.
+export function externalLinks(html: string): string {
+  return html.replace(/<a (?![^>]*\btarget=)([^>]*\bhref="https?:\/\/)/g, '<a target="_blank" rel="noopener noreferrer" $1');
+}
+
 // `context` is the left part of the line under the bar (a project and its
 // branch); the signed-in person is on its right.
 export function layout(title: string, body: string, viewer?: Viewer, scripts: string[] = [], context = ""): string {
@@ -48,7 +54,7 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     : "";
   const subbar = viewer
     ? `<div class="subbar">
-        <div class="subbar-context">${context}</div>
+        <div class="subbar-context">${externalLinks(context)}</div>
         <span class="who"><span class="mono">@${escapeHtml(viewer.login)}</span>
           <span class="pill">${ROLE_LABELS[viewer.role]}</span></span>
       </div>`
@@ -59,6 +65,7 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" />
@@ -68,12 +75,12 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
   <body>
     <div class="loading" data-loading aria-hidden="true"><i></i></div>
     <header class="bar">
-      <a class="brand" href="/">La Fabrique<span class="brand-long">extraordinaire</span></a>
+      <a class="brand" href="/" aria-label="La Fabrique extraordinaire">${logoMark("brand-mark")}<span class="brand-words" aria-hidden="true"><span class="brand-top">La Fabrique</span><span class="brand-bottom"><span class="strike">extra</span>ordinaire</span></span></a>
       ${nav}
     </header>
     ${subbar}
     <main>
-${body}
+${externalLinks(body)}
     </main>
   </body>
 </html>`;
