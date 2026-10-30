@@ -2,7 +2,7 @@
   {
     "version": "0.52",
     "date": "2026-10-31",
-    "heure": "00:20",
+    "heure": "00:17",
     "titre": "From one card to several stories, reviewed before GitHub",
     "changements": [
       "Split into stories with Claude: from a card's spec, Claude proposes stories that can each be built, tested on int and shipped alone, each with its own criteria. It works in the background, like the spec, and nothing goes to GitHub yet.",
