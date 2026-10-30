@@ -4,6 +4,7 @@ import { githubFetch, githubJson, installationToken } from "./github-app";
 import { describeFailure, type Project } from "./projects";
 import { isFresh, markStale, readSnapshot, writeSnapshot, onBranch } from "./snapshots";
 import { branchIssue, issueRefs, STORIES, type Story } from "./stories";
+import { declaredStories } from "./roadmap";
 import { githubContentsPath } from "./urls";
 
 export const PRODUCTION = "production";
@@ -49,6 +50,8 @@ export interface NextRelease {
   version: string;
   title: string | null;
   changes: string[];
+  // Declared by the entry (`stories`); missing from older snapshots.
+  stories?: number[] | null;
 }
 
 export interface ProductionStatus {
@@ -169,14 +172,14 @@ function runState(key: string, file: string, branch: string, run: RestRun | unde
   };
 }
 
-function releaseEntries(raw: string | null): (NextRelease & { time: boolean })[] {
+function releaseEntries(raw: string | null): (NextRelease & { stories: number[] | null; time: boolean })[] {
   let data: unknown;
   try {
     data = raw === null ? [] : JSON.parse(raw);
   } catch {
     return [];
   }
-  const entries: (NextRelease & { time: boolean })[] = [];
+  const entries: (NextRelease & { stories: number[] | null; time: boolean })[] = [];
   for (const entry of Array.isArray(data) ? data : []) {
     if (typeof entry !== "object" || entry === null) continue;
     const record = entry as Record<string, unknown>;
@@ -185,7 +188,13 @@ function releaseEntries(raw: string | null): (NextRelease & { time: boolean })[]
     const changes = Array.isArray(record["changements"])
       ? record["changements"].filter((change): change is string => typeof change === "string")
       : [];
-    entries.push({ version, title: typeof record["titre"] === "string" ? record["titre"] : null, changes, time: Boolean(record["heure"]) });
+    entries.push({
+      version,
+      title: typeof record["titre"] === "string" ? record["titre"] : null,
+      changes,
+      stories: declaredStories(record["stories"]),
+      time: Boolean(record["heure"]),
+    });
   }
   return entries;
 }
@@ -204,7 +213,7 @@ export function waitingReleases(candidate: string, production: string | null): N
   const released = production === null ? null : new Set(releaseEntries(production).map((entry) => entry.version));
   return releaseEntries(candidate)
     .filter((entry) => (released ? !released.has(entry.version) : !entry.time))
-    .map(({ version, title, changes }) => ({ version, title, changes }));
+    .map(({ version, title, changes, stories }) => ({ version, title, changes, stories }));
 }
 
 export async function readVersion(environment: string, url: string, path: string): Promise<VersionState> {

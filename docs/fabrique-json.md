@@ -124,6 +124,7 @@ Le fichier nommé par `version.fichier` est un tableau JSON, **la version la plu
     "heure": "09:15",
     "titre": "E-mails de bienvenue",
     "changements": ["Un e-mail de bienvenue à l'inscription."],
+    "stories": [138],
     "liens": [{ "app": "/app/accueil.html" }]
   }
 ]
@@ -136,6 +137,7 @@ Le fichier nommé par `version.fichier` est un tableau JSON, **la version la plu
 | `titre` | Une ligne, facultative. |
 | `changements` | Les changements visibles, dits pour un utilisateur curieux, sans jargon. Toujours du texte. |
 | `liens` | Facultatif : `null`, ou des objets dont chaque valeur est un chemin du site en production (`/app/…`), pour « y aller ». |
+| `stories` | Les numéros des issues (stories) que la version apporte, `[]` si aucune. C'est le seul lien entre une note de version et ses stories : « Ça concerne » d'un signalement de défaut et le triage proposent chaque version avec les stories qu'elle déclare, *Releases* les montre. Une entrée qui ne le dit pas n'en a aucune (La Fabrique ne devine rien d'après les branches ou les dates). À exiger dans le contrôle de version du projet pour toute nouvelle entrée. |
 
 Un envoi sans rien de visible (outillage, tests, refonte interne) n'ajoute pas d'entrée. Le chemin de version des environnements (`environnements.*.version`) répond la version déployée (`numero`), qui doit être celle de la première entrée.
 

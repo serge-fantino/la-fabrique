@@ -14,7 +14,19 @@ export interface Release {
   title: string | null;
   changes: string[];
   links: string[];
+  // The stories the entry says it brings (`stories`); null when it does not say.
+  stories: number[] | null;
   upcoming: boolean;
+}
+
+// `stories` of a release-notes entry: issue numbers (or "#12"); null when
+// the entry does not declare them.
+export function declaredStories(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  const numbers = value
+    .map((item) => (typeof item === "number" ? item : typeof item === "string" ? Number(item.replace(/^#/, "")) : NaN))
+    .filter((number) => Number.isInteger(number) && number > 0);
+  return [...new Set(numbers)];
 }
 
 // "Quoi de neuf" entries, newest first; entries above the newest one with a
@@ -53,6 +65,7 @@ export function parseReleases(raw: string): Release[] {
               : [],
           )
         : [],
+      stories: declaredStories(record["stories"]),
       upcoming: !released && !time,
     });
   }

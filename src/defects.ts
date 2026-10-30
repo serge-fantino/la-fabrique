@@ -1,18 +1,16 @@
 import { effectiveRole } from "./accounts";
-import { DEFECT_LABEL, defectTargets, isKnownStory } from "./defect-targets";
+import { DEFECT_LABEL, defectTargets, isKnownStory, storiesOnIntOf } from "./defect-targets";
 import { activityStatement } from "./activity-log";
 import { randomToken } from "./crypto";
 import type { Env } from "./env";
 import { githubPost, installationToken } from "./github-app";
 import { json } from "./http";
-import { storiesOnInt } from "./lifecycle";
 import type { GrantProps } from "./oauth";
 import { readVersion } from "./production";
 import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { checkOtherBranch, findProject, type Project } from "./projects";
 import { can } from "./rights";
-import { readSnapshot } from "./snapshots";
-import { applyIssueEvent, STORIES, type RestIssue, type Story } from "./stories";
+import { applyIssueEvent, type RestIssue } from "./stories";
 import { wordingFor } from "./wording";
 
 export { DEFECT_LABEL };
@@ -305,18 +303,6 @@ export async function reportingEnvironments(env: Env, project: Project, onIntegr
   );
 }
 
-// The stories on int when the report arrives (epics left out): the one
-// the defect belongs to when there is a single one.
-async function storiesOnIntNow(env: Env, project: Project): Promise<number[]> {
-  const onInt = await storiesOnInt(env, project);
-  const stories = (await readSnapshot<Story[]>(env.DB, project.repo, STORIES))?.data ?? null;
-  const numbers = [...onInt].filter((number) => {
-    const story = stories?.find((candidate) => candidate.number === number);
-    return stories === null || (story !== undefined && story.subTotal === 0);
-  });
-  return numbers.sort((a, b) => a - b);
-}
-
 function startOfDay(): string {
   return `${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
 }
@@ -378,9 +364,9 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
     return failure(400, "invalid", `Story #${report.story} is not one of this project's stories.`, { fields: ["story"] });
   }
   const triage = role === null;
-  const onInt = await storiesOnIntNow(env, project);
+  const targets = await defectTargets(env, project);
+  const onInt = storiesOnIntOf(targets);
   const story = report.story ?? (report.release === null && onInt.length === 1 ? (onInt[0] ?? null) : null);
-  const targets = report.release ? await defectTargets(env, project) : [];
   const release = report.release ? { version: report.release, title: targets.find((target) => target.version === report.release)?.title ?? null } : null;
   const screenshot = report.screenshot ? await storeScreenshot(env, project.repo, props.login, report.screenshot) : null;
   const screenshotUrl = screenshot ? new URL(`/screenshots/${screenshot}`, request.url).href : null;
