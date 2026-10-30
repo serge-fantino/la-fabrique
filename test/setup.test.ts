@@ -37,7 +37,10 @@ describe("setupChecklist", () => {
     });
     const found = states(items);
     expect(found["cycle"]).toBe("optional");
-    expect(Object.entries(found).filter(([key]) => key !== "cycle").every(([, state]) => state === "done")).toBe(true);
+    expect(found["promotion"]).toBe("optional");
+    expect(found["claude_workflow"]).toBe("optional");
+    const optional = new Set(["cycle", "promotion", "claude_workflow"]);
+    expect(Object.entries(found).filter(([key]) => !optional.has(key)).every(([, state]) => state === "done")).toBe(true);
   });
 
   it("finds La Fabrique done, with integration optional", () => {
@@ -49,7 +52,8 @@ describe("setupChecklist", () => {
     });
     const found = states(items);
     expect(found["integration"]).toBe("optional");
-    expect(Object.entries(found).filter(([key]) => key !== "integration").every(([, state]) => state === "done")).toBe(true);
+    const optional = new Set(["integration", "promotion", "claude_workflow"]);
+    expect(Object.entries(found).filter(([key]) => !optional.has(key)).every(([, state]) => state === "done")).toBe(true);
   });
 
   it("says what a partial file lacks", () => {
@@ -70,6 +74,8 @@ describe("setupChecklist", () => {
       epics: "missing",
       working_branches: "missing",
       cycle: "optional",
+      promotion: "optional",
+      claude_workflow: "optional",
       // Started, so no longer optional.
       integration: "missing",
     });
@@ -127,5 +133,22 @@ describe("Setup tab", () => {
     expect(example.headers.get("content-type")).toContain("application/json");
     expect(((await example.json()) as { nom: string }).nom).toBeTruthy();
     expect((await get("/guide/fabrique-json")).status).toBe(303);
+  });
+
+  it("says when the go and Claude can be started from La Fabrique, with examples to read", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare(
+        "INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', ?, ?, '[]', '[]')",
+      ).bind(REPO, "1".repeat(40), JSON.stringify({ nom: "Widget", workflows: { promouvoir: "promouvoir.yml" } })),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', '[]', ?)").bind(REPO, new Date().toISOString()),
+    ]);
+    const { cookie } = await signIn("admin-one");
+    const page = await (await get(`/projects/${REPO}/setup`, cookie)).text();
+    expect(page).toContain("<code>promouvoir.yml</code>: the super admin gives the go from Production.");
+    expect(page).toContain("No <code>workflows.claude</code>: Claude is not launched from La Fabrique.");
+    expect(page).toContain('href="/guide/exemples/claude.yml"');
+    const example = await get("/guide/exemples/claude.yml", cookie);
+    expect(await example.text()).toContain("workflow_dispatch");
   });
 });
