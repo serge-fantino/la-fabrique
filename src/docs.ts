@@ -17,7 +17,7 @@ import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
 
 // One GitHub read per file and commit; older commits are dropped.
-async function readMarkdown(env: Env, project: Project, branch: string | null, sha: string, path: string): Promise<string> {
+export async function readMarkdown(env: Env, project: Project, branch: string | null, sha: string, path: string): Promise<string> {
   const cached = await env.DB.prepare(
     "SELECT markdown FROM doc_cache WHERE repo = ? AND commit_sha = ? AND path = ?",
   )

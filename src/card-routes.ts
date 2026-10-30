@@ -1,4 +1,4 @@
-import { boardPage, cardFormPage, cardPage, cardTile } from "./card-views";
+import { boardPage, cardFormPage, cardPage, cardRef, cardTile, cardUrl, specFormPage, storyPage } from "./card-views";
 import {
   addValue,
   archiveCard,
@@ -18,21 +18,29 @@ import {
   moveCard,
   readBoardQuery,
   readCardForm,
+  linkStory,
+  restoreRevision,
+  saveSpec,
   updateCard,
+  type Card,
   type CardInput,
   type Dimension,
   type FreeDimension,
 } from "./cards";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
+import { allowance, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
+import { createRequest, issueBody, type RequestDraft } from "./requests";
+import { missingSections, readSpecForm, specRubriques, writeSpec } from "./specs";
+import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
 import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
-// /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/{id}, /cards/{id}/edit
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit)?)$/;
+// /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/{id}, /cards/{id}/edit, /spec, /story
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit|\/spec|\/story)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -54,7 +62,11 @@ const BOARD_NOTICES: Record<string, string> = {
 export async function showBoard(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   const url = new URL(request.url);
   const board = readBoardQuery(url.searchParams);
-  const [cards, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const [cards, { view, cookies }, spends] = await Promise.all([
+    listCards(env.DB, project.repo),
+    projectView(request, env, project, viewer),
+    cardSpends(env.DB, project.repo),
+  ]);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const notice = url.searchParams.get("notice");
   return html(
@@ -64,6 +76,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       known,
       board,
       canWrite: canWriteCards(viewer),
+      spends,
       notice: notice ? BOARD_NOTICES[notice] : undefined,
     }),
     { cookies },
@@ -112,7 +125,8 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const moved = await moveCard(env.DB, card, viewer.login, { set, before: neighbour("before"), after: neighbour("after") }, known);
-  return json({ ok: true, html: cardTile(moved, true) });
+  const spends = await cardSpends(env.DB, project.repo);
+  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id)) });
 }
 
 function emptyInput(params: URLSearchParams): CardInput {
@@ -156,19 +170,43 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
   return redirect(`${projectUrl(project.repo)}/cards/${id}?created=1`);
 }
 
-export async function showCardPage(request: Request, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
-  const card = await findCard(env.DB, project.repo, id);
-  if (!card) return notFound(viewer, "There is no such card in this project.");
+const CARD_NOTICES: Record<string, string> = {
+  saved: "Saved.",
+  unchanged: "Nothing changed.",
+  archived: "Archived: it no longer shows on the board.",
+  restored: "Back on the board.",
+  version_restored: "That version is back, as the newest one.",
+  spec: "Spec written. Read it, then revise it with Claude or by hand.",
+  spec_saved: "Spec saved.",
+  story: "Story created on GitHub.",
+};
+
+// The card's page, also after a failed call to Claude (`failure`, with
+// what the person had typed).
+async function renderCard(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  project: Project,
+  card: Card,
+  extra: { failure?: string; instruction?: string; status?: number } = {},
+): Promise<Response> {
   const params = new URL(request.url).searchParams;
-  const [revisions, links, { view, cookies }] = await Promise.all([
+  const [revisions, links, calls, claude, { view, cookies }] = await Promise.all([
     cardRevisions(env.DB, card.id),
     cardLinks(env.DB, card.id),
+    cardCalls(env.DB, card.id),
+    canWriteCards(viewer) ? allowance(env, viewer.role, viewer.login) : Promise.resolve({ ok: false as const, reason: "" }),
     projectView(request, env, project, viewer),
   ]);
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
-  const notices: Record<string, string> = { saved: "Saved.", unchanged: "Nothing changed.", archived: "Archived: it no longer shows on the board.", restored: "Back on the board." };
   const notice = params.get("notice");
+  const rubriques = specRubriques(project);
+  const spend = calls.reduce(
+    (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
+    { calls: 0, micros: 0, unknown: 0 },
+  );
   return html(
     cardPage(viewer, view, {
       card,
@@ -177,10 +215,23 @@ export async function showCardPage(request: Request, env: Env, viewer: Viewer, p
       shown,
       canWrite: canWriteCards(viewer),
       created: params.get("created") === "1",
-      notice: notice ? notices[notice] : undefined,
+      notice: notice ? CARD_NOTICES[notice] : undefined,
+      failure: extra.failure,
+      instruction: extra.instruction,
+      rubriques,
+      claude: { usable: claude.ok, reason: claude.ok ? null : claude.reason },
+      calls,
+      spend,
+      missing: missingSections(card.data.spec, rubriques),
     }),
-    { cookies },
+    { cookies, status: extra.status ?? 200 },
   );
+}
+
+export async function showCardPage(request: Request, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
+  const card = await findCard(env.DB, project.repo, id);
+  if (!card) return notFound(viewer, "There is no such card in this project.");
+  return renderCard(request, env, viewer, project, card);
 }
 
 export async function changeCard(request: Request, form: FormData, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
@@ -193,6 +244,31 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (Boolean(card.archivedAt) !== (action === "restore")) return redirect(url);
     await archiveCard(env.DB, card, viewer.login, action === "archive");
     return redirect(`${url}?notice=${action === "archive" ? "archived" : "restored"}`);
+  }
+  if (action === "restore_version") {
+    const wanted = Number(form.get("rev"));
+    const revision = (await cardRevisions(env.DB, card.id)).find((candidate) => candidate.rev === wanted);
+    if (!revision || revision.rev === card.rev) return redirect(url);
+    await restoreRevision(env.DB, card, revision, viewer.login);
+    return redirect(`${url}?notice=version_restored`);
+  }
+  if (action === "spec_draft" || action === "spec_revise") {
+    const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, instruction, status: 429 });
+    const outcome = await writeSpec(env, project, card, viewer.login, { mode: action === "spec_revise" ? "revise" : "draft", instruction });
+    if (!outcome.ok) return renderCard(request, env, viewer, project, card, { failure: outcome.message, instruction, status: 502 });
+    // The card may have changed while Claude wrote: the spec goes on the newest version.
+    const current = (await findCard(env.DB, project.repo, card.id)) ?? card;
+    await saveSpec(env.DB, current, viewer.login, outcome.spec, outcome.callId);
+    return redirect(`${url}?notice=spec#spec`);
+  }
+  if (action === "spec_save") {
+    if (Number(form.get("rev")) !== card.rev) {
+      return renderCard(request, env, viewer, project, card, { failure: "The card changed while you were editing its spec: your text was not saved. Open the spec again.", status: 409 });
+    }
+    await saveSpec(env.DB, card, viewer.login, readSpecForm(form, specRubriques(project), card.data.spec));
+    return redirect(`${url}?notice=spec_saved#spec`);
   }
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
@@ -208,6 +284,49 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     return html(cardFormPage(viewer, view, { card, input, known, conflict: current }), { status: 409, cookies });
   }
   return redirect(`${url}?notice=${outcome}`);
+}
+
+export async function showSpecForm(request: Request, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const card = await findCard(env.DB, project.repo, id);
+  if (!card) return notFound(viewer, "There is no such card in this project.");
+  const { view, cookies } = await projectView(request, env, project, viewer);
+  return html(specFormPage(viewer, view, { card, rubriques: specRubriques(project), spec: card.data.spec }), { cookies });
+}
+
+function storyDraft(request: Request, project: Project, card: Card, login: string, title: string): { draft: RequestDraft; origin: string; body: string } {
+  const rubriques = specRubriques(project);
+  const draft = { title, answers: card.data.spec?.answers ?? {} };
+  const origin = wordingFor(project).fromCard(cardRef(card.id), new URL(cardUrl(project.repo, card.id), request.url).toString());
+  return { draft, origin, body: issueBody(draft, rubriques, login, wordingFor(project), origin) };
+}
+
+export async function storyRoute(request: Request, env: Env, viewer: Viewer, project: Project, id: number, form: FormData | null): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const card = await findCard(env.DB, project.repo, id);
+  if (!card) return notFound(viewer, "There is no such card in this project.");
+  const url = cardUrl(project.repo, card.id);
+  const rubriques = specRubriques(project);
+  if (!card.data.spec || missingSections(card.data.spec, rubriques).length) return redirect(`${url}#spec`);
+  const title = form ? String(form.get("title") ?? "").replace(/\s+/g, " ").trim().slice(0, 200) || card.title : card.title;
+  const { draft, origin, body } = storyDraft(request, project, card, viewer.login, title);
+  const label = project.check?.config?.demandes?.etiquettes?.["demande"] ?? null;
+  const page = async (error?: string, status = 200) => {
+    const { view, cookies } = await projectView(request, env, project, viewer);
+    return html(storyPage(viewer, view, { card, title, body, label, error }), { cookies, status });
+  };
+  if (!form) return page();
+  const outcome = await createRequest(request, env, project, viewer.login, draft, rubriques, origin);
+  if (!outcome.ok) {
+    return page(
+      outcome.reason === "signed_out"
+        ? "GitHub no longer accepts your sign-in. Sign out and sign in again."
+        : `GitHub refused to create the issue (HTTP ${outcome.status ?? "?"}). Your GitHub account may not have access to this repository.`,
+      502,
+    );
+  }
+  await linkStory(env.DB, card, viewer.login, outcome.number, outcome.url);
+  return redirect(`${url}?notice=story`);
 }
 
 export async function downloadCards(env: Env, project: Project): Promise<Response> {
@@ -248,7 +367,13 @@ export async function cardRoute(
   if (path === "cards/new") return method === "GET" ? showCardForm(request, env, viewer, project, null) : notAllowed();
   if (path === "cards/export") return method === "GET" ? downloadCards(env, project) : notAllowed();
   if (path === "cards") return method === "POST" ? withForm((data) => submitCard(request, data, env, viewer, project)) : notAllowed();
-  if (id && match[4]) return method === "GET" ? showCardForm(request, env, viewer, project, id) : notAllowed();
+  if (id && match[4] === "/edit") return method === "GET" ? showCardForm(request, env, viewer, project, id) : notAllowed();
+  if (id && match[4] === "/spec") return method === "GET" ? showSpecForm(request, env, viewer, project, id) : notAllowed();
+  if (id && match[4] === "/story") {
+    if (method === "GET") return storyRoute(request, env, viewer, project, id, null);
+    if (method === "POST") return withForm((data) => storyRoute(request, env, viewer, project, id, data));
+    return notAllowed();
+  }
   if (id) {
     if (method === "GET") return showCardPage(request, env, viewer, project, id);
     if (method === "POST") return withForm((data) => changeCard(request, data, env, viewer, project, id));

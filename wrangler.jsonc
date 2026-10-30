@@ -20,7 +20,11 @@
     }
   ],
   "vars": {
-    "COMMIT_SHA": "dev"
+    "COMMIT_SHA": "dev",
+    // Claude in La Fabrique: ANTHROPIC_API_KEY is a secret (wrangler secret put).
+    "CLAUDE_MODEL": "claude-opus-5-5",
+    "CLAUDE_DAILY_CALLS": "30",
+    "CLAUDE_MONTHLY_BUDGET_USD": "20"
   },
   "observability": {
     "enabled": true

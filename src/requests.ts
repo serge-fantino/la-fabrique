@@ -36,9 +36,10 @@ export function missingFields(draft: RequestDraft, rubriques: Rubrique[]): strin
 }
 
 // The issue keeps the project's own section titles, in the declared order.
-export function issueBody(draft: RequestDraft, rubriques: Rubrique[], login: string, words: Wording = wordingFor()): string {
+// `origin`: a line on where the request comes from (a card).
+export function issueBody(draft: RequestDraft, rubriques: Rubrique[], login: string, words: Wording = wordingFor(), origin?: string): string {
   const sections = rubriques.map((rubrique) => `## ${rubrique.titre}\n\n${draft.answers[rubrique.cle] || "—"}`);
-  return `${sections.join("\n\n")}\n\n---\n${words.requestSignature(login)}`;
+  return `${sections.join("\n\n")}\n\n---\n${origin ? `${origin}\n\n` : ""}${words.requestSignature(login)}`;
 }
 
 export type CreateOutcome =
@@ -52,6 +53,7 @@ export async function createRequest(
   login: string,
   draft: RequestDraft,
   rubriques: Rubrique[],
+  origin?: string,
 ): Promise<CreateOutcome> {
   const clientId = env.GITHUB_APP_CLIENT_ID ?? "";
   const clientSecret = env.GITHUB_APP_CLIENT_SECRET ?? "";
@@ -61,7 +63,7 @@ export async function createRequest(
   const label = project.check?.config?.demandes?.etiquettes?.["demande"];
   const response = await githubPost(token, `/repos/${project.repo}/issues`, {
     title: draft.title,
-    body: issueBody(draft, rubriques, login, wordingFor(project)),
+    body: issueBody(draft, rubriques, login, wordingFor(project), origin),
     ...(label ? { labels: [label] } : {}),
   });
   if (response.status === 401) return { ok: false, reason: "signed_out" };

@@ -1,0 +1,303 @@
+import { env, fetchMock, SELF } from "cloudflare:test";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import example from "../docs/exemples/epicerie.fabrique.json";
+import { allowance, costMicros, usesOf } from "../src/llm";
+import type Anthropic from "@anthropic-ai/sdk";
+import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
+
+const REPO = "acme/widget";
+const JSON_HEADERS = { "content-type": "application/json" };
+const CONFIG = { nom: "Widget", langue: "fr", demandes: example.demandes };
+
+beforeAll(() => {
+  fetchMock.activate();
+  fetchMock.disableNetConnect();
+});
+
+afterEach(() => fetchMock.assertNoPendingInterceptors());
+
+async function seed(): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+    env.DB.prepare(
+      "INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[\"CLAUDE.md\"]')",
+    ).bind(REPO, JSON.stringify(CONFIG)),
+    env.DB.prepare("INSERT INTO doc_cache (repo, commit_sha, path, markdown) VALUES (?, 'abc', 'CLAUDE.md', ?)").bind(
+      REPO,
+      "# Widget\n\nPrinciple: never sell anything for losing weight.",
+    ),
+    env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2099-01-01T00:00:00.000Z')").bind(
+      REPO,
+      JSON.stringify([{ number: 7, title: "Existing basket story", state: "open", labels: [], url: "", author: null, parent: null, subTotal: 0, subCompleted: 0, createdAt: "", updatedAt: "", closedAt: null, pullRequests: [], branches: [], criteria: [] }]),
+    ),
+  ]);
+}
+
+const SECTIONS = {
+  contexte: "On refait souvent les mêmes courses.",
+  besoin: "Reprendre le panier de la semaine dernière en un geste.",
+  criteres: "- [ ] Quand je touche « Reprendre », je vois les articles de la semaine dernière dans la liste.",
+  ecrans: "",
+  donnees_personnelles: "Aucune.",
+  quoi_de_neuf: "Reprenez vos courses de la semaine dernière en un geste.",
+  questions: "",
+};
+
+function claudeReply(sent: { body?: Record<string, unknown> }, answer: unknown, extra: Record<string, unknown> = {}): void {
+  fetchMock
+    .get("https://api.anthropic.com")
+    .intercept({ method: "POST", path: (path) => path.startsWith("/v1/messages") })
+    .reply((options) => {
+      sent.body = JSON.parse(String(options.body)) as Record<string, unknown>;
+      return {
+        statusCode: 200,
+        data: JSON.stringify({
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "claude-opus-5-5",
+          content: [{ type: "text", text: JSON.stringify(answer) }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          stop_details: null,
+          usage: { input_tokens: 1000, output_tokens: 2000, cache_read_input_tokens: 5000, cache_creation_input_tokens: 1000 },
+          ...extra,
+        }),
+        responseOptions: { headers: JSON_HEADERS },
+      };
+    });
+}
+
+async function writerWithCard(): Promise<{ cookie: string; csrf: string; id: number }> {
+  await seed();
+  await grantRole("pe", "product_engineer");
+  const session = await signIn("pe");
+  const response = await post(`/projects/${REPO}/cards`, { csrf: session.csrf, title: "Quick reorder", body: "Reorder last week's basket. {segment: pro}", kind: "feature", status: "shaping" }, session.cookie);
+  const id = Number(/cards\/(\d+)/.exec(response.headers.get("location") ?? "")?.[1]);
+  return { ...session, id };
+}
+
+describe("What a call costs", () => {
+  it("counts input, output, cache reads and cache writes at the model's price", () => {
+    // 1000 × $4 + 2000 × $20 + 5000 × $0.20 + 1000 × $5 (a 5-minute cache write), per million tokens.
+    expect(costMicros([{ model: "claude-opus-5-5", input: 1000, output: 2000, cacheRead: 5000, cacheWrite: 1000 }])).toBe(50_000);
+    expect(costMicros([{ model: "claude-unknown", input: 1, output: 1, cacheRead: 0, cacheWrite: 0 }])).toBeNull();
+  });
+
+  it("counts each model of a fallback at its own price", () => {
+    const message = {
+      model: "claude-opus-4-8",
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        iterations: [
+          { type: "message", model: "claude-opus-5-5", input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          { type: "fallback_message", model: "claude-opus-4-8", input_tokens: 100, output_tokens: 1000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        ],
+      },
+    } as unknown as Anthropic.Beta.BetaMessage;
+    const uses = usesOf(message, "claude-opus-5-5");
+    expect(uses.map((use) => use.model)).toEqual(["claude-opus-5-5", "claude-opus-4-8"]);
+    expect(costMicros(uses)).toBe(100 * 4 + 10 * 20 + 100 * 5 + 1000 * 25);
+  });
+
+  it("refuses without a key, to a tester, past the daily calls and past the monthly budget", async () => {
+    expect(await allowance({ ...env, ANTHROPIC_API_KEY: "" }, "super_admin", "a")).toMatchObject({ ok: false, reason: expect.stringContaining("no API key") });
+    expect(await allowance(env, "tester", "a")).toMatchObject({ ok: false, reason: "Your role does not let you use Claude." });
+    expect(await allowance(env, "product_engineer", "a")).toEqual({ ok: true });
+    const insert = (login: string, cost: number) =>
+      env.DB.prepare("INSERT INTO llm_calls (login, purpose, cost_micros, outcome) VALUES (?, 'spec_draft', ?, 'ok')").bind(login, cost);
+    await env.DB.batch([insert("a", 1), insert("a", 1), insert("a", 1)]);
+    expect(await allowance(env, "product_engineer", "a")).toMatchObject({ ok: false, reason: expect.stringContaining("today's 3 calls") });
+    await insert("b", 1_000_000).run();
+    expect(await allowance(env, "product_engineer", "c")).toMatchObject({ ok: false, reason: expect.stringContaining("this month's Claude budget ($1.00)") });
+  });
+});
+
+describe("A card's spec with Claude", () => {
+  it("writes the spec from the card, the project's principles and its stories, and records the call", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeReply(sent, { sections: SECTIONS, questions: ["Pour combien de semaines en arrière ?"], note: "Première version." });
+    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft", instruction: "Pensez au téléphone." }, cookie);
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=spec#spec`);
+
+    // What Claude received: the project's principles (cached), the card, the stories, the sections.
+    const body = sent.body ?? {};
+    expect(body["model"]).toBe("claude-opus-5-5");
+    expect(body["fallbacks"]).toBe("default");
+    const system = (body["system"] as { text: string; cache_control: unknown }[])[0];
+    expect(system?.cache_control).toEqual({ type: "ephemeral" });
+    expect(system?.text).toContain("never sell anything for losing weight");
+    expect(system?.text).toContain('"criteres": Critères d\'acceptation (required)');
+    expect(system?.text).toContain("Write in French.");
+    const user = (body["messages"] as { content: string }[])[0]?.content ?? "";
+    expect(user).toContain("Quick reorder");
+    expect(user).toContain("#7 Existing basket story");
+    expect(user).toContain("Pensez au téléphone.");
+
+    const card = await env.DB.prepare("SELECT data, rev FROM cards WHERE id = ?").bind(id).first<{ data: string; rev: number }>();
+    expect(card?.rev).toBe(2);
+    expect(JSON.parse(card?.data ?? "{}").spec).toMatchObject({ source: "claude", questions: ["Pour combien de semaines en arrière ?"], answers: { besoin: SECTIONS.besoin } });
+    const call = await env.DB.prepare("SELECT login, repo, card_id, purpose, model, input_tokens, cost_micros, outcome FROM llm_calls").first();
+    expect(call).toEqual({ login: "pe", repo: REPO, card_id: id, purpose: "spec_draft", model: "claude-opus-5-5", input_tokens: 1000, cost_micros: 50_000, outcome: "ok" });
+    expect((await logActions()).map((entry) => entry.action)).toEqual(["card_created", "card_spec_written"]);
+
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("<h3>Besoin</h3>");
+    expect(page).toContain("Pour combien de semaines en arrière ?");
+    expect(page).toContain("1 call · $0.05");
+    expect(page).toContain("Revise with Claude");
+    expect(page).toContain(`href="/projects/${REPO}/cards/${id}/story">Make the story on GitHub</a>`);
+    const board = await (await get(`/projects/${REPO}/board?by=status`, cookie)).text();
+    expect(board).toContain('<span class="fiche-cost mono" title="Claude on this card: 1 call · $0.05">$0.05</span>');
+  });
+
+  it("revises the spec with what the person asks, and keeps the previous version", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    claudeReply({}, { sections: SECTIONS, questions: ["Q1 ?"], note: "v1" });
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeReply(sent, { sections: { ...SECTIONS, besoin: "Reprendre une des quatre dernières semaines." }, questions: [], note: "Quatre semaines." });
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_revise", instruction: "Quatre semaines." }, cookie);
+    const user = ((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "");
+    expect(user).toContain("Reprendre le panier de la semaine dernière en un geste.");
+    expect(user).toContain("- Q1 ?");
+    expect(user).toContain("Quatre semaines.");
+    const page = await (await get(`/projects/${REPO}/cards/${id}?rev=2`, cookie)).text();
+    expect(page).toContain("Reprendre le panier de la semaine dernière en un geste.");
+    expect(page).toContain("Restore this version");
+    expect((await env.DB.prepare("SELECT purpose FROM llm_calls ORDER BY id").all()).results).toEqual([{ purpose: "spec_draft" }, { purpose: "spec_revise" }]);
+  });
+
+  it("says why when Claude declines, and still counts the call", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    claudeReply({}, {}, { stop_reason: "refusal", stop_details: { type: "refusal", category: null, explanation: null }, content: [] });
+    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft", instruction: "Keep this." }, cookie);
+    expect(response.status).toBe(502);
+    const page = await response.text();
+    expect(page).toContain("Claude declined this request.");
+    expect(page).toContain(">Keep this.</textarea>");
+    expect(await env.DB.prepare("SELECT outcome FROM llm_calls").first()).toEqual({ outcome: "refused" });
+    expect((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string | null }>())?.data).toBeNull();
+  });
+
+  it("refuses a tester, and a person past the quota, without calling Claude", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    await grantRole("tess", "tester");
+    const tester = await signIn("tess");
+    expect((await post(`/projects/${REPO}/cards/${id}`, { csrf: tester.csrf, action: "spec_draft" }, tester.cookie)).status).toBe(403);
+    const insert = env.DB.prepare("INSERT INTO llm_calls (login, purpose, cost_micros, outcome) VALUES ('pe', 'spec_draft', 1, 'ok')");
+    await env.DB.batch([insert, insert, insert]);
+    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_draft" }, cookie);
+    expect(response.status).toBe(429);
+    expect(await response.text()).toContain("You reached today&#39;s 3 calls to Claude.");
+  });
+
+  it("saves a spec written by hand", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    const fields = Object.fromEntries(Object.entries(SECTIONS).map(([key, value]) => [`s_${key}`, value]));
+    const response = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_save", rev: "1", ...fields }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=spec_saved#spec`);
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("Edited by hand");
+    expect(page).toContain("No call yet.");
+  });
+});
+
+describe("From a card to a story", () => {
+  it("previews the issue, creates it in the person's name with a link to the card, and keeps the link", async () => {
+    const { cookie, csrf, id } = await writerWithCard();
+    const fields = Object.fromEntries(Object.entries(SECTIONS).map(([key, value]) => [`s_${key}`, value]));
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_save", rev: "1", ...fields }, cookie);
+
+    const preview = await (await get(`/projects/${REPO}/cards/${id}/story`, cookie)).text();
+    expect(preview).toContain(">Besoin</h2>");
+    expect(preview).toContain("Fiche d'origine : <a ");
+    expect(preview).toContain(`href="${BASE}/projects/${REPO}/cards/${id}"`);
+
+    let sent: Record<string, unknown> = {};
+    fetchMock
+      .get("https://api.github.com")
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues`, headers: { authorization: "Bearer gho_session_token" } })
+      .reply((options) => {
+        sent = JSON.parse(String(options.body)) as Record<string, unknown>;
+        return {
+          statusCode: 201,
+          data: JSON.stringify({
+            number: 212,
+            title: sent["title"],
+            state: "open",
+            html_url: `https://github.com/${REPO}/issues/212`,
+            user: { login: "pe" },
+            labels: [{ name: "demande" }],
+            created_at: "2026-10-30T02:00:00Z",
+            updated_at: "2026-10-30T02:00:00Z",
+            closed_at: null,
+          }),
+          responseOptions: { headers: JSON_HEADERS },
+        };
+      });
+    const response = await post(`/projects/${REPO}/cards/${id}/story`, { csrf, title: "Reprendre le panier" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=story`);
+    expect(sent["title"]).toBe("Reprendre le panier");
+    expect(sent["labels"]).toEqual(["demande"]);
+    expect(String(sent["body"])).toContain(`## Besoin\n\n${SECTIONS.besoin}`);
+    expect(String(sent["body"])).toContain(`Fiche d'origine : [C${id}](${BASE}/projects/${REPO}/cards/${id}) dans La Fabrique extraordinaire.`);
+    expect(await env.DB.prepare("SELECT kind, ref FROM card_links WHERE card_id = ? AND kind = 'story'").bind(id).first()).toEqual({ kind: "story", ref: "212" });
+    expect((await logActions()).map((entry) => entry.action)).toContain("card_story_created");
+
+    // Editing the card later keeps the story's link.
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "save", rev: "2", title: "Quick reorder, again", body: "Text", kind: "feature", status: "validated" }, cookie);
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain(`<a target="_blank" rel="noopener noreferrer" href="https://github.com/${REPO}/issues/212">#212</a>`);
+  });
+
+  it("sends back to the spec while a required section is empty", async () => {
+    const { cookie, id } = await writerWithCard();
+    const response = await get(`/projects/${REPO}/cards/${id}/story`, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}#spec`);
+  });
+});
+
+describe("Settings: Claude", () => {
+  it("shows the status, who may use it and the quotas; the spend and the key check to the super admin", async () => {
+    await grantRole("pe", "product_engineer");
+    const pe = await (await get("/settings", (await signIn("pe")).cookie)).text();
+    expect(pe).toContain('<span class="pill ok">Ready</span>');
+    expect(pe).toContain("3 calls per person and day · $1.00 a month");
+    expect(pe).toContain("You today</dt><dd>0 of 3 calls");
+    expect(pe).not.toContain("Check the key");
+
+    const admin = await signIn("admin-one");
+    const page = await (await get("/settings", admin.cookie)).text();
+    expect(page).toContain("Check the key");
+    claudeReply({}, { status: "ok" });
+    const checked = await SELF.fetch(`${BASE}/settings/claude-check`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie: admin.cookie },
+      body: new URLSearchParams({ csrf: admin.csrf }).toString(),
+    });
+    expect(checked.headers.get("location")).toBe("/settings?notice=claude_ok#claude");
+    const after = await (await get("/settings", admin.cookie)).text();
+    expect(after).toContain("This month</dt><dd>1 call · $0.05 of $1.00");
+    expect(after).toContain("Key checked");
+  });
+
+  it("tells how to set the key when it is missing", async () => {
+    const { settingsPage } = await import("../src/settings");
+    const { usageReport, claudeSettings } = await import("../src/llm");
+    const page = settingsPage(
+      { login: "admin-one", role: "super_admin", csrfToken: "x" },
+      {
+        version: "0.1",
+        commit: "abc",
+        claude: { settings: claudeSettings({ ...env, ANTHROPIC_API_KEY: "" }), report: await usageReport(env.DB, "admin-one"), failure: null },
+      },
+    );
+    expect(page).toContain('<span class="pill alert">Not set up</span>');
+    expect(page).toContain("npx wrangler secret put ANTHROPIC_API_KEY");
+  });
+});

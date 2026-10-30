@@ -174,7 +174,41 @@ environment declared with `"signalement": true` in the project's
 `.fabrique.json`, and whose version path answers that `environnement`.
 Screenshots are kept in D1 (no R2 bucket to create).
 
-## 9. Later
+## 9. Claude in La Fabrique (card specs)
+
+On a card, Product Engineers, tech leads and super admins can have Claude
+write and revise its spec. La Fabrique calls the Anthropic API with its
+**own** key: a secret of the Worker, never shown, never a project's key.
+
+1. Create an API key in the Anthropic Console (a workspace of its own makes
+   its spend easy to follow), then give it to the Worker:
+
+   ```bash
+   npx wrangler secret put ANTHROPIC_API_KEY
+   ```
+
+2. The model and the quotas are plain variables in `wrangler.jsonc`, changed
+   by a pull request like the rest:
+   - `CLAUDE_MODEL` (default `claude-opus-5-5`);
+   - `CLAUDE_DAILY_CALLS`: calls per person and day (default 30);
+   - `CLAUDE_MONTHLY_BUDGET_USD`: budget for all of La Fabrique, per
+     calendar month (UTC); once reached, nobody calls Claude until the next
+     month or a higher budget (default 20).
+
+3. **Settings → Claude** says whether the key is there, the model, who may
+   use it and the quotas; for the super admin, what each project, person and
+   card cost this month, the last calls, and **Check the key** (one tiny
+   call).
+
+Every call is recorded in D1 (`llm_calls`: who, when, which card, model,
+tokens, cost in millionths of a dollar, outcome), never its content. The
+cost is computed from the API's own token counts and the prices in
+`src/llm.ts`; a model without a known price is counted without a cost.
+What a card sends to Anthropic: its text and tags, its spec, the titles of
+the project's other cards and open stories, and the project's `CLAUDE.md`
+(or first documentation page).
+
+## 10. Later
 
 A custom domain (for example `fabrique.epicerieextraordinaire.com`) is
 attached from the Workers dashboard; add its `/auth/callback` to the GitHub
