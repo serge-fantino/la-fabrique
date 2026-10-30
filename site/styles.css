@@ -2462,8 +2462,7 @@ p.about-version-choice {
   }
 }
 
-.claude-job-log summary,
-.claude-change summary {
+.claude-job-log summary {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
@@ -2502,13 +2501,38 @@ p.about-version-choice {
   background: color-mix(in srgb, var(--bon) 10%, transparent);
 }
 
-.claude-draft,
-.claude-change form {
+/* A request to Claude: a button that unfolds what Claude will do, the
+   field and "Ask Claude"; once sent, the job's widget takes its place. */
+.claude-panel {
   margin: 1rem 0;
 }
 
-.claude-draft textarea,
-.claude-change textarea {
+.claude-panel > summary {
+  list-style: none;
+}
+
+.claude-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.claude-panel[open] > summary {
+  display: none;
+}
+
+.claude-panel form {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.claude-panel form > .help {
+  margin-top: 0;
+  color: var(--encre-faint);
+  font-size: 0.92rem;
+}
+
+.claude-panel textarea {
   width: 100%;
   background: #fff;
 }
