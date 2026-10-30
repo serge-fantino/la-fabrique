@@ -1,8 +1,20 @@
 [
   {
+    "version": "0.41",
+    "date": "2026-10-30",
+    "heure": "18:15",
+    "titre": "Keep a project's report kit up to date",
+    "changements": [
+      "Setup → Connected app says which version of the report kit the project keeps, against the latest, and what the app's relay must follow.",
+      "One button proposes the update as a pull request on the integration branch, under your GitHub name: the project reviews it, tries it on int and merges it.",
+      "La Fabrique's pull requests carry the project's marker for changes nothing a user sees (version.coulisses), so the project's checks let them through."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.40",
     "date": "2026-10-30",
-    "heure": "16:55",
+    "heure": "17:58",
     "titre": "Defects tab, and what a defect is about",
     "changements": [
       "Each project has a Defects tab: the issues labelled bug, open or closed, with the story and the version each is about, who reported it, its screenshot, and those left to triage.",
