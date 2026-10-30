@@ -13,7 +13,8 @@ export type ProjectTab =
   | "production"
   | "delivery"
   | "activity"
-  | "requests";
+  | "requests"
+  | "setup";
 
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "overview", label: "Overview", path: "" },
@@ -24,6 +25,7 @@ const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "delivery", label: "Delivery", path: "/delivery" },
   { id: "activity", label: "Activity", path: "/activity" },
   { id: "requests", label: "Requests", path: "/requests" },
+  { id: "setup", label: "Setup", path: "/setup" },
 ];
 
 // A project as shown to someone: with the reference branch chosen in the

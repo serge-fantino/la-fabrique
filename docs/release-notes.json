@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.16",
+    "date": "2026-10-30",
+    "heure": "10:12",
+    "titre": "Setup",
+    "changements": [
+      "A Setup tab on each project: what La Fabrique needs to follow it well, read from its files and GitHub, each item done, missing or optional, with how to do it and an example.",
+      "An integration branch is optional; the Setup tab explains how to add one.",
+      "La Fabrique serves its own .fabrique.json and release-notes format, which the how-to links open."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.15",
     "date": "2026-10-30",
     "heure": "10:05",
