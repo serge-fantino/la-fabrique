@@ -7,8 +7,10 @@ import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showNewProject, showProject, showProjects } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
+import { showDoc } from "./docs";
 
 const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check)?$/;
+const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import stylesCss from "../site/styles.css";
@@ -72,6 +74,23 @@ export default {
       return redirect("/no-access", [await destroySession(request, env.DB)]);
     }
     const viewer = state.kind === "signed_in" ? state.viewer : undefined;
+
+    const docRoute = DOC_ROUTE.exec(pathname);
+    if (docRoute) {
+      if (!viewer) return redirect("/");
+      if (method !== "GET") return methodNotAllowed();
+      const repo = docRoute[1] ?? "";
+      let path: string;
+      try {
+        path = decodeURIComponent(docRoute[2] ?? "");
+      } catch {
+        path = "";
+      }
+      if (!isRepoName(repo) || !path) {
+        return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
+      }
+      return showDoc(env, viewer, repo, path);
+    }
 
     const projectRoute = PROJECT_ROUTE.exec(pathname);
     if (projectRoute) {

@@ -9,6 +9,10 @@ export interface ConfigCheck {
   config: FabriqueConfig | null;
   errors: string[];
   checkedAt: string;
+  committedAt: string | null;
+  // Markdown files published by `documentation[]`; null on checks made
+  // before pages were listed.
+  docPages: string[] | null;
 }
 
 export interface Project {
@@ -35,11 +39,13 @@ interface ProjectDbRow {
   config: string | null;
   errors: string | null;
   checked_at: string | null;
+  committed_at: string | null;
+  doc_pages: string | null;
 }
 
 const PROJECT_QUERY = `
   SELECT p.repo, p.installation_id, p.added_at, p.added_by,
-         c.branch, c.commit_sha, c.config, c.errors, c.checked_at
+         c.branch, c.commit_sha, c.config, c.errors, c.checked_at, c.committed_at, c.doc_pages
   FROM projects p
   LEFT JOIN project_configs c ON c.id = (
     SELECT id FROM project_configs WHERE repo = p.repo ORDER BY checked_at DESC, id DESC LIMIT 1
@@ -59,6 +65,8 @@ function toProject(row: ProjectDbRow): Project {
             config: row.config ? (JSON.parse(row.config) as FabriqueConfig) : null,
             errors: JSON.parse(row.errors ?? "[]") as string[],
             checkedAt: row.checked_at,
+            committedAt: row.committed_at,
+            docPages: row.doc_pages ? (JSON.parse(row.doc_pages) as string[]) : null,
           }
         : null,
   };
@@ -104,12 +112,31 @@ async function readTree(token: string, repo: string, sha: string): Promise<RepoT
   return tree;
 }
 
-async function branchHead(token: string, repo: string, branch: string): Promise<string> {
-  const data = await githubJson<{ commit: { sha: string } }>(
+interface Head {
+  sha: string;
+  committedAt: string | null;
+}
+
+async function branchHead(token: string, repo: string, branch: string): Promise<Head> {
+  const data = await githubJson<{ commit: { sha: string; commit?: { committer?: { date?: string } } } }>(
     token,
     `/repos/${repo}/branches/${encodeURIComponent(branch)}`,
   );
-  return data.commit.sha;
+  return { sha: data.commit.sha, committedAt: data.commit.commit?.committer?.date ?? null };
+}
+
+function listDocPages(config: FabriqueConfig | null, tree: RepoTree): string[] {
+  const pages = new Set<string>();
+  for (const entry of config?.documentation ?? []) {
+    if (!entry.chemin.endsWith("/")) {
+      pages.add(entry.chemin);
+      continue;
+    }
+    for (const file of tree.files) {
+      if (file.startsWith(entry.chemin) && file.toLowerCase().endsWith(".md")) pages.add(file);
+    }
+  }
+  return [...pages].sort();
 }
 
 async function cachedCheck(db: D1Database, repo: string, sha: string): Promise<ConfigCheck | null> {
@@ -117,11 +144,11 @@ async function cachedCheck(db: D1Database, repo: string, sha: string): Promise<C
     .prepare(
       `UPDATE project_configs SET checked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
        WHERE repo = ? AND commit_sha = ?
-       RETURNING branch, commit_sha, config, errors, checked_at`,
+       RETURNING branch, commit_sha, config, errors, checked_at, committed_at, doc_pages`,
     )
     .bind(repo, sha)
     .first<Omit<ProjectDbRow, "repo" | "installation_id" | "added_at" | "added_by">>();
-  if (!row) return null;
+  if (!row || row.doc_pages === null) return null;
   return toProject({ ...row, repo, installation_id: 0, added_at: "", added_by: "" }).check;
 }
 
@@ -130,9 +157,10 @@ async function checkCommit(
   token: string,
   repo: string,
   branch: string,
-  sha: string,
+  head: Head,
   force: boolean,
 ): Promise<ConfigCheck> {
+  const sha = head.sha;
   if (!force) {
     const cached = await cachedCheck(env.DB, repo, sha);
     if (cached) return cached;
@@ -154,17 +182,36 @@ async function checkCommit(
     else if (response.status !== 404) throw new GitHubError(response.status, "Could not read .fabrique.json");
   }
 
+  const docPages = listDocPages(result.config, tree);
   const row = await env.DB.prepare(
-    `INSERT INTO project_configs (repo, branch, commit_sha, config, errors) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO project_configs (repo, branch, commit_sha, config, errors, committed_at, doc_pages)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (repo, commit_sha) DO UPDATE SET
        branch = excluded.branch, config = excluded.config, errors = excluded.errors,
+       committed_at = excluded.committed_at, doc_pages = excluded.doc_pages,
        checked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      RETURNING checked_at`,
   )
-    .bind(repo, branch, sha, result.config ? JSON.stringify(result.config) : null, JSON.stringify(result.errors))
+    .bind(
+      repo,
+      branch,
+      sha,
+      result.config ? JSON.stringify(result.config) : null,
+      JSON.stringify(result.errors),
+      head.committedAt,
+      JSON.stringify(docPages),
+    )
     .first<{ checked_at: string }>();
 
-  return { branch, commitSha: sha, config: result.config, errors: result.errors, checkedAt: row?.checked_at ?? "" };
+  return {
+    branch,
+    commitSha: sha,
+    config: result.config,
+    errors: result.errors,
+    checkedAt: row?.checked_at ?? "",
+    committedAt: head.committedAt,
+    docPages,
+  };
 }
 
 export type CheckOutcome = { ok: true; check: ConfigCheck } | { ok: false; message: string };
@@ -204,11 +251,11 @@ export async function checkPushedCommit(
   env: Env,
   project: Project,
   branch: string,
-  sha: string,
+  head: Head,
 ): Promise<CheckOutcome> {
   try {
     const token = await installationToken(env, project.installationId);
-    return { ok: true, check: await checkCommit(env, token, project.repo, branch, sha, false) };
+    return { ok: true, check: await checkCommit(env, token, project.repo, branch, head, false) };
   } catch (error) {
     return { ok: false, message: describeFailure(error) };
   }
