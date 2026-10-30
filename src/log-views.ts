@@ -31,6 +31,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return `set the priority of ${story}: ${text(d["from"]) || "none"} → ${text(d["to"]) || "none"}`;
     case "config_change_proposed":
       return `proposed a change of <code>${text(d["key"])}</code> in .fabrique.json: <a href="https://github.com/${escapeHtml(repo)}/pull/${entry.issue ?? ""}">PR #${entry.issue ?? ""}</a>`;
+    case "defect_linked":
+      return `triaged defect ${issue(d["defect"])}: ${story ? `linked to ${story}` : "linked to no story"}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>)` : ""}${d["triaged"] ? ", no longer to triage" : ""}`;
     case "kit_update_proposed":
       return `proposed the report kit <span class="mono">${text(d["to"])}</span>${d["from"] ? ` (from <span class="mono">${text(d["from"])}</span>)` : ""}: <a href="https://github.com/${escapeHtml(repo)}/pull/${entry.issue ?? ""}">PR #${entry.issue ?? ""}</a>`;
     case "project_added":

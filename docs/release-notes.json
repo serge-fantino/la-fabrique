@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.43",
+    "date": "2026-10-30",
+    "heure": "19:00",
+    "titre": "Triage defects, and find them in To test",
+    "changements": [
+      "Defects tab: testers and up triage a defect with the same choice as the report form, a version and one of its stories; La Fabrique says it on GitHub, on the story and on the defect, and removes the to triage label.",
+      "To test shows each story with its defects as triage left them, and lists the defects not linked to a story yet, with a link to triage them.",
+      "Each triage is in the project's log."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.42",
     "date": "2026-10-30",
     "heure": "18:25",

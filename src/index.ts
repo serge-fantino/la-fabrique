@@ -11,7 +11,7 @@ import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
 import { CLAUDE_CHECK_PATH, REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { checkKey, claudeSettings, usageReport } from "./llm";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
@@ -240,7 +240,10 @@ const app = {
         return method === "GET" ? showProduction(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/defects") {
-        return method === "GET" ? showDefects(request, env, viewer, repo) : methodNotAllowed();
+        if (method === "GET") return showDefects(request, env, viewer, repo);
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        return form ? triage(request, form, env, viewer, repo) : forbidden(viewer);
       }
       if (projectRoute[2] === "/stories") {
         return method === "GET" ? showStories(request, env, viewer, repo) : methodNotAllowed();

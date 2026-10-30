@@ -20,6 +20,13 @@ const WORDS = {
       `Défaut signalé depuis l'app, sur ${environment}${story ? `, en testant #${story}` : ""}.`,
     onIntThen: (stories: number[]) => `Sur ${stories.length > 1 ? "int à ce moment-là" : "int"} : ${stories.map((n) => `#${n}`).join(", ")}.`,
     aboutRelease: (version: string, title: string | null) => `Concerne la version ${version}${title ? ` « ${title} »` : ""}.`,
+    defectLinked: (login: string, defect: number) => `Défaut #${defect} relié à cette story par @${login}`,
+    linkedTo: (login: string, story: number | null, release: string | null) =>
+      story !== null
+        ? `Relié à #${story}${release ? ` (version ${release})` : ""} par @${login}, via La Fabrique extraordinaire`
+        : release
+          ? `Concerne la version ${release}, sans story particulière (@${login}, via La Fabrique extraordinaire)`
+          : `Relié à aucune story (@${login}, via La Fabrique extraordinaire)`,
     context: "Contexte",
     contextRows: { environment: "Environnement", version: "Version", page: "Page", component: "Composant", viewport: "Écran", userAgent: "Navigateur" },
     deployment: "déploiement",
@@ -47,6 +54,13 @@ const WORDS = {
       `Defect reported from the app, on ${environment}${story ? `, while testing #${story}` : ""}.`,
     onIntThen: (stories: number[]) => `On int at the time: ${stories.map((n) => `#${n}`).join(", ")}.`,
     aboutRelease: (version: string, title: string | null) => `About version ${version}${title ? ` “${title}”` : ""}.`,
+    defectLinked: (login: string, defect: number) => `Defect #${defect} linked to this story by @${login}`,
+    linkedTo: (login: string, story: number | null, release: string | null) =>
+      story !== null
+        ? `Linked to #${story}${release ? ` (version ${release})` : ""} by @${login}, via La Fabrique extraordinaire`
+        : release
+          ? `About version ${release}, no particular story (@${login}, via La Fabrique extraordinaire)`
+          : `Linked to no story (@${login}, via La Fabrique extraordinaire)`,
     context: "Context",
     contextRows: { environment: "Environment", version: "Version", page: "Page", component: "Component", viewport: "Screen", userAgent: "Browser" },
     deployment: "deployment",

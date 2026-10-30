@@ -19,6 +19,8 @@ import { storiesPage } from "./stories-views";
 import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
 import { readSnapshot } from "./snapshots";
 import { defectRows, defectsPage, filterDefects, readDefectFilters } from "./defects-tab";
+import { defectTargets } from "./defect-targets";
+import { triageDefect } from "./defect-triage";
 import { appLink, appSection, changeProjectApp, type AppActionFailure } from "./project-app";
 import { projectKit, proposeKitUpdate, relayChanges } from "./kit-update";
 import { productionPage } from "./production-views";
@@ -549,11 +551,15 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
     const [release, previous] = releases;
     if (release) latest = { release, stories: storiesBetween(stories.stories, previous, release) };
   }
+  const unlinked = (await defectRows(env, view, stories.stories))
+    .filter((row) => row.state === "open" && row.story === null)
+    .map(({ number, title, url, triage }) => ({ number, title, url, triage }));
   return {
     status: production.status,
     stories: stories.stories,
     environment: environment ? { name: environment[0], url: environment[1].url } : null,
     latest,
+    unlinked,
     failure: production.failure ?? stories.failure,
   };
 }
@@ -674,13 +680,50 @@ export async function launchClaudeOn(request: Request, form: FormData, env: Env,
 }
 
 // The project's defects: issues labelled bug, with their story and version.
-export async function showDefects(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+export async function showDefects(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  failed?: { message: string; status: number },
+): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const filters = readDefectFilters(new URL(request.url).searchParams);
-  const [{ view, cookies }, stories] = await Promise.all([projectView(request, env, project, viewer), loadStories(env, project)]);
+  const params = new URL(request.url).searchParams;
+  const filters = readDefectFilters(params);
+  const canTriage = can(viewer.role, "validate");
+  const [{ view, cookies }, stories, targets] = await Promise.all([
+    projectView(request, env, project, viewer),
+    loadStories(env, project),
+    canTriage ? defectTargets(env, project) : Promise.resolve([]),
+  ]);
   const all = await defectRows(env, project, stories.stories);
-  return html(defectsPage(viewer, view, { rows: filterDefects(all, filters), all, stories: stories.stories, filters, failure: stories.failure }), { cookies });
+  return html(
+    defectsPage(viewer, view, {
+      rows: filterDefects(all, filters),
+      all,
+      stories: stories.stories,
+      filters,
+      failure: failed?.message ?? stories.failure,
+      targets,
+      canTriage,
+      notice: params.get("notice"),
+    }),
+    { cookies, status: failed?.status ?? 200 },
+  );
+}
+
+// Triage a defect from the Defects tab: testers and up.
+export async function triage(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!can(viewer.role, "validate")) return forbidden(viewer);
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const stories = await loadStories(env, project);
+  const outcome = await triageDefect(env, project, stories.stories, viewer.login, form);
+  if (!outcome.ok) return showDefects(request, env, viewer, repo, { message: outcome.message, status: outcome.status });
+  const back = String(form.get("back") ?? "");
+  const query = back.startsWith("?") ? back.slice(1) : "";
+  return redirect(`${projectUrl(project.repo)}/defects?${query ? `${query}&` : ""}notice=${outcome.changed ? "triaged" : "unchanged"}`);
 }
 
 const KIT_FAILURES: Record<string, string> = {
