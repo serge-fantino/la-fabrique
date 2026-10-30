@@ -72,3 +72,51 @@ export async function destroySession(request: Request, db: D1Database): Promise<
 export function destroySessionsOf(db: D1Database, login: string): D1PreparedStatement {
   return db.prepare("DELETE FROM sessions WHERE github_login = ?").bind(login);
 }
+
+interface StoredTokens {
+  id_hash: string;
+  access_token: string;
+  access_token_expires_at: string | null;
+  refresh_token: string | null;
+  refresh_token_expires_at: string | null;
+}
+
+// The signed-in person's GitHub token, refreshed when it has expired.
+// Null when GitHub no longer accepts the session's tokens.
+export async function userToken(
+  request: Request,
+  db: D1Database,
+  refresh: (refreshToken: string) => Promise<GitHubTokens | null>,
+): Promise<string | null> {
+  const id = readCookie(request, SESSION_COOKIE);
+  if (!id) return null;
+  const row = await db
+    .prepare(
+      `SELECT id_hash, access_token, access_token_expires_at, refresh_token, refresh_token_expires_at
+       FROM sessions WHERE id_hash = ?`,
+    )
+    .bind(await sha256Hex(id))
+    .first<StoredTokens>();
+  if (!row) return null;
+
+  const soon = new Date(Date.now() + 60 * 1000).toISOString();
+  if (!row.access_token_expires_at || row.access_token_expires_at > soon) return row.access_token;
+  if (!row.refresh_token || (row.refresh_token_expires_at && row.refresh_token_expires_at <= soon)) return null;
+
+  const tokens = await refresh(row.refresh_token);
+  if (!tokens) return null;
+  await db
+    .prepare(
+      `UPDATE sessions SET access_token = ?, access_token_expires_at = ?, refresh_token = ?, refresh_token_expires_at = ?
+       WHERE id_hash = ?`,
+    )
+    .bind(
+      tokens.accessToken,
+      tokens.accessTokenExpiresAt,
+      tokens.refreshToken ?? row.refresh_token,
+      tokens.refreshTokenExpiresAt ?? row.refresh_token_expires_at,
+      row.id_hash,
+    )
+    .run();
+  return tokens.accessToken;
+}

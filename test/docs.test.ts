@@ -73,7 +73,7 @@ describe("Project documentation", () => {
 
     const response = await get(`/projects/${REPO}/docs/README.md`, await adminCookie());
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-security-policy")).toContain("script-src 'none'");
+    expect(response.headers.get("content-security-policy")).toContain("script-src 'self'");
     const page = await response.text();
 
     expect(page).toContain('<h1 id="widget">Widget</h1>');

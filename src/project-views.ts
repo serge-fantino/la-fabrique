@@ -5,12 +5,13 @@ import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views"
 
 const projectPath = projectUrl;
 
-export type ProjectTab = "overview" | "stories" | "production";
+export type ProjectTab = "overview" | "stories" | "production" | "requests";
 
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "overview", label: "Overview", path: "" },
   { id: "stories", label: "Stories", path: "/stories" },
   { id: "production", label: "Production", path: "/production" },
+  { id: "requests", label: "Requests", path: "/requests" },
 ];
 
 export function projectHeader(project: Project, active: ProjectTab, heading?: string): string {

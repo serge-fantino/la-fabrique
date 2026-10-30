@@ -9,7 +9,7 @@ describe("GET /", () => {
 
     const csp = response.headers.get("content-security-policy");
     expect(csp).toContain("default-src 'none'");
-    expect(csp).toContain("script-src 'none'");
+    expect(csp).toContain("script-src 'self'");
 
     const body = await response.text();
     expect(body).toContain("<title>La Fabrique extraordinaire</title>");

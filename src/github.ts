@@ -15,12 +15,7 @@ function inSeconds(seconds: number | undefined): string | null {
 }
 
 // GitHub answers token errors with HTTP 200 and an `error` field.
-export async function exchangeCode(
-  clientId: string,
-  clientSecret: string,
-  code: string,
-  redirectUri: string,
-): Promise<GitHubTokens | null> {
+async function requestToken(params: Record<string, string>): Promise<GitHubTokens | null> {
   const response = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: {
@@ -28,12 +23,7 @@ export async function exchangeCode(
       "content-type": "application/json",
       "user-agent": USER_AGENT,
     },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-    }),
+    body: JSON.stringify(params),
   });
   if (!response.ok) return null;
   const data = (await response.json()) as TokenResponse;
@@ -44,6 +34,28 @@ export async function exchangeCode(
     refreshToken: data.refresh_token ?? null,
     refreshTokenExpiresAt: inSeconds(data.refresh_token_expires_in),
   };
+}
+
+export function exchangeCode(
+  clientId: string,
+  clientSecret: string,
+  code: string,
+  redirectUri: string,
+): Promise<GitHubTokens | null> {
+  return requestToken({ client_id: clientId, client_secret: clientSecret, code, redirect_uri: redirectUri });
+}
+
+export function refreshUserToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<GitHubTokens | null> {
+  return requestToken({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
 }
 
 export interface GitHubUser {
