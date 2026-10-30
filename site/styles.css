@@ -863,3 +863,110 @@ textarea {
 .nowrap {
   white-space: nowrap;
 }
+
+.month-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.month-nav a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.calendar {
+  table-layout: fixed;
+}
+
+.calendar th {
+  text-align: center;
+}
+
+.calendar td {
+  vertical-align: top;
+  height: 5.5rem;
+  padding: 0.35rem;
+  border: 1px solid var(--rule);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.calendar td.outside {
+  color: var(--encre-faint);
+  background: color-mix(in srgb, var(--encre) 3%, transparent);
+}
+
+.day-number {
+  display: block;
+  font-family: var(--mono);
+  color: var(--encre-faint);
+}
+
+.day-full {
+  display: none;
+}
+
+.epic {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.5rem;
+}
+
+.epic h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.release-note {
+  border-top: 1px solid var(--rule);
+  padding-top: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.release-note h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.release-note p {
+  margin: 0.25rem 0;
+}
+
+.closed-stories {
+  font-size: 0.92rem;
+}
+
+@media (max-width: 640px) {
+  .calendar thead {
+    display: none;
+  }
+
+  .calendar td {
+    height: auto;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .calendar td.empty,
+  .calendar td.outside {
+    display: none;
+  }
+
+  .calendar .day-full {
+    display: inline;
+  }
+
+  .calendar .day-short {
+    display: none;
+  }
+
+  .calendar .day-number {
+    font-weight: 500;
+    color: var(--encre);
+  }
+}
