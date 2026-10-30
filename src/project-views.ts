@@ -17,6 +17,7 @@ export type ProjectTab =
   | "delivery"
   | "activity"
   | "requests"
+  | "log"
   | "setup";
 
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
@@ -31,6 +32,7 @@ const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "delivery", label: "Delivery", path: "/delivery" },
   { id: "activity", label: "Activity", path: "/activity" },
   { id: "requests", label: "Requests", path: "/requests" },
+  { id: "log", label: "Log", path: "/log" },
   { id: "setup", label: "Setup", path: "/setup" },
 ];
 
