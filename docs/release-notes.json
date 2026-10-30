@@ -2,7 +2,7 @@
   {
     "version": "0.45",
     "date": "2026-10-30",
-    "heure": "20:00",
+    "heure": "19:40",
     "titre": "Defects are about what the release notes say",
     "changements": [
       "What a defect can be about, when reported from a project's app or triaged, now comes from the release notes only: each version with the stories its entry declares. Nothing is guessed any more from branches or dates, so stories left open no longer show up.",
