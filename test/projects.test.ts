@@ -134,7 +134,7 @@ describe("Adding a project", () => {
 
     const { cookie } = await signIn("admin-one");
     const page = await (await get(`/projects/${REPO}`, cookie)).text();
-    expect(page).toContain("<h1>Widget</h1>");
+    expect(page).toContain('<a class="project-name" href="/projects/acme/widget">Widget</a>');
     expect(page).toContain("A fake project used by the tests.");
     expect(page).toContain('href="https://github.com/acme/widget"');
     expect(page).toContain('href="https://int.widget.example"');
@@ -189,7 +189,7 @@ describe("Adding a project", () => {
 
     await post("/projects", { csrf, repo: REPO }, cookie);
     const page = await (await get(`/projects/${REPO}`, cookie)).text();
-    expect(page).toContain("<h1>Widget release</h1>");
+    expect(page).toContain('<a class="project-name" href="/projects/acme/widget">Widget release</a>');
     expect(page).toContain("Read from <code>release</code>");
   });
 });
@@ -200,7 +200,7 @@ describe("Project pages", () => {
     await grantRole("qa", "tester");
     const { cookie } = await signIn("qa");
     const page = await (await get(`/projects/${REPO}`, cookie)).text();
-    expect(page).toContain("<h1>Widget</h1>");
+    expect(page).toContain('<a class="project-name" href="/projects/acme/widget">Widget</a>');
     expect(page).not.toContain("Check again");
     expect(await (await get("/", cookie)).text()).toContain("Widget");
   });
@@ -226,7 +226,7 @@ describe("Push webhook", () => {
 
     const { cookie } = await signIn("admin-one");
     const page = await (await get(`/projects/${REPO}`, cookie)).text();
-    expect(page).toContain("<h1>Widget 2</h1>");
+    expect(page).toContain('<a class="project-name" href="/projects/acme/widget">Widget 2</a>');
     expect(page).toContain("2222222");
   });
 

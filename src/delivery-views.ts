@@ -1,6 +1,6 @@
 import { barChart } from "./charts";
 import { WORKFLOW_LABELS, type DeliveryView, type Run, type WorkflowSummary } from "./delivery";
-import { notice, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -114,5 +114,7 @@ export function deliveryPage(viewer: Viewer, project: Project, view: DeliveryVie
       ${notice(view.failure, "error")}
       ${body}`,
     viewer,
+    [],
+    projectContext(project),
   );
 }

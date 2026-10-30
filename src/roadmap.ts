@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import { githubFetch, installationToken } from "./github-app";
-import { describeFailure, type Project } from "./projects";
-import { readSnapshot, writeSnapshot } from "./snapshots";
+import { describeFailure, type ConfigCheck, type Project } from "./projects";
+import { readSnapshot, writeSnapshot, onBranch } from "./snapshots";
 import type { Story } from "./stories";
 import { githubContentsPath } from "./urls";
 
@@ -64,17 +64,25 @@ interface ReleasesSnapshot {
   releases: Release[];
 }
 
-export async function loadReleases(env: Env, project: Project): Promise<{ releases: Release[]; failure?: string }> {
-  const file = project.check?.config?.version?.fichier;
-  const sha = project.check?.commitSha;
+// The release notes as they stand at `check`'s commit: production's, or the
+// reference branch's when one is chosen.
+export async function loadReleases(
+  env: Env,
+  project: Project,
+  check: ConfigCheck | null = project.check,
+  ref: string | null = null,
+): Promise<{ releases: Release[]; failure?: string }> {
+  const file = check?.config?.version?.fichier;
+  const sha = check?.commitSha;
   if (!file || !sha) return { releases: [] };
-  const snapshot = await readSnapshot<ReleasesSnapshot>(env.DB, project.repo, RELEASES);
+  const kind = onBranch(RELEASES, ref);
+  const snapshot = await readSnapshot<ReleasesSnapshot>(env.DB, project.repo, kind);
   if (snapshot?.data.commitSha === sha) return { releases: snapshot.data.releases };
   try {
     const token = await installationToken(env, project.installationId);
     const response = await githubFetch(token, githubContentsPath(project.repo, file, sha), "application/vnd.github.raw+json");
     const releases = response.ok ? parseReleases(await response.text()) : [];
-    await writeSnapshot(env.DB, project.repo, RELEASES, { commitSha: sha, releases });
+    await writeSnapshot(env.DB, project.repo, kind, { commitSha: sha, releases });
     return { releases };
   } catch (error) {
     return { releases: snapshot?.data.releases ?? [], failure: describeFailure(error) };

@@ -31,17 +31,24 @@ function roleOptions(selected?: Role): string {
   ).join("");
 }
 
-export function layout(title: string, body: string, viewer?: Viewer, scripts: string[] = []): string {
+// `context` is the left part of the line under the bar (a project and its
+// branch); the signed-in person is on its right.
+export function layout(title: string, body: string, viewer?: Viewer, scripts: string[] = [], context = ""): string {
   const nav = viewer
     ? `<nav class="nav">
         <a href="/projects">Projects</a>
         ${viewer.role === "super_admin" ? `<a href="/people">People</a>` : ""}
-        <span class="who"><span class="mono">@${escapeHtml(viewer.login)}</span>
-          <span class="pill">${ROLE_LABELS[viewer.role]}</span></span>
         <form method="post" action="/auth/logout">${csrfField(viewer)}
           <button type="submit" class="button quiet">Sign out</button>
         </form>
       </nav>`
+    : "";
+  const subbar = viewer
+    ? `<div class="subbar">
+        <div class="subbar-context">${context}</div>
+        <span class="who"><span class="mono">@${escapeHtml(viewer.login)}</span>
+          <span class="pill">${ROLE_LABELS[viewer.role]}</span></span>
+      </div>`
     : "";
   return `<!doctype html>
 <html lang="en">
@@ -53,13 +60,15 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" />
     <link rel="stylesheet" href="/styles.css" />
-    ${scripts.map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("")}
+    ${["/fabrique.js", ...scripts].map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("")}
   </head>
   <body>
+    <div class="loading" data-loading aria-hidden="true"><i></i></div>
     <header class="bar">
-      <a class="brand" href="/">La Fabrique extraordinaire</a>
+      <a class="brand" href="/">La Fabrique<span class="brand-long">extraordinaire</span></a>
       ${nav}
     </header>
+    ${subbar}
     <main>
 ${body}
     </main>

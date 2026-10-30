@@ -2,7 +2,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 describe("GET /", () => {
-  it("serves the home page with security headers and no script", async () => {
+  it("serves the home page with security headers and no inline script", async () => {
     const response = await SELF.fetch("https://la-fabrique.test/");
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
@@ -14,7 +14,7 @@ describe("GET /", () => {
     const body = await response.text();
     expect(body).toContain("<title>La Fabrique extraordinaire</title>");
     expect(body).toContain('href="/auth/login"');
-    expect(body).not.toMatch(/<script\b/i);
+    expect(body).not.toMatch(/<script(?![^>]*\bsrc=)/i);
   });
 
   it("shows only the no-access page to an account without a role", async () => {

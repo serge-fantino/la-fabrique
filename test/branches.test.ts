@@ -66,15 +66,18 @@ describe("Reading another branch", () => {
     const { cookie } = await signIn("admin-one");
 
     const page = await (await get(`/projects/${REPO}?ref=integration`, cookie)).text();
-    expect(page).toContain("Showing branch <code>integration</code> at <span class=\"mono\">3333333</span>");
+    expect(page).toContain("Reference branch <code>integration</code>; production is <code>main</code>.");
+    expect(page).toContain("Read from <code>integration</code> at");
+    expect(page).toContain(">3333333</a>");
     expect(page).toContain(`href="/projects/${REPO}/docs/docs/intro.md?ref=integration">intro</a>`);
-    expect(page).toContain('aria-current="page"><code>integration</code>');
+    expect(page).toContain('<summary><span class="muted">Branch</span> <code>integration</code></summary>');
+    expect(page).toContain('aria-current="true"><code>integration</code>');
 
     const list = await (await get("/projects", cookie)).text();
     expect(list).toContain(">Widget</a>");
     expect(list).not.toContain("Widget (next)");
     const production = await (await get(`/projects/${REPO}`, cookie)).text();
-    expect(production).not.toContain("Showing branch");
+    expect(production).not.toContain("Reference branch");
   });
 
   it("renders a documentation page at the branch's commit and keeps its links on that branch", async () => {
@@ -120,6 +123,90 @@ describe("Reading another branch", () => {
   it("ignores branch names that are not branch names", async () => {
     await seed();
     const page = await (await get(`/projects/${REPO}?ref=..%2Fsecret`, (await signIn("admin-one")).cookie)).text();
-    expect(page).not.toContain("Showing branch");
+    expect(page).not.toContain("Reference branch");
+  });
+});
+
+function refCookie(response: Response): string {
+  const header = response.headers.get("set-cookie") ?? "";
+  const match = /__Host-lf_ref=[^;]*/.exec(header);
+  return match?.[0] ?? "";
+}
+
+describe("The reference branch of the header", () => {
+  it("is remembered per project, like a checkout, until production is chosen again", async () => {
+    await seed();
+    mockIntegration();
+    const { cookie } = await signIn("admin-one");
+
+    const chosen = await get(`/projects/${REPO}?ref=integration`, cookie);
+    const ref = refCookie(chosen);
+    expect(ref).toMatch(/^__Host-lf_ref=.+/);
+    expect(chosen.headers.get("set-cookie")).toContain("Secure");
+
+    const later = await (await get(`/projects/${REPO}`, `${cookie}; ${ref}`)).text();
+    expect(later).toContain("Reference branch <code>integration</code>");
+    expect(later).toContain(`<a href="/projects/${REPO}?ref=">Back to production</a>`);
+
+    const back = await get(`/projects/${REPO}?ref=`, `${cookie}; ${ref}`);
+    expect(refCookie(back)).toBe("__Host-lf_ref=");
+    expect(await back.text()).not.toContain("Reference branch");
+  });
+
+  it("forgets a branch that no longer exists and shows production", async () => {
+    await seed();
+    github()
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/branches/gone` }).reply(404, JSON.stringify({ message: "Branch not found" }), JSON_HEADERS);
+    const { cookie } = await signIn("admin-one");
+    const saved = `__Host-lf_ref=${encodeURIComponent(JSON.stringify({ [REPO]: "gone" }))}`;
+
+    const response = await get(`/projects/${REPO}`, `${cookie}; ${saved}`);
+    expect(response.status).toBe(404);
+    expect(refCookie(response)).toBe("__Host-lf_ref=");
+    const page = await response.text();
+    expect(page).toContain("There is no branch `gone` in acme/widget.");
+    expect(page).toContain('<summary><span class="muted">Branch</span> <code>main</code></summary>');
+  });
+
+  it("lists every branch for the menu, production and integration first, and caches the list", async () => {
+    await seed();
+    github()
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github()
+      .intercept({ path: (path) => path.startsWith(`/repos/${REPO}/branches`) && path.includes("per_page=100") })
+      .reply(200, JSON.stringify([{ name: "feature/b" }, { name: "main" }, { name: "claude/a" }, { name: "integration" }]), JSON_HEADERS);
+    const { cookie } = await signIn("admin-one");
+
+    const response = await get(`/projects/${REPO}/branches`, cookie);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toEqual({ branches: ["main", "integration", "claude/a", "feature/b"] });
+    // Read again from the cache, without GitHub.
+    expect(await (await get(`/projects/${REPO}/branches`, cookie)).json()).toEqual({
+      branches: ["main", "integration", "claude/a", "feature/b"],
+    });
+
+    const page = await (await get(`/projects/${REPO}`, cookie)).text();
+    expect(page).toContain('<option value="feature/b"></option>');
+  });
+
+  it("keeps the branch list for people signed in only", async () => {
+    await seed();
+    const response = await get(`/projects/${REPO}/branches`);
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/");
+  });
+
+  it("serves the shared script, which has the loading bar and the branch menu", async () => {
+    const response = await get("/fabrique.js");
+    expect(response.headers.get("content-type")).toContain("text/javascript");
+    const source = await response.text();
+    expect(source).toContain("[data-loading]");
+    expect(source).toContain("[data-branch-menu]");
+    const page = await (await get("/projects", (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain('<script src="/fabrique.js" defer></script>');
+    expect(page).toContain('<div class="loading" data-loading aria-hidden="true"><i></i></div>');
   });
 });

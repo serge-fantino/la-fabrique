@@ -23,12 +23,20 @@ export async function writeSnapshot(db: D1Database, repo: string, kind: string, 
   return at;
 }
 
-// Keeps the data but makes the next reader fetch again.
+// Keeps the data but makes the next reader fetch again, for the kind and
+// its variants read on another branch (`kind:branch`).
 export async function markStale(db: D1Database, repo: string, kind: string): Promise<void> {
   await db
-    .prepare("UPDATE snapshots SET fetched_at = '1970-01-01T00:00:00.000Z' WHERE repo = ? AND kind = ?")
-    .bind(repo, kind)
+    .prepare(
+      "UPDATE snapshots SET fetched_at = '1970-01-01T00:00:00.000Z' WHERE repo = ? AND (kind = ? OR substr(kind, 1, ?) = ?)",
+    )
+    .bind(repo, kind, kind.length + 1, `${kind}:`)
     .run();
+}
+
+// The snapshot kind of something read on a branch other than the default.
+export function onBranch(kind: string, ref: string | null): string {
+  return ref ? `${kind}:${ref}` : kind;
 }
 
 export function isFresh(snapshot: Snapshot<unknown> | null, maxAgeMs: number, now = Date.now()): boolean {

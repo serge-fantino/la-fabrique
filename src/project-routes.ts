@@ -1,22 +1,17 @@
 import type { Env } from "./env";
 import { listInstalledRepos } from "./github-app";
-import { html, redirect } from "./http";
-import { newProjectPage, projectPage, projectsPage } from "./project-views";
+import { html, json, redirect } from "./http";
+import { newProjectPage, projectPage, projectsPage, type ProjectView } from "./project-views";
 import {
   addProject,
   checkOtherBranch,
   checkProject,
   describeFailure,
   findProject,
-  isBranchName,
   isRepoName,
   listProjects,
-  productionBranch,
   type Project,
 } from "./projects";
-import { globToRegExp } from "./production";
-import { readSnapshot } from "./snapshots";
-import { STORIES, type Story } from "./stories";
 import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction } from "./production";
@@ -27,9 +22,12 @@ import { loadActivity, RANGES } from "./activity";
 import { activityPage } from "./activity-views";
 import { loadDelivery } from "./delivery";
 import { deliveryPage } from "./delivery-views";
-import { epicProgress, loadReleases } from "./roadmap";
+import { epicProgress, loadReleases, type Release } from "./roadmap";
 import { releasesPage, roadmapPage } from "./roadmap-views";
 import { messagePage, type Viewer } from "./views";
+import { loadBranches } from "./branches";
+import { forgetReference } from "./reference";
+import { projectView } from "./view-context";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
   return html(projectsPage(viewer, await listProjects(env.DB)));
@@ -82,31 +80,26 @@ export async function showProject(request: Request, env: Env, viewer: Viewer, re
     if (outcome.ok) project = { ...project, check: outcome.check };
     else failure = outcome.message;
   }
-  const url = new URL(request.url);
-  const notice = url.searchParams.get("notice") ?? undefined;
-  const choices = await branchChoices(env, project);
-  const requested = url.searchParams.get("ref");
-  const ref = requested && isBranchName(requested) && requested !== choices[0] ? requested : null;
-  if (!ref) return html(projectPage(viewer, project, { notice, failure, choices }));
+  const notice = new URL(request.url).searchParams.get("notice") ?? undefined;
+  const { view, cookies } = await projectView(request, env, project);
+  if (!view.ref) return html(projectPage(viewer, view, { notice, failure }), { cookies });
 
-  const outcome = await checkOtherBranch(env, project, ref);
-  if (!outcome.ok) return html(projectPage(viewer, project, { failure: outcome.message, choices }), { status: 404 });
-  const listed = choices.includes(ref) ? choices : [...choices, ref];
-  return html(projectPage(viewer, project, { notice, choices: listed, ref, branchCheck: outcome.check }));
+  const outcome = await checkOtherBranch(env, project, view.ref);
+  if (outcome.ok) return html(projectPage(viewer, view, { notice, branchCheck: outcome.check }), { cookies });
+  // A branch that is gone: back to production, and forget it.
+  const back = { ...view, ref: null, knownBranches: view.knownBranches.filter((branch) => branch !== view.ref) };
+  return html(projectPage(viewer, back, { failure: outcome.message }), {
+    status: 404,
+    cookies: [forgetReference(request, project)],
+  });
 }
 
-// Production first, then integration and the working branches the stories
-// board knows of.
-async function branchChoices(env: Env, project: Project): Promise<string[]> {
-  const production = productionBranch(project);
-  if (!production) return [];
-  const branches = project.check?.config?.branches;
-  const patterns = (branches?.travail ?? []).map(globToRegExp);
-  const stories = await readSnapshot<Story[]>(env.DB, project.repo, STORIES);
-  const working = [...new Set((stories?.data ?? []).flatMap((story) => story.branches))]
-    .filter((branch) => patterns.some((pattern) => pattern.test(branch)))
-    .sort();
-  return [...new Set([production, ...(branches?.integration ? [branches.integration] : []), ...working])];
+// The branch list of the header menu, read when it opens.
+export async function showBranches(env: Env, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return json({ branches: [] }, { status: 404, headers: { "cache-control": "no-store" } });
+  const { branches, failure } = await loadBranches(env, project);
+  return json({ branches, ...(failure ? { failure } : {}) }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function recheckProject(env: Env, viewer: Viewer, repo: string): Promise<Response> {
@@ -132,22 +125,27 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const filters = parseFilters(new URL(request.url));
-  const { stories, fetchedAt, failure } = await loadStories(env, project);
+  const [{ stories, fetchedAt, failure }, { view, cookies }] = await Promise.all([
+    loadStories(env, project),
+    projectView(request, env, project),
+  ]);
   return html(
-    storiesPage(viewer, project, {
+    storiesPage(viewer, view, {
       stories,
       groups: groupStories(stories, filters, viewer.login),
       filters,
       fetchedAt,
       failure,
     }),
+    { cookies },
   );
 }
 
-export async function showProduction(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+export async function showProduction(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  return html(productionPage(viewer, project, await loadProduction(env, project)));
+  const { view, cookies } = await projectView(request, env, project);
+  return html(productionPage(viewer, view, await loadProduction(env, project, view.ref)), { cookies });
 }
 
 function forbidden(viewer: Viewer): Response {
@@ -162,22 +160,27 @@ export async function showRequests(request: Request, env: Env, viewer: Viewer, r
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const created = Number(new URL(request.url).searchParams.get("created"));
-  const { requests, failure } = await myRequests(env, project, viewer.login);
+  const [{ requests, failure }, { view, cookies }] = await Promise.all([
+    myRequests(env, project, viewer.login),
+    projectView(request, env, project),
+  ]);
   return html(
-    requestsPage(viewer, project, {
+    requestsPage(viewer, view, {
       requests,
       canCreate: canRequest(viewer.role),
       created: Number.isInteger(created) && created > 0 ? created : undefined,
       failure,
     }),
+    { cookies },
   );
 }
 
-export async function showRequestForm(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+export async function showRequestForm(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   if (!canRequest(viewer.role)) return forbidden(viewer);
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  return html(requestFormPage(viewer, project, { rubriques: rubriquesOf(project) }));
+  const { view, cookies } = await projectView(request, env, project);
+  return html(requestFormPage(viewer, view, { rubriques: rubriquesOf(project) }), { cookies });
 }
 
 export async function submitRequest(
@@ -211,13 +214,23 @@ export async function showActivity(request: Request, env: Env, viewer: Viewer, r
   if (!project) return notFound(viewer);
   const days = Number(new URL(request.url).searchParams.get("days"));
   const range = RANGES.find((candidate) => candidate === days) ?? RANGES[0];
-  return html(activityPage(viewer, project, await loadActivity(env, project, range)));
+  const { view, cookies } = await projectView(request, env, project);
+  return html(activityPage(viewer, view, await loadActivity(env, project, range, view.ref)), { cookies });
 }
 
-export async function showDelivery(env: Env, viewer: Viewer, repo: string): Promise<Response> {
+export async function showDelivery(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  return html(deliveryPage(viewer, project, await loadDelivery(env, project)));
+  const { view, cookies } = await projectView(request, env, project);
+  return html(deliveryPage(viewer, view, await loadDelivery(env, project, view.ref)), { cookies });
+}
+
+// The release notes of the reference branch, read at its latest commit.
+async function branchReleases(env: Env, view: ProjectView): Promise<{ releases: Release[]; failure?: string }> {
+  if (!view.ref) return loadReleases(env, view);
+  const outcome = await checkOtherBranch(env, view, view.ref);
+  if (!outcome.ok) return { releases: [], failure: outcome.message };
+  return loadReleases(env, view, outcome.check, view.ref);
 }
 
 function monthParam(request: Request): string {
@@ -228,28 +241,32 @@ function monthParam(request: Request): string {
 export async function showRoadmap(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const [releases, stories] = await Promise.all([loadReleases(env, project), loadStories(env, project)]);
+  const { view, cookies } = await projectView(request, env, project);
+  const [releases, stories] = await Promise.all([branchReleases(env, view), loadStories(env, project)]);
   return html(
-    roadmapPage(viewer, project, {
+    roadmapPage(viewer, view, {
       month: monthParam(request),
       releases: releases.releases,
       stories: stories.stories,
       epics: epicProgress(stories.stories, new Date().toISOString().slice(0, 10)),
       failure: releases.failure ?? stories.failure,
     }),
+    { cookies },
   );
 }
 
 export async function showReleases(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const [releases, stories] = await Promise.all([loadReleases(env, project), loadStories(env, project)]);
+  const { view, cookies } = await projectView(request, env, project);
+  const [releases, stories] = await Promise.all([branchReleases(env, view), loadStories(env, project)]);
   return html(
-    releasesPage(viewer, project, {
+    releasesPage(viewer, view, {
       month: monthParam(request),
       releases: releases.releases,
       stories: stories.stories,
       failure: releases.failure ?? stories.failure,
     }),
+    { cookies },
   );
 }

@@ -50,6 +50,10 @@ body {
   align-items: center;
 }
 
+.brand-long {
+  margin-left: 0.28em;
+}
+
 .nav {
   display: flex;
   flex-wrap: wrap;
@@ -72,7 +76,7 @@ body {
 main {
   max-width: 860px;
   margin: 0 auto;
-  padding: 3rem 1.25rem;
+  padding: 1.75rem 1.25rem 3rem;
 }
 
 .hero {
@@ -809,24 +813,231 @@ textarea {
   }
 }
 
-.branches {
+/* The line under the bar: project, reference branch, signed-in person. */
+.subbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 0.25rem 1rem;
-  margin: -0.5rem 0 1rem;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.92rem;
+  background: color-mix(in srgb, var(--encre) 3%, var(--fond));
 }
 
-.branches a {
+.subbar-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 0.75rem;
+  min-width: 0;
+}
+
+.project-name {
+  font-weight: 600;
+  color: var(--encre);
+  text-decoration: none;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+}
+
+.repo-name {
+  font-size: 0.85rem;
+}
+
+.subbar .who {
+  min-height: 44px;
+}
+
+.branch-menu {
+  position: relative;
+}
+
+.branch-menu summary {
+  list-style: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  cursor: pointer;
+  background: var(--fond);
+}
+
+.branch-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.branch-menu summary::after {
+  content: "";
+  width: 0.45em;
+  height: 0.45em;
+  margin-left: 0.15rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-0.15em) rotate(45deg);
+}
+
+.branch-menu[open] summary,
+.branch-menu summary:hover {
+  border-color: var(--encre);
+}
+
+.branch-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: min(26rem, calc(100vw - 2.5rem));
+  padding: 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--encre) 16%, transparent);
+}
+
+.branch-search {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.branch-search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.branch-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  max-height: min(22rem, 60vh);
+  overflow-y: auto;
+}
+
+.branch-list a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border-radius: 10px;
+  color: var(--encre);
   text-decoration: none;
 }
 
-.branches a[aria-current="page"] code {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--encre);
+.branch-list a code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-list a:hover,
+.branch-list a:focus-visible {
+  background: color-mix(in srgb, var(--encre) 6%, transparent);
+}
+
+.branch-list a[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.branch-empty {
+  padding: 0.5rem;
+}
+
+.ref-banner {
+  margin: -0.75rem 0 1.25rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--moyen) 22%, transparent);
+  color: #6a4b0c;
+}
+
+.ref-banner a {
+  margin-left: 0.25rem;
+}
+
+/* Loading bar: a light running back and forth while the next page comes. */
+.loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 100;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.loading.visible {
+  opacity: 1;
+}
+
+.loading i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 30%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent) 35%, var(--accent) 65%, transparent);
+  box-shadow: 0 0 8px var(--accent);
+  animation: loading 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes loading {
+  from {
+    transform: translateX(-10%);
+  }
+  to {
+    transform: translateX(343%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading i {
+    width: 100%;
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+@media (max-width: 640px) {
+  .repo-name,
+  .brand-long,
+  .subbar .who .pill {
+    display: none;
+  }
+
+  .bar,
+  .subbar {
+    padding: 0 1rem;
+  }
+
+  .nav {
+    gap: 0.5rem;
+  }
+
+  .subbar {
+    position: relative;
+  }
+
+  /* Under the line, as wide as the screen. */
+  .branch-menu {
+    position: static;
+  }
+
+  .branch-panel {
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+    top: calc(100% + 0.25rem);
+  }
 }
 
 .run-strip {

@@ -2,7 +2,7 @@ import type { Env } from "./env";
 import type { FabriqueConfig } from "./fabrique-config";
 import { githubFetch, githubJson, installationToken } from "./github-app";
 import { describeFailure, type Project } from "./projects";
-import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
+import { isFresh, markStale, readSnapshot, writeSnapshot, onBranch } from "./snapshots";
 import { branchIssue, issueRefs, STORIES, type Story } from "./stories";
 import { githubContentsPath } from "./urls";
 
@@ -222,9 +222,11 @@ function readiness(
   return { ready: aheadBy > 0 && blockers.length === 0, blockers };
 }
 
-async function fetchStatus(env: Env, project: Project, config: FabriqueConfig): Promise<ProductionStatus> {
+// What `candidate` (integration, or the reference branch chosen in the
+// header) would bring to production.
+async function fetchStatus(env: Env, project: Project, config: FabriqueConfig, candidate: string): Promise<ProductionStatus> {
   const production = config.branches?.production ?? project.check?.branch ?? "main";
-  const integration = config.branches?.integration ?? "";
+  const integration = candidate;
   const token = await installationToken(env, project.installationId);
   const repo = project.repo;
 
@@ -253,7 +255,7 @@ async function fetchStatus(env: Env, project: Project, config: FabriqueConfig): 
 
   const followed: [string, string][] = [
     ["ci", integration],
-    ["deploiement_int", integration],
+    ...(integration === config.branches?.integration ? [["deploiement_int", integration] as [string, string]] : []),
     ["migrations_production", production],
   ];
   const workflows = await Promise.all(
@@ -305,19 +307,21 @@ export interface ProductionView {
   storyTitles: Map<number, string>;
 }
 
-export async function loadProduction(env: Env, project: Project): Promise<ProductionView> {
+export async function loadProduction(env: Env, project: Project, ref: string | null = null): Promise<ProductionView> {
   const config = project.check?.config;
   const stories = await readSnapshot<Story[]>(env.DB, project.repo, STORIES);
   const storyTitles = new Map((stories?.data ?? []).map((story) => [story.number, story.title]));
-  if (!config?.branches?.integration) return { status: null, fetchedAt: null, storyTitles };
+  const candidate = ref ?? config?.branches?.integration;
+  if (!config || !candidate) return { status: null, fetchedAt: null, storyTitles };
 
-  const snapshot = await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION);
+  const kind = onBranch(PRODUCTION, ref);
+  const snapshot = await readSnapshot<ProductionStatus>(env.DB, project.repo, kind);
   if (snapshot && isFresh(snapshot, MAX_AGE_MS)) {
     return { status: snapshot.data, fetchedAt: snapshot.fetchedAt, storyTitles };
   }
   try {
-    const status = await fetchStatus(env, project, config);
-    const fetchedAt = await writeSnapshot(env.DB, project.repo, PRODUCTION, status);
+    const status = await fetchStatus(env, project, config, candidate);
+    const fetchedAt = await writeSnapshot(env.DB, project.repo, kind, status);
     return { status, fetchedAt, storyTitles };
   } catch (error) {
     return {
