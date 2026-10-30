@@ -20,3 +20,7 @@ GITHUB_APP_CLIENT_SECRET=
 # project repositories and to receive push events.
 GITHUB_APP_PRIVATE_KEY=
 GITHUB_APP_WEBHOOK_SECRET=
+
+# La Fabrique's own Anthropic API key: Claude writes card specs. Optional;
+# without it, Settings says Claude is not set up.
+ANTHROPIC_API_KEY=

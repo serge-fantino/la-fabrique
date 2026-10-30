@@ -20,10 +20,13 @@ import {
   type CardInput,
   type CardLink,
   type CardRevision,
+  type CardSpec,
   type CardTags,
   type FreeDimension,
 } from "./cards";
+import { formatUsd, type CallRow, type Spend } from "./llm";
 import { renderMarkdown } from "./markdown";
+import type { Rubrique } from "./requests";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { projectUrl } from "./urls";
@@ -62,7 +65,7 @@ export function cardPills(tags: Partial<CardTags>): string {
 }
 
 // One card on the board: a white card, its text and its tags.
-export function cardTile(card: Card, canMove: boolean): string {
+export function cardTile(card: Card, canMove: boolean, spend?: Spend): string {
   const url = cardUrl(card.repo, card.id);
   const text = excerpt(card.body);
   const free = FREE_DIMENSIONS.filter((dimension) => card[dimension]).map((dimension) => tag(dimension, card[dimension] ?? ""));
@@ -72,6 +75,7 @@ export function cardTile(card: Card, canMove: boolean): string {
         <span class="pill kind">${KIND_LABELS[card.kind]}</span>
         <span class="pill card-${card.status}">${STATUS_LABELS[card.status]}</span>
         ${card.archivedAt ? `<span class="pill alert">Archived</span>` : ""}
+        ${spend?.calls ? `<span class="fiche-cost mono" title="Claude on this card: ${escapeHtml(spendLine(spend))}">${formatUsd(spend.micros)}</span>` : ""}
         ${canMove ? `<button type="button" class="fiche-grip" data-grip aria-label="Move ${cardRef(card.id)}, ${escapeHtml(card.title)}" title="Drag to move; or Space, then the arrow keys">⠿</button>` : ""}
       </div>
       <h3 class="fiche-title"><a href="${escapeHtml(url)}">${escapeHtml(card.title)}</a></h3>
@@ -186,6 +190,7 @@ export interface BoardData {
   known: Record<FreeDimension, string[]>;
   board: BoardQuery;
   canWrite: boolean;
+  spends: Map<number, Spend>;
   notice?: string | undefined;
 }
 
@@ -198,7 +203,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   const cell = (columnValue: string, rowValue: string) => {
     const placed = { [board.by]: columnValue, [board.then]: rowValue };
     const cards = data.cards.filter((card) => valueOf(card, board.by) === columnValue && valueOf(card, board.then) === rowValue);
-    return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite)).join("")}</div>`;
+    return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite, data.spends.get(card.id))).join("")}</div>`;
   };
   const count = (predicate: (card: Card) => boolean) => data.cards.filter(predicate).length;
   const head = (value: string) => {
@@ -306,6 +311,57 @@ export function renderCardText(body: string, repo: string): string {
   return html.replace(TOKEN, (_all, index: string) => pieces[Number(index)] ?? "");
 }
 
+const PURPOSES: Record<string, string> = {
+  spec_draft: "Spec written",
+  spec_revise: "Spec revised",
+  key_check: "Key checked",
+};
+
+const OUTCOMES: Record<string, string> = { ok: "", refused: "declined", error: "failed" };
+
+export function callsTable(calls: CallRow[], showCard = false): string {
+  if (!calls.length) return "";
+  return `<table class="calls">
+      <thead><tr><th>When</th><th>Who</th>${showCard ? "<th>Card</th>" : ""}<th>What</th><th>Model</th><th class="number">Tokens in / out</th><th class="number">Cost</th></tr></thead>
+      <tbody>${calls
+        .map((call) => {
+          const cached = call.cache_read_tokens + call.cache_write_tokens;
+          return `<tr>
+            <td class="mono muted nowrap">${formatDate(call.at)}</td>
+            <td class="mono">@${escapeHtml(call.login)}</td>
+            ${showCard ? `<td>${call.card_id && call.repo ? `<a class="mono" href="${escapeHtml(cardUrl(call.repo, call.card_id))}">${cardRef(call.card_id)}</a>` : ""}</td>` : ""}
+            <td>${escapeHtml(PURPOSES[call.purpose] ?? call.purpose)}${OUTCOMES[call.outcome] ? ` <span class="pill alert">${OUTCOMES[call.outcome]}</span>` : ""}</td>
+            <td class="mono small">${escapeHtml(call.model ?? "")}</td>
+            <td class="mono number">${call.input_tokens + cached} / ${call.output_tokens}${cached ? `<br /><span class="muted small">${call.cache_read_tokens} from cache</span>` : ""}</td>
+            <td class="mono number">${formatUsd(call.cost_micros)}</td>
+          </tr>`;
+        })
+        .join("")}</tbody>
+    </table>`;
+}
+
+export function spendLine(spend: Spend): string {
+  return `${spend.calls} call${spend.calls === 1 ? "" : "s"} · ${formatUsd(spend.micros)}${spend.unknown ? ` (+ ${spend.unknown} at an unknown price)` : ""}`;
+}
+
+function specHtml(spec: CardSpec | undefined, rubriques: Rubrique[], repo: string): string {
+  if (!spec) return `<p class="muted">No spec yet. Claude can write a first one from the card, the project's principles and what the project already has.</p>`;
+  const sections = rubriques
+    .map(
+      (rubrique) => `<h3>${escapeHtml(rubrique.titre)}</h3>
+        ${spec.answers[rubrique.cle]?.trim() ? `<div class="markdown">${renderCardText(spec.answers[rubrique.cle] ?? "", repo)}</div>` : `<p class="muted">—</p>`}`,
+    )
+    .join("");
+  const questions = spec.questions.length
+    ? `<div class="spec-questions"><h3>Claude asks</h3><ul>${spec.questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}</ul>
+        <p class="muted small">Answer them below, in “Revise with Claude”.</p></div>`
+    : "";
+  const by = spec.source === "claude" ? "Written with Claude" : "Edited by hand";
+  return `<p class="muted small">${by} on <span class="mono">${formatDate(spec.at)}</span>.${spec.note ? ` ${escapeHtml(spec.note)}` : ""}</p>
+    <div class="spec">${sections}</div>
+    ${questions}`;
+}
+
 export interface CardPageData {
   card: Card;
   revisions: CardRevision[];
@@ -314,6 +370,13 @@ export interface CardPageData {
   canWrite: boolean;
   created: boolean;
   notice?: string | undefined;
+  failure?: string | undefined;
+  rubriques: Rubrique[];
+  claude: { usable: boolean; reason: string | null };
+  calls: CallRow[];
+  spend: Spend;
+  missing: string[];
+  instruction?: string | undefined;
 }
 
 export function cardPage(viewer: Viewer, project: Project, data: CardPageData): string {
@@ -324,9 +387,18 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   const heading = shown ? shown.title : card.title;
   const body = shown ? shown.body : card.body;
   const tags = shown ? shown.tags : card;
+  const spec = shown ? shown.data.spec : card.data.spec;
+  const restore =
+    shown && data.canWrite
+      ? ` <form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}
+          <input type="hidden" name="action" value="restore_version" />
+          <input type="hidden" name="rev" value="${shown.rev}" />
+          <button type="submit" class="button quiet">Restore this version</button>
+        </form>`
+      : "";
   const banner = shown
-    ? `<p class="ref-banner" role="status">Version ${shown.rev} of ${card.rev}, by <span class="mono">@${escapeHtml(shown.author)}</span>
-        on <span class="mono">${formatDate(shown.at)}</span>. <a href="${escapeHtml(url)}">Back to the current version</a></p>`
+    ? `<div class="ref-banner" role="status"><p>Version ${shown.rev} of ${card.rev}, by <span class="mono">@${escapeHtml(shown.author)}</span>
+        on <span class="mono">${formatDate(shown.at)}</span>. <a href="${escapeHtml(url)}">Back to the current version</a></p>${restore}</div>`
     : "";
   const actions =
     data.canWrite && !shown
@@ -341,6 +413,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   const issues = data.links.filter((link) => link.kind === "issue");
   const people = data.links.filter((link) => link.kind === "person");
   const terms = data.links.filter((link) => link.kind === "term");
+  const stories = data.links.filter((link) => link.kind === "story");
   const linkRows: [string, string][] = [];
   if (issues.length)
     linkRows.push([
@@ -356,11 +429,41 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     )
     .join("");
 
+  // Claude: write the spec, then revise it; the story once it is complete.
+  let work = "";
+  if (data.canWrite && !shown) {
+    const claude = data.claude.usable
+      ? spec
+        ? `<form method="post" action="${escapeHtml(url)}" class="claude-form">${csrfField(viewer)}
+            <input type="hidden" name="action" value="spec_revise" />
+            <label for="instruction">Revise with Claude</label>
+            <p class="help" id="instruction_help">Answer its questions, correct what is wrong, ask for what is missing. Claude keeps the rest.</p>
+            <textarea id="instruction" name="instruction" rows="4" required maxlength="4000" aria-describedby="instruction_help">${escapeHtml(data.instruction ?? "")}</textarea>
+            <div class="card-actions"><button type="submit" class="button">Revise with Claude</button><span class="muted small">Up to a minute.</span></div>
+          </form>`
+        : `<form method="post" action="${escapeHtml(url)}" class="claude-form">${csrfField(viewer)}
+            <input type="hidden" name="action" value="spec_draft" />
+            <label for="instruction">Anything to tell Claude first? <span class="muted">(optional)</span></label>
+            <textarea id="instruction" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.instruction ?? "")}</textarea>
+            <div class="card-actions"><button type="submit" class="button">Write the spec with Claude</button><span class="muted small">Up to a minute.</span></div>
+          </form>`
+      : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`;
+    const story = spec
+      ? data.missing.length
+        ? `<p class="muted">To make the story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>`
+        : `<p><a class="button" href="${escapeHtml(url)}/story">Make the story on GitHub</a></p>`
+      : "";
+    work = `${claude}
+      <div class="card-actions"><a href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a></div>
+      ${story}`;
+  }
+
   return layout(
     title(project, `${cardRef(card.id)} ${card.title}`),
     `${projectHeader(project, "board")}
       ${data.created ? `<p class="notice ok" role="status" data-draft-clear="${escapeHtml(cardDraftKey(project.repo))}">Card ${cardRef(card.id)} written.</p>` : ""}
       ${notice(data.notice, "ok")}
+      ${notice(data.failure, "error")}
       <p class="crumbs"><a href="${escapeHtml(base)}/board#card-${card.id}">Board</a> <span aria-hidden="true">›</span> <span class="mono">${cardRef(card.id)}</span></p>
       ${banner}
       <h1>${escapeHtml(heading)}</h1>
@@ -369,7 +472,22 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
 ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
       </article>
       ${actions}
+      <section class="card-spec" id="spec">
+        <h2>Spec</h2>
+        ${specHtml(spec, data.rubriques, project.repo)}
+        ${work}
+      </section>
+      ${
+        stories.length
+          ? `<h2>Stories</h2><ul class="card-stories">${stories
+              .map((link) => `<li><a href="https://github.com/${escapeHtml(project.repo)}/issues/${escapeHtml(link.ref)}">#${escapeHtml(link.ref)}</a></li>`)
+              .join("")}</ul>`
+          : ""
+      }
       ${linkRows.length ? `<h2>Mentioned</h2><dl class="facts">${linkRows.map(([term, value]) => `<dt>${term}</dt><dd>${value}</dd>`).join("")}</dl>` : ""}
+      <h2>Claude on this card</h2>
+      <p>${data.spend.calls ? spendLine(data.spend) : `<span class="muted">No call yet.</span>`}</p>
+      ${callsTable(data.calls)}
       <h2>History</h2>
       <p class="muted small">Written by <span class="mono">@${escapeHtml(card.author)}</span> on <span class="mono">${formatDate(card.createdAt)}</span>. Every version is kept.</p>
       <ul class="card-history">${history}</ul>`,
@@ -445,6 +563,71 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
       </form>`,
     viewer,
     card ? [] : [DRAFT_SCRIPT],
+    projectContext(project),
+  );
+}
+
+// ---- The spec by hand, and the story ----------------------------------------
+
+export function specFormPage(viewer: Viewer, project: Project, data: { card: Card; rubriques: Rubrique[]; spec: CardSpec | undefined }): string {
+  const { card } = data;
+  const url = cardUrl(project.repo, card.id);
+  const fields = data.rubriques
+    .map((rubrique) => {
+      const id = `s_${rubrique.cle}`;
+      return `<div class="field">
+          <label for="${id}">${escapeHtml(rubrique.titre)}${rubrique.obligatoire ? ` <span class="muted">(required for the story)</span>` : ""}</label>
+          ${rubrique.aide ? `<p class="help" id="${id}_help">${escapeHtml(rubrique.aide)}</p>` : ""}
+          <textarea id="${id}" name="${id}" rows="6"${rubrique.aide ? ` aria-describedby="${id}_help"` : ""}>${escapeHtml(data.spec?.answers[rubrique.cle] ?? "")}</textarea>
+        </div>`;
+    })
+    .join("");
+  return layout(
+    title(project, `Spec of ${cardRef(card.id)}`),
+    `${projectHeader(project, "board", `Spec of ${cardRef(card.id)}`)}
+      <p class="crumbs"><a href="${escapeHtml(projectUrl(project.repo))}/board">Board</a> <span aria-hidden="true">›</span> <a class="mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}</p>
+      <form method="post" action="${escapeHtml(url)}" class="request-form">${csrfField(viewer)}
+        <input type="hidden" name="action" value="spec_save" />
+        <input type="hidden" name="rev" value="${card.rev}" />
+        ${fields}
+        <div class="card-actions">
+          <button type="submit" class="button">Save the spec</button>
+          <a href="${escapeHtml(url)}#spec">Cancel</a>
+        </div>
+      </form>`,
+    viewer,
+    [],
+    projectContext(project),
+  );
+}
+
+export function storyPage(
+  viewer: Viewer,
+  project: Project,
+  data: { card: Card; title: string; body: string; label: string | null; error?: string | undefined },
+): string {
+  const { card } = data;
+  const url = cardUrl(project.repo, card.id);
+  return layout(
+    title(project, `Story from ${cardRef(card.id)}`),
+    `${projectHeader(project, "board", `Story from ${cardRef(card.id)}`)}
+      <p class="crumbs"><a href="${escapeHtml(projectUrl(project.repo))}/board">Board</a> <span aria-hidden="true">›</span> <a class="mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}</p>
+      ${notice(data.error, "error")}
+      <p>The story becomes an issue in <code>${escapeHtml(project.repo)}</code>, under your GitHub name${data.label ? `, labelled <code>${escapeHtml(data.label)}</code>` : ""}. From then on it lives on GitHub; the card keeps the link.</p>
+      <form method="post" action="${escapeHtml(url)}/story" class="request-form">${csrfField(viewer)}
+        <div class="field">
+          <label for="story_title">Title</label>
+          <input id="story_title" name="title" required maxlength="200" value="${escapeHtml(data.title)}" />
+        </div>
+        <h2>What GitHub will receive</h2>
+        <article class="markdown story-preview">${renderCardText(data.body, project.repo)}</article>
+        <div class="card-actions">
+          <button type="submit" class="button">Create the story on GitHub</button>
+          <a href="${escapeHtml(url)}#spec">Back to the card</a>
+        </div>
+      </form>`,
+    viewer,
+    [],
     projectContext(project),
   );
 }

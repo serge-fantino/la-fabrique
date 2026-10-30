@@ -28,6 +28,7 @@ const WORDS = {
     appDefectSignature: (login: string, app: string | null) =>
       `Signalé par @${login}${app ? ` depuis ${app}` : ""}, via La Fabrique extraordinaire`,
     toTriage: (login: string) => `@${login} n'a pas de rôle dans La Fabrique : à trier.`,
+    fromCard: (ref: string, url: string) => `Fiche d'origine : [${ref}](${url}) dans La Fabrique extraordinaire.`,
   },
   en: {
     requestSignature: (login: string) => `Request from @${login} via La Fabrique extraordinaire`,
@@ -54,6 +55,7 @@ const WORDS = {
     appDefectSignature: (login: string, app: string | null) =>
       `Reported by @${login}${app ? ` from ${app}` : ""}, via La Fabrique extraordinaire`,
     toTriage: (login: string) => `@${login} has no role in La Fabrique: to triage.`,
+    fromCard: (ref: string, url: string) => `From card [${ref}](${url}) in La Fabrique extraordinaire.`,
   },
 };
 

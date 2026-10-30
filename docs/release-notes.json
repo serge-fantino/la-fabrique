@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.42",
+    "date": "2026-10-30",
+    "heure": "18:25",
+    "titre": "A card's spec with Claude, and the story made from it",
+    "changements": [
+      "On a card, Claude writes its functional spec in the project's own request sections, from the card, the project's CLAUDE.md, its other cards and its open stories; it asks its questions next to the spec. Revise with Claude by answering them or saying what should change, or edit the spec by hand. Every version is kept and can be restored.",
+      "Make the story: once the required sections are filled in, the spec becomes an issue on GitHub in your name, with a link back to the card; the card lists its stories.",
+      "Claude is used by Product Engineers, tech leads and super admins only, with quotas: calls per person and day, and a monthly budget for all of La Fabrique. Every call is recorded with its tokens and its cost, never its content.",
+      "What Claude cost shows on each card and on the board; Settings shows whether Claude is set up, the model, the quotas, and for the super admin the spend by project, person and card, the last calls, and a key check."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.41",
     "date": "2026-10-30",
     "heure": "18:15",

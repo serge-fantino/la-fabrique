@@ -8,7 +8,8 @@ import { html, json, redirect, svg, text } from "./http";
 import { LOGO_SVG } from "./logo";
 import { isAsset, serveAsset } from "./assets";
 import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
-import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
+import { CLAUDE_CHECK_PATH, REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
+import { checkKey, claudeSettings, usageReport } from "./llm";
 import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
@@ -325,8 +326,34 @@ const app = {
       case SETTINGS_PATH: {
         if (!viewer) return redirect("/");
         if (method !== "GET") return methodNotAllowed();
-        const notice = new URL(request.url).searchParams.get("notice");
-        return html(settingsPage(viewer, { version: releaseNotes[0]?.version ?? null, commit: env.COMMIT_SHA, notice }));
+        const params = new URL(request.url).searchParams;
+        return html(
+          settingsPage(viewer, {
+            version: releaseNotes[0]?.version ?? null,
+            commit: env.COMMIT_SHA,
+            notice: params.get("notice"),
+            claude: {
+              settings: claudeSettings(env),
+              report: await usageReport(env.DB, viewer.login),
+              failure: params.get("notice") === "claude_failed" ? (params.get("reason") ?? "Claude did not answer.").slice(0, 300) : null,
+            },
+          }),
+        );
+      }
+
+      // A tiny call to Claude, to check the key and the model: super admin.
+      case CLAUDE_CHECK_PATH: {
+        if (method !== "POST") return methodNotAllowed();
+        if (!viewer) return redirect("/");
+        if (viewer.role !== "super_admin") return forbidden(viewer);
+        if (!(await protectedForm(request, viewer))) return forbidden(viewer);
+        if (!claudeSettings(env).configured) return redirect(`${SETTINGS_PATH}#claude`);
+        const outcome = await checkKey(env, viewer.login);
+        return redirect(
+          outcome.ok
+            ? `${SETTINGS_PATH}?notice=claude_ok#claude`
+            : `${SETTINGS_PATH}?notice=claude_failed&reason=${encodeURIComponent(outcome.message ?? "")}#claude`,
+        );
       }
 
       case REFRESH_PATH:

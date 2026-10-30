@@ -53,6 +53,12 @@ export function describe(entry: LogEntry, repo: string): string {
       const said = changes.map((change) => `${text(change.dimension)}: ${text(change.from) || "not set"} → ${text(change.to) || "not set"}`).join(", ");
       return `moved card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${said ? ` (${said})` : ""}`;
     }
+    case "card_spec_written":
+      return `${d["by"] === "claude" ? "wrote the spec of" : "edited the spec of"} card ${card(d["card"])}${d["by"] === "claude" ? " with Claude" : ""}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "card_version_restored":
+      return `restored version ${text(d["version"])} of card ${card(d["card"])}`;
+    case "card_story_created":
+      return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_value_added":
       return `added ${text(d["dimension"])} “${text(d["value"])}” to the board`;
     default:

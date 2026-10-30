@@ -40,6 +40,22 @@ export const MAX_VALUE = 60;
 
 export type CardTags = { kind: CardKind; status: CardStatus } & Record<FreeDimension, string | null>;
 
+// The functional spec of a card, in the project's request sections
+// (`demandes.rubriques`), written with Claude or by hand; kept in the
+// card's free fields, versioned with it.
+export interface CardSpec {
+  answers: Record<string, string>;
+  questions: string[];
+  source: "claude" | "person";
+  // What Claude said it did, in one sentence.
+  note?: string;
+  at: string;
+}
+
+export interface CardData {
+  spec?: CardSpec;
+}
+
 export interface Card extends CardTags {
   id: number;
   repo: string;
@@ -51,6 +67,7 @@ export interface Card extends CardTags {
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  data: CardData;
 }
 
 export interface CardRevision {
@@ -58,12 +75,14 @@ export interface CardRevision {
   title: string;
   body: string;
   tags: Partial<CardTags>;
+  data: CardData;
   author: string;
   at: string;
 }
 
 export interface CardLink {
-  kind: "issue" | "person" | "term";
+  // Read from the text (issue, person, term), or made from the card (story).
+  kind: "issue" | "person" | "term" | "story";
   ref: string;
 }
 
@@ -159,10 +178,21 @@ interface CardRow {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  data: string | null;
 }
 
 const CARD_COLUMNS =
-  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at";
+  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data";
+
+export function parseData(raw: string | null): CardData {
+  if (!raw) return {};
+  try {
+    const data = JSON.parse(raw) as unknown;
+    return data && typeof data === "object" ? (data as CardData) : {};
+  } catch {
+    return {};
+  }
+}
 
 function toCard(row: CardRow): Card {
   return {
@@ -182,6 +212,7 @@ function toCard(row: CardRow): Card {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
+    data: parseData(row.data),
   };
 }
 
@@ -200,9 +231,9 @@ export async function findCard(db: D1Database, repo: string, id: number): Promis
 
 export async function cardRevisions(db: D1Database, id: number): Promise<CardRevision[]> {
   const { results } = await db
-    .prepare("SELECT rev, title, body, tags, author, created_at FROM card_revisions WHERE card_id = ? ORDER BY rev DESC")
+    .prepare("SELECT rev, title, body, tags, author, created_at, data FROM card_revisions WHERE card_id = ? ORDER BY rev DESC")
     .bind(id)
-    .all<{ rev: number; title: string; body: string; tags: string; author: string; created_at: string }>();
+    .all<{ rev: number; title: string; body: string; tags: string; author: string; created_at: string; data: string | null }>();
   return results.map((row) => {
     let tags: Partial<CardTags> = {};
     try {
@@ -210,7 +241,7 @@ export async function cardRevisions(db: D1Database, id: number): Promise<CardRev
     } catch {
       // An unreadable version keeps its text.
     }
-    return { rev: row.rev, title: row.title, body: row.body, tags, author: row.author, at: row.created_at };
+    return { rev: row.rev, title: row.title, body: row.body, tags, data: parseData(row.data), author: row.author, at: row.created_at };
   });
 }
 
@@ -280,15 +311,15 @@ export function readCardForm(form: FormData, known: Record<FreeDimension, string
   return { title, body, tags: { kind: isKind(kind) ? kind : "feature", status: isStatus(status) ? status : "draft", ...free } };
 }
 
-function revisionStatement(db: D1Database, id: number, rev: number, input: CardInput, author: string): D1PreparedStatement {
+function revisionStatement(db: D1Database, id: number, rev: number, input: CardInput, author: string, data: CardData = {}): D1PreparedStatement {
   return db
-    .prepare("INSERT INTO card_revisions (card_id, rev, title, body, tags, author) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(id, rev, input.title, input.body, JSON.stringify(input.tags), author);
+    .prepare("INSERT INTO card_revisions (card_id, rev, title, body, tags, author, data) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, rev, input.title, input.body, JSON.stringify(input.tags), author, Object.keys(data).length ? JSON.stringify(data) : null);
 }
 
 function linkStatements(db: D1Database, id: number, body: string): D1PreparedStatement[] {
   return [
-    db.prepare("DELETE FROM card_links WHERE card_id = ?").bind(id),
+    db.prepare("DELETE FROM card_links WHERE card_id = ? AND kind IN ('issue', 'person', 'term')").bind(id),
     ...linksOf(body).map((link) =>
       db.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, ?, ?)").bind(id, link.kind, link.ref),
     ),
@@ -340,11 +371,78 @@ export async function updateCard(
     .run();
   if (!result.meta.changes) return "conflict";
   await db.batch([
-    revisionStatement(db, card.id, rev, input, author),
+    revisionStatement(db, card.id, rev, input, author, card.data),
     ...linkStatements(db, card.id, input.body),
     activityStatement(db, { actor: author, action: "card_edited", repo: card.repo, details: { card: card.id, title: input.title } }),
   ]);
   return "saved";
+}
+
+// A new spec: a new version of the card, its text and tags unchanged.
+export async function saveSpec(db: D1Database, card: Card, author: string, spec: CardSpec, callId: number | null = null): Promise<number> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data, spec };
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    activityStatement(db, {
+      actor: author,
+      action: "card_spec_written",
+      repo: card.repo,
+      details: { card: card.id, title: card.title, by: spec.source, ...(callId ? { call: callId } : {}) },
+    }),
+  ]);
+  return rev;
+}
+
+// An older version comes back as the newest one: nothing is lost.
+export async function restoreRevision(db: D1Database, card: Card, revision: CardRevision, author: string): Promise<void> {
+  const tags = { ...tagsOf(card), ...revision.tags };
+  const rev = card.rev + 1;
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE cards SET kind = ?, status = ?, title = ?, body = ?, epic = ?, domain = ?, segment = ?, release = ?, data = ?, rev = ?,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+      )
+      .bind(
+        tags.kind,
+        tags.status,
+        revision.title,
+        revision.body,
+        tags.epic ?? null,
+        tags.domain ?? null,
+        tags.segment ?? null,
+        tags.release ?? null,
+        Object.keys(revision.data).length ? JSON.stringify(revision.data) : null,
+        rev,
+        card.id,
+      ),
+    revisionStatement(db, card.id, rev, { title: revision.title, body: revision.body, tags }, author, revision.data),
+    ...linkStatements(db, card.id, revision.body),
+    activityStatement(db, {
+      actor: author,
+      action: "card_version_restored",
+      repo: card.repo,
+      details: { card: card.id, title: revision.title, version: revision.rev },
+    }),
+  ]);
+}
+
+// A story made from the card on GitHub: the card keeps the link.
+export async function linkStory(db: D1Database, card: Card, author: string, issue: number, url: string): Promise<void> {
+  await db.batch([
+    db.prepare("INSERT OR IGNORE INTO card_links (card_id, kind, ref) VALUES (?, 'story', ?)").bind(card.id, String(issue)),
+    activityStatement(db, {
+      actor: author,
+      action: "card_story_created",
+      repo: card.repo,
+      issueNumber: issue,
+      details: { card: card.id, title: card.title, url },
+    }),
+  ]);
 }
 
 export async function archiveCard(db: D1Database, card: Card, author: string, archive: boolean): Promise<void> {
@@ -407,7 +505,7 @@ export async function moveCard(db: D1Database, card: Card, author: string, move:
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
         )
         .bind(tags.kind, tags.status, body, tags.epic, tags.domain, tags.segment, tags.release, position, rev, card.id),
-      revisionStatement(db, card.id, rev, { title: card.title, body, tags }, author),
+      revisionStatement(db, card.id, rev, { title: card.title, body, tags }, author, card.data),
       activityStatement(db, { actor: author, action: "card_moved", repo: card.repo, details: { card: card.id, title: card.title, changes } }),
     );
     if (body !== card.body) statements.push(...linkStatements(db, card.id, body));
