@@ -101,7 +101,7 @@ export async function showProject(request: Request, env: Env, viewer: Viewer, re
     else failure = outcome.message;
   }
   const notice = new URL(request.url).searchParams.get("notice") ?? undefined;
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   if (!view.ref) return html(projectPage(viewer, view, { notice, failure }), { cookies });
 
   const outcome = await checkOtherBranch(env, project, view.ref);
@@ -148,7 +148,7 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
   const filters = parseFilters(new URL(request.url));
   const [{ stories, fetchedAt, failure }, { view, cookies }, onInt] = await Promise.all([
     loadStories(env, project),
-    projectView(request, env, project),
+    projectView(request, env, project, viewer),
     storiesOnInt(env, project),
   ]);
   const rules = cycleRules(project.check?.config);
@@ -180,7 +180,7 @@ export async function showProduction(
 ): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const [production, checks, last] = await Promise.all([
     loadProduction(env, project, view.ref),
     storyChecks(env.DB, project.repo),
@@ -231,7 +231,7 @@ export async function showRequests(request: Request, env: Env, viewer: Viewer, r
   const created = Number(new URL(request.url).searchParams.get("created"));
   const [{ requests, failure }, { view, cookies }] = await Promise.all([
     myRequests(env, project, viewer.login),
-    projectView(request, env, project),
+    projectView(request, env, project, viewer),
   ]);
   return html(
     requestsPage(viewer, view, {
@@ -248,7 +248,7 @@ export async function showRequestForm(request: Request, env: Env, viewer: Viewer
   if (!canRequest(viewer.role)) return forbidden(viewer);
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   return html(requestFormPage(viewer, view, { rubriques: rubriquesOf(project) }), { cookies });
 }
 
@@ -283,14 +283,14 @@ export async function showActivity(request: Request, env: Env, viewer: Viewer, r
   if (!project) return notFound(viewer);
   const days = Number(new URL(request.url).searchParams.get("days"));
   const range = RANGES.find((candidate) => candidate === days) ?? RANGES[0];
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   return html(activityPage(viewer, view, await loadActivity(env, project, range, view.ref)), { cookies });
 }
 
 export async function showDelivery(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const params = new URL(request.url).searchParams;
   if (params.get("part") === "content") {
     return html(deliveryContent(await loadDelivery(env, project, view.ref)), { cookies });
@@ -318,7 +318,7 @@ function monthParam(request: Request): string {
 export async function showRoadmap(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const [releases, stories] = await Promise.all([branchReleases(env, view), loadStories(env, project)]);
   return html(
     roadmapPage(viewer, view, {
@@ -335,7 +335,7 @@ export async function showRoadmap(request: Request, env: Env, viewer: Viewer, re
 export async function showReleases(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const [releases, stories] = await Promise.all([branchReleases(env, view), loadStories(env, project)]);
   return html(
     releasesPage(viewer, view, {
@@ -360,7 +360,7 @@ export async function showSetup(
 ): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   let check = project.check;
   let failure: string | undefined;
   if (view.ref) {
@@ -447,7 +447,7 @@ export async function showToTest(
 ): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const params = new URL(request.url).searchParams;
   const part = params.get("part") === "content";
   if (!failed && !part && params.get("wait") !== "1" && !(await productionReady(env, project, view.ref))) {
@@ -526,7 +526,7 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
 export async function showInDev(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const params = new URL(request.url).searchParams;
   const part = params.get("part") === "content";
   if (!part && params.get("wait") !== "1" && !(await inDevReady(env, project))) {
@@ -553,7 +553,7 @@ export async function showBacklog(
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const [{ view, cookies }, stories, onInt, launches] = await Promise.all([
-    projectView(request, env, project),
+    projectView(request, env, project, viewer),
     loadStories(env, project),
     storiesOnInt(env, project),
     claudeLaunches(env.DB, project.repo),
@@ -614,7 +614,7 @@ export async function showLog(request: Request, env: Env, viewer: Viewer, repo: 
     actor: params.get("actor") || null,
     before: Number.isInteger(before) && before > 0 ? before : null,
   };
-  const [{ view, cookies }, log] = await Promise.all([projectView(request, env, project), readLog(env.DB, project.repo, filters)]);
+  const [{ view, cookies }, log] = await Promise.all([projectView(request, env, project, viewer), readLog(env.DB, project.repo, filters)]);
   return html(logPage(viewer, view, { ...log, filters }), { cookies });
 }
 

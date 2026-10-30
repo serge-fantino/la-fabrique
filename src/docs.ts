@@ -54,7 +54,7 @@ export async function showDoc(request: Request, env: Env, viewer: Viewer, repo: 
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer, "There is no such project in La Fabrique extraordinaire.");
 
-  const { view, cookies } = await projectView(request, env, project);
+  const { view, cookies } = await projectView(request, env, project, viewer);
   const other = view.ref;
   let check: ConfigCheck | null = other ? null : project.check;
   if (other) {

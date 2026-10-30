@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.37",
+    "date": "2026-10-30",
+    "heure": "16:10",
+    "titre": "Perspectives and the board of cards",
+    "changements": [
+      "Perspectives: choose in the header what you see. Product shows a project's board, stories, backlog, what to test, roadmap, releases and requests; Administration shows production, delivery, activity, the log and setup; All keeps every tab. A perspective hides tabs, it never removes a right; a Product Engineer starts in Product.",
+      "Each project has a Board: cards written in La Fabrique, before they become stories (if ever). A card is a title and a few lines of Markdown, with a type (feature, idea, question), a status (draft, shaping, to validate, validated, dropped) and the project's own epic, domain, segment and release.",
+      "Arrange the board by one dimension, then by another to cross them (domains in columns, segments in rows), and filter it; the arrangement stays on this device. Drag a card by its handle (or Space and the arrow keys): it takes the values of the place it is dropped in. A new column creates a new value.",
+      "In a card's text, {segment: pro} sets a tag, #12 links an issue, @login names a person and [[Basket]] marks a term. Every version of a card is kept, every decision is in the project's log, and every card can be exported as JSON."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.36",
     "date": "2026-10-30",
     "heure": "14:40",

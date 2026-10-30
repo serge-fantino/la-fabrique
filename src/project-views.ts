@@ -2,11 +2,13 @@ import type { InstalledRepo } from "./github-app";
 import { productionBranch, type ConfigCheck, type Project } from "./projects";
 import { docUrl, githubBlobUrl, projectRefUrl, projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
+import { PERSPECTIVE_TABS, type Perspective } from "./perspectives";
 
 const projectPath = projectUrl;
 
 export type ProjectTab =
   | "overview"
+  | "board"
   | "stories"
   | "backlog"
   | "in_dev"
@@ -22,6 +24,7 @@ export type ProjectTab =
 
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "overview", label: "Overview", path: "" },
+  { id: "board", label: "Board", path: "/board" },
   { id: "stories", label: "Stories", path: "/stories" },
   { id: "backlog", label: "Backlog", path: "/backlog" },
   { id: "in_dev", label: "In development", path: "/in-development" },
@@ -42,6 +45,8 @@ export interface ProjectView extends Project {
   ref: string | null;
   knownBranches: string[];
   path: string;
+  // What the person sees: the tabs of this perspective (la-fabrique#75).
+  perspective?: Perspective;
   // Every project, for the header's project menu.
   projects?: { repo: string; name: string }[];
 }
@@ -104,10 +109,19 @@ export function projectContext(project: Project): string {
 
 export function projectHeader(project: Project, active: ProjectTab, heading?: string): string {
   const view = asView(project);
-  const tabs = TABS.map(
-    (tab) =>
-      `<a href="${escapeHtml(projectUrl(project.repo) + tab.path)}"${tab.id === active ? ' aria-current="page"' : ""}>${tab.label}</a>`,
-  ).join("");
+  // A perspective hides tabs; the tab one is on stays, marked.
+  const wanted = PERSPECTIVE_TABS[view?.perspective ?? "all"];
+  const shown = wanted
+    ? [...wanted.flatMap((id) => TABS.filter((tab) => tab.id === id)), ...TABS.filter((tab) => tab.id === active && !wanted.includes(tab.id))]
+    : TABS;
+  const tabs = shown
+    .map((tab) => {
+      const outside = wanted && !wanted.includes(tab.id);
+      return `<a href="${escapeHtml(projectUrl(project.repo) + tab.path)}"${tab.id === active ? ' aria-current="page"' : ""}${
+        outside ? ' class="outside" title="Not in this perspective"' : ""
+      }>${tab.label}</a>`;
+    })
+    .join("");
   const production = productionBranch(project) ?? "main";
   const banner = view?.ref
     ? `<p class="ref-banner" role="status">Reference branch <code>${escapeHtml(view.ref)}</code>; production is <code>${escapeHtml(production)}</code>.

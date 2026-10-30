@@ -24,7 +24,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 
 Chaque rôle a les droits de ceux d'avant (`src/rights.ts`) : signaler un défaut (tout compte qui voit le projet) < testeur (int, critères, validation) < Product Engineer (demandes, priorités) < tech lead (Claude, Setup) < super admin (go, rôles, projets, apps).
 
-**Perspectives** (F4.1, #75) : le rôle dit ce qu'on peut faire, la perspective ce qu'on voit (tableau de bord, onglets d'un projet). Elles sont standard (les mêmes pour tous les projets) et portent le nom d'une activité, pas d'un rôle : Administration et Product management d'abord, puis Testing, Engineering, Architecture, Operations ; « All » garde la vue complète. Les perspectives d'une personne sur un projet suivent son rôle sur ce projet, sur la même échelle que les droits ; elle passe de l'une à l'autre dans l'en-tête. Une perspective masque, elle n'interdit rien.
+**Perspectives** (F4.1, #75) : le rôle dit ce qu'on peut faire, la perspective ce qu'on voit (tableau de bord, onglets d'un projet). Elles sont standard (les mêmes pour tous les projets) et portent le nom d'une activité, pas d'un rôle : Product et Administration d'abord, puis Testing, Engineering, Architecture, Operations ; « All » garde la vue complète. Les perspectives d'une personne sur un projet suivent son rôle sur ce projet, sur la même échelle que les droits ; elle passe de l'une à l'autre dans l'en-tête. Une perspective masque, elle n'interdit rien.
 
 ## Architecture
 
@@ -42,7 +42,7 @@ Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture et éc
 - Liste blanche par identifiant GitHub ; un compte GitHub sans rôle n'entre pas.
 - Lancer Claude coûte et écrit du code : réservé aux rôles qui le peuvent, plafond de demandes en cours par projet.
 - Aucun secret affiché ni journalisé ; les jetons GitHub restent côté Worker.
-- En-têtes de sécurité et CSP stricte dès le départ : `script-src 'self'`, aucun script en ligne ni `eval` ; deux scripts servis : `/fabrique.js` (barre de chargement, pages enchaînées sans quitter la page en cours, menu de la branche de référence) et `/request-draft.js` (brouillon d'une demande gardé sur l'appareil).
+- En-têtes de sécurité et CSP stricte dès le départ : `script-src 'self'`, aucun script en ligne ni `eval` ; trois scripts servis : `/fabrique.js` (barre de chargement, pages enchaînées sans quitter la page en cours, menu de la branche de référence), `/request-draft.js` (brouillon d'une demande ou d'une fiche gardé sur l'appareil) et `/board.js` (déplacer une fiche sur le tableau, au pointeur ou au clavier ; rangement gardé sur l'appareil).
 
 ## Conventions
 
@@ -64,6 +64,6 @@ Fin octobre 2026 :
 - signaler un défaut depuis l'app d'un projet (#65) : La Fabrique fournisseur OAuth, *Connected apps*, `GET /api/me`, `POST /api/projects/{project}/defects` (contrat avec l'épicerie dans #65), `type` et `signalement` des environnements, droits par action ; le client de l'épicerie reste à enregistrer par le propriétaire ;
 - lot F1 livré côté La Fabrique (#57, stories #58 à #62) : validation sur int (critères cochés dans l'issue, validation, défaut signalé), « go » du super admin (workflow `promouvoir` du projet), « Launch Claude » sur une story prête (workflow `claude` du projet, plafond `claude.plafond`), journal par projet, workflows du projet dans Setup ; les workflows de l'épicerie attendent leur intégration (epicerie-extraordinaire#148) et leurs secrets (`FABRIQUE_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` ou `ANTHROPIC_API_KEY`).
 
-- lot F4 décidé (#74, stories #75 à #82 et #84) : rôles par projet, perspectives, tableau de bord par projet et par perspective, fiches de l'amont dans La Fabrique (tableau, validation, passage en story, lien jusqu'aux notes de version), domaines et glossaire (ubiquitous language).
+- lot F4 en cours (#74, stories #75 à #82 et #84) : perspectives Product, Administration et All (F4.1, choix gardé dans `perspective_choices` ; « Product » plutôt que « Product management »), fiches de l'amont (F4.3 : `cards`, `card_revisions`, `card_links`, `card_values`, annotations `{segment: …}`, `#12`, `@login`, `[[Terme]]`, export JSON) et tableau (F4.4 : rangé par une dimension puis une autre, filtres, fiches déplacées au pointeur ou au clavier) livrés ; à venir : rôles par projet (F4.9), tableau de bord par perspective (F4.2), validation (F4.5), passage en story (F4.6), notes de version (F4.7), domaines et glossaire (F4.8).
 
 Mise en route et secrets : `docs/owner-setup.md`.

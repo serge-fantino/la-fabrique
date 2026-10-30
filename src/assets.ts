@@ -2,6 +2,7 @@ import { css, script } from "./http";
 import stylesCss from "../site/styles.css";
 import requestDraftJs from "../site/request-draft.js";
 import fabriqueJs from "../site/fabrique.js";
+import boardJs from "../site/board.js";
 
 // FNV-1a: enough to tell two versions of a file apart.
 function fingerprint(text: string): string {
@@ -17,6 +18,7 @@ const FILES: Record<string, { body: string; serve: typeof css }> = {
   "/styles.css": { body: stylesCss, serve: css },
   "/fabrique.js": { body: fabriqueJs, serve: script },
   "/request-draft.js": { body: requestDraftJs, serve: script },
+  "/board.js": { body: boardJs, serve: script },
 };
 
 const VERSIONS = new Map(Object.entries(FILES).map(([path, file]) => [path, fingerprint(file.body)]));

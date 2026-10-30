@@ -2,11 +2,14 @@ import { ROLE_LABELS, ROLES, type AccountRow, type Role } from "./accounts";
 import type { ActivityRow } from "./activity-log";
 import { assetUrl } from "./assets";
 import { logoMark } from "./logo";
+import { availablePerspectives, PERSPECTIVE_LABELS, type Perspective } from "./perspectives";
 
 export interface Viewer {
   login: string;
   role: Role;
   csrfToken: string;
+  // What the person sees (la-fabrique#75); absent: everything.
+  perspective?: Perspective;
 }
 
 export function escapeHtml(value: string): string {
@@ -38,6 +41,25 @@ export function externalLinks(html: string): string {
   return html.replace(/<a (?![^>]*\btarget=)([^>]*\bhref="https?:\/\/)/g, '<a target="_blank" rel="noopener noreferrer" $1');
 }
 
+// The perspective switcher, when the role opens more than one.
+function perspectiveMenu(viewer: Viewer): string {
+  const available = availablePerspectives(viewer.role);
+  if (available.length < 2) return "";
+  const current = viewer.perspective ?? "all";
+  const items = available
+    .map(
+      (perspective) => `<li><form method="post" action="/perspective">${csrfField(viewer)}
+          <input type="hidden" name="perspective" value="${perspective}" />
+          <button type="submit" class="menu-choice"${perspective === current ? ' aria-current="true"' : ""}>${PERSPECTIVE_LABELS[perspective]}</button>
+        </form></li>`,
+    )
+    .join("");
+  return `<details class="branch-menu perspective-menu" data-menu>
+      <summary><span class="muted">Perspective</span> ${PERSPECTIVE_LABELS[current]}</summary>
+      <div class="branch-panel"><ul class="branch-list">${items}</ul></div>
+    </details>`;
+}
+
 // `context` is the left part of the line under the bar (a project and its
 // branch); the signed-in person is on its right.
 export function layout(title: string, body: string, viewer?: Viewer, scripts: string[] = [], context = ""): string {
@@ -55,7 +77,7 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
   const subbar = viewer
     ? `<div class="subbar">
         <div class="subbar-context">${externalLinks(context)}</div>
-        <span class="who"><span class="mono">@${escapeHtml(viewer.login)}</span>
+        <span class="who">${perspectiveMenu(viewer)}<span class="mono">@${escapeHtml(viewer.login)}</span>
           <span class="pill">${ROLE_LABELS[viewer.role]}</span></span>
       </div>`
     : "";
