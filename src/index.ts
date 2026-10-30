@@ -4,12 +4,12 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { css, html, json, redirect, text } from "./http";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showNewProject, showProject, showProjects } from "./project-routes";
+import { createProject, recheckProject, showNewProject, showProject, showProjects, showStories } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/stories)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
@@ -98,6 +98,9 @@ export default {
       if (!viewer) return redirect("/");
       if (!isRepoName(repo)) return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       if (!projectRoute[2]) return method === "GET" ? showProject(request, env, viewer, repo) : methodNotAllowed();
+      if (projectRoute[2] === "/stories") {
+        return method === "GET" ? showStories(request, env, viewer, repo) : methodNotAllowed();
+      }
       if (method !== "POST") return methodNotAllowed();
       if (viewer.role !== "super_admin") return forbidden(viewer);
       return (await protectedForm(request, viewer)) ? recheckProject(env, viewer, repo) : forbidden(viewer);

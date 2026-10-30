@@ -86,6 +86,17 @@ export async function githubJson<T>(token: string, path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+// Follows `page=` until a short page; `path` must already carry `per_page=100`.
+export async function githubAll<T>(token: string, path: string, maxPages = 10): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const batch = await githubJson<T[]>(token, `${path}&page=${page}`);
+    items.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return items;
+}
+
 export async function installationToken(env: Env, installationId: number): Promise<string> {
   const { clientId, privateKey } = appCredentials(env);
   const response = await fetch(`${API}/app/installations/${installationId}/access_tokens`, {

@@ -3,6 +3,8 @@ import { listInstalledRepos } from "./github-app";
 import { html, redirect } from "./http";
 import { newProjectPage, projectPage, projectsPage } from "./project-views";
 import { addProject, checkProject, describeFailure, findProject, isRepoName, listProjects } from "./projects";
+import { groupStories, loadStories, type StoryFilters } from "./stories";
+import { storiesPage } from "./stories-views";
 import { messagePage, type Viewer } from "./views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
@@ -66,4 +68,31 @@ export async function recheckProject(env: Env, viewer: Viewer, repo: string): Pr
   const outcome = await checkProject(env, project, true);
   if (outcome.ok) return redirect(`/projects/${project.repo}?notice=checked`);
   return html(projectPage(viewer, project, { failure: outcome.message }));
+}
+
+function parseFilters(url: URL): StoryFilters {
+  const epic = Number(url.searchParams.get("epic"));
+  const state = url.searchParams.get("state");
+  return {
+    epic: Number.isInteger(epic) && epic > 0 ? epic : null,
+    label: url.searchParams.get("label") || null,
+    state: state === "open" || state === "closed" ? state : "all",
+    mine: url.searchParams.get("mine") === "1",
+  };
+}
+
+export async function showStories(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const filters = parseFilters(new URL(request.url));
+  const { stories, fetchedAt, failure } = await loadStories(env, project);
+  return html(
+    storiesPage(viewer, project, {
+      stories,
+      groups: groupStories(stories, filters, viewer.login),
+      filters,
+      fetchedAt,
+      failure,
+    }),
+  );
 }
