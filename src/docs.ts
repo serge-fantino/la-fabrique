@@ -8,12 +8,13 @@ import {
   checkProject,
   describeFailure,
   findProject,
-  productionBranch,
   type ConfigCheck,
   type Project,
 } from "./projects";
 import { docUrl, githubBlobUrl, githubContentsPath } from "./urls";
 import { messagePage, type Viewer } from "./views";
+import { forgetReference } from "./reference";
+import { projectView } from "./view-context";
 
 // One GitHub read per file and commit; older commits are dropped.
 async function readMarkdown(env: Env, project: Project, branch: string | null, sha: string, path: string): Promise<string> {
@@ -49,16 +50,21 @@ function notFound(viewer: Viewer, message: string): Response {
   return html(messagePage("Not found", message, viewer), { status: 404 });
 }
 
-export async function showDoc(env: Env, viewer: Viewer, repo: string, path: string, ref: string | null): Promise<Response> {
+export async function showDoc(request: Request, env: Env, viewer: Viewer, repo: string, path: string): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer, "There is no such project in La Fabrique extraordinaire.");
 
-  const production = productionBranch(project);
-  const other = ref && ref !== production ? ref : null;
+  const { view, cookies } = await projectView(request, env, project);
+  const other = view.ref;
   let check: ConfigCheck | null = other ? null : project.check;
   if (other) {
     const outcome = await checkOtherBranch(env, project, other);
-    if (!outcome.ok) return html(messagePage("Documentation unavailable", outcome.message, viewer), { status: 404 });
+    if (!outcome.ok) {
+      return html(messagePage("Documentation unavailable", outcome.message, viewer), {
+        status: 404,
+        cookies: [forgetReference(request, project)],
+      });
+    }
     check = outcome.check;
   } else if (!check || check.docPages === null) {
     const outcome = await checkProject(env, project);
@@ -66,7 +72,12 @@ export async function showDoc(env: Env, viewer: Viewer, repo: string, path: stri
     check = outcome.check;
   }
   const pages = check.docPages ?? [];
-  if (!pages.includes(path)) return notFound(viewer, "This page is not part of the project's documentation.");
+  if (!pages.includes(path)) {
+    return notFound(
+      viewer,
+      other ? `This page is not part of the project's documentation on ${other}.` : "This page is not part of the project's documentation.",
+    );
+  }
 
   let markdown: string;
   try {
@@ -86,5 +97,5 @@ export async function showDoc(env: Env, viewer: Viewer, repo: string, path: stri
           githubUrl: (candidate) => githubBlobUrl(project.repo, sha, candidate),
         });
 
-  return html(docPage(viewer, { ...project, check }, path, rendered, other));
+  return html(docPage(viewer, { ...view, check }, path, rendered, other), { cookies });
 }

@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.14",
+    "date": "2026-10-30",
+    "heure": "10:00",
+    "titre": "Reference branch in the header",
+    "changements": [
+      "Choose a project's reference branch from a menu in the header, with a search over all its branches; like a checkout, it stays chosen on every tab until you go back to production.",
+      "Production compares the chosen branch with production; Activity, Delivery, Releases, Roadmap and the documentation read that branch.",
+      "The project, its branch and who you are now share one compact line under the bar.",
+      "A thin bar runs at the top of the page while the next one loads."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.13",
     "date": "2026-10-30",
     "heure": "09:50",

@@ -142,7 +142,7 @@ export interface DeliveryView {
   failure?: string;
 }
 
-export async function loadDelivery(env: Env, project: Project, now = new Date()): Promise<DeliveryView> {
+export async function loadDelivery(env: Env, project: Project, ref: string | null = null, now = new Date()): Promise<DeliveryView> {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (DAYS - 1)));
   const since = start.toISOString().slice(0, 10);
   const days = Array.from({ length: DAYS }, (_, index) =>
@@ -159,7 +159,8 @@ export async function loadDelivery(env: Env, project: Project, now = new Date())
       failure = describeFailure(error);
     }
   }
-  const runs = snapshot?.data.runs ?? [];
+  // On a reference branch, only its runs; on production, every branch's.
+  const runs = (snapshot?.data.runs ?? []).filter((run) => !ref || run.branch === ref);
   const summaries = declaredWorkflows(project).map(([key, file]) =>
     summarize(key, file, runs.filter((run) => run.workflow === key)),
   );

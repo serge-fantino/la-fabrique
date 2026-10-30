@@ -160,7 +160,7 @@ describe("What awaits production", () => {
     expect(page).toContain('>production</a> <span class="mono">1.167</span>');
     expect(page).toContain('<span class="pill warn">Next</span> <span class="mono">1.168</span>');
     expect(page).toContain("Production migrations");
-    expect(page).not.toMatch(/<form[^>]*production/);
+    expect(page).not.toMatch(/<form method="post"[^>]*production/);
   });
 
   it("puts a red CI on integration first, with its link", async () => {
@@ -196,5 +196,32 @@ describe("What awaits production", () => {
     await seed({ nom: "Widget" });
     const page = await (await get(`/projects/${REPO}/production`, (await signIn("admin-one")).cookie)).text();
     expect(page).toContain("does not declare an integration branch");
+  });
+
+  it("compares the reference branch chosen in the header with production", async () => {
+    await seed();
+    github()
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/compare/main...feature%2Femails` })
+      .reply(200, JSON.stringify({ ahead_by: 1, commits: HISTORY.slice(0, 1).map(toRest) }), JSON_HEADERS);
+    github()
+      .intercept({ path: (path) => path.startsWith(`/repos/${REPO}/actions/workflows/ci.yml/runs?branch=feature`) })
+      .reply(200, JSON.stringify(run("success", "68dcc2b")), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/actions/workflows/migrations-prod.yml/runs?branch=main&per_page=1` })
+      .reply(200, JSON.stringify(run("success", "e875a2e")), JSON_HEADERS);
+    fetchMock.get("https://int.widget.example").intercept({ path: "/api/version" }).reply(200, JSON.stringify({ numero: "1.168" }), JSON_HEADERS);
+    fetchMock.get("https://widget.example").intercept({ path: "/api/version" }).reply(200, JSON.stringify({ numero: "1.167" }), JSON_HEADERS);
+    github()
+      .intercept({ path: (path) => path.startsWith(`/repos/${REPO}/contents/site/nouveautes.json?ref=feature`) })
+      .reply(200, JSON.stringify([{ version: "1.169", titre: "Menu", changements: ["Ma cuisine."] }]));
+
+    const page = await (await get(`/projects/${REPO}/production?ref=feature/emails`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain("1 commit on <code>feature/emails</code> not in <code>main</code>");
+    expect(page).toContain("Reference branch <code>feature/emails</code>");
+    expect(page).not.toContain("Deployment to int");
+    expect(page).toContain('<span class="mono">1.169</span>');
   });
 });

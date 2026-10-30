@@ -2,6 +2,7 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { json } from "./http";
 import { activityChanged } from "./activity";
+import { branchesChanged } from "./branches";
 import { deliveryChanged } from "./delivery";
 import { productionChanged } from "./production";
 import { branchKind, checkPushedCommit, findProject } from "./projects";
@@ -24,6 +25,8 @@ interface Payload {
   action?: string;
   ref?: string;
   after?: string;
+  created?: boolean;
+  deleted?: boolean;
   repository?: { full_name?: string; default_branch?: string };
   head_commit?: { timestamp?: string } | null;
   issue?: RestIssue;
@@ -54,16 +57,18 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   }
   if (STORY_EVENTS.has(event)) {
     await storiesChanged(env, project.repo);
+    if (event === "create" || event === "delete") await branchesChanged(env, project.repo);
     return json({ refresh: "stories" });
   }
   if (event === "workflow_run") {
     await productionChanged(env, project.repo);
     await deliveryChanged(env, project.repo);
-  await activityChanged(env, project.repo);
     return json({ refresh: "production" });
   }
   if (event !== "push") return json({ ignored: event }, { status: 202 });
   await productionChanged(env, project.repo);
+  await activityChanged(env, project.repo);
+  if (payload.created || payload.deleted) await branchesChanged(env, project.repo);
 
   const branch = payload.ref?.startsWith("refs/heads/") ? payload.ref.slice("refs/heads/".length) : null;
   const sha = payload.after;

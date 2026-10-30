@@ -4,18 +4,19 @@ import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { css, html, json, redirect, script, text } from "./http";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
-import { isBranchName, isRepoName } from "./projects";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showStories, submitRequest } from "./project-routes";
+import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import stylesCss from "../site/styles.css";
 import releaseNotes from "../docs/release-notes.json";
 import requestDraftJs from "../site/request-draft.js";
+import fabriqueJs from "../site/fabrique.js";
 
 type ViewerState = { kind: "anonymous" } | { kind: "revoked" } | { kind: "signed_in"; viewer: Viewer };
 
@@ -63,6 +64,8 @@ export default {
         return css(stylesCss);
       case "/request-draft.js":
         return script(requestDraftJs);
+      case "/fabrique.js":
+        return script(fabriqueJs);
       case "/auth/login":
         return method === "GET" ? startLogin(request, env) : methodNotAllowed();
       case "/auth/callback":
@@ -93,8 +96,7 @@ export default {
       if (!isRepoName(repo) || !path) {
         return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       }
-      const ref = new URL(request.url).searchParams.get("ref");
-      return showDoc(env, viewer, repo, path, ref && isBranchName(ref) ? ref : null);
+      return showDoc(request, env, viewer, repo, path);
     }
 
     const projectRoute = PROJECT_ROUTE.exec(pathname);
@@ -104,13 +106,16 @@ export default {
       if (!isRepoName(repo)) return html(messagePage("Not found", "There is nothing at this address.", viewer), { status: 404 });
       if (!projectRoute[2]) return method === "GET" ? showProject(request, env, viewer, repo) : methodNotAllowed();
       if (projectRoute[2] === "/requests/new") {
-        return method === "GET" ? showRequestForm(env, viewer, repo) : methodNotAllowed();
+        return method === "GET" ? showRequestForm(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/requests") {
         if (method === "GET") return showRequests(request, env, viewer, repo);
         if (method !== "POST") return methodNotAllowed();
         const form = await protectedForm(request, viewer);
         return form ? submitRequest(request, form, env, viewer, repo) : forbidden(viewer);
+      }
+      if (projectRoute[2] === "/branches") {
+        return method === "GET" ? showBranches(env, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/roadmap") {
         return method === "GET" ? showRoadmap(request, env, viewer, repo) : methodNotAllowed();
@@ -119,13 +124,13 @@ export default {
         return method === "GET" ? showReleases(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/delivery") {
-        return method === "GET" ? showDelivery(env, viewer, repo) : methodNotAllowed();
+        return method === "GET" ? showDelivery(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/activity") {
         return method === "GET" ? showActivity(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/production") {
-        return method === "GET" ? showProduction(env, viewer, repo) : methodNotAllowed();
+        return method === "GET" ? showProduction(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/stories") {
         return method === "GET" ? showStories(request, env, viewer, repo) : methodNotAllowed();

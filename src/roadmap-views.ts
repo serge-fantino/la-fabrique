@@ -1,5 +1,5 @@
 import { barChart } from "./charts";
-import { notice, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { monthGrid, shiftMonth, storiesBetween, type EpicProgress, type Release } from "./roadmap";
 import type { Story } from "./stories";
@@ -112,6 +112,8 @@ export function roadmapPage(
         ${data.epics.length ? data.epics.map(epicSection).join("") : `<p class="muted">No epic yet: an epic is an issue with sub-issues.</p>`}
       </section>`,
     viewer,
+    [],
+    projectContext(project),
   );
 }
 
@@ -172,5 +174,7 @@ export function releasesPage(
       ${body}
       <p class="muted">Stories are matched to a version by their closing time (UTC) against the version's date and time, so the split is approximate around a release.</p>`,
     viewer,
+    [],
+    projectContext(project),
   );
 }

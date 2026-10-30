@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import { githubJson, installationToken } from "./github-app";
 import { describeFailure, type Project } from "./projects";
-import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
+import { isFresh, markStale, readSnapshot, writeSnapshot, onBranch } from "./snapshots";
 
 const MAX_AGE_MS = 15 * 60 * 1000;
 const MAX_COMMIT_PAGES = 6;
@@ -136,13 +136,19 @@ function activityBranch(project: Project): string {
   return branches?.integration ?? branches?.production ?? project.check?.branch ?? "main";
 }
 
-export async function loadActivity(env: Env, project: Project, range: Range, now = new Date()): Promise<ActivityView> {
-  const branch = activityBranch(project);
+export async function loadActivity(
+  env: Env,
+  project: Project,
+  range: Range,
+  ref: string | null = null,
+  now = new Date(),
+): Promise<ActivityView> {
+  const branch = ref ?? activityBranch(project);
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (range - 1)));
   const days = daysBetween(start, range);
   // One more day, so the first day has a starting point.
   const since = new Date(start.getTime() - 24 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "Z");
-  const kind = `activity:${range}`;
+  const kind = onBranch(`activity:${range}`, ref);
 
   let snapshot = await readSnapshot<ActivitySnapshot>(env.DB, project.repo, kind);
   let failure: string | undefined;

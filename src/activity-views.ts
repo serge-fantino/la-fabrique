@@ -1,6 +1,6 @@
 import { RANGES, type ActivityView } from "./activity";
 import { barChart } from "./charts";
-import { notice, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { projectUrl } from "./urls";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
@@ -112,5 +112,7 @@ export function activityPage(viewer: Viewer, project: Project, view: ActivityVie
       ${table}
       ${authors}`,
     viewer,
+    [],
+    projectContext(project),
   );
 }

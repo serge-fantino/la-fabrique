@@ -1,5 +1,5 @@
 import type { ProductionStatus, ProductionView, WorkflowState } from "./production";
-import { notice, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -127,5 +127,7 @@ export function productionPage(viewer: Viewer, project: Project, view: Productio
       ${notice(view.failure, "error")}
       ${body}`,
     viewer,
+    [],
+    projectContext(project),
   );
 }

@@ -1,5 +1,5 @@
 import type { InstalledRepo } from "./github-app";
-import type { ConfigCheck, Project } from "./projects";
+import { productionBranch, type ConfigCheck, type Project } from "./projects";
 import { docUrl, githubBlobUrl, projectRefUrl, projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -26,15 +26,68 @@ const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "requests", label: "Requests", path: "/requests" },
 ];
 
+// A project as shown to someone: with the reference branch chosen in the
+// header (null: production) and the branches the menu offers.
+export interface ProjectView extends Project {
+  ref: string | null;
+  knownBranches: string[];
+  path: string;
+}
+
+function asView(project: Project): ProjectView | null {
+  return "path" in project ? (project as ProjectView) : null;
+}
+
+function branchMenu(view: ProjectView): string {
+  const production = productionBranch(view) ?? "main";
+  const current = view.ref ?? production;
+  const integration = view.check?.config?.branches?.integration;
+  const item = (branch: string) => {
+    const tag =
+      branch === production ? ` <span class="pill ok">production</span>` : branch === integration ? ` <span class="pill warn">integration</span>` : "";
+    const href = `${view.path}?ref=${branch === production ? "" : encodeURIComponent(branch)}`;
+    return `<li><a href="${escapeHtml(href)}"${branch === current ? ' aria-current="true"' : ""}><code>${escapeHtml(branch)}</code>${tag}</a></li>`;
+  };
+  return `<details class="branch-menu" data-branch-menu data-branches="${escapeHtml(projectUrl(view.repo))}/branches" data-path="${escapeHtml(view.path)}" data-current="${escapeHtml(current)}" data-production="${escapeHtml(production)}"${integration ? ` data-integration="${escapeHtml(integration)}"` : ""}>
+      <summary><span class="muted">Branch</span> <code>${escapeHtml(current)}</code></summary>
+      <div class="branch-panel">
+        <form method="get" action="${escapeHtml(view.path)}" class="branch-search">
+          <label class="visually-hidden" for="branch-search">Find a branch</label>
+          <input id="branch-search" type="search" name="ref" list="branch-options" placeholder="Find or type a branch" autocomplete="off" spellcheck="false" data-branch-search />
+          <datalist id="branch-options">${view.knownBranches.map((branch) => `<option value="${escapeHtml(branch)}"></option>`).join("")}</datalist>
+          <button type="submit" class="button quiet">Switch</button>
+        </form>
+        <ul class="branch-list" data-branch-list>${view.knownBranches.map(item).join("")}</ul>
+      </div>
+    </details>`;
+}
+
+// Left part of the line under the bar: the project, and its reference branch.
+export function projectContext(project: Project): string {
+  const view = asView(project);
+  return `<a class="project-name" href="${escapeHtml(projectUrl(project.repo))}">${escapeHtml(project.check?.config?.nom || project.repo)}</a>
+      <span class="mono muted repo-name">${escapeHtml(project.repo)}</span>
+      ${view ? branchMenu(view) : ""}`;
+}
+
 export function projectHeader(project: Project, active: ProjectTab, heading?: string): string {
-  const name = project.check?.config?.nom || project.repo;
+  const view = asView(project);
   const tabs = TABS.map(
     (tab) =>
       `<a href="${escapeHtml(projectUrl(project.repo) + tab.path)}"${tab.id === active ? ' aria-current="page"' : ""}>${tab.label}</a>`,
   ).join("");
-  return `<p class="eyebrow mono">${escapeHtml(project.repo)}</p>
-      <h1>${escapeHtml(heading ?? name)}</h1>
-      <nav class="tabs" aria-label="Project">${tabs}</nav>`;
+  const production = productionBranch(project) ?? "main";
+  const banner = view?.ref
+    ? `<p class="ref-banner" role="status">Reference branch <code>${escapeHtml(view.ref)}</code>; production is <code>${escapeHtml(production)}</code>.
+        <a href="${escapeHtml(view.path)}?ref=">Back to production</a></p>`
+    : "";
+  return `<nav class="tabs" aria-label="Project">${tabs}</nav>
+      ${banner}
+      ${
+        heading
+          ? `<h1>${escapeHtml(heading)}</h1>`
+          : `<h1 class="visually-hidden">${escapeHtml(project.check?.config?.nom || project.repo)} · ${TABS.find((tab) => tab.id === active)?.label ?? ""}</h1>`
+      }`;
 }
 
 function statusPill(check: ConfigCheck | null): string {
@@ -199,33 +252,12 @@ function declaredSection(project: Project): string {
     </section>`;
 }
 
-function branchNav(project: Project, choices: string[], current: string | null): string {
-  if (choices.length < 2) return "";
-  const production = choices[0];
-  return `<nav class="branches" aria-label="Branch">
-      <span class="muted">Branch</span>
-      ${choices
-        .map((branch) => {
-          const ref = branch === production ? null : branch;
-          const active = (current ?? production) === branch;
-          return `<a href="${escapeHtml(projectRefUrl(project.repo, ref))}"${active ? ' aria-current="page"' : ""}><code>${escapeHtml(branch)}</code></a>`;
-        })
-        .join("")}
-    </nav>`;
-}
-
 export function projectPage(
   viewer: Viewer,
   project: Project,
-  options: {
-    notice?: string | undefined;
-    failure?: string | undefined;
-    choices?: string[];
-    ref?: string | null;
-    branchCheck?: ConfigCheck | null;
-  } = {},
+  options: { notice?: string | undefined; failure?: string | undefined; branchCheck?: ConfigCheck | null } = {},
 ): string {
-  const ref = options.ref ?? null;
+  const ref = asView(project)?.ref ?? null;
   const viewed: Project = ref ? { ...project, check: options.branchCheck ?? null } : project;
   const config = viewed.check?.config ?? project.check?.config;
   const known = options.notice ? PROJECT_NOTICES[options.notice] : undefined;
@@ -243,18 +275,12 @@ export function projectPage(
       <p class="links">${links.join("")}</p>
       ${known ? notice(known.text, known.tone) : ""}
       ${notice(options.failure, "error")}
-      ${branchNav(project, options.choices ?? [], ref)}
-      ${
-        ref && viewed.check
-          ? `<p class="notice ok" role="status">Showing branch <code>${escapeHtml(ref)}</code> at <span class="mono">${escapeHtml(
-              viewed.check.commitSha.slice(0, 7),
-            )}</span>. The project list, Production and the webhooks keep following <code>${escapeHtml(options.choices?.[0] ?? "")}</code>.</p>`
-          : ""
-      }
       ${documentationSection(viewed, ref)}
       ${fileSection(viewer, viewed, ref)}
       ${declaredSection(viewed)}`,
     viewer,
+    [],
+    projectContext(project),
   );
 }
 
@@ -282,7 +308,8 @@ export function docPage(
 
   return layout(
     `${title} · ${name} · La Fabrique extraordinaire`,
-    `<p class="crumbs"><a href="${escapeHtml(projectRefUrl(project.repo, ref))}">${escapeHtml(name)}</a>${
+    `${projectHeader(project, "overview")}
+      <p class="crumbs"><a href="${escapeHtml(projectRefUrl(project.repo, ref))}">${escapeHtml(name)}</a>${
       entry ? ` <span aria-hidden="true">›</span> ${escapeHtml(entry.titre)}` : ""
     }</p>
       <p class="doc-meta muted">${escapeHtml(path)} · ${version} ·
@@ -301,5 +328,7 @@ ${rendered.html}
           : ""
       }`,
     viewer,
+    [],
+    projectContext(project),
   );
 }

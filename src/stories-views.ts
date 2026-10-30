@@ -1,4 +1,4 @@
-import { notice, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Story, StoryFilters, StoryGroup } from "./stories";
 import { projectUrl } from "./urls";
@@ -107,5 +107,7 @@ export function storiesPage(
       ${meta}
       ${data.groups.length ? data.groups.map((group) => groupSection(group, circuit)).join("") : `<p>No story matches these filters.</p>`}`,
     viewer,
+    [],
+    projectContext(project),
   );
 }

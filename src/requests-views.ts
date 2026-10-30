@@ -1,4 +1,4 @@
-import { notice, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { MyRequest, RequestDraft, RequestStep, Rubrique } from "./requests";
 import { projectUrl } from "./urls";
@@ -58,6 +58,7 @@ export function requestsPage(
       ${list}`,
     viewer,
     data.created ? [DRAFT_SCRIPT] : [],
+    projectContext(project),
   );
 }
 
@@ -110,5 +111,6 @@ export function requestFormPage(
       ${body}`,
     viewer,
     [DRAFT_SCRIPT],
+    projectContext(project),
   );
 }
