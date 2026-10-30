@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.18",
+    "date": "2026-10-30",
+    "heure": "10:28",
+    "titre": "Always the latest look",
+    "changements": [
+      "After each update, pages use the new styles and scripts at once, without waiting for the browser's copy to expire."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.17",
     "date": "2026-10-30",
     "heure": "10:22",

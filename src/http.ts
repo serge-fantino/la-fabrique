@@ -26,20 +26,22 @@ export function html(body: string, options: ResponseOptions = {}): Response {
   });
 }
 
-export function css(body: string): Response {
+export function css(body: string, headers: Record<string, string> = {}): Response {
   return respond(body, {
     headers: {
       "content-type": "text/css; charset=utf-8",
-      "cache-control": "public, max-age=300",
+      "cache-control": "no-cache",
+      ...headers,
     },
   });
 }
 
-export function script(body: string): Response {
+export function script(body: string, headers: Record<string, string> = {}): Response {
   return respond(body, {
     headers: {
       "content-type": "text/javascript; charset=utf-8",
-      "cache-control": "public, max-age=300",
+      "cache-control": "no-cache",
+      ...headers,
     },
   });
 }

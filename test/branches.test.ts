@@ -1,6 +1,6 @@
-import { env, fetchMock } from "cloudflare:test";
+import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { get, signIn } from "./helpers";
+import { BASE, get, signIn } from "./helpers";
 
 const REPO = "acme/widget";
 const MAIN_SHA = "1111111111111111111111111111111111111111";
@@ -206,7 +206,25 @@ describe("The reference branch of the header", () => {
     expect(source).toContain("[data-loading]");
     expect(source).toContain("[data-branch-menu]");
     const page = await (await get("/projects", (await signIn("admin-one")).cookie)).text();
-    expect(page).toContain('<script src="/fabrique.js" defer></script>');
+    expect(page).toMatch(/<script src="\/fabrique\.js\?v=[0-9a-f]{8}" defer><\/script>/);
     expect(page).toContain('<div class="loading" data-loading aria-hidden="true"><i></i></div>');
+  });
+
+  it("links each stylesheet and script by its fingerprint, cached for good, and revalidates the bare address", async () => {
+    const page = await (await get("/projects", (await signIn("admin-one")).cookie)).text();
+    const href = /href="(\/styles\.css\?v=[0-9a-f]{8})"/.exec(page)?.[1] ?? "";
+    expect(href).not.toBe("");
+
+    const fingerprinted = await get(href);
+    expect(fingerprinted.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    const etag = fingerprinted.headers.get("etag") ?? "";
+    expect(etag).toMatch(/^"[0-9a-f]{8}"$/);
+
+    const bare = await get("/styles.css");
+    expect(bare.headers.get("cache-control")).toBe("no-cache");
+    const again = await SELF.fetch(`${BASE}/styles.css`, { headers: { "if-none-match": etag } });
+    expect(again.status).toBe(304);
+    // An old fingerprint gets today's file, never kept for long.
+    expect((await get("/styles.css?v=00000000")).headers.get("cache-control")).toBe("no-cache");
   });
 });
