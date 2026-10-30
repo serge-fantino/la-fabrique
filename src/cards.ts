@@ -519,7 +519,14 @@ const GAP = 1e-6;
 
 // Moved on the board: its dimensions take the values of the place it was
 // dropped in, its order sits between its new neighbours.
-export async function moveCard(db: D1Database, card: Card, author: string, move: Move, known: Record<FreeDimension, string[]>): Promise<Card> {
+export async function moveCard(
+  db: D1Database,
+  card: Card,
+  author: string,
+  move: Move,
+  known: Record<FreeDimension, string[]>,
+  reason?: string,
+): Promise<Card> {
   const tags = tagsOf(card);
   let body = card.body;
   const changes: { dimension: Dimension; from: string | null; to: string | null }[] = [];
@@ -556,7 +563,12 @@ export async function moveCard(db: D1Database, card: Card, author: string, move:
         )
         .bind(tags.kind, tags.status, body, tags.epic, tags.domain, tags.segment, tags.release, position, rev, card.id),
       revisionStatement(db, card.id, rev, { title: card.title, body, tags }, author, card.data),
-      activityStatement(db, { actor: author, action: "card_moved", repo: card.repo, details: { card: card.id, title: card.title, changes } }),
+      activityStatement(db, {
+        actor: author,
+        action: "card_moved",
+        repo: card.repo,
+        details: { card: card.id, title: card.title, changes, ...(reason ? { reason } : {}) },
+      }),
     );
     if (body !== card.body) statements.push(...linkStatements(db, card.id, body));
   } else if (position !== card.position) {
@@ -564,6 +576,27 @@ export async function moveCard(db: D1Database, card: Card, author: string, move:
   }
   if (statements.length) await db.batch(statements);
   return { ...card, ...tags, body, position, rev };
+}
+
+// A card's status follows its work: Shaping when Claude is asked, To
+// validate when the need is clear, Validated when its story is made. It only
+// moves forward, and never off Dropped nor on an archived card.
+const STATUS_FLOW: CardStatus[] = ["draft", "shaping", "to_validate", "validated"];
+const NO_VALUES: Record<FreeDimension, string[]> = { epic: [], domain: [], segment: [], release: [] };
+
+export async function advanceStatus(db: D1Database, repo: string, id: number, author: string, to: CardStatus, reason: string): Promise<boolean> {
+  const card = await findCard(db, repo, id);
+  if (!card || card.archivedAt || card.status === "dropped") return false;
+  if (STATUS_FLOW.indexOf(card.status) >= STATUS_FLOW.indexOf(to)) return false;
+  await moveCard(db, card, author, { set: { status: to }, before: null, after: null }, NO_VALUES, reason);
+  return true;
+}
+
+// The status chosen on the card's page.
+export async function setStatus(db: D1Database, card: Card, author: string, to: CardStatus): Promise<boolean> {
+  if (to === card.status) return false;
+  await moveCard(db, card, author, { set: { status: to }, before: null, after: null }, NO_VALUES);
+  return true;
 }
 
 async function positionOf(db: D1Database, repo: string, id: number | null): Promise<number | null> {

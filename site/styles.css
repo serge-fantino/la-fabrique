@@ -2227,8 +2227,24 @@ p.about-version-choice {
 .fiche-tags {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.3rem;
   margin: 0.45rem 0 0;
+}
+
+/* The status changed in place, on the card's page. */
+.card-status-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.card-status-form select.pill {
+  min-height: 2rem;
+  padding-right: 1.6rem;
+  border: 0;
+  cursor: pointer;
 }
 
 .fiche-grip {

@@ -1,4 +1,4 @@
-import { findCard, saveSpec, saveSplit } from "./cards";
+import { advanceStatus, findCard, saveSpec, saveSplit } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
 import { liveFor, type LiveEvent } from "./live";
@@ -283,6 +283,7 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   if (!outcome.ok) return failed(outcome);
   const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
   await saveSpec(env.DB, current, job.login, outcome.spec, outcome.callId);
+  if (outcome.spec.enough) await advanceStatus(env.DB, job.repo, job.cardId, job.login, "to_validate", "Claude knows enough");
   const asks = outcome.spec.questions.length;
   return finish(
     outcome.callId,

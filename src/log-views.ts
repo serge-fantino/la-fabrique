@@ -53,7 +53,7 @@ export function describe(entry: LogEntry, repo: string): string {
     case "card_moved": {
       const changes = Array.isArray(d["changes"]) ? (d["changes"] as { dimension?: unknown; from?: unknown; to?: unknown }[]) : [];
       const said = changes.map((change) => `${text(change.dimension)}: ${text(change.from) || "not set"} → ${text(change.to) || "not set"}`).join(", ");
-      return `moved card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${said ? ` (${said})` : ""}`;
+      return `moved card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${said ? ` (${said}${d["reason"] ? `: ${text(d["reason"])}` : ""})` : ""}`;
     }
     case "card_spec_written":
       return `${d["by"] === "claude" ? "wrote the spec of" : "edited the spec of"} card ${card(d["card"])}${d["by"] === "claude" ? " with Claude" : ""}${d["title"] ? ` “${text(d["title"])}”` : ""}`;

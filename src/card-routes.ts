@@ -24,6 +24,8 @@ import {
   restoreRevision,
   saveSpec,
   saveSplit,
+  advanceStatus,
+  setStatus,
   updateCard,
   type CardSplit,
   type Card,
@@ -190,6 +192,7 @@ const CARD_NOTICES: Record<string, string> = {
   enough: "Questions closed: Claude will not ask more unless you ask it to.",
   split_discarded: "Proposal discarded.",
   stories: "Stories created on GitHub, each linked to this card.",
+  status: "Status changed.",
 };
 
 // The card's page, also after a failed call to Claude (`failure`, with
@@ -306,6 +309,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     // Saved at once, run in the background: leaving the page loses nothing.
     const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind, request: { instruction, answers }, login: viewer.login });
     if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, ...keep, status: 409 });
+    await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
     return redirect(`${url}#claude-job`);
   }
   if (action === "job_retry") {
@@ -315,6 +319,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
     const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: last.kind, request: last.request, login: viewer.login });
     if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
     return redirect(`${url}#claude-job`);
   }
   if (action === "spec_split") {
@@ -329,7 +334,14 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   if (action === "spec_enough") {
     if (!card.data.spec || isActive(await latestJob(env.DB, card.id))) return redirect(`${url}#spec`);
     await saveSpec(env.DB, card, viewer.login, closeQuestions(card.data.spec));
+    await advanceStatus(env.DB, project.repo, card.id, viewer.login, "to_validate", "questions closed");
     return redirect(`${url}?notice=enough#spec`);
+  }
+  if (action === "status") {
+    const to = form.get("status");
+    if (!isStatus(to) || card.archivedAt) return redirect(url);
+    const changed = await setStatus(env.DB, card, viewer.login, to);
+    return redirect(`${url}?notice=${changed ? "status" : "unchanged"}`);
   }
   if (action === "spec_save") {
     if (Number(form.get("rev")) !== card.rev) {
@@ -394,6 +406,7 @@ export async function storyRoute(request: Request, env: Env, viewer: Viewer, pro
     );
   }
   await linkStory(env.DB, card, viewer.login, outcome.number, outcome.url);
+  await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story made");
   return redirect(`${url}?notice=story`);
 }
 
@@ -522,6 +535,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   }
   const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
   await saveSplit(env.DB, current, viewer.login, null);
+  await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "stories made");
   return redirect(`${url}?notice=stories&created=${created.length}#stories`);
 }
 
