@@ -9,7 +9,10 @@ export interface FabriqueConfig {
   branches?: { production?: string; integration?: string; travail?: string[] };
   environnements?: Record<string, Environment>;
   workflows?: Record<string, string | null>;
-  version?: { fichier?: string; forme?: string };
+  // `coulisses`: the marker a commit carries when it changes nothing a user
+  // sees, so the project's checks do not ask it for a release-notes entry
+  // (La Fabrique's own pull requests carry it).
+  version?: { fichier?: string; forme?: string; coulisses?: string };
   documentation?: { titre: string; chemin: string }[];
   demandes?: {
     etiquettes?: Record<string, string>;
@@ -23,7 +26,8 @@ export interface FabriqueConfig {
   // The project's own app, connected to La Fabrique to report defects:
   // its name on the consent page, the path it comes back to on each
   // environment with `signalement`, and its local address in development.
-  application?: { nom?: string; retour?: string; local?: string };
+  // `kit`: the folder where the project keeps its copy of the report kit.
+  application?: { nom?: string; retour?: string; local?: string; kit?: string };
 }
 
 export const ENVIRONMENT_TYPES = ["integration", "production"] as const;
@@ -197,6 +201,11 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
         else config.version.fichier = fichier;
       }
       if (typeof version["forme"] === "string") config.version.forme = version["forme"];
+      const coulisses = version["coulisses"];
+      if (coulisses !== undefined) {
+        if (typeof coulisses === "string" && coulisses.trim() && coulisses.length <= 40) config.version.coulisses = coulisses.trim();
+        else errors.push("`version.coulisses` must be a short marker, such as \"[coulisses]\".");
+      }
     }
   }
 
@@ -303,6 +312,12 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
       if (local !== undefined) {
         if (isLocalOrigin(local)) config.application.local = local.replace(/\/$/, "");
         else errors.push("`application.local` must be an address on this machine, such as http://localhost:8787.");
+      }
+      const kit = application["kit"];
+      if (kit !== undefined) {
+        const folder = typeof kit === "string" ? kit.replace(/^\.?\//, "").replace(/\/$/, "") : "";
+        if (folder && !folder.split("/").includes("..") && /^[\w./-]+$/.test(folder)) config.application.kit = folder;
+        else errors.push("`application.kit` must be a folder of the repository, such as site/static/vendor/fabrique.");
       }
     }
   }

@@ -1,6 +1,6 @@
 [
   {
-    "version": "0.40",
+    "version": "0.42",
     "date": "2026-10-30",
     "heure": "18:30",
     "titre": "A card's spec with Claude, and the story made from it",
@@ -9,6 +9,30 @@
       "Make the story: once the required sections are filled in, the spec becomes an issue on GitHub in your name, with a link back to the card; the card lists its stories.",
       "Claude is used by Product Engineers, tech leads and super admins only, with quotas: calls per person and day, and a monthly budget for all of La Fabrique. Every call is recorded with its tokens and its cost, never its content.",
       "What Claude cost shows on each card and on the board; Settings shows whether Claude is set up, the model, the quotas, and for the super admin the spend by project, person and card, the last calls, and a key check."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.41",
+    "date": "2026-10-30",
+    "heure": "18:15",
+    "titre": "Keep a project's report kit up to date",
+    "changements": [
+      "Setup → Connected app says which version of the report kit the project keeps, against the latest, and what the app's relay must follow.",
+      "One button proposes the update as a pull request on the integration branch, under your GitHub name: the project reviews it, tries it on int and merges it.",
+      "La Fabrique's pull requests carry the project's marker for changes nothing a user sees (version.coulisses), so the project's checks let them through."
+    ],
+    "liens": null
+  },
+  {
+    "version": "0.40",
+    "date": "2026-10-30",
+    "heure": "17:58",
+    "titre": "Defects tab, and what a defect is about",
+    "changements": [
+      "Each project has a Defects tab: the issues labelled bug, open or closed, with the story and the version each is about, who reported it, its screenshot, and those left to triage.",
+      "The report form of the project's app asks what the defect is about: the versions on int first, each with its stories, then the versions released with the stories they brought; a search finds an older one, and I don't know is always possible.",
+      "The issue is linked to the story chosen and says which version it is about; the report kit is now 1.1.0."
     ],
     "liens": null
   },

@@ -19,6 +19,7 @@ const WORDS = {
     appDefectIntro: (environment: string, story: number | null) =>
       `Défaut signalé depuis l'app, sur ${environment}${story ? `, en testant #${story}` : ""}.`,
     onIntThen: (stories: number[]) => `Sur ${stories.length > 1 ? "int à ce moment-là" : "int"} : ${stories.map((n) => `#${n}`).join(", ")}.`,
+    aboutRelease: (version: string, title: string | null) => `Concerne la version ${version}${title ? ` « ${title} »` : ""}.`,
     context: "Contexte",
     contextRows: { environment: "Environnement", version: "Version", page: "Page", component: "Composant", viewport: "Écran", userAgent: "Navigateur" },
     deployment: "déploiement",
@@ -45,6 +46,7 @@ const WORDS = {
     appDefectIntro: (environment: string, story: number | null) =>
       `Defect reported from the app, on ${environment}${story ? `, while testing #${story}` : ""}.`,
     onIntThen: (stories: number[]) => `On int at the time: ${stories.map((n) => `#${n}`).join(", ")}.`,
+    aboutRelease: (version: string, title: string | null) => `About version ${version}${title ? ` “${title}”` : ""}.`,
     context: "Context",
     contextRows: { environment: "Environment", version: "Version", page: "Page", component: "Component", viewport: "Screen", userAgent: "Browser" },
     deployment: "deployment",

@@ -1,4 +1,5 @@
 import { effectiveRole } from "./accounts";
+import { DEFECT_LABEL, defectTargets, isKnownStory } from "./defect-targets";
 import { activityStatement } from "./activity-log";
 import { randomToken } from "./crypto";
 import type { Env } from "./env";
@@ -14,17 +15,19 @@ import { readSnapshot } from "./snapshots";
 import { applyIssueEvent, STORIES, type RestIssue, type Story } from "./stories";
 import { wordingFor } from "./wording";
 
+export { DEFECT_LABEL };
+
 // A defect sent by a project's app in the name of the person using it
 // (contract with L'épicerie extraordinaire, la-fabrique#65).
 
 export const DEFECT_ROUTE = /^\/api\/projects\/([^/]+)\/defects$/;
+export const TARGETS_ROUTE = /^\/api\/projects\/([^/]+)\/targets$/;
 // Reports a day per account and project, from La Fabrique or an app.
 export const DAILY_CAP = 20;
 export const SCREENSHOT_MAX_BYTES = 2 * 1024 * 1024;
 // Base64 makes a screenshot a third larger; the rest of a report is small.
 const BODY_MAX_BYTES = 3 * 1024 * 1024;
 const PART_BYTES = 500 * 1024;
-export const DEFECT_LABEL = "bug";
 export const TRIAGE_LABEL = "to triage";
 export const SCREENSHOT_ROUTE = /^\/screenshots\/([A-Za-z0-9_-]{20,})\.(png|jpg)$/;
 
@@ -41,6 +44,10 @@ export interface DefectReport {
   userAgent: string;
   errors: string[];
   screenshot: { type: "image/png" | "image/jpeg"; bytes: Uint8Array } | null;
+  // What it is about, chosen by the reporter among the targets: a story,
+  // a version (release note), or neither.
+  story: number | null;
+  release: string | null;
 }
 
 type Json = Record<string, unknown>;
@@ -126,6 +133,12 @@ export function readReport(data: unknown): { report: DefectReport } | { invalid:
   const screenshot = decodeScreenshot(data["screenshot"]);
   if (screenshot === "invalid") invalid.push("screenshot");
 
+  const rawStory = data["story"];
+  const story = rawStory === undefined || rawStory === null ? null : Number.isInteger(rawStory) && (rawStory as number) > 0 ? (rawStory as number) : NaN;
+  if (Number.isNaN(story)) invalid.push("story");
+  const rawRelease = data["release"];
+  if (rawRelease !== undefined && rawRelease !== null && (typeof rawRelease !== "string" || rawRelease.length > 40)) invalid.push("release");
+
   if (invalid.length) return { invalid };
   return {
     report: {
@@ -141,6 +154,8 @@ export function readReport(data: unknown): { report: DefectReport } | { invalid:
       userAgent: text(data["user_agent"], 400),
       errors,
       screenshot: screenshot === "invalid" ? null : screenshot,
+      story: Number.isNaN(story) ? null : story,
+      release: typeof rawRelease === "string" && rawRelease.trim() ? rawRelease.trim() : null,
     },
   };
 }
@@ -157,7 +172,16 @@ function cell(value: string): string {
 export function defectBody(
   project: Project,
   report: DefectReport,
-  context: { login: string; app: string | null; environmentUrl: string; story: number | null; onInt: number[]; screenshotUrl: string | null; triage: boolean },
+  context: {
+    login: string;
+    app: string | null;
+    environmentUrl: string;
+    story: number | null;
+    onInt: number[];
+    screenshotUrl: string | null;
+    triage: boolean;
+    release?: { version: string; title: string | null } | null;
+  },
 ): string {
   const words = wordingFor(project);
   const rows = words.contextRows;
@@ -189,7 +213,11 @@ export function defectBody(
   if (report.userAgent) lines.push([rows.userAgent, code(report.userAgent)]);
 
   const parts = [
-    [words.appDefectIntro(report.environment, context.story), context.story === null && context.onInt.length ? words.onIntThen(context.onInt) : ""]
+    [
+      words.appDefectIntro(report.environment, context.story),
+      context.release ? words.aboutRelease(context.release.version, context.release.title) : "",
+      context.story === null && !context.release && context.onInt.length ? words.onIntThen(context.onInt) : "",
+    ]
       .filter(Boolean)
       .join(" "),
     `## ${words.saw}\n\n${report.seen}`,
@@ -344,9 +372,16 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
     return failure(429, "daily_cap", `At most ${DAILY_CAP} reports a day on this project: try again tomorrow.`);
   }
 
+  // The story the reporter chose, else the only one on int when the
+  // reporter did not say.
+  if (report.story !== null && !(await isKnownStory(env, project, report.story))) {
+    return failure(400, "invalid", `Story #${report.story} is not one of this project's stories.`, { fields: ["story"] });
+  }
   const triage = role === null;
   const onInt = await storiesOnIntNow(env, project);
-  const story = onInt.length === 1 ? (onInt[0] ?? null) : null;
+  const story = report.story ?? (report.release === null && onInt.length === 1 ? (onInt[0] ?? null) : null);
+  const targets = report.release ? await defectTargets(env, project) : [];
+  const release = report.release ? { version: report.release, title: targets.find((target) => target.version === report.release)?.title ?? null } : null;
   const screenshot = report.screenshot ? await storeScreenshot(env, project.repo, props.login, report.screenshot) : null;
   const screenshotUrl = screenshot ? new URL(`/screenshots/${screenshot}`, request.url).href : null;
   const body = defectBody(project, report, {
@@ -357,6 +392,7 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
     onInt,
     screenshotUrl,
     triage,
+    release,
   });
 
   let created: RestIssue;
@@ -393,6 +429,7 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
       environment: report.environment,
       via: props.app ?? "app",
       triage,
+      ...(report.release ? { release: report.release } : {}),
       ...(screenshot ? { screenshot } : {}),
     },
   }).run();
@@ -401,4 +438,20 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
     { issue: { number: created.number, url: created.html_url }, story: story ? { number: story } : null, triage },
     { status: 201, headers: { "cache-control": "no-store" } },
   );
+}
+
+// What a report can be about: the versions on int, then those released,
+// each with its stories (GET /api/projects/{project}/targets).
+export async function defectTargetsForApp(env: Env, props: GrantProps, projectParam: string): Promise<Response> {
+  let wanted: string;
+  try {
+    wanted = decodeURIComponent(projectParam);
+  } catch {
+    wanted = "";
+  }
+  const project = await findProject(env.DB, props.repo);
+  if (!project || wanted.toLowerCase() !== props.repo.slice(props.repo.indexOf("/") + 1).toLowerCase()) {
+    return failure(403, "no_access", "This connection reports on another project.");
+  }
+  return json({ versions: await defectTargets(env, project) }, { headers: { "cache-control": "no-store" } });
 }

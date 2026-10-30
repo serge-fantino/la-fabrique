@@ -15,7 +15,9 @@ The kit has two halves:
 | [`fabrique-report.css`](/kit/fabrique-report.css) | Its styles, all prefixed `fab-rep-`; colours and shapes in custom properties. |
 | [`fabrique-report-early.js`](/kit/fabrique-report-early.js) | Optional: keeps the page's errors from the start, so a report carries those that happened before the kit was loaded. |
 
-Copy them as they are (for instance into `vendor/fabrique/`); each starts with its version. Take them again from La Fabrique when it publishes a new one.
+Copy them as they are (for instance into `vendor/fabrique/`); each starts with its version.
+
+Keep the names as they are, without a version in them: declare the folder in `.fabrique.json` (`"application": { "kit": "vendor/fabrique" }`) and La Fabrique's *Setup* shows the version the project has against the latest, and proposes the update as a pull request (on the integration branch, under the name of the person who asks; the project reviews it, tries it and merges it). When a version also needs a change in the relay, the pull request says so.
 
 ## 2. Load the kit
 
@@ -54,6 +56,8 @@ Options (`FabriqueReport.configure`, `start`, or the `data-` attributes of the s
 
 API: `FabriqueReport.start()` (picking, then the form; resolves with the result, or `null` if cancelled), `status()` (the relay's `GET`), `flush()` (sends the reports kept offline; done at load and when the network is back), `errors()`, `version`.
 
+What it is about: the form asks the person which version and story the defect is about (**It is about**). The versions on int come first, each with its stories, then the versions released, newest first, each with the stories it brought; a search finds an older one; **I don't know** is always possible. When a single story is on int, it is chosen already.
+
 Picking: the person touches or clicks a part; **Wider** goes to the enclosing part, **This one** confirms, **The whole page**, **Cancel** (or Escape). While picking, the page does not react to presses; it still scrolls.
 
 Styles: change `--fab-rep-ink`, `--fab-rep-paper`, `--fab-rep-muted`, `--fab-rep-line`, `--fab-rep-accent`, `--fab-rep-radius`, `--fab-rep-font`, and `--fab-rep-bottom` (to stay above a bottom bar), on `.fab-rep`.
@@ -70,14 +74,27 @@ Two routes at the address you chose, for a signed-in person of your app, outside
 
 `can_report` is `can.report_defect` of La Fabrique's `GET /api/me`. Not linked: `{ "linked": false, "can_report": false, "link_url": "…" }`.
 
+**`GET ?targets=1`**: what a report can be about, passed through from La Fabrique's `GET {FABRIQUE_URL}/api/projects/{project}/targets` (with the person's token).
+
+```json
+{ "versions": [
+  { "version": "1.170", "title": "Weekly menu", "changes": ["…"], "on_int": true, "date": null,
+    "stories": [{ "number": 146, "title": "…", "url": "…" }] },
+  { "version": "1.169", "title": "…", "changes": ["…"], "on_int": false, "date": "2026-10-30", "stories": [] } ] }
+```
+
+The versions on int carry the stories on int; a released version carries the stories closed since the previous one (a release note is linked to its stories by default). Without this route, the kit simply does not ask.
+
 **`POST`**: the report, as the kit sends it.
 
 ```json
 { "title": "…", "seen": "…", "expected": "…", "page": "/app/…",
   "component": { "selector": "…", "text": "…", "box": { "x": 0, "y": 0, "w": 0, "h": 0 } },
   "viewport": { "w": 390, "h": 844, "dpr": 3 }, "user_agent": "…", "errors": ["…"],
-  "screenshot": "data:image/png;base64,…" }
+  "screenshot": "data:image/png;base64,…", "story": 146, "release": "1.170" }
 ```
+
+`story` and `release` are what the person chose (both optional). La Fabrique links the issue to that story, and says which version it is about; without a story, it links the only story on int, if there is one.
 
 The relay:
 

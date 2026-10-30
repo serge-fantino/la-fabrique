@@ -2,7 +2,7 @@ import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DAILY_CAP } from "../src/defects";
 import type { ProductionStatus } from "../src/production";
-import { BASE, get, grantRole, logActions, post } from "./helpers";
+import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
 import { branchKind } from "../src/projects";
 import { CONFIG, connect, INT_URL, me, REPO } from "./oauth-helpers";
 
@@ -39,7 +39,7 @@ function story(number: number, extra: Record<string, unknown> = {}) {
   };
 }
 
-function status(issues: number[]): ProductionStatus {
+function status(issues: number[], waiting: ProductionStatus["waiting"] = []): ProductionStatus {
   return {
     production: "main",
     integration: "integration",
@@ -48,16 +48,16 @@ function status(issues: number[]): ProductionStatus {
     groups: [{ branch: "feature/146-x", title: "", mergedAt: "2026-10-30T08:00:00Z", commits: [], issues }],
     workflows: [],
     versions: [],
-    waiting: [],
+    waiting,
     ready: true,
     blockers: [],
   };
 }
 
-async function seedInt(issues: number[]): Promise<void> {
+async function seedInt(issues: number[], waiting: ProductionStatus["waiting"] = []): Promise<void> {
   const now = new Date().toISOString();
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, ?)").bind(REPO, JSON.stringify(status(issues)), now),
+    env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, ?)").bind(REPO, JSON.stringify(status(issues, waiting)), now),
     env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, ?)").bind(
       REPO,
       JSON.stringify([story(140, { parent: null, subTotal: 3 }), story(146), story(147)]),
@@ -286,6 +286,60 @@ describe("Reporting a defect from the project's app", () => {
     expect((await report(tokens.access_token, REPORT)).status).toBe(201);
     // What production declares as production stays closed.
     expect((await report(tokens.access_token, { ...REPORT, environment: "production" })).status).toBe(403);
+  });
+
+  it("lists what a report can be about: the version on int with its stories, the epic and defects left out", async () => {
+    const { tokens } = await connect();
+    await seedInt([146, 147, 140], [{ version: "1.170", title: "Menu", changes: ["Plan the week."] }]);
+    const response = await SELF.fetch(`${BASE}/api/projects/widget/targets`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
+    expect(response.status).toBe(200);
+    const { versions } = (await response.json()) as { versions: { version: string; on_int: boolean; stories: { number: number }[] }[] };
+    expect(versions[0]).toMatchObject({ version: "1.170", on_int: true, title: "Menu", changes: ["Plan the week."] });
+    expect(versions[0]?.stories.map((story) => story.number)).toEqual([147, 146]);
+    const other = await SELF.fetch(`${BASE}/api/projects/other/targets`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
+    expect(other.status).toBe(403);
+  });
+
+  it("links the story and the version the reporter chose", async () => {
+    const { tokens } = await connect();
+    await seedInt([146, 147], [{ version: "1.170", title: "Menu", changes: [] }]);
+    mockVersion();
+    const sent = mockGitHub();
+    mockStoryComment(sent, 147);
+    const response = await report(tokens.access_token, { ...REPORT, story: 147, release: "1.170" });
+    expect(await response.json()).toMatchObject({ story: { number: 147 } });
+    expect(sent.issue?.body).toContain("Defect reported from the app, on int, while testing #147. About version 1.170 “Menu”.");
+    expect(sent.comment?.body).toBe("Defect reported by @mona: #150");
+    const log = await env.DB.prepare("SELECT issue_number, details FROM activity_log WHERE action = 'defect_reported'").first<{ issue_number: number; details: string }>();
+    expect(log?.issue_number).toBe(147);
+    expect(JSON.parse(log?.details ?? "{}")).toMatchObject({ release: "1.170" });
+  });
+
+  it("lists the defects in the project's Defects tab, with their story, version and screenshot", async () => {
+    const { tokens } = await connect();
+    await seedInt([146, 147], [{ version: "1.170", title: "Menu", changes: [] }]);
+    mockVersion();
+    const sent = mockGitHub();
+    mockStoryComment(sent, 147);
+    await report(tokens.access_token, { ...REPORT, story: 147, release: "1.170", screenshot: PNG });
+    const page = await (await get(`/projects/${REPO}/defects`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain('aria-current="page">Defects</a>');
+    expect(page).toContain("<strong>1 open</strong> · 1 to triage");
+    expect(page).toContain(`href="https://github.com/${REPO}/issues/150">#150</a> The save button does nothing <span class="pill warn">to triage</span>`);
+    expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> Story 147`);
+    expect(page).toContain('<td class="mono">1.170</td>');
+    expect(page).toMatch(/href="\/screenshots\/[A-Za-z0-9_-]+\.png">Screenshot<\/a>/);
+    const closed = await (await get(`/projects/${REPO}/defects?state=closed`, (await signIn("admin-one")).cookie)).text();
+    expect(closed).toContain("No defect here.");
+  });
+
+  it("refuses a story that is not one of the project's", async () => {
+    const { tokens } = await connect();
+    await seedInt([146]);
+    mockVersion();
+    const response = await report(tokens.access_token, { ...REPORT, story: 999 });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ fields: ["story"] });
   });
 
   it("says in /api/me that reporting is off when no environment allows it", async () => {

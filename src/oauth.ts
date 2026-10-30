@@ -2,7 +2,7 @@ import { AuthorizationError, type AuthRequest, type OAuthHelpers } from "@cloudf
 import { effectiveRole, ROLE_LABELS, type Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import { safeEqual } from "./crypto";
-import { DEFECT_ROUTE, reportDefectFromApp, reportingEnvironments } from "./defects";
+import { DEFECT_ROUTE, defectTargetsForApp, reportDefectFromApp, reportingEnvironments, TARGETS_ROUTE } from "./defects";
 import type { Env } from "./env";
 import { fetchUser, refreshUserToken } from "./github";
 import { githubFetch } from "./github-app";
@@ -256,6 +256,11 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
   if (defects) {
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, { status: 405 });
     return reportDefectFromApp(request, env, props, defects[1] ?? "");
+  }
+  const targets = TARGETS_ROUTE.exec(pathname);
+  if (targets) {
+    if (request.method !== "GET") return json({ error: "method_not_allowed" }, { status: 405 });
+    return defectTargetsForApp(env, props, targets[1] ?? "");
   }
   return json({ error: "not_found" }, { status: 404 });
 }

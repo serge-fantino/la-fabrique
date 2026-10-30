@@ -18,7 +18,9 @@ import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
 import { readSnapshot } from "./snapshots";
+import { defectRows, defectsPage, filterDefects, readDefectFilters } from "./defects-tab";
 import { appLink, appSection, changeProjectApp, type AppActionFailure } from "./project-app";
+import { projectKit, proposeKitUpdate, relayChanges } from "./kit-update";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
 import { requestFormPage, requestsPage } from "./requests-views";
@@ -354,6 +356,7 @@ const SETUP_NOTICES: Record<string, string> = {
   unchanged: "Nothing to change: the file already says this.",
   app_returns: "The app's return addresses now follow .fabrique.json.",
   app_removed: "App removed: every connection to it was revoked.",
+  kit_current: "The project's kit is already up to date.",
 };
 
 const APP_FAILURES: Record<AppActionFailure, string> = {
@@ -396,7 +399,7 @@ export async function showSetup(
     loadStories(env, project),
   ]);
   const production = await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION);
-  const link = await appLink(env, project, new URL(request.url).origin);
+  const [link, kit] = await Promise.all([appLink(env, project, new URL(request.url).origin), projectKit(env, project)]);
   const items = setupChecklist({
     check,
     app: { reporting: Object.keys(link.reporting), registered: link.app !== null, missing: link.missing.length, connections: link.connections },
@@ -417,7 +420,14 @@ export async function showSetup(
   return html(
     setupPage(viewer, view, {
       items,
-      app: appSection(viewer, view, link),
+      app: appSection(viewer, view, link, {
+        kit,
+        relay: relayChanges(kit.version),
+        proposed:
+          params.get("notice") === "kit_proposed" && Number.isInteger(pull) && pull > 0
+            ? { number: pull, url: `https://github.com/${project.repo}/pull/${pull}` }
+            : undefined,
+      }),
       notice: noticeKey ? SETUP_NOTICES[noticeKey] : undefined,
       failure: outcome?.failure ?? failure ?? releases.failure ?? stories.failure,
       lifecycle: {
@@ -661,4 +671,33 @@ export async function launchClaudeOn(request: Request, form: FormData, env: Env,
   const outcome = await launchClaude(env, project, viewer.login, issue);
   if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?notice=claude#issue-${issue}`);
   return showBacklog(request, env, viewer, repo, outcome);
+}
+
+// The project's defects: issues labelled bug, with their story and version.
+export async function showDefects(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const filters = readDefectFilters(new URL(request.url).searchParams);
+  const [{ view, cookies }, stories] = await Promise.all([projectView(request, env, project, viewer), loadStories(env, project)]);
+  const all = await defectRows(env, project, stories.stories);
+  return html(defectsPage(viewer, view, { rows: filterDefects(all, filters), all, stories: stories.stories, filters, failure: stories.failure }), { cookies });
+}
+
+const KIT_FAILURES: Record<string, string> = {
+  signed_out: "GitHub no longer accepts your sign-in. Sign out and sign in again.",
+  refused: "GitHub refused the change. The GitHub App needs Contents and Pull requests write permission on this repository, and you need write access to it.",
+  undeclared: "Declare application.kit in .fabrique.json first: the folder where the project keeps its copy.",
+  versioned: "The kit's files carry their version in their name: rename them fabrique-report.js, .css and -early.js first.",
+};
+
+// Bring the project's copy of the report kit up to date, as a pull request.
+export async function proposeKit(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!can(viewer.role, "launch_claude")) return forbidden(viewer);
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const outcome = await proposeKitUpdate(request, env, project, viewer.login);
+  if (outcome.ok) return redirect(`${projectUrl(project.repo)}/setup?notice=kit_proposed&pull=${outcome.number}#connected-app`);
+  if (outcome.reason === "current") return redirect(`${projectUrl(project.repo)}/setup?notice=kit_current#connected-app`);
+  const message = KIT_FAILURES[outcome.reason] ?? "The update could not be proposed.";
+  return showSetup(request, env, viewer, repo, { failure: outcome.status ? `${message} (HTTP ${outcome.status})` : message, status: 422 });
 }

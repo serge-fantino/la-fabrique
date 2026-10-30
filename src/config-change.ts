@@ -156,16 +156,19 @@ export async function proposeCycle(
   const created = await githubPost(token, `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
   if (!created.ok) return failed(created);
 
+  // The project's marker for commits that change nothing a user sees.
+  const coulisses = project.check?.config?.version?.coulisses;
+  const marker = coulisses ? `${coulisses} ` : "";
   const summary = `Ready: ${(cycle.pret ?? []).join(", ") || "nothing required"}; priorities: ${(cycle.priorites ?? []).join(", ") || "none"}.`;
   const commit = await githubPut(token, `/repos/${repo}/contents/.fabrique.json`, {
-    message: `La Fabrique: story lifecycle in .fabrique.json\n\n${summary}`,
+    message: `${marker}La Fabrique: story lifecycle in .fabrique.json\n\n${summary}`,
     content: toBase64(next),
     sha: file.sha,
     branch,
   });
   if (!commit.ok) return failed(commit);
   const pull = await githubPost(token, `/repos/${repo}/pulls`, {
-    title: "La Fabrique: story lifecycle (.fabrique.json)",
+    title: `${marker}La Fabrique: story lifecycle (.fabrique.json)`,
     head: branch,
     base,
     body: `Proposed from La Fabrique's Setup tab by @${login}.\n\n${summary}\n\nThe Definition of Ready and the priority labels apply once this change reaches the production branch. Format: \`cycle\` in docs/fabrique-json.md of La Fabrique.`,
