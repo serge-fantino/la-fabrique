@@ -18,6 +18,7 @@ import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
 import { readSnapshot } from "./snapshots";
+import { appLink, appSection, changeProjectApp, type AppActionFailure } from "./project-app";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
 import { requestFormPage, requestsPage } from "./requests-views";
@@ -349,7 +350,29 @@ export async function showReleases(request: Request, env: Env, viewer: Viewer, r
 }
 
 // What the project needs for La Fabrique, read on the reference branch.
-const SETUP_NOTICES: Record<string, string> = { unchanged: "Nothing to change: the file already says this." };
+const SETUP_NOTICES: Record<string, string> = {
+  unchanged: "Nothing to change: the file already says this.",
+  app_returns: "The app's return addresses now follow .fabrique.json.",
+  app_removed: "App removed: every connection to it was revoked.",
+};
+
+const APP_FAILURES: Record<AppActionFailure, string> = {
+  invalid: "Give a name and at least one return address (https, or http on localhost).",
+  exists: "This project already has an app: renew its secret or remove it.",
+  none: "This project has no app registered.",
+  no_returns: "Add application.retour to .fabrique.json first: the return addresses come from it.",
+};
+
+// Register the project's app, renew its secret, follow .fabrique.json,
+// remove it: the super admin only.
+export async function projectAppAction(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!can(viewer.role, "go")) return forbidden(viewer);
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const outcome = await changeProjectApp(form, env, viewer, project, new URL(request.url).origin);
+  if (outcome instanceof Response) return outcome;
+  return showSetup(request, env, viewer, repo, { failure: APP_FAILURES[outcome], status: 422 });
+}
 
 export async function showSetup(
   request: Request,
@@ -373,8 +396,10 @@ export async function showSetup(
     loadStories(env, project),
   ]);
   const production = await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION);
+  const link = await appLink(env, project, new URL(request.url).origin);
   const items = setupChecklist({
     check,
+    app: { reporting: Object.keys(link.reporting), registered: link.app !== null, missing: link.missing.length, connections: link.connections },
     versions: production?.data.versions ?? null,
     releases: releases.failure ? null : releases.releases,
     stories: stories.failure && !stories.stories.length ? null : stories.stories,
@@ -392,6 +417,7 @@ export async function showSetup(
   return html(
     setupPage(viewer, view, {
       items,
+      app: appSection(viewer, view, link),
       notice: noticeKey ? SETUP_NOTICES[noticeKey] : undefined,
       failure: outcome?.failure ?? failure ?? releases.failure ?? stories.failure,
       lifecycle: {

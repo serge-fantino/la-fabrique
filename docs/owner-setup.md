@@ -152,15 +152,17 @@ code, PKCE S256, confidential client, single scope `defects:report`). The
 app never gets a GitHub token. Clients, grants and tokens are kept in La
 Fabrique's D1 base (hashed or encrypted): nothing to create on Cloudflare.
 
-To register an app, as a super admin: **Settings → Connected apps**, then
-*Register an app*: its name (shown on the consent page), its project and
-its return addresses, one per line. La Fabrique shows the `client_id` and
-the `client_secret` once: store them as the app's own Worker secrets
-(L'épicerie: `FABRIQUE_CLIENT_ID`, `FABRIQUE_CLIENT_SECRET`, and the
-variable `FABRIQUE_URL` with La Fabrique's address). Lost secret: remove
-the app and register it again (every connection to it is revoked).
+To register a project's app, as a super admin: the project's **Setup** tab,
+section *Connected app*. Its name and return addresses are filled in from
+`application` in the project's `.fabrique.json`. La Fabrique shows the
+`client_id` and the `client_secret` once, with the commands to run in the
+project (`npx wrangler secret put FABRIQUE_CLIENT_ID --env int`, the same
+for `FABRIQUE_CLIENT_SECRET`, and the variable `FABRIQUE_URL` with La
+Fabrique's address). Setup then shows whether the app has been used. Lost
+or leaked secret: *New secret* (connections are kept). Removing the app
+revokes every connection to it.
 
-Everyone sees the apps they connected on the same page and can disconnect
+Everyone sees the apps they connected on **Settings → Connected apps** and can disconnect
 them. An account without a role can sign in only to connect an app and to
 see its connected apps, and only for a project whose repository its GitHub
 account can see.

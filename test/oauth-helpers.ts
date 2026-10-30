@@ -45,8 +45,8 @@ export async function addProject(config: Record<string, unknown> = CONFIG): Prom
 export async function registerApp(): Promise<{ clientId: string; clientSecret: string }> {
   const { cookie, csrf } = await signIn("admin-one");
   const response = await post(
-    "/apps",
-    { csrf, action: "register", name: "Widget app", repo: REPO, redirect_uris: `${RETURN}\n${LOCAL_RETURN}` },
+    `/projects/${REPO}/app`,
+    { csrf, action: "register", name: "Widget app", redirect_uris: `${RETURN}\n${LOCAL_RETURN}` },
     cookie,
   );
   expect(response.status).toBe(200);

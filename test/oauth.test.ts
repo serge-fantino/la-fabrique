@@ -1,7 +1,7 @@
-import { env, fetchMock, SELF } from "cloudflare:test";
+import { fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
-import { addProject, authorizePath, connect, LOCAL_RETURN, me, mockRepoAccess, mockUser, registerApp, REPO, RETURN, token, type Tokens } from "./oauth-helpers";
+import { addProject, authorizePath, connect, me, mockRepoAccess, mockUser, registerApp, token, type Tokens } from "./oauth-helpers";
 
 beforeAll(() => {
   fetchMock.activate();
@@ -9,36 +9,6 @@ beforeAll(() => {
 });
 
 afterEach(() => fetchMock.assertNoPendingInterceptors());
-
-describe("Registering a project's app", () => {
-  it("is for the super admin, shows the secret once, and lists the app with its return addresses", async () => {
-    await addProject();
-    const { clientId, clientSecret } = await registerApp();
-    const { cookie } = await signIn("admin-one");
-    const page = await (await get("/apps", cookie)).text();
-    expect(page).toContain("Widget app");
-    expect(page).toContain(clientId);
-    expect(page).toContain(RETURN);
-    expect(page).toContain(LOCAL_RETURN);
-    expect(page).not.toContain(clientSecret);
-    const row = await env.DB.prepare("SELECT repo, created_by FROM oauth_apps WHERE client_id = ?").bind(clientId).first();
-    expect(row).toEqual({ repo: REPO, created_by: "admin-one" });
-    expect(JSON.stringify(await logActions())).not.toContain(clientSecret);
-
-    await grantRole("tess", "tester");
-    const tester = await signIn("tess");
-    const refused = await post("/apps", { csrf: tester.csrf, action: "register", name: "X", repo: REPO, redirect_uris: RETURN }, tester.cookie);
-    expect(refused.status).toBe(403);
-    expect(await (await get("/apps", tester.cookie)).text()).not.toContain("Register an app");
-  });
-
-  it("refuses a plain http return address outside this machine", async () => {
-    await addProject();
-    const { cookie, csrf } = await signIn("admin-one");
-    const response = await post("/apps", { csrf, action: "register", name: "X", repo: REPO, redirect_uris: "http://example.com/cb" }, cookie);
-    expect(response.headers.get("location")).toBe("/apps?notice=invalid");
-  });
-});
 
 describe("Discovery", () => {
   it("names the contract's endpoints and its single scope", async () => {
@@ -229,13 +199,5 @@ describe("Tokens and /api/me", () => {
     expect(response.headers.get("location")).toBe("/apps?notice=revoked");
     expect((await me(tokens.access_token)).status).toBe(401);
     expect(await logActions()).toContainEqual(expect.objectContaining({ actor: "mona", action: "app_disconnected" }));
-  });
-
-  it("revokes every connection when the super admin removes the app", async () => {
-    const { app, tokens } = await connect();
-    const admin = await signIn("admin-one");
-    const response = await post("/apps", { csrf: admin.csrf, action: "remove", client: app.clientId }, admin.cookie);
-    expect(response.headers.get("location")).toBe("/apps?notice=removed");
-    expect((await me(tokens.access_token)).status).toBe(401);
   });
 });

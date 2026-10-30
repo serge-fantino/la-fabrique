@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.37",
+    "date": "2026-10-30",
+    "heure": "14:50",
+    "titre": "The project's app in Setup",
+    "changements": [
+      "A project's app is registered from the project's Setup tab: its name and return addresses come from application in .fabrique.json, and the identifiers are shown once with the commands to run in the project.",
+      "Setup says whether the app has been used, warns when its return addresses drift from .fabrique.json and fixes them in one click, and renews the secret without disconnecting anyone.",
+      "Settings → Connected apps keeps what is personal: the apps you connected, to disconnect them."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.36",
     "date": "2026-10-30",
     "heure": "14:40",

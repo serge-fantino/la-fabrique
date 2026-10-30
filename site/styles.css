@@ -1765,3 +1765,18 @@ table.backlog th.claude-col {
   flex-wrap: wrap;
   margin-top: 1.5rem;
 }
+
+/* The project's app, in Setup. */
+.project-app {
+  margin-top: 2.5rem;
+}
+
+.app-steps li {
+  margin: 0.75rem 0;
+}
+
+.app-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}

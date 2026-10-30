@@ -25,6 +25,7 @@
     { "titre": "Store V2", "chemin": "docs/store-v2.md" },
     { "titre": "Refonte technique", "chemin": "docs/refactoring/" }
   ],
+  "application": { "nom": "L'épicerie extraordinaire", "retour": "/auth/fabrique/retour", "local": "http://localhost:8787" },
   "demandes": {
     "etiquettes": { "demande": "demande", "prete": "prete-pour-claude", "a_valider": "a-valider-sur-int" },
     "rubriques": [
