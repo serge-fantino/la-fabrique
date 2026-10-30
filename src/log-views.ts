@@ -26,13 +26,13 @@ export function describe(entry: LogEntry, repo: string): string {
     case "story_validated":
       return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "defect_reported":
-      return `reported defect ${issue(d["defect"])}${story ? ` on ${story}` : ""}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>)` : ""}${d["title"] ? `: “${text(d["title"])}”` : ""}`;
+      return `reported defect ${issue(d["defect"])}${story ? ` on ${story}` : ""}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>${d["change"] ? `, “${text(d["change"])}”` : ""})` : ""}${d["title"] ? `: “${text(d["title"])}”` : ""}`;
     case "priority_set":
       return `set the priority of ${story}: ${text(d["from"]) || "none"} → ${text(d["to"]) || "none"}`;
     case "config_change_proposed":
       return `proposed a change of <code>${text(d["key"])}</code> in .fabrique.json: <a href="https://github.com/${escapeHtml(repo)}/pull/${entry.issue ?? ""}">PR #${entry.issue ?? ""}</a>`;
     case "defect_linked":
-      return `triaged defect ${issue(d["defect"])}: ${story ? `linked to ${story}` : "linked to no story"}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>)` : ""}${d["triaged"] ? ", no longer to triage" : ""}`;
+      return `triaged defect ${issue(d["defect"])}: ${story ? `linked to ${story}` : "linked to no story"}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>${d["change"] ? `, “${text(d["change"])}”` : ""})` : ""}${d["triaged"] ? ", no longer to triage" : ""}`;
     case "kit_update_proposed":
       return `proposed the report kit <span class="mono">${text(d["to"])}</span>${d["from"] ? ` (from <span class="mono">${text(d["from"])}</span>)` : ""}: <a href="https://github.com/${escapeHtml(repo)}/pull/${entry.issue ?? ""}">PR #${entry.issue ?? ""}</a>`;
     case "project_added":

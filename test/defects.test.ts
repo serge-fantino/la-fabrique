@@ -329,6 +329,23 @@ describe("Reporting a defect from the project's app", () => {
     expect(JSON.parse(log?.details ?? "{}")).toMatchObject({ release: "1.170" });
   });
 
+  it("links a change of the release note: quoted in the issue, kept in the log, and the version's only story linked", async () => {
+    const { tokens } = await connect();
+    await seedInt([147], [{ version: "1.170", title: "Menu", changes: ["Plan the week.", "Print the menu."] }]);
+    mockVersion();
+    const sent = mockGitHub();
+    mockStoryComment(sent, 147);
+    const response = await report(tokens.access_token, { ...REPORT, release: "1.170", change: 1 });
+    expect(await response.json()).toMatchObject({ story: { number: 147 } });
+    expect(sent.issue?.body).toContain("About version 1.170 “Menu”.\n\n> Print the menu.\n\n## What I saw");
+    const log = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'defect_reported'").first<{ details: string }>();
+    expect(JSON.parse(log?.details ?? "{}")).toMatchObject({ release: "1.170", change: "Print the menu." });
+    expect((await report(tokens.access_token, { ...REPORT, release: "1.170", change: "1" })).status).toBe(400);
+
+    const page = await (await get(`/projects/${REPO}/defects`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain('<span class="mono">1.170</span><br /><span class="muted small">Print the menu.</span>');
+  });
+
   it("lists the defects in the project's Defects tab, with their story, version and screenshot", async () => {
     const { tokens } = await connect();
     await seedInt([146, 147], [{ version: "1.170", title: "Menu", changes: [] }]);
@@ -341,7 +358,7 @@ describe("Reporting a defect from the project's app", () => {
     expect(page).toContain("<strong>1 open</strong> · 1 to triage");
     expect(page).toContain(`href="/projects/${REPO}/defects/150"><span class="mono">#150</span> The save button does nothing</a> <span class="pill warn">to triage</span>`);
     expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> Story 147`);
-    expect(page).toContain('<td class="mono">1.170</td>');
+    expect(page).toContain('<td><span class="mono">1.170</span></td>');
     expect(page).toMatch(/href="\/screenshots\/[A-Za-z0-9_-]+\.png">Screenshot<\/a>/);
     const closed = await (await get(`/projects/${REPO}/defects?state=closed`, (await signIn("admin-one")).cookie)).text();
     expect(closed).toContain("No defect here.");
@@ -472,7 +489,7 @@ describe("Triage", () => {
     expect(page).toContain('<fieldset class="about-picker" data-about-picker>');
     expect(page).toContain('value="" checked /><label for="about-');
     expect(page).toContain('<input type="radio" name="about" id="about-1" value="r:1.170" /><label for="about-1"><strong class="mono">1.170</strong> Menu <span class="about-tag">on int</span></label>');
-    expect(page).toMatch(/data-about-story data-text="#147 story 147"><input type="radio" name="about" id="(about-\d+)" value="s:147:1.170" \/><label for="\1">#147 Story 147<\/label>/);
+    expect(page).toMatch(/data-about-item data-text="#147 story 147"><input type="radio" name="about" id="(about-\d+)" value="s:147:1.170" \/><label for="\1">#147 Story 147<\/label>/);
     expect(page).toContain('name="triaged" value="1" checked');
     expect(page).toContain("reported defect");
   });
@@ -505,6 +522,35 @@ describe("Triage", () => {
 
     const checks = await storyChecks(env.DB, REPO);
     expect(checks.get(147)?.defects).toEqual([150]);
+  });
+
+  it("triages to a change of a release note: each change is a choice, the one chosen is said on GitHub and shown checked", async () => {
+    const { tokens } = await connect();
+    await seedInt([146, 147], [{ version: "1.170", title: "Menu", changes: ["Plan the week.", "Print the menu."] }]);
+    mockVersion();
+    mockGitHub();
+    await report(tokens.access_token, REPORT);
+    const { cookie, csrf } = await signIn("admin-one");
+    mockLive();
+    const before = await (await get(`/projects/${REPO}/defects/150`, cookie)).text();
+    expect(before).toMatch(/data-about-item data-text="print the menu\."><input type="radio" name="about" id="about-\d+" value="c:1:1.170" \/><label for="about-\d+">Print the menu\.<\/label>/);
+
+    const sent: { defect?: string } = {};
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/150/comments` }).reply(201, (options) => {
+      sent.defect = (JSON.parse(String(options.body)) as { body: string }).body;
+      return "{}";
+    });
+    const response = await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "c:1:1.170", back: "page" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/defects/150?notice=triaged#triage`);
+    expect(sent.defect).toBe("About version 1.170, no particular story (@admin-one, via La Fabrique extraordinaire)\n\n> Print the menu.");
+
+    mockLive();
+    const after = await (await get(`/projects/${REPO}/defects/150`, cookie)).text();
+    expect(after).toContain('value="c:1:1.170" checked />');
+    expect(after).toContain('<blockquote class="defect-change">');
+    expect((await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "c:7:1.170", back: "page" }, cookie)).status).toBe(400);
   });
 
   it("answers 404 for an issue that is not a defect, and keeps the list's filters when triaged from the list", async () => {

@@ -26,6 +26,10 @@ export const KIT_SOURCES: Record<string, string> = {
 // What a project's relay must do for each version, beyond copying the files.
 export const KIT_CHANGES: { version: string; relay: string | null }[] = [
   {
+    version: "1.2.0",
+    relay: "The relay passes `change` on `POST` (the index of the change chosen in the version's release note).",
+  },
+  {
     version: "1.1.0",
     relay:
       "The relay answers `GET ?targets=1` with La Fabrique's `GET /api/projects/{project}/targets`, and passes `story` and `release` on `POST`.",

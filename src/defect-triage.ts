@@ -1,5 +1,5 @@
 import { activityStatement } from "./activity-log";
-import { isKnownStory } from "./defect-targets";
+import { defectTargets, isKnownStory } from "./defect-targets";
 import { TRIAGE_LABEL } from "./defects";
 import { defectRows } from "./defects-tab";
 import type { Env } from "./env";
@@ -14,13 +14,22 @@ import { wordingFor } from "./wording";
 
 export type TriageOutcome = { ok: true; changed: boolean } | { ok: false; message: string; status: 400 | 404 | 502 };
 
-// "" (not linked), "r:<version>", or "s:<story>:<version>".
-export function readAbout(value: string): { story: number | null; release: string | null } | null {
-  if (value === "") return { story: null, release: null };
-  if (value.startsWith("r:")) return value.length > 2 && value.length <= 42 ? { story: null, release: value.slice(2) } : null;
+export interface About {
+  story: number | null;
+  release: string | null;
+  // The index of a change in that version's release note.
+  change: number | null;
+}
+
+// "" (not linked), "r:<version>", "c:<change>:<version>" or "s:<story>:<version>".
+export function readAbout(value: string): About | null {
+  if (value === "") return { story: null, release: null, change: null };
+  if (value.startsWith("r:")) return value.length > 2 && value.length <= 42 ? { story: null, release: value.slice(2), change: null } : null;
+  const change = /^c:(\d{1,2}):(.{1,40})$/.exec(value);
+  if (change) return { story: null, release: change[2] ?? null, change: Number(change[1]) };
   const match = /^s:(\d+):(.{0,40})$/.exec(value);
   if (!match) return null;
-  return { story: Number(match[1]), release: match[2] ? match[2] : null };
+  return { story: Number(match[1]), release: match[2] ? match[2] : null, change: null };
 }
 
 export async function triageDefect(
@@ -39,7 +48,17 @@ export async function triageDefect(
   if (about.story !== null && (about.story === number || !(await isKnownStory(env, project, about.story)))) {
     return { ok: false, message: `#${about.story} is not one of this project's stories.`, status: 400 };
   }
-  const relinked = about.story !== row.story || about.release !== row.release;
+  // A change of the release note: its text, and the version's story when it
+  // declares a single one.
+  let change: string | null = null;
+  let story = about.story;
+  if (about.change !== null) {
+    const target = (await defectTargets(env, project)).find((candidate) => candidate.version === about.release);
+    change = target?.changes[about.change] ?? null;
+    if (change === null) return { ok: false, message: "This change is no longer in the release notes.", status: 400 };
+    if (target?.stories.length === 1) story = target.stories[0]?.number ?? null;
+  }
+  const relinked = story !== row.story || about.release !== row.release || change !== row.change;
   const untriage = triaged && row.triage;
   if (!relinked && !untriage) return { ok: true, changed: false };
 
@@ -47,10 +66,13 @@ export async function triageDefect(
   try {
     const token = await installationToken(env, project.installationId);
     if (relinked) {
-      if (about.story !== null && about.story !== row.story) {
-        await githubPost(token, `/repos/${project.repo}/issues/${about.story}/comments`, { body: words.defectLinked(login, number) });
+      if (story !== null && story !== row.story) {
+        await githubPost(token, `/repos/${project.repo}/issues/${story}/comments`, { body: words.defectLinked(login, number) });
       }
-      await githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, { body: words.linkedTo(login, about.story, about.release) });
+      const linked = words.linkedTo(login, story, about.release);
+      await githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, {
+        body: change ? `${linked}\n\n> ${change.replace(/\s+/g, " ")}` : linked,
+      });
     }
     if (untriage) {
       const removed = await githubDelete(token, `/repos/${project.repo}/issues/${number}/labels/${encodeURIComponent(TRIAGE_LABEL)}`);
@@ -66,10 +88,11 @@ export async function triageDefect(
     actor: login,
     action: "defect_linked",
     repo: project.repo,
-    ...(about.story !== null ? { issueNumber: about.story } : {}),
+    ...(story !== null ? { issueNumber: story } : {}),
     details: {
       defect: number,
       ...(about.release ? { release: about.release } : {}),
+      ...(change ? { change: change.slice(0, 500) } : {}),
       from: row.story,
       ...(untriage ? { triaged: true } : {}),
     },

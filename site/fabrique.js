@@ -134,8 +134,8 @@
     setUpAboutPicker();
   }
 
-  // What a defect is about (triage): the same list as the report kit's form,
-  // with its search, and the older versions on demand. Without this script,
+  // What a defect is about (triage): the same list as the report kit's form
+  // (each version's changes and stories), with its search, and the older versions on demand. Without this script,
   // every version is shown.
   function setUpAboutPicker() {
     for (const picker of document.querySelectorAll("[data-about-picker]")) {
@@ -148,14 +148,14 @@
         let hidden = 0;
         for (const block of blocks) {
           const matches = !query || (block.getAttribute("data-text") || "").includes(query);
-          let stories = 0;
-          for (const story of block.querySelectorAll("[data-about-story]")) {
-            const visible = !query || matches || (story.getAttribute("data-text") || "").includes(query);
-            story.hidden = !visible;
-            if (visible) stories++;
+          let items = 0;
+          for (const item of block.querySelectorAll("[data-about-item]")) {
+            const visible = !query || matches || (item.getAttribute("data-text") || "").includes(query);
+            item.hidden = !visible;
+            if (visible) items++;
           }
           const early = block.hasAttribute("data-early") || Boolean(block.querySelector("input:checked"));
-          const visible = query ? matches || stories > 0 : showAll || early;
+          const visible = query ? matches || items > 0 : showAll || early;
           block.hidden = !visible;
           if (!visible && !query) hidden++;
         }

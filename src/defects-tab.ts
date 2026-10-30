@@ -19,6 +19,8 @@ export interface DefectRow {
   triage: boolean;
   story: number | null;
   release: string | null;
+  // The change of that version's release note it is about.
+  change: string | null;
   version: string | null;
   reporter: string | null;
   reportedAt: string;
@@ -34,6 +36,7 @@ interface Reported {
   actor: string;
   story: number | null;
   release: string | null;
+  change: string | null;
   at: string;
   details: Record<string, unknown>;
 }
@@ -57,9 +60,9 @@ export async function defectRows(env: Env, project: Project, stories: Story[]): 
     if (typeof defect !== "number") continue;
     const before = reported.get(defect);
     if (row.action === "defect_reported" || !before) {
-      reported.set(defect, { actor: row.actor, story: row.issue_number, release: textOf(details["release"]), at: row.occurred_at, details });
+      reported.set(defect, { actor: row.actor, story: row.issue_number, release: textOf(details["release"]), change: textOf(details["change"]), at: row.occurred_at, details });
     } else {
-      reported.set(defect, { ...before, story: row.issue_number, release: textOf(details["release"]) });
+      reported.set(defect, { ...before, story: row.issue_number, release: textOf(details["release"]), change: textOf(details["change"]) });
     }
   }
 
@@ -75,6 +78,7 @@ export async function defectRows(env: Env, project: Project, stories: Story[]): 
       triage: issue.labels.includes(TRIAGE_LABEL),
       story: log?.story ?? null,
       release: log?.release ?? null,
+      change: log?.change ?? null,
       version: textOf(log?.details["version"]),
       reporter: log?.actor ?? issue.author,
       reportedAt: log?.at ?? issue.createdAt,
@@ -92,6 +96,7 @@ export async function defectRows(env: Env, project: Project, stories: Story[]): 
       triage: log.details["triage"] === true,
       story: log.story,
       release: log.release,
+      change: log.change,
       version: textOf(log.details["version"]),
       reporter: log.actor,
       reportedAt: log.at,
@@ -123,11 +128,17 @@ function storyCell(row: DefectRow, repo: string, titles: Map<number, string>): s
 // those released, each with its stories, a search (by /fabrique.js) and the
 // older versions on demand. Radios, rendered here: it works without script.
 export function aboutPicker(targets: DefectTarget[], row: DefectRow, titles: Map<number, string>): string {
-  const current = row.story !== null ? `s:${row.story}:${row.release ?? ""}` : row.release ? `r:${row.release}` : "";
-  // Checked once: the story linked now, in whichever version lists it first.
+  // Checked once: the change linked now if there is one, else the story,
+  // else the version.
+  const changeAt = (target: DefectTarget) =>
+    row.change !== null && row.release === target.version ? target.changes.indexOf(row.change) : -1;
+  const current = targets.reduce<string | null>((found, target) => {
+    const at = changeAt(target);
+    return found ?? (at >= 0 ? `c:${at}:${target.version}` : null);
+  }, null) ?? (row.story !== null ? `s:${row.story}:${row.release ?? ""}` : row.release ? `r:${row.release}` : "");
   let found = false;
   const isCurrent = (value: string) => {
-    const hit = !found && (value === current || (row.story !== null && value.startsWith(`s:${row.story}:`)));
+    const hit = !found && (value === current || (current.startsWith("s:") && row.story !== null && value.startsWith(`s:${row.story}:`)));
     if (hit) found = true;
     return hit;
   };
@@ -138,11 +149,12 @@ export function aboutPicker(targets: DefectTarget[], row: DefectRow, titles: Map
       isCurrent(value) ? " checked" : ""
     } /><label for="${id}">${label}</label></div>`;
   };
+  const item = (value: string, label: string, kind: string) =>
+    choice(value, escapeHtml(label), kind, ` data-about-item data-text="${escapeHtml(label.toLowerCase())}"`);
   let released = 0;
   const blocks = targets.map((target) => {
     if (!target.on_int) released++;
     const release = target.version === "int" ? "" : target.version;
-    const changes = target.changes.join(" · ");
     const head = release
       ? choice(
           `r:${release}`,
@@ -152,29 +164,24 @@ export function aboutPicker(targets: DefectTarget[], row: DefectRow, titles: Map
           " about-version-choice",
         )
       : `<p class="about-version-choice"><strong>On int</strong></p>`;
-    const stories = target.stories
-      .map((story) => {
-        const label = `#${story.number} ${story.title}`;
-        return choice(`s:${story.number}:${release}`, escapeHtml(label), " about-story", ` data-about-story data-text="${escapeHtml(label.toLowerCase())}"`);
-      })
-      .join("");
-    const text = [target.version, target.title ?? "", ...target.changes].join(" ").toLowerCase();
-    return `<div class="about-version" data-about-block data-text="${escapeHtml(text)}"${target.on_int || released <= 2 ? " data-early" : ""}>${head}${
-      changes ? `<p class="about-changes">${escapeHtml(changes.length > 160 ? `${changes.slice(0, 157)}…` : changes)}</p>` : ""
-    }${stories}</div>`;
+    // The release note in detail: each change, then the stories it declares.
+    const changes = release ? target.changes.map((change, at) => item(`c:${at}:${release}`, change, " about-change")).join("") : "";
+    const stories = target.stories.map((story) => item(`s:${story.number}:${release}`, `#${story.number} ${story.title}`.trim(), " about-story")).join("");
+    const text = [target.version, target.title ?? ""].join(" ").toLowerCase();
+    return `<div class="about-version" data-about-block data-text="${escapeHtml(text)}"${target.on_int || released <= 2 ? " data-early" : ""}>${head}${changes}${stories}</div>`;
   });
   // A story linked before and no longer among the versions stays choosable.
   const kept =
     !found && row.story !== null
       ? `<div class="about-version" data-about-block data-early data-text=""><p class="about-version-choice"><strong>Linked now</strong></p>${choice(
-          current,
+          `s:${row.story}:${row.release ?? ""}`,
           escapeHtml(`#${row.story} ${titles.get(row.story) ?? ""}`),
           " about-story",
         )}</div>`
       : "";
   return `<fieldset class="about-picker" data-about-picker>
       <legend>It is about</legend>
-      <input type="search" class="about-search" placeholder="Search a version, a story…" aria-label="Search a version, a story" data-about-search hidden />
+      <input type="search" class="about-search" placeholder="Search a version, a change, a story…" aria-label="Search a version, a change, a story" data-about-search hidden />
       <div class="about-choices">${choice("", "Not linked to a story")}${kept}${blocks.join("")}</div>
       <button type="button" class="about-more" data-about-more hidden>Earlier versions</button>
     </fieldset>`;
@@ -230,7 +237,9 @@ export function defectsPage(
           row.state === "closed" ? ` <span class="pill ok">closed</span>` : ""
         }</td>
         <td>${storyCell(row, project.repo, titles)}</td>
-        <td class="mono">${escapeHtml(row.release ?? row.version ?? "—")}</td>
+        <td><span class="mono">${escapeHtml(row.release ?? row.version ?? "—")}</span>${
+          row.change ? `<br /><span class="muted small">${escapeHtml(row.change.length > 90 ? `${row.change.slice(0, 87)}…` : row.change)}</span>` : ""
+        }</td>
         <td>${row.reporter ? `<span class="mono">@${escapeHtml(row.reporter)}</span><br />` : ""}<span class="mono small">${escapeHtml(formatDate(row.reportedAt))}</span></td>
         <td>${row.screenshot ? `<a href="/screenshots/${escapeHtml(row.screenshot)}">Screenshot</a>` : ""}${
           data.canTriage && row.state === "open" ? ` <a href="${escapeHtml(defectUrl(project.repo, row.number))}#triage">Triage</a>` : ""

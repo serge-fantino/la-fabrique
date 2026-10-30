@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.1.0 — early error catcher. Load it first, on every page, so a
+/*! FabriqueReport 1.2.0 — early error catcher. Load it first, on every page, so a
  * report also carries the errors that happened before the kit was loaded. */
 (function () {
   "use strict";

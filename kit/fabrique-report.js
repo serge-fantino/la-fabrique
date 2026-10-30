@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.1.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.2.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -54,7 +54,7 @@
       unknown: "I don't know",
       onInt: "on int",
       older: "Earlier versions",
-      search: "Search a version, a story…",
+      search: "Search a version, a change, a story…",
     },
     fr: {
       report: "Signaler un défaut",
@@ -96,7 +96,7 @@
       unknown: "Je ne sais pas",
       onInt: "sur int",
       older: "Versions précédentes",
-      search: "Chercher une version, une story…",
+      search: "Chercher une version, un changement, une story…",
     },
   };
 
@@ -490,11 +490,17 @@
       var released = versions.filter(function (other, at) {
         return !other.on_int && at <= index;
       }).length;
-      var text = [version.version, version.title || "", (version.changes || []).join(" ")].join(" ").toLowerCase();
+      var text = [version.version, version.title || ""].join(" ").toLowerCase();
+      // The release note in detail: each change can be chosen, then the
+      // stories the version declares.
+      var changes = (version.changes || []).map(function (change, at) {
+        var value = "c:" + at + ":" + version.version;
+        return { node: choice(value, [change], false, cls("change")), text: change.toLowerCase() };
+      });
       var stories = (version.stories || []).map(function (story) {
         var value = "s:" + story.number + ":" + version.version;
         return {
-          node: choice(value, ["#" + story.number + " " + story.title], preset === value, cls("story")),
+          node: choice(value, ["#" + story.number + (story.title ? " " + story.title : "")], preset === value, cls("story")),
           text: ("#" + story.number + " " + story.title).toLowerCase(),
         };
       });
@@ -508,13 +514,13 @@
         false,
         cls("version-choice"),
       );
-      var changes = (version.changes || []).join(" · ");
-      var node = el("div", { className: cls("version") }, [head, changes ? el("p", { className: cls("changes"), text: changes.length > 160 ? changes.slice(0, 157) + "…" : changes }) : null].concat(
-        stories.map(function (story) {
-          return story.node;
+      var items = changes.concat(stories);
+      var node = el("div", { className: cls("version") }, [head].concat(
+        items.map(function (item) {
+          return item.node;
         }),
       ));
-      return { node: node, text: text, stories: stories, early: version.on_int || released <= shown };
+      return { node: node, text: text, items: items, early: version.on_int || released <= shown };
     });
 
     function render() {
@@ -522,13 +528,13 @@
       var hidden = 0;
       blocks.forEach(function (block) {
         var matches = !query || block.text.indexOf(query) >= 0;
-        var storyMatches = 0;
-        block.stories.forEach(function (story) {
-          var visible = !query || matches || story.text.indexOf(query) >= 0;
-          story.node.hidden = !visible;
-          if (visible) storyMatches++;
+        var itemMatches = 0;
+        block.items.forEach(function (item) {
+          var visible = !query || matches || item.text.indexOf(query) >= 0;
+          item.node.hidden = !visible;
+          if (visible) itemMatches++;
         });
-        var visible = query ? matches || storyMatches > 0 : showAll || block.early;
+        var visible = query ? matches || itemMatches > 0 : showAll || block.early;
         block.node.hidden = !visible;
         if (!visible && !query) hidden++;
       });
@@ -556,6 +562,11 @@
         if (value.indexOf("s:") === 0) {
           var parts = value.split(":");
           return { story: Number(parts[1]), release: parts.slice(2).join(":") === "int" ? null : parts.slice(2).join(":") };
+        }
+        if (value.indexOf("c:") === 0) {
+          var change = value.split(":");
+          var of = change.slice(2).join(":");
+          return { story: null, release: of === "int" ? null : of, change: Number(change[1]) };
         }
         if (value.indexOf("v:") === 0) return { story: null, release: value.slice(2) === "int" ? null : value.slice(2) };
         return { story: null, release: null };
@@ -727,6 +738,7 @@
           var about = picker.value();
           if (about.story) body.story = about.story;
           if (about.release) body.release = about.release;
+          if (typeof about.change === "number") body.change = about.change;
         }
         send.disabled = true;
         cancel.disabled = true;
