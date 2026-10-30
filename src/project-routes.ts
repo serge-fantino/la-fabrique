@@ -29,6 +29,7 @@ import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { giveGo, goSummary, lastGo } from "./go";
 import { LOG_GROUPS, readLog } from "./log";
 import { logPage } from "./log-views";
 import { projectUrl } from "./urls";
@@ -163,11 +164,54 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
   );
 }
 
-export async function showProduction(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+const GO_NOTICES: Record<string, string> = {
+  given: "Go given: the promotion workflow is starting on GitHub. Its run shows here in a moment.",
+};
+
+export async function showProduction(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  failed?: { message: string; status: number },
+): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const { view, cookies } = await projectView(request, env, project);
-  return html(productionPage(viewer, view, await loadProduction(env, project, view.ref)), { cookies });
+  const [production, checks, last] = await Promise.all([
+    loadProduction(env, project, view.ref),
+    storyChecks(env.DB, project.repo),
+    lastGo(env.DB, project.repo),
+  ]);
+  const notice = new URL(request.url).searchParams.get("notice");
+  // The go is about what integration brings, not another reference branch.
+  const go = view.ref
+    ? undefined
+    : {
+        canGo: viewer.role === "super_admin",
+        declared: typeof project.check?.config?.workflows?.["promouvoir"] === "string",
+        last,
+        checks,
+        summary: production.status ? goSummary(production.status, production.stories, checks) : null,
+        notice: notice ? GO_NOTICES[notice] : undefined,
+        failure: failed?.message,
+      };
+  return html(productionPage(viewer, view, production, go), { cookies, status: failed?.status ?? 200 });
+}
+
+// The go: only the super admin; the project's workflow does the promotion.
+export async function goToProduction(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (viewer.role !== "super_admin") {
+    return html(messagePage("Not allowed", "Only a super admin gives the go to production.", viewer), { status: 403 });
+  }
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const [production, checks] = await Promise.all([loadProduction(env, project), storyChecks(env.DB, project.repo)]);
+  const summary = production.status ? goSummary(production.status, production.stories, checks) : null;
+  const reason = String(form.get("reason") ?? "").trim().slice(0, 500);
+  const outcome = await giveGo(env, project, viewer.login, production.status, summary, reason);
+  if (outcome.ok) return redirect(`/projects/${project.repo}/production?notice=given`);
+  return showProduction(request, env, viewer, repo, outcome);
 }
 
 function forbidden(viewer: Viewer): Response {

@@ -2,12 +2,16 @@ import type { NextRelease, ProductionStatus, ProductionView, WorkflowState } fro
 import type { Story } from "./stories";
 import { notice, projectContext, projectHeader, type ProjectView } from "./project-views";
 import type { Project } from "./projects";
-import { escapeHtml, formatDate, layout, type Viewer } from "./views";
+import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
+import type { goSummary, LastGo } from "./go";
+import type { StoryChecks } from "./validation";
+import { projectUrl } from "./urls";
 
 const WORKFLOW_LABELS: Record<string, string> = {
   ci: "CI",
   deploiement_int: "Deployment to int",
   migrations_production: "Production migrations",
+  promouvoir: "Promotion (the go)",
 };
 
 function runPill(workflow: WorkflowState): string {
@@ -162,7 +166,67 @@ function pendingSection(repo: string, status: ProductionStatus, titles: Map<numb
     </section>`;
 }
 
-export function productionPage(viewer: Viewer, project: Project, view: ProductionView): string {
+export interface GoPanel {
+  canGo: boolean;
+  declared: boolean;
+  last: LastGo | null;
+  summary: ReturnType<typeof goSummary> | null;
+  checks: Map<number, StoryChecks>;
+  notice?: string | undefined;
+  failure?: string | undefined;
+}
+
+// The go: what production will get, who validated it, and the button for
+// the super admin; the last go for everyone.
+function goSection(viewer: Viewer, project: Project, status: ProductionStatus, go: GoPanel): string {
+  const promotion = status.workflows.find((workflow) => workflow.key === "promouvoir");
+  const last = go.last
+    ? `<p class="small">Last go by @${escapeHtml(go.last.by)} on <span class="mono">${formatDate(go.last.at)}</span>${
+        go.last.version ? ` for <span class="mono">${escapeHtml(go.last.version)}</span>` : ""
+      }${go.last.reason ? `, anyway: “${escapeHtml(go.last.reason)}”` : ""}${
+        promotion && promotion.status !== "none" ? ` · promotion ${runPill(promotion)}${promotion.url ? ` <a href="${escapeHtml(promotion.url)}">Logs</a>` : ""}` : ""
+      }</p>`
+    : "";
+  const messages = `${notice(go.notice, "ok")}${notice(go.failure, "error")}`;
+  if (!go.canGo) return last || messages ? `<section class="go">${messages}${last}</section>` : "";
+  if (!go.declared) {
+    return `<section class="go">${messages}${last}<p class="muted small">To give the go from here, the project declares its promotion workflow (<code>workflows.promouvoir</code>); <a href="${escapeHtml(
+      projectUrl(project.repo),
+    )}/setup">Setup</a> says how.</p></section>`;
+  }
+  if (status.aheadBy === 0 || !go.summary) return `<section class="go">${messages}${last}</section>`;
+  if (!status.ready) {
+    return `<section class="go">${messages}${last}<p class="muted">The go waits until production is ready (see above).</p></section>`;
+  }
+  const summary = go.summary;
+  const storyLine = (story: Story) => {
+    const validated = go.checks.get(story.number)?.validated;
+    return `<li><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)} ${
+      validated
+        ? `<span class="pill ok">Validated</span> <span class="muted small">by @${escapeHtml(validated.by)}</span>`
+        : `<span class="pill alert">Not validated</span>`
+    }</li>`;
+  };
+  return `<section class="go">
+      ${messages}
+      ${last}
+      <form method="post" action="${escapeHtml(projectUrl(project.repo))}/production/go" class="go-form">
+        ${csrfField(viewer)}
+        <h2>Give the go${summary.version ? ` for <span class="mono">${escapeHtml(summary.version)}</span>` : ""}</h2>
+        ${summary.stories.length ? `<ul class="go-stories">${summary.stories.map(storyLine).join("")}</ul>` : `<p class="muted">No story is referred to by the work waiting.</p>`}
+        ${
+          summary.notValidated.length
+            ? `<label for="go-reason">${summary.notValidated.length} not validated on int: why give the go anyway?</label>
+               <textarea id="go-reason" name="reason" rows="2" required maxlength="500"></textarea>`
+            : ""
+        }
+        <p><button type="submit" class="button">Give the go</button>
+          <span class="muted small">Starts <code>${escapeHtml(String(project.check?.config?.workflows?.["promouvoir"] ?? ""))}</code> on the project; it is in the log.</span></p>
+      </form>
+    </section>`;
+}
+
+export function productionPage(viewer: Viewer, project: Project, view: ProductionView, go?: GoPanel): string {
   const name = project.check?.config?.nom || project.repo;
   const status = view.status;
   const ref = (project as Partial<ProjectView>).ref ?? null;
@@ -172,6 +236,7 @@ export function productionPage(viewer: Viewer, project: Project, view: Productio
       ? `<p class="muted">Nothing could be read yet.</p>`
       : `${banner(status)}
         ${view.fetchedAt ? `<p class="muted">Read from GitHub <span class="mono">${formatDate(view.fetchedAt)}</span>; pushes and workflow runs refresh it.</p>` : ""}
+        ${go ? goSection(viewer, project, status, go) : ""}
         ${waitingSection(project.repo, status, view.stories)}
         ${versionsSection(status)}
         ${workflowsSection(status)}

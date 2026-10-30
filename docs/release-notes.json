@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.32",
+    "date": "2026-10-30",
+    "heure": "13:02",
+    "titre": "Give the go",
+    "changements": [
+      "When production is ready, the super admin gives the go from the Production tab: it shows the stories production will get and who validated each, then starts the project's own promotion workflow.",
+      "Stories not validated on int need a reason to go anyway; the go, its reason and the promotion run are kept and shown to everyone."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.31",
     "date": "2026-10-30",
     "heure": "12:54",

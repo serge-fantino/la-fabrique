@@ -277,6 +277,8 @@ async function fetchStatus(env: Env, project: Project, config: FabriqueConfig, c
     ["ci", integration],
     ...(integration === config.branches?.integration ? [["deploiement_int", integration] as [string, string]] : []),
     ["migrations_production", production],
+    // The go's own runs, dispatched on the production branch.
+    ["promouvoir", production],
   ];
   const workflows = await Promise.all(
     followed
