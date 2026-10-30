@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.38",
+    "date": "2026-10-30",
+    "heure": "16:00",
+    "titre": "The report kit",
+    "changements": [
+      "A Report a defect button any project can add to its own app: the person picks the part of the page that is wrong (Wider, This one, The whole page), writes two lines, and can attach a screenshot of that part; the issue is opened in their name.",
+      "Three files to copy into the app, with no dependency and nothing loaded from elsewhere, and a small relay on the app's server, described step by step in the guide; Setup → Connected app points to them.",
+      "Reports made without network are kept on the device and sent when it is back; the page's recent errors go with each report."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.37",
     "date": "2026-10-30",
     "heure": "14:50",

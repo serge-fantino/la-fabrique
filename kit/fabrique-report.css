@@ -1,0 +1,264 @@
+/*! FabriqueReport 1.0.0 — styles. Change the custom properties to match your app. */
+.fab-rep {
+  --fab-rep-ink: #18211b;
+  --fab-rep-paper: #ffffff;
+  --fab-rep-muted: #4a5650;
+  --fab-rep-line: #e6e8e0;
+  --fab-rep-accent: #c23d17;
+  --fab-rep-radius: 22px;
+  --fab-rep-font: inherit;
+  --fab-rep-bottom: 16px;
+  font-family: var(--fab-rep-font);
+  color: var(--fab-rep-ink);
+  box-sizing: border-box;
+}
+
+.fab-rep *,
+.fab-rep *::before,
+.fab-rep *::after {
+  box-sizing: border-box;
+}
+
+.fab-rep-picking,
+.fab-rep-picking * {
+  cursor: crosshair !important;
+}
+
+.fab-rep-frame {
+  position: fixed;
+  display: none;
+  z-index: 2147483000;
+  pointer-events: none;
+  border: 3px solid var(--fab-rep-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--fab-rep-accent) 10%, transparent);
+  transition: all 80ms ease-out;
+}
+
+.fab-rep-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--fab-rep-bottom) + env(safe-area-inset-bottom, 0px));
+  z-index: 2147483001;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 14px;
+  border-radius: var(--fab-rep-radius);
+  background: var(--fab-rep-ink);
+  color: #fff;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+
+.fab-rep-bar-text {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.fab-rep-bar-buttons,
+.fab-rep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fab-rep-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fab-rep-accent);
+  color: #fff;
+  font: 600 15px/1 var(--fab-rep-font);
+  cursor: pointer;
+}
+
+.fab-rep-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fab-rep-button.fab-rep-quiet {
+  background: transparent;
+  color: inherit;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.fab-rep-button:focus-visible,
+.fab-rep-launch:focus-visible,
+.fab-rep-sheet :focus-visible {
+  outline: 3px solid var(--fab-rep-accent);
+  outline-offset: 2px;
+}
+
+.fab-rep-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483002;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(24, 33, 27, 0.35);
+}
+
+.fab-rep-dialog.fab-rep-hidden {
+  visibility: hidden;
+}
+
+.fab-rep-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow: auto;
+  margin: 0;
+  padding: 20px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--fab-rep-radius) var(--fab-rep-radius) 0 0;
+  background: var(--fab-rep-paper);
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.2);
+}
+
+@media (min-width: 640px) {
+  .fab-rep-dialog {
+    align-items: center;
+  }
+
+  .fab-rep-sheet {
+    border-radius: var(--fab-rep-radius);
+  }
+}
+
+.fab-rep-heading {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.fab-rep-field {
+  margin: 0 0 12px;
+}
+
+.fab-rep-field label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.fab-rep-field input[type="text"],
+.fab-rep-field textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--fab-rep-line);
+  border-radius: 12px;
+  font: 16px/1.35 var(--fab-rep-font);
+  color: var(--fab-rep-ink);
+  background: #fff;
+}
+
+.fab-rep-field [aria-invalid="true"] {
+  border-color: var(--fab-rep-accent);
+}
+
+.fab-rep-required {
+  color: var(--fab-rep-accent);
+}
+
+.fab-rep-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.fab-rep-check input {
+  width: 22px;
+  height: 22px;
+}
+
+.fab-rep-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin: 0 0 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--fab-rep-line);
+}
+
+.fab-rep-preview[hidden] {
+  display: none;
+}
+
+.fab-rep-note,
+.fab-rep-status {
+  margin: 0 0 12px;
+  color: var(--fab-rep-muted);
+  font-size: 14px;
+}
+
+.fab-rep-status:empty,
+.fab-rep-note:empty {
+  display: none;
+}
+
+.fab-rep-context {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--fab-rep-muted);
+}
+
+.fab-rep-context summary {
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.fab-rep-context dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 6px 0 0;
+}
+
+.fab-rep-context dt {
+  font-weight: 600;
+}
+
+.fab-rep-context dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "IBM Plex Mono", monospace;
+}
+
+.fab-rep-done {
+  font-size: 18px;
+}
+
+.fab-rep-done a {
+  color: var(--fab-rep-accent);
+  font-weight: 700;
+}
+
+.fab-rep-launch {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--fab-rep-bottom) + env(safe-area-inset-bottom, 0px));
+  z-index: 2147482999;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fab-rep-ink);
+  color: #fff;
+  font: 600 14px/1 var(--fab-rep-font);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.fab-rep-launch[hidden] {
+  display: none;
+}

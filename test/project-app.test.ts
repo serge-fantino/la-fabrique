@@ -117,3 +117,26 @@ describe("The project's app, in Setup", () => {
     expect(page).toContain(`href="/projects/${REPO}/setup#connected-app"`);
   });
 });
+
+describe("The report kit", () => {
+  it("is served for download, with its version, from any origin", async () => {
+    const script = await get("/kit/fabrique-report.js");
+    expect(script.status).toBe(200);
+    expect(script.headers.get("content-type")).toContain("javascript");
+    expect(script.headers.get("access-control-allow-origin")).toBe("*");
+    const body = await script.text();
+    expect(body).toContain("FabriqueReport 1.0.0");
+    expect(body).not.toMatch(/\beval\(|new Function\(/);
+    expect((await get("/kit/fabrique-report.css")).headers.get("content-type")).toContain("text/css");
+    expect((await get("/kit/fabrique-report-early.js")).status).toBe(200);
+  });
+
+  it("has its guide in La Fabrique, and Setup points to it", async () => {
+    await addProject(DECLARED);
+    const { cookie } = await signIn("admin-one");
+    const guide = await (await get("/guide/report-kit", cookie)).text();
+    expect(guide).toContain("The report kit");
+    expect(guide).toContain('href="/kit/fabrique-report.js"');
+    expect(await setup()).toContain('<a href="/guide/report-kit">How, step by step</a>');
+  });
+});
