@@ -1665,6 +1665,65 @@ table.backlog th.claude-col {
   font-size: 0.92rem;
 }
 
+/* A defect's page: its story in a bounded preview, its comments, triage. */
+.defect-story-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin: 0;
+}
+
+.defect-story-text {
+  max-height: 24rem;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+}
+
+.defect-story-text h1 {
+  font-size: 1.3rem;
+}
+
+.defect-triage {
+  margin: 1.25rem 0;
+}
+
+.triage-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.triage-form select {
+  max-width: 100%;
+}
+
+.defect-text img,
+.defect-comments img,
+.defect-shot {
+  max-width: 100%;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+
+.defect-comments {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.defect-comments > li {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.defect-comments > li > p:first-child {
+  margin: 0 0 0.25rem;
+}
+
 /* Brand: the mark and a two-line wordmark, like the épicerie's. */
 .brand {
   gap: 0.6rem;

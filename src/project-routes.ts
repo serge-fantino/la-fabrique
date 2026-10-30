@@ -18,6 +18,7 @@ import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
 import { readSnapshot } from "./snapshots";
+import { defectPage, defectHistory, readDefectLive } from "./defect-page";
 import { defectRows, defectsPage, filterDefects, readDefectFilters } from "./defects-tab";
 import { defectTargets } from "./defect-targets";
 import { triageDefect } from "./defect-triage";
@@ -40,7 +41,7 @@ import { canLaunchClaude, claudeCap, claudeLaunches, claudeWorkflow, launchClaud
 import { giveGo, goSummary, lastGo } from "./go";
 import { LOG_GROUPS, readLog } from "./log";
 import { logPage } from "./log-views";
-import { projectUrl } from "./urls";
+import { defectUrl, projectUrl } from "./urls";
 import { canValidate, readDefect, reportDefect, storyChecks, tickCriterion, validateStory } from "./validation";
 import { proposeCycle, readCycleForm } from "./config-change";
 import { projectCard } from "./dashboard";
@@ -91,8 +92,8 @@ export async function createProject(form: FormData, env: Env, viewer: Viewer): P
   return redirect(`/projects/${match.repo}?notice=${outcome.ok ? "added" : "added_unchecked"}`);
 }
 
-function notFound(viewer: Viewer): Response {
-  return html(messagePage("Not found", "There is no such project in La Fabrique extraordinaire.", viewer), { status: 404 });
+function notFound(viewer: Viewer, what = "There is no such project in La Fabrique extraordinaire."): Response {
+  return html(messagePage("Not found", what, viewer), { status: 404 });
 }
 
 export async function showProject(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
@@ -691,12 +692,7 @@ export async function showDefects(
   if (!project) return notFound(viewer);
   const params = new URL(request.url).searchParams;
   const filters = readDefectFilters(params);
-  const canTriage = can(viewer.role, "validate");
-  const [{ view, cookies }, stories, targets] = await Promise.all([
-    projectView(request, env, project, viewer),
-    loadStories(env, project),
-    canTriage ? defectTargets(env, project) : Promise.resolve([]),
-  ]);
+  const [{ view, cookies }, stories] = await Promise.all([projectView(request, env, project, viewer), loadStories(env, project)]);
   const all = await defectRows(env, project, stories.stories);
   return html(
     defectsPage(viewer, view, {
@@ -705,25 +701,69 @@ export async function showDefects(
       stories: stories.stories,
       filters,
       failure: failed?.message ?? stories.failure,
-      targets,
-      canTriage,
+      canTriage: can(viewer.role, "validate"),
       notice: params.get("notice"),
     }),
     { cookies, status: failed?.status ?? 200 },
   );
 }
 
-// Triage a defect from the Defects tab: testers and up.
+// One defect: its issue read from GitHub, its story, its triage, its history.
+export async function showDefect(
+  request: Request,
+  env: Env,
+  viewer: Viewer,
+  repo: string,
+  number: number,
+  failed?: { message: string; status: number },
+): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const [{ view, cookies }, stories] = await Promise.all([projectView(request, env, project, viewer), loadStories(env, project)]);
+  const row = (await defectRows(env, project, stories.stories)).find((candidate) => candidate.number === number);
+  if (!row) return notFound(viewer, `#${number} is not one of this project's defects.`);
+  const canTriage = can(viewer.role, "validate");
+  const [live, history, targets] = await Promise.all([
+    readDefectLive(env, project, number, row.story),
+    defectHistory(env.DB, project.repo, number),
+    canTriage && row.state === "open" ? defectTargets(env, project) : Promise.resolve([]),
+  ]);
+  const url = new URL(request.url);
+  return html(
+    defectPage(viewer, view, {
+      row,
+      live,
+      story: row.story === null ? undefined : stories.stories.find((story) => story.number === row.story),
+      history,
+      origin: url.origin,
+      canTriage,
+      targets,
+      titles: new Map(stories.stories.map((story) => [story.number, story.title])),
+      notice: url.searchParams.get("notice"),
+      failure: failed?.message ?? stories.failure,
+    }),
+    { cookies, status: failed?.status ?? 200 },
+  );
+}
+
+// Triage a defect from its page: testers and up.
 export async function triage(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
   if (!can(viewer.role, "validate")) return forbidden(viewer);
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const stories = await loadStories(env, project);
   const outcome = await triageDefect(env, project, stories.stories, viewer.login, form);
-  if (!outcome.ok) return showDefects(request, env, viewer, repo, { message: outcome.message, status: outcome.status });
   const back = String(form.get("back") ?? "");
+  const number = Number(form.get("defect"));
+  const onPage = back === "page" && Number.isInteger(number) && number > 0;
+  if (!outcome.ok) {
+    const failed = { message: outcome.message, status: outcome.status };
+    return onPage && outcome.status !== 404 ? showDefect(request, env, viewer, repo, number, failed) : showDefects(request, env, viewer, repo, failed);
+  }
+  const notice = `notice=${outcome.changed ? "triaged" : "unchanged"}`;
+  if (onPage) return redirect(`${defectUrl(project.repo, number)}?${notice}#triage`);
   const query = back.startsWith("?") ? back.slice(1) : "";
-  return redirect(`${projectUrl(project.repo)}/defects?${query ? `${query}&` : ""}notice=${outcome.changed ? "triaged" : "unchanged"}`);
+  return redirect(`${projectUrl(project.repo)}/defects?${query ? `${query}&` : ""}${notice}`);
 }
 
 const KIT_FAILURES: Record<string, string> = {

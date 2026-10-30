@@ -1,4 +1,4 @@
-import { projectUrl } from "./urls";
+import { defectUrl, projectUrl } from "./urls";
 import { isEpic } from "./lifecycle";
 import type { NextRelease, ProductionStatus } from "./production";
 import { notice, progressive, projectContext, projectHeader } from "./project-views";
@@ -52,7 +52,7 @@ function validation(story: Story, actions: CardActions): string {
     : "";
   const defects = (check?.defects ?? []).map((number) => {
     const defect = actions.all.get(number);
-    return `<li><a href="${escapeHtml(defect?.url ?? `https://github.com/${story.url.split("/").slice(3, 5).join("/")}/issues/${number}`)}">#${number}</a> ${
+    return `<li><a href="${escapeHtml(defectUrl(story.url.split("/").slice(3, 5).join("/"), number))}">#${number}</a> ${
       defect ? escapeHtml(defect.title) : ""
     } ${defect?.state === "closed" ? `<span class="pill ok">Fixed</span>` : `<span class="pill alert">Open</span>`}</li>`;
   });
@@ -151,10 +151,10 @@ function unlinkedDefects(project: Project, defects: NonNullable<ToTestData["unli
     <ul class="defects">${defects
       .map(
         (defect) =>
-          `<li><a href="${escapeHtml(defect.url)}">#${defect.number}</a> ${escapeHtml(defect.title)}${defect.triage ? ` <span class="pill warn">to triage</span>` : ""}</li>`,
+          `<li><a href="${escapeHtml(defectUrl(project.repo, defect.number))}">#${defect.number}</a> ${escapeHtml(defect.title)}${defect.triage ? ` <span class="pill warn">to triage</span>` : ""} <a class="small" href="${escapeHtml(defectUrl(project.repo, defect.number))}#triage">Triage</a></li>`,
       )
       .join("")}</ul>
-    <p><a class="button quiet" href="${escapeHtml(projectUrl(project.repo))}/defects">Triage them</a></p>`;
+    <p><a class="button quiet" href="${escapeHtml(projectUrl(project.repo))}/defects">All the defects</a></p>`;
 }
 
 // What the PO validates: the stories on int with their acceptance criteria,

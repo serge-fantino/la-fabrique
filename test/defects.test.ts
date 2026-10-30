@@ -327,7 +327,7 @@ describe("Reporting a defect from the project's app", () => {
     const page = await (await get(`/projects/${REPO}/defects`, (await signIn("admin-one")).cookie)).text();
     expect(page).toContain('aria-current="page">Defects</a>');
     expect(page).toContain("<strong>1 open</strong> · 1 to triage");
-    expect(page).toContain(`href="https://github.com/${REPO}/issues/150">#150</a> The save button does nothing <span class="pill warn">to triage</span>`);
+    expect(page).toContain(`href="/projects/${REPO}/defects/150"><span class="mono">#150</span> The save button does nothing</a> <span class="pill warn">to triage</span>`);
     expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> Story 147`);
     expect(page).toContain('<td class="mono">1.170</td>');
     expect(page).toMatch(/href="\/screenshots\/[A-Za-z0-9_-]+\.png">Screenshot<\/a>/);
@@ -398,37 +398,107 @@ describe("Triage", () => {
     );
   }
 
-  it("offers testers the same choice as the report form, the current link chosen", async () => {
+  // What the defect's page reads from GitHub: the issue, its comments, and
+  // the story it is linked to.
+  function mockLive(options: { body?: string; story?: number; comments?: { login: string; body: string }[] } = {}): void {
+    const github = fetchMock.get("https://api.github.com");
+    github
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github.intercept({ path: `/repos/${REPO}/issues/150` }).reply(
+      200,
+      JSON.stringify({ number: 150, title: REPORT.title, state: "open", html_url: `https://github.com/${REPO}/issues/150`, user: null, labels: [], created_at: "", updated_at: "", closed_at: null, body: options.body ?? "" }),
+      JSON_HEADERS,
+    );
+    github.intercept({ path: `/repos/${REPO}/issues/150/comments?per_page=100` }).reply(
+      200,
+      JSON.stringify(
+        (options.comments ?? []).map((comment, index) => ({
+          user: { login: comment.login },
+          created_at: "2026-10-30T13:00:00Z",
+          html_url: `https://github.com/${REPO}/issues/150#issuecomment-${index}`,
+          body: comment.body,
+        })),
+      ),
+      JSON_HEADERS,
+    );
+    if (options.story) {
+      github.intercept({ path: `/repos/${REPO}/issues/${options.story}` }).reply(
+        200,
+        JSON.stringify({ number: options.story, title: `Story ${options.story}`, state: "open", html_url: "", user: null, labels: [], created_at: "", updated_at: "", closed_at: null, body: "## Need\n\nSave the meal." }),
+        JSON_HEADERS,
+      );
+    }
+  }
+
+  it("lists each defect with a link to its page, where testers triage it with the same choice as the report form", async () => {
     await reported();
     await grantRole("tess", "tester");
-    const page = await (await get(`/projects/${REPO}/defects`, (await signIn("tess")).cookie)).text();
-    expect(page).toContain("<summary>Triage</summary>");
+    const { cookie } = await signIn("tess");
+    const list = await (await get(`/projects/${REPO}/defects`, cookie)).text();
+    expect(list).toContain(`<a href="/projects/${REPO}/defects/150"><span class="mono">#150</span> ${REPORT.title}</a>`);
+    expect(list).toContain(`<a href="/projects/${REPO}/defects/150#triage">Triage</a>`);
+    expect(list).not.toContain("<select name=\"about\">");
+
+    const screenshot = `${BASE}/screenshots/${"a".repeat(24)}.png`;
+    mockLive({
+      body: `## What I saw\n\nNothing happens, see #146.\n\n![Screenshot](${screenshot})\n\n![Elsewhere](https://example.com/x.png)`,
+      comments: [{ login: "lead", body: "Seen on **int** too." }],
+    });
+    const page = await (await get(`/projects/${REPO}/defects/150`, cookie)).text();
+    expect(page).toContain(`<h1>${REPORT.title}</h1>`);
+    expect(page).toContain('<span class="pill warn">to triage</span>');
+    expect(page).toContain(`href="https://github.com/${REPO}/issues/150">#150 on GitHub</a>`);
+    expect(page).toContain("Not linked to a story yet.");
+    expect(page).toContain('<h2 id="what-i-saw">What I saw</h2>');
+    expect(page).toContain(`href="https://github.com/${REPO}/issues/146">#146</a>`);
+    expect(page).toContain(`<img src="/screenshots/${"a".repeat(24)}.png" alt="Screenshot" loading="lazy" />`);
+    expect(page).toContain('href="https://example.com/x.png" rel="noopener noreferrer">Image: Elsewhere</a>');
+    expect(page).toContain("Seen on <strong>int</strong> too.");
+    expect(page).toContain('<section id="triage" class="defect-triage">');
+    expect(page).toContain('<input type="hidden" name="back" value="page" />');
     expect(page).toContain('<option value="" selected>Not linked</option>');
     expect(page).toContain('<optgroup label="1.170 · Menu (on int)"><option value="r:1.170">Version 1.170, no particular story</option>');
     expect(page).toContain('<option value="s:147:1.170">#147 Story 147</option>');
     expect(page).toContain('name="triaged" value="1" checked');
+    expect(page).toContain("reported defect");
   });
 
-  it("links a defect to a story, says it on GitHub, removes to triage, and To test follows", async () => {
+  it("links a defect to a story from its page, says it on GitHub, removes to triage, and To test follows", async () => {
     await reported();
     await grantRole("tess", "tester");
     const { cookie, csrf } = await signIn("tess");
     const sent: { story?: string; defect?: string; label?: boolean } = {};
     mockTriage(sent);
-    const response = await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "s:147:1.170", triaged: "1", back: "?state=open" }, cookie);
-    expect(response.headers.get("location")).toBe(`/projects/${REPO}/defects?state=open&notice=triaged`);
+    const response = await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "s:147:1.170", triaged: "1", back: "page" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/defects/150?notice=triaged#triage`);
     expect(sent.story).toBe("Defect #150 linked to this story by @tess");
     expect(sent.defect).toBe("Linked to #147 (version 1.170) by @tess, via La Fabrique extraordinaire");
     expect(sent.label).toBe(true);
     expect(await logActions()).toContainEqual(expect.objectContaining({ actor: "tess", action: "defect_linked" }));
 
-    const page = await (await get(`/projects/${REPO}/defects`, cookie)).text();
-    expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> Story 147`);
-    expect(page).not.toContain('<span class="pill warn">to triage</span>');
+    const list = await (await get(`/projects/${REPO}/defects`, cookie)).text();
+    expect(list).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> Story 147`);
+    expect(list).not.toContain('<span class="pill warn">to triage</span>');
+
+    mockLive({ story: 147 });
+    const page = await (await get(`/projects/${REPO}/defects/150?notice=triaged`, cookie)).text();
+    expect(page).toContain("Defect triaged: its story and version are saved, and said on GitHub.");
+    expect(page).toContain(`href="https://github.com/${REPO}/issues/147">#147</a> <strong>Story 147</strong>`);
+    expect(page).toContain('<h2 id="need">Need</h2>');
     expect(page).toContain('<option value="s:147:1.170" selected>');
+    expect(page).toContain("triaged defect");
 
     const checks = await storyChecks(env.DB, REPO);
     expect(checks.get(147)?.defects).toEqual([150]);
+  });
+
+  it("answers 404 for an issue that is not a defect, and keeps the list's filters when triaged from the list", async () => {
+    await reported();
+    const { cookie, csrf } = await signIn("admin-one");
+    expect((await get(`/projects/${REPO}/defects/146`, cookie)).status).toBe(404);
+    const response = await post(`/projects/${REPO}/defects`, { csrf, defect: "150", about: "", back: "?state=all" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/defects?state=all&notice=unchanged`);
   });
 
   it("refuses a story that is not the project's, and the defect itself", async () => {
@@ -448,7 +518,7 @@ describe("Triage", () => {
       unlinked: [{ number: 150, title: "Save does nothing", url: `https://github.com/${REPO}/issues/150`, triage: true }],
     });
     expect(content).toContain("<h2>Defects not linked to a story</h2>");
-    expect(content).toContain('#150</a> Save does nothing <span class="pill warn">to triage</span>');
-    expect(content).toContain(`href="/projects/${REPO}/defects">Triage them</a>`);
+    expect(content).toContain(`<a href="/projects/${REPO}/defects/150">#150</a> Save does nothing <span class="pill warn">to triage</span>`);
+    expect(content).toContain(`href="/projects/${REPO}/defects/150#triage">Triage</a>`);
   });
 });

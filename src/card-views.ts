@@ -284,7 +284,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
 const TOKEN = /(\d+)/g;
 
 // The text in Markdown, its annotations as tags and links.
-export function renderCardText(body: string, repo: string): string {
+export function renderCardText(body: string, repo: string, imageUrl?: (src: string) => string | null): string {
   const pieces: string[] = [];
   const keep = (html: string) => {
     pieces.push(html);
@@ -307,6 +307,7 @@ export function renderCardText(body: string, repo: string): string {
     isPage: () => false,
     pageUrl: (path) => path,
     githubUrl: (path) => `https://github.com/${repo}/blob/HEAD/${path}`,
+    ...(imageUrl ? { imageUrl } : {}),
   });
   return html.replace(TOKEN, (_all, index: string) => pieces[Number(index)] ?? "");
 }

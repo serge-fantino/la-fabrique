@@ -6,6 +6,10 @@ export function projectUrl(repo: string): string {
   return `/projects/${repo}`;
 }
 
+export function defectUrl(repo: string, number: number): string {
+  return `/projects/${repo}/defects/${number}`;
+}
+
 function refQuery(ref: string | null | undefined): string {
   return ref ? `?ref=${encodeURIComponent(ref)}` : "";
 }

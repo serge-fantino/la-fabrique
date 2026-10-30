@@ -4,7 +4,7 @@ import type { Env } from "./env";
 import { projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Story } from "./stories";
-import { projectUrl } from "./urls";
+import { defectUrl, projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
 // The project's defects: the issues labelled `bug`, with what GitHub does
@@ -144,17 +144,22 @@ export function triageChoices(targets: DefectTarget[], row: DefectRow, titles: M
   return `<option value=""${current === "" ? " selected" : ""}>Not linked</option>${kept}${groups}`;
 }
 
-function triageForm(viewer: Viewer, base: string, back: string, row: DefectRow, targets: DefectTarget[], titles: Map<number, string>): string {
-  return `<details class="triage">
-      <summary>Triage</summary>
-      <form method="post" action="${escapeHtml(base)}">${csrfField(viewer)}
+// Triage on the defect's page; `back` is "page" to come back to it.
+export function triageForm(
+  viewer: Viewer,
+  base: string,
+  back: string,
+  row: DefectRow,
+  targets: DefectTarget[],
+  titles: Map<number, string>,
+): string {
+  return `<form method="post" action="${escapeHtml(base)}" class="triage-form">${csrfField(viewer)}
         <input type="hidden" name="defect" value="${row.number}" />
         <input type="hidden" name="back" value="${escapeHtml(back)}" />
         <label>It is about <select name="about">${triageChoices(targets, row, titles)}</select></label>
         ${row.triage ? `<label class="check"><input type="checkbox" name="triaged" value="1" checked /> Triaged: remove <em>to triage</em></label>` : ""}
         <button type="submit" class="button quiet">Save</button>
-      </form>
-    </details>`;
+      </form>`;
 }
 
 const DEFECT_NOTICES: Record<string, string> = {
@@ -171,7 +176,6 @@ export function defectsPage(
     stories: Story[];
     filters: DefectFilters;
     failure?: string | undefined;
-    targets?: DefectTarget[];
     canTriage?: boolean;
     notice?: string | null;
   },
@@ -181,20 +185,19 @@ export function defectsPage(
   const triage = data.all.filter((row) => row.state === "open" && row.triage).length;
   const unlinked = data.all.filter((row) => row.state === "open" && row.story === null).length;
   const base = `${projectUrl(project.repo)}/defects`;
-  const back = `?state=${data.filters.state}${data.filters.triage ? "&triage=1" : ""}`;
   const option = (value: string, label: string) =>
     `<option value="${value}"${data.filters.state === value ? " selected" : ""}>${label}</option>`;
   const rows = data.rows
     .map(
       (row) => `<tr>
-        <td><a href="${escapeHtml(row.url)}">#${row.number}</a> ${escapeHtml(row.title)}${row.triage ? ` <span class="pill warn">to triage</span>` : ""}${
+        <td><a href="${escapeHtml(defectUrl(project.repo, row.number))}"><span class="mono">#${row.number}</span> ${escapeHtml(row.title)}</a>${row.triage ? ` <span class="pill warn">to triage</span>` : ""}${
           row.state === "closed" ? ` <span class="pill ok">closed</span>` : ""
         }</td>
         <td>${storyCell(row, project.repo, titles)}</td>
         <td class="mono">${escapeHtml(row.release ?? row.version ?? "—")}</td>
         <td>${row.reporter ? `<span class="mono">@${escapeHtml(row.reporter)}</span><br />` : ""}<span class="mono small">${escapeHtml(formatDate(row.reportedAt))}</span></td>
         <td>${row.screenshot ? `<a href="/screenshots/${escapeHtml(row.screenshot)}">Screenshot</a>` : ""}${
-          data.canTriage && row.state === "open" ? triageForm(viewer, base, back, row, data.targets ?? [], titles) : ""
+          data.canTriage && row.state === "open" ? ` <a href="${escapeHtml(defectUrl(project.repo, row.number))}#triage">Triage</a>` : ""
         }</td>
       </tr>`,
     )
@@ -205,7 +208,7 @@ export function defectsPage(
       ${data.failure ? `<p class="notice error" role="status">${escapeHtml(data.failure)}</p>` : ""}
       ${data.notice && DEFECT_NOTICES[data.notice] ? `<p class="notice ok" role="status">${escapeHtml(DEFECT_NOTICES[data.notice] ?? "")}</p>` : ""}
       <p><strong>${open} open</strong>${triage ? ` · ${triage} to triage` : ""}${unlinked ? ` · ${unlinked} not linked to a story` : ""}</p>
-      <p class="muted">The issues labelled <code>${escapeHtml(DEFECT_LABEL)}</code>, with the story and the version each is about. Reports from the project's app say it themselves; the others keep what GitHub knows.</p>
+      <p class="muted">The issues labelled <code>${escapeHtml(DEFECT_LABEL)}</code>, with the story and the version each is about. Reports from the project's app say it themselves; the others keep what GitHub knows. Open a defect to read it, see its story and triage it.</p>
       <form method="get" action="${escapeHtml(base)}" class="filters">
         <label>State <select name="state" data-autosubmit>${option("open", "Open")}${option("closed", "Closed")}${option("all", "All")}</select></label>
         <label class="check"><input type="checkbox" name="triage" value="1"${data.filters.triage ? " checked" : ""} data-autosubmit /> To triage only</label>
