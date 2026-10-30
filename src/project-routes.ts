@@ -20,8 +20,8 @@ import { canRequest, createRequest, missingFields, myRequests, readDraft, type R
 import { requestFormPage, requestsPage } from "./requests-views";
 import { loadActivity, RANGES } from "./activity";
 import { activityPage } from "./activity-views";
-import { loadDelivery } from "./delivery";
-import { deliveryPage } from "./delivery-views";
+import { deliveryReady, loadDelivery } from "./delivery";
+import { deliveryContent, deliveryLoading, deliveryPage } from "./delivery-views";
 import { epicProgress, loadReleases, type Release } from "./roadmap";
 import { releasesPage, roadmapPage } from "./roadmap-views";
 import { messagePage, type Viewer } from "./views";
@@ -224,7 +224,15 @@ export async function showDelivery(request: Request, env: Env, viewer: Viewer, r
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const { view, cookies } = await projectView(request, env, project);
-  return html(deliveryPage(viewer, view, await loadDelivery(env, project, view.ref)), { cookies });
+  const params = new URL(request.url).searchParams;
+  if (params.get("part") === "content") {
+    return html(deliveryContent(await loadDelivery(env, project, view.ref)), { cookies });
+  }
+  // First view in a while: the page now, the figures as soon as GitHub answers.
+  if (params.get("wait") !== "1" && !(await deliveryReady(env, project))) {
+    return html(deliveryPage(viewer, view, deliveryLoading(view.path)), { cookies });
+  }
+  return html(deliveryPage(viewer, view, deliveryContent(await loadDelivery(env, project, view.ref))), { cookies });
 }
 
 // The release notes of the reference branch, read at its latest commit.

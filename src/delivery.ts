@@ -88,20 +88,24 @@ function declaredWorkflows(project: Project): [string, string][] {
   );
 }
 
+// Workflows are read side by side; each one's pages in turn.
 async function fetchDelivery(env: Env, project: Project, since: string): Promise<DeliveryData> {
   const token = await installationToken(env, project.installationId);
-  const runs: Run[] = [];
-  for (const [key, file] of declaredWorkflows(project)) {
-    for (let page = 1; page <= MAX_PAGES; page++) {
-      const data = await githubJson<{ workflow_runs: RestRun[] }>(
-        token,
-        `/repos/${project.repo}/actions/workflows/${encodeURIComponent(file)}/runs?per_page=100&created=%3E%3D${since}&page=${page}`,
-      );
-      runs.push(...data.workflow_runs.map((run) => toRun(key, run)));
-      if (data.workflow_runs.length < 100) break;
-    }
-  }
-  runs.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const perWorkflow = await Promise.all(
+    declaredWorkflows(project).map(async ([key, file]) => {
+      const runs: Run[] = [];
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const data = await githubJson<{ workflow_runs: RestRun[] }>(
+          token,
+          `/repos/${project.repo}/actions/workflows/${encodeURIComponent(file)}/runs?per_page=100&created=%3E%3D${since}&page=${page}`,
+        );
+        runs.push(...data.workflow_runs.map((run) => toRun(key, run)));
+        if (data.workflow_runs.length < 100) break;
+      }
+      return runs;
+    }),
+  );
+  const runs = perWorkflow.flat().sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   return { since, runs };
 }
 
@@ -142,12 +146,23 @@ export interface DeliveryView {
   failure?: string;
 }
 
-export async function loadDelivery(env: Env, project: Project, ref: string | null = null, now = new Date()): Promise<DeliveryView> {
+function period(now: Date): { since: string; days: string[] } {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (DAYS - 1)));
-  const since = start.toISOString().slice(0, 10);
   const days = Array.from({ length: DAYS }, (_, index) =>
     new Date(start.getTime() + index * 86_400_000).toISOString().slice(0, 10),
   );
+  return { since: start.toISOString().slice(0, 10), days };
+}
+
+// True when the page can be shown at once, without asking GitHub.
+export async function deliveryReady(env: Env, project: Project, now = new Date()): Promise<boolean> {
+  if (!declaredWorkflows(project).length) return true;
+  const snapshot = await readSnapshot<DeliveryData>(env.DB, project.repo, DELIVERY);
+  return isFresh(snapshot, MAX_AGE_MS) && snapshot?.data.since === period(now).since;
+}
+
+export async function loadDelivery(env: Env, project: Project, ref: string | null = null, now = new Date()): Promise<DeliveryView> {
+  const { since, days } = period(now);
 
   let snapshot = await readSnapshot<DeliveryData>(env.DB, project.repo, DELIVERY);
   let failure: string | undefined;

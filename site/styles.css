@@ -992,8 +992,9 @@ textarea {
   width: 25%;
   border-radius: 4px;
   background: #e3241b;
-  background: linear-gradient(90deg, rgba(227, 36, 27, 0), rgba(227, 36, 27, 0.55) 30%, #e3241b 50%, rgba(227, 36, 27, 0.55) 70%, rgba(227, 36, 27, 0));
-  box-shadow: 0 0 10px #e3241b;
+  /* Red edges, a hot orange core. */
+  background: linear-gradient(90deg, rgba(227, 36, 27, 0), rgba(227, 36, 27, 0.7) 22%, #ff5a1f 40%, #ffb347 50%, #ff5a1f 60%, rgba(227, 36, 27, 0.7) 78%, rgba(227, 36, 27, 0));
+  box-shadow: 0 0 8px #ff5a1f, 0 0 16px rgba(227, 36, 27, 0.6);
   will-change: transform;
   transform: translateX(-100%);
 }
@@ -1272,4 +1273,39 @@ textarea {
 /* Focus moves to the content after a page is shown in place. */
 main:focus {
   outline: none;
+}
+
+/* A part of the page still being read. */
+.progressive p {
+  margin: 0 0 1rem;
+}
+
+.skeleton span {
+  display: block;
+  height: 5.5rem;
+  margin-bottom: 1rem;
+  border-radius: 16px;
+  background: rgba(24, 33, 27, 0.06);
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+.skeleton span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.skeleton span:nth-child(3) {
+  height: 12rem;
+  animation-delay: 0.4s;
+}
+
+@keyframes skeleton {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton span {
+    animation: none;
+  }
 }

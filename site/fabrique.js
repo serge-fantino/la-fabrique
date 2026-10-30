@@ -115,9 +115,38 @@
 
   // What each page needs once it is shown.
   function setUp() {
+    setUpFragments();
     setUpDiagnostic();
     setUpRefresh();
     setUpBranchMenu();
+  }
+
+  // Parts of a page read once it is shown (slow GitHub reads): the loading
+  // light runs meanwhile; on failure, the link to the whole page stays.
+  let parts = 0;
+  function setUpFragments() {
+    for (const holder of document.querySelectorAll("[data-fragment]")) {
+      parts++;
+      start();
+      fetch(holder.getAttribute("data-fragment"), { headers: { accept: "text/html" } })
+        .then((response) => (response.ok ? response.text() : Promise.reject(new Error(String(response.status)))))
+        .then((text) => {
+          if (!holder.isConnected) return;
+          const part = new DOMParser().parseFromString(text, "text/html").body;
+          holder.replaceWith(...[...part.childNodes].map((node) => document.adoptNode(node)));
+        })
+        .catch(() => {
+          if (!holder.isConnected) return;
+          holder.removeAttribute("aria-busy");
+          holder.querySelector(".skeleton")?.remove();
+          const fallback = holder.querySelector("[data-fragment-fallback]");
+          if (fallback) fallback.textContent = "Could not read it here: open the whole page";
+        })
+        .finally(() => {
+          parts--;
+          if (!parts && !pending) stop();
+        });
+    }
   }
 
   // Settings: what this device runs, against what the page expects.

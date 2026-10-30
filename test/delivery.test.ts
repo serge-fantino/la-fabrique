@@ -104,8 +104,20 @@ describe("Delivery tab", () => {
   it("shows each declared workflow's runs, success rate, median duration and streak", async () => {
     await seed();
     mockRuns();
-    const page = await (await get(`/projects/${REPO}/delivery`, (await signIn("admin-one")).cookie)).text();
+    const { cookie } = await signIn("admin-one");
+    // First view: the page at once, the figures read afterwards.
+    const shell = await (await get(`/projects/${REPO}/delivery`, cookie)).text();
+    expect(shell).toContain(`data-fragment="/projects/${REPO}/delivery?part=content"`);
+    expect(shell).toContain(`href="/projects/${REPO}/delivery?wait=1"`);
+    expect(shell).not.toContain("CI <code>ci.yml</code>");
 
+    const part = await (await get(`/projects/${REPO}/delivery?part=content`, cookie)).text();
+    expect(part).not.toContain("<html");
+    expect(part).toContain("CI <code>ci.yml</code>");
+
+    // Then the snapshot is fresh: the whole page at once.
+    const page = await (await get(`/projects/${REPO}/delivery`, cookie)).text();
+    expect(page).not.toContain("data-fragment");
     expect(page).toContain("CI <code>ci.yml</code>");
     expect(page).toContain("Deployment to int <code>deploy-int.yml</code>");
     expect(page).toContain('<p class="tile-label">Passed</p><p class="tile-value mono">67%</p>');
@@ -120,7 +132,8 @@ describe("Delivery tab", () => {
     mockRuns();
     await grantRole("qa", "tester");
     const { cookie } = await signIn("qa");
-    expect((await get(`/projects/${REPO}/delivery`, cookie)).status).toBe(200);
-    expect((await get(`/projects/${REPO}/delivery`, cookie)).status).toBe(200);
+    expect((await get(`/projects/${REPO}/delivery?wait=1`, cookie)).status).toBe(200);
+    const page = await (await get(`/projects/${REPO}/delivery`, cookie)).text();
+    expect(page).toContain("CI <code>ci.yml</code>");
   });
 });
