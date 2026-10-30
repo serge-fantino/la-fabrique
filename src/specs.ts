@@ -2,7 +2,7 @@ import { cardRef } from "./card-views";
 import { DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec } from "./cards";
 import { readMarkdown } from "./docs";
 import type { Env } from "./env";
-import { askJson, type CallOutcome } from "./llm";
+import { askJson, type CallOutcome, type Progress } from "./llm";
 import type { Project } from "./projects";
 import type { Rubrique } from "./requests";
 import { loadStories } from "./stories";
@@ -50,6 +50,7 @@ async function projectDocument(env: Env, project: Project): Promise<{ path: stri
 interface SpecAnswer {
   sections: Record<string, string>;
   questions: string[];
+  enough: boolean;
   note: string;
 }
 
@@ -57,7 +58,7 @@ function schemaFor(rubriques: Rubrique[]): Record<string, unknown> {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["sections", "questions", "note"],
+    required: ["sections", "questions", "enough", "note"],
     properties: {
       sections: {
         type: "object",
@@ -66,6 +67,7 @@ function schemaFor(rubriques: Rubrique[]): Record<string, unknown> {
         properties: Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, { type: "string" }])),
       },
       questions: { type: "array", items: { type: "string" } },
+      enough: { type: "boolean" },
       note: { type: "string" },
     },
   };
@@ -83,7 +85,8 @@ function systemPrompt(project: Project, rubriques: Rubrique[], document: { path:
 Your first job is to frame the need, like a product manager interviewing the person who wrote the card:
 - When the card leaves something essential open (who it is for, what triggers it, what counts as done, what happens at the edges, what it must not do), ask. Ask at most five questions, the most decisive first, each answerable in a sentence or two, and never one the card, the project's description or an earlier answer already settles.
 - Write the sections you can from what you know; leave a section empty rather than invent what nobody said.
-- When the answers settle the need, ask nothing more.
+- Stop asking when you could write the stories without guessing: set "enough" to true, ask nothing, and say in the note what makes the need clear. Until then "enough" is false.
+- From the third round on, ask only what blocks the specification. When the person closes the questions, ask nothing more.
 
 Rules for the specification:
 - Describe what people must be able to do and see, not the technical solution.
@@ -95,7 +98,8 @@ Rules for the specification:
 
 Answer with:
 - "sections": the specification, one entry per section below;
-- "questions": your questions to the person, at most five, none already answered (they are shown under the specification, each with a field for the answer);
+- "questions": your questions to the person, at most five, none already answered or left unanswered on purpose (they are shown under the specification, each with a field for the answer);
+- "enough": whether you know enough to write the stories;
 - "note": one sentence on what you wrote or changed.
 
 The sections, in order:
@@ -103,7 +107,7 @@ ${sections}
 ${document ? `\nThe project's own description (${document.path}${document.cut ? ", cut to its beginning" : ""}):\n<document>\n${document.text}\n</document>` : ""}`;
 }
 
-async function cardContext(env: Env, project: Project, card: Card): Promise<string> {
+async function cardContext(env: Env, project: Project, card: Card): Promise<{ text: string; cards: number; stories: number }> {
   const [cards, stories] = await Promise.all([listCards(env.DB, project.repo), loadStories(env, project)]);
   const others = cards
     .filter((other) => other.id !== card.id && !other.archivedAt)
@@ -118,11 +122,12 @@ async function cardContext(env: Env, project: Project, card: Card): Promise<stri
     `status ${STATUS_LABELS[card.status]}`,
     ...FREE_DIMENSIONS.filter((dimension) => card[dimension]).map((dimension) => `${DIMENSION_LABELS[dimension].toLowerCase()} ${card[dimension]}`),
   ];
-  return `The card ${cardRef(card.id)}: “${card.title}” (${tags.join(", ")})
+  const text = `The card ${cardRef(card.id)}: “${card.title}” (${tags.join(", ")})
 <card>
 ${card.body.trim() || "(no text)"}
 </card>
 ${others.length ? `\nThe project's other cards, to spot overlaps:\n${others.join("\n")}\n` : ""}${open.length ? `\nThe project's open stories on GitHub, to spot what already exists:\n${open.join("\n")}\n` : ""}`;
+  return { text, cards: others.length, stories: open.length };
 }
 
 function currentSpec(spec: CardSpec, rubriques: Rubrique[]): string {
@@ -134,7 +139,16 @@ export interface Answer {
   answer: string;
 }
 
-export type SpecOutcome = { ok: true; spec: CardSpec; callId: number; costMicros: number | null } | { ok: false; message: string };
+export type SpecOutcome =
+  | { ok: true; spec: CardSpec; callId: number; costMicros: number | null }
+  | { ok: false; message: string; retryable: boolean };
+
+// What Claude was given to read, for the job's log.
+export interface SpecReading {
+  document: string | null;
+  cards: number;
+  stories: number;
+}
 
 // Draft (no spec yet, or start again) or revise (the current spec and
 // what should change).
@@ -144,18 +158,25 @@ export async function writeSpec(
   card: Card,
   login: string,
   request: { mode: "draft" | "revise"; instruction: string; answers?: Answer[] },
+  watch: { read?: (reading: SpecReading) => void; progress?: (progress: Progress) => void } = {},
 ): Promise<SpecOutcome> {
   const rubriques = specRubriques(project);
-  const [document, context] = await Promise.all([projectDocument(env, project), cardContext(env, project, card)]);
+  const [document, read] = await Promise.all([projectDocument(env, project), cardContext(env, project, card)]);
+  watch.read?.({ document: document ? `${document.path} (${Math.round(document.text.length / 1000)}k characters)` : null, cards: read.cards, stories: read.stories });
+  const context = read.text;
   const current = card.data.spec;
+  const round = (current?.rounds ?? 0) + 1;
   const answers = (request.answers ?? []).filter((turn) => turn.answer.trim());
   const earlier = current?.dialogue ?? [];
   const history = earlier.length
-    ? `\nQuestions you asked before, and their answers:\n${earlier.map((turn) => `- Q: ${turn.question}\n  A: ${turn.answer}`).join("\n")}\n`
+    ? `\nQuestions you asked before, and their answers:\n${earlier
+        .map((turn) => `- Q: ${turn.question}\n  A: ${turn.skipped ? "(left unanswered on purpose)" : turn.answer}`)
+        .join("\n")}\n`
     : "";
   const now = [
     answers.length ? `The person answers your questions:\n${answers.map((turn) => `- Q: ${turn.question}\n  A: ${turn.answer}`).join("\n")}` : "",
     request.instruction ? `The person asks:\n<request>\n${request.instruction}\n</request>` : "",
+    current?.closed ? "The person closed the questions: ask nothing more, and set enough to true." : round >= 3 ? `This is round ${round}: ask only what blocks the specification.` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -167,13 +188,14 @@ export async function writeSpec(
   const outcome: CallOutcome<SpecAnswer> = await askJson<SpecAnswer>(
     env,
     { login, repo: project.repo, cardId: card.id, purpose: request.mode === "revise" && current ? "spec_revise" : "spec_draft" },
-    { system: systemPrompt(project, rubriques, document), user: ask, schema: schemaFor(rubriques) },
+    { system: systemPrompt(project, rubriques, document), user: ask, schema: schemaFor(rubriques), ...(watch.progress ? { progress: watch.progress } : {}) },
   );
-  if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer." };
+  if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
   const answer = outcome.value;
   // The sections come from Claude; `answers` are the person's.
   const sections = Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, String(answer.sections?.[rubrique.cle] ?? "").trim()]));
-  const questions = (Array.isArray(answer.questions) ? answer.questions : []).map((question) => String(question).trim()).filter(Boolean).slice(0, 5);
+  const enough = answer.enough === true || Boolean(current?.closed);
+  const questions = enough ? [] : (Array.isArray(answer.questions) ? answer.questions : []).map((question) => String(question).trim()).filter(Boolean).slice(0, 5);
   const at = new Date().toISOString();
   const dialogue = [...earlier, ...answers.map((turn) => ({ question: turn.question, answer: turn.answer.trim(), at }))].slice(-40);
   return {
@@ -184,6 +206,9 @@ export async function writeSpec(
       source: "claude",
       note: String(answer.note ?? "").trim().slice(0, 500),
       ...(dialogue.length ? { dialogue } : {}),
+      rounds: round,
+      ...(enough ? { enough: true } : {}),
+      ...(current?.closed ? { closed: true } : {}),
       at,
     },
     callId: outcome.callId,
@@ -201,6 +226,17 @@ export function readSpecForm(form: FormData, rubriques: Rubrique[], previous: Ca
     questions: previous?.questions ?? [],
     source: "person",
     ...(previous?.dialogue ? { dialogue: previous.dialogue } : {}),
+    ...(previous?.rounds ? { rounds: previous.rounds } : {}),
+    ...(previous?.enough ? { enough: true } : {}),
+    ...(previous?.closed ? { closed: true } : {}),
     at: new Date().toISOString(),
   };
+}
+
+// The person decides Claude knows enough: the open questions are kept as
+// left unanswered, and Claude asks nothing more unless asked.
+export function closeQuestions(spec: CardSpec): CardSpec {
+  const at = new Date().toISOString();
+  const left = spec.questions.map((question) => ({ question, answer: "", at, skipped: true }));
+  return { ...spec, questions: [], dialogue: [...(spec.dialogue ?? []), ...left].slice(-40), closed: true, at };
 }

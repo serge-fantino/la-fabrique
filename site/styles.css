@@ -2421,35 +2421,96 @@ p.about-version-choice {
   padding-left: 1.2rem;
 }
 
-/* A request to Claude, in a modal window (or shown in the page without
-   the script). */
-dialog.modal {
-  width: min(36rem, calc(100vw - 2rem));
-  max-height: calc(100vh - 2rem);
-  padding: 1.25rem 1.5rem 1.5rem;
+/* Claude's job on a card: where it is, the time, its log (live). */
+.claude-job {
+  margin: 1rem 0 1.5rem;
+  padding: 0.9rem 1.1rem;
   border: 1px solid var(--rule);
-  border-radius: 22px;
+  border-radius: 16px;
   background: #fff;
-  color: var(--encre);
-  box-shadow: 0 20px 50px color-mix(in srgb, var(--encre) 22%, transparent);
 }
 
-dialog.modal::backdrop {
-  background: color-mix(in srgb, var(--encre) 35%, transparent);
+.claude-job.failed {
+  border-color: color-mix(in srgb, var(--alerte) 40%, transparent);
+  background: color-mix(in srgb, var(--alerte) 5%, #fff);
 }
 
-dialog.modal:not(:modal) {
-  position: static;
-  margin: 1.5rem 0;
-  box-shadow: none;
+.claude-job-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
 }
 
-dialog.modal h2 {
-  margin: 0 0 0.5rem;
+.claude-job-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: claude-job-pulse 1.4s ease-in-out infinite;
 }
 
-dialog.modal textarea {
+@keyframes claude-job-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .claude-job-dot {
+    animation: none;
+  }
+}
+
+.claude-job-log summary,
+.claude-change summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.claude-job-log ol {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.92rem;
+}
+
+.claude-job-log li {
+  padding: 0.15rem 0;
+}
+
+.job-sent {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--rule);
+}
+
+.job-sent dt {
+  font-weight: 600;
+}
+
+.job-sent dd {
+  margin: 0 0 0.4rem;
+}
+
+.spec-enough {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bon) 10%, transparent);
+}
+
+.claude-draft,
+.claude-change form {
+  margin: 1rem 0;
+}
+
+.claude-draft textarea,
+.claude-change textarea {
   width: 100%;
+  background: #fff;
 }
 
 .spec-actions {

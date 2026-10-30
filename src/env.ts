@@ -14,6 +14,10 @@ export interface Env {
   CLAUDE_MODEL?: string;
   CLAUDE_DAILY_CALLS?: string;
   CLAUDE_MONTHLY_BUDGET_USD?: string;
+  // Claude works in the background: the queue of its jobs, and the object
+  // per card that pushes their progress to the open pages.
+  CLAUDE_QUEUE?: Queue<{ job: number }>;
+  CARD_LIVE?: DurableObjectNamespace<import("./live").CardLive>;
   // Set on each request: the OAuth library's store (in D1) and its helpers.
   OAUTH_KV?: KVNamespace;
   OAUTH_PROVIDER?: OAuthHelpers;

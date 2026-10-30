@@ -121,44 +121,11 @@
     if (event.persisted) for (const form of document.querySelectorAll("form[data-sent]")) unbusy(form);
   });
 
-  // A modal window opened by a link: [data-dialog] names the <dialog>.
-  // Without this script the link opens the page with the window shown.
-  // Listened to while capturing, before pages follow one another.
-  const openDialog = (dialog) => {
-    if (dialog.open) dialog.close();
-    dialog.showModal();
-    dialog.querySelector("textarea, input:not([type=hidden]), select")?.focus();
-  };
-  document.addEventListener(
-    "click",
-    (event) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = event.target instanceof Element ? event.target : null;
-      const opener = target?.closest("[data-dialog]");
-      const dialog = opener ? document.getElementById(opener.getAttribute("data-dialog")) : null;
-      if (dialog instanceof HTMLDialogElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        openDialog(dialog);
-        return;
-      }
-      const closer = target?.closest("[data-dialog-close]");
-      const open = closer?.closest("dialog");
-      if (open instanceof HTMLDialogElement) {
-        event.preventDefault();
-        event.stopPropagation();
-        open.close();
-      }
-    },
-    true,
-  );
-
-  // A form that waits for a slow answer (Claude): its button says so, and
-  // it is sent once.
+  // A form sent once: the button pressed says it is on its way.
   const unbusy = (form) => {
     delete form.dataset.sent;
     form.removeAttribute("aria-busy");
-    const button = form.querySelector('button[type="submit"]');
+    const button = form.querySelector("button[data-label]");
     if (button && button.dataset.label) {
       button.textContent = button.dataset.label;
       button.removeAttribute("aria-disabled");
@@ -173,7 +140,7 @@
     }
     form.dataset.sent = "1";
     form.setAttribute("aria-busy", "true");
-    const button = form.querySelector('button[type="submit"]');
+    const button = event.submitter instanceof HTMLButtonElement ? event.submitter : form.querySelector('button[type="submit"]');
     if (button) {
       button.dataset.label = button.textContent;
       button.textContent = form.getAttribute("data-busy");
@@ -196,8 +163,84 @@
     setUpRefresh();
     setUpBranchMenu();
     setUpAboutPicker();
-    // A window shown by the server (no script, or after a failure) becomes modal.
-    for (const dialog of document.querySelectorAll("dialog.modal[open]")) openDialog(dialog);
+    setUpLive();
+  }
+
+  // Claude's job on a card, live: the page listens to the card's
+  // connection (/live), which pushes what the job does; nothing is asked
+  // again and again. The time runs here. When the job ends, the page comes
+  // back with the spec. Without this script, the page says where the job
+  // was when it was read.
+  let live = null;
+  function setUpLive() {
+    if (live) live.stop();
+    live = null;
+    const widget = document.querySelector("[data-live]");
+    if (!widget || !("WebSocket" in window)) return;
+    const job = Number(widget.getAttribute("data-job"));
+    const since = Date.parse(widget.getAttribute("data-since") || "");
+    const label = widget.querySelector("[data-job-label]");
+    const elapsed = widget.querySelector("[data-job-elapsed]");
+    const log = widget.querySelector("[data-job-log]");
+    let socket = null;
+    let stopped = false;
+    let tries = 0;
+
+    const tick = () => {
+      if (!elapsed || Number.isNaN(since)) return;
+      const seconds = Math.max(0, Math.round((Date.now() - since) / 1000));
+      elapsed.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+
+    const connect = () => {
+      if (stopped) return;
+      const url = new URL(widget.getAttribute("data-live"), location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url);
+      socket.addEventListener("open", () => {
+        tries = 0;
+      });
+      socket.addEventListener("message", (message) => {
+        let event = null;
+        try {
+          event = JSON.parse(message.data);
+        } catch {
+          return;
+        }
+        if (!event || event.job !== job) return;
+        if (label && event.label) label.textContent = event.label;
+        if (log && event.text && !log.lastElementChild?.textContent?.endsWith(event.text)) {
+          const line = document.createElement("li");
+          const time = document.createElement("span");
+          time.className = "mono muted";
+          time.textContent = (event.at || "").slice(11, 19);
+          line.append(time, ` ${event.text}`);
+          log.append(line);
+        }
+        if (event.status === "done" || event.status === "failed") {
+          stop();
+          // The spec (or what went wrong), as the server says it now.
+          location.replace(`${location.pathname}${location.search}#${event.status === "done" ? "spec" : "claude-job"}`);
+          location.reload();
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (stopped || !widget.isConnected) return;
+        tries++;
+        setTimeout(connect, Math.min(30000, 1000 * 2 ** tries));
+      });
+    };
+    const stop = () => {
+      stopped = true;
+      clearInterval(timer);
+      try {
+        socket?.close();
+      } catch {}
+    };
+    live = { stop };
+    connect();
   }
 
   // What a defect is about (triage): the same list as the report kit's form

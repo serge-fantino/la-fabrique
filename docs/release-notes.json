@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.48",
+    "date": "2026-10-30",
+    "heure": "23:30",
+    "titre": "Claude works in the background, and shows what it does",
+    "changements": [
+      "Writing, revising or answering Claude's questions no longer waits on the page: the request and your answers are saved at once, Claude works in the background, and you can leave the page or close it without losing anything.",
+      "On the card, a widget says what Claude is doing and for how long; unfold it to read its log: what it reads, what it thinks, each section as it writes it, its questions, the cost. It is pushed to the page as it happens. The board marks the cards where Claude is working.",
+      "When Anthropic is busy, Claude tries again by itself, up to three times; if it still cannot finish, the card says why, keeps your request, and Try again sends it again.",
+      "Claude stops asking when it knows enough to write the stories, and says why; Enough questions closes them when you decide it knows enough. Everything happens in the page, without a window."
+    ],
+    "stories": [80],
+    "liens": null
+  },
+  {
     "version": "0.47",
     "date": "2026-10-30",
     "heure": "21:40",
