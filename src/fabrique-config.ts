@@ -20,6 +20,10 @@ export interface FabriqueConfig {
   cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
   // Claude launched from La Fabrique: how many runs at once, at most.
   claude?: { plafond?: number };
+  // The project's own app, connected to La Fabrique to report defects:
+  // its name on the consent page, the path it comes back to on each
+  // environment with `signalement`, and its local address in development.
+  application?: { nom?: string; retour?: string; local?: string };
 }
 
 export const ENVIRONMENT_TYPES = ["integration", "production"] as const;
@@ -59,6 +63,16 @@ function isObject(value: unknown): value is Json {
 
 function isText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isLocalOrigin(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return (url.hostname === "localhost" || url.hostname === "127.0.0.1") && (url.pathname === "/" || url.pathname === "") && !url.search;
+  } catch {
+    return false;
+  }
 }
 
 function isHttpUrl(value: unknown): value is string {
@@ -266,6 +280,30 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
       errors.push("`claude.plafond` must be a whole number from 1 to 10.");
     } else {
       config.claude = plafond === undefined ? {} : { plafond: plafond as number };
+    }
+  }
+
+  const application = parsed["application"];
+  if (application !== undefined) {
+    if (!isObject(application)) {
+      errors.push("`application` must be an object.");
+    } else {
+      config.application = {};
+      const nom = application["nom"];
+      if (nom !== undefined) {
+        if (typeof nom === "string" && nom.trim()) config.application.nom = nom.trim().slice(0, 80);
+        else errors.push("`application.nom` must be a name.");
+      }
+      const retour = application["retour"];
+      if (retour !== undefined) {
+        if (typeof retour === "string" && retour.startsWith("/") && !retour.startsWith("//")) config.application.retour = retour;
+        else errors.push("`application.retour` must be a path starting with \"/\".");
+      }
+      const local = application["local"];
+      if (local !== undefined) {
+        if (isLocalOrigin(local)) config.application.local = local.replace(/\/$/, "");
+        else errors.push("`application.local` must be an address on this machine, such as http://localhost:8787.");
+      }
     }
   }
 
