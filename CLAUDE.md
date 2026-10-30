@@ -2,16 +2,16 @@
 
 ## En une phrase
 
-Le poste de pilotage d'un projet logiciel construit avec Claude : sa documentation en ligne, ses stories, ce qui attend la production, et un circuit de demande **suivi, contrôlé et traçable**, du besoin écrit par un Product Engineer jusqu'à la version en production.
+Le poste de pilotage d'un projet logiciel construit avec Claude : l'amont du dev (des fiches de features, rangées et validées avant d'entrer dans le cycle), sa documentation en ligne, ses stories, ce qui attend la production, et un circuit de demande **suivi, contrôlé et traçable**, du besoin écrit par un Product Engineer jusqu'à la version en production.
 
 Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-extraordinaire`). La Fabrique extraordinaire (« La Fabrique » en abrégé) est générique : un autre projet s'y branche sans changer son code.
 
 ## Principes (non négociables)
 
-1. **Une couche fine sur GitHub.** GitHub reste la seule source : les stories sont des issues, le code des branches et des PR, les déploiements des workflows. La Fabrique affiche, relie et déclenche ; elle ne recopie pas (pas de second Jira, pas de doc dupliquée).
+1. **GitHub pour le dev, La Fabrique pour l'amont.** GitHub reste la seule source de tout ce qui est dev : les stories sont des issues, le code des branches et des PR, les déploiements des workflows ; La Fabrique les affiche, les relie et les déclenche, elle ne les recopie pas (pas de second Jira, pas de doc dupliquée). L'amont, ce qui n'est pas encore du dev et peut ne jamais le devenir (les fiches de features, leur rangement, leur validation), vit dans La Fabrique, rattaché au projet (épique F4, #74). Quand une fiche devient une story, la story vit sur GitHub et La Fabrique ne garde que le lien. Une fiche reste une fiche : ni assignation, ni estimation, ni sprint.
 2. **Chaque projet se décrit lui-même** dans un fichier `.fabrique.json` à la racine de son dépôt, versionné avec son code (format : `docs/fabrique-json.md`). Rien de propre à un projet dans le code de La Fabrique.
 3. **Les actions sensibles restent dans le projet.** Promouvoir, déployer, migrer, lancer Claude : ce sont des workflows GitHub du projet, avec ses propres secrets. La Fabrique les déclenche par l'API GitHub et n'a **jamais** de jeton de déploiement (Cloudflare, clés d'API d'un projet).
-4. **Traçabilité de bout en bout.** Demande → issue → branche → commits → déploiement sur int → validation → version en production → migrations : chaque étape est reliée et datée. Ce que GitHub ne garde pas (qui a validé quoi, qui a donné le go) est dans le journal de La Fabrique, jamais effacé.
+4. **Traçabilité de bout en bout.** Fiche → demande → issue → branche → commits → déploiement sur int → validation → version en production → migrations : chaque étape est reliée et datée. Ce que GitHub ne garde pas (qui a validé quoi, qui a donné le go) est dans le journal de La Fabrique, jamais effacé ; les fiches gardent toutes leurs versions.
 5. **Personne d'autre que le super admin ne met en production.** Les rôles sont donnés dans La Fabrique, par identifiant GitHub.
 
 ## Rôles
@@ -24,9 +24,11 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 
 Chaque rôle a les droits de ceux d'avant (`src/rights.ts`) : signaler un défaut (tout compte qui voit le projet) < testeur (int, critères, validation) < Product Engineer (demandes, priorités) < tech lead (Claude, Setup) < super admin (go, rôles, projets, apps).
 
+**Perspectives** (F4.1, #75) : le rôle dit ce qu'on peut faire, la perspective ce qu'on voit (tableau de bord, onglets d'un projet). Un compte en a une ou plusieurs, données par le super admin, et passe de l'une à l'autre dans l'en-tête : Admin et Product Owner d'abord, puis Testeur, Tech lead, Architecte, DevOps ; « All » garde la vue complète. Une perspective masque, elle n'interdit rien.
+
 ## Architecture
 
-- **Un Worker Cloudflare** (TypeScript strict) sert les pages et l'API ; **sa propre base D1** (comptes, rôles, projets, journal des décisions). Aucune donnée d'un projet piloté n'y est copiée (pas de données des clients de l'épicerie).
+- **Un Worker Cloudflare** (TypeScript strict) sert les pages et l'API ; **sa propre base D1** (comptes, rôles, perspectives, projets, journal des décisions, et les fiches de l'amont : `cards`, leurs versions et leurs liens, peu structurées : le texte en Markdown annoté et du JSON, en colonnes seulement ce qui sert à filtrer et à ranger ; export par projet). Aucune donnée d'un projet piloté n'y est copiée (pas de données des clients de l'épicerie) ; pas de retours de ses utilisateurs pour l'instant (campagnes de tests ouvertes : plus tard, avec leurs règles).
 - **Une GitHub App « La Fabrique extraordinaire »** : connexion des personnes (OAuth de l'App, jetons utilisateur courts) et accès aux dépôts où elle est installée (jetons d'installation). Installer l'App sur un dépôt, puis le déclarer dans La Fabrique : c'est le lien avec un projet.
 - **La Fabrique, fournisseur OAuth** des apps des projets (#65, `@cloudflare/workers-oauth-provider`) : une app enregistrée par le super admin (*Connected apps*, Settings), consentement au nom de la personne, seule portée `defects:report`, `/oauth/authorize`, `/oauth/token`, `/oauth/revoke`, `GET /api/me` ; clients, autorisations et jetons dans D1 (`oauth_kv`, pas de KV à créer). Jamais un jeton GitHub remis à une app. Un compte sans rôle ne se connecte que pour cela (consentement, *Connected apps*). Contrat avec l'épicerie : commentaire « Contract with L'épicerie extraordinaire » de #65, à ne pas changer sans le dire aux deux côtés.
 - **Webhooks GitHub** de l'App (push, issues, workflow_run, pull_request) pour l'état en direct ; lecture à la demande sinon.
@@ -51,7 +53,7 @@ Permissions de l'App (le minimum) : Metadata (lecture), Contents (lecture et éc
 
 ## Design
 
-Sobre et lisible, au service du suivi : un tableau, des états en pastilles, des liens vers GitHub. Repris de l'épicerie : fond `#F3F4EE`, encre `#18211B`, accent `#C23D17`, bon `#1E5A43`, moyen `#D9A93B`, alerte `#8A2A0F` ; Archivo pour le texte, IBM Plex Mono pour les chiffres et les identifiants ; formes arrondies, cibles ≥ 44 px, contraste AA.
+Sobre et lisible, au service du suivi : un tableau, des états en pastilles, des liens vers GitHub. Les fiches de l'amont : un bristol blanc sur le fond beige, le texte et des étiquettes (type, statut, domaine, segment, version), sans effet réaliste ; déplacées librement, rangées par une dimension puis une autre pour croiser, filtrées. Repris de l'épicerie : fond `#F3F4EE`, encre `#18211B`, accent `#C23D17`, bon `#1E5A43`, moyen `#D9A93B`, alerte `#8A2A0F` ; Archivo pour le texte, IBM Plex Mono pour les chiffres et les identifiants ; formes arrondies, cibles ≥ 44 px, contraste AA.
 
 ## État
 
@@ -61,5 +63,7 @@ Fin octobre 2026 :
 - lot F3 livré (#44, stories #45 à #49) : cycle de vie d'une story et *Definition of Ready* (`cycle` du `.fabrique.json`), à tester sur int, en développement, backlog et priorités (étiquettes GitHub posées par La Fabrique, journalisées), tableau de bord en page d'accueil ;
 - signaler un défaut depuis l'app d'un projet (#65) : La Fabrique fournisseur OAuth, *Connected apps*, `GET /api/me`, `POST /api/projects/{project}/defects` (contrat avec l'épicerie dans #65), `type` et `signalement` des environnements, droits par action ; le client de l'épicerie reste à enregistrer par le propriétaire ;
 - lot F1 livré côté La Fabrique (#57, stories #58 à #62) : validation sur int (critères cochés dans l'issue, validation, défaut signalé), « go » du super admin (workflow `promouvoir` du projet), « Launch Claude » sur une story prête (workflow `claude` du projet, plafond `claude.plafond`), journal par projet, workflows du projet dans Setup ; les workflows de l'épicerie attendent leur intégration (epicerie-extraordinaire#148) et leurs secrets (`FABRIQUE_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` ou `ANTHROPIC_API_KEY`).
+
+- lot F4 décidé (#74, stories #75 à #82) : perspectives, tableau de bord par projet et par perspective, fiches de l'amont dans La Fabrique (tableau, validation, passage en story, lien jusqu'aux notes de version), domaines et glossaire (ubiquitous language).
 
 Mise en route et secrets : `docs/owner-setup.md`.
