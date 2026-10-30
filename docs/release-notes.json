@@ -2,7 +2,7 @@
   {
     "version": "0.47",
     "date": "2026-10-30",
-    "heure": "21:30",
+    "heure": "21:40",
     "titre": "Writing a card's spec with Claude, as a conversation",
     "changements": [
       "Claude frames the need before writing it out: it asks what the card leaves open (who, when, what counts as done, the edge cases), at most five questions, the most decisive first, and leaves a section empty rather than invent it.",
