@@ -1,5 +1,6 @@
 import { ROLE_LABELS, ROLES, type AccountRow, type Role } from "./accounts";
 import type { ActivityRow } from "./activity-log";
+import { assetUrl } from "./assets";
 
 export interface Viewer {
   login: string;
@@ -59,8 +60,8 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" />
-    <link rel="stylesheet" href="/styles.css" />
-    ${["/fabrique.js", ...scripts].map((src) => `<script src="${escapeHtml(src)}" defer></script>`).join("")}
+    <link rel="stylesheet" href="${assetUrl("/styles.css")}" />
+    ${["/fabrique.js", ...scripts].map((src) => `<script src="${escapeHtml(assetUrl(src))}" defer></script>`).join("")}
   </head>
   <body>
     <div class="loading" data-loading aria-hidden="true"><i></i></div>

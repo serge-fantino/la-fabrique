@@ -64,7 +64,7 @@ describe("New request", () => {
     expect(page).toContain('<label for="r_contexte">Contexte <span class="muted">(required)</span></label>');
     expect(page).toContain("Ce qui se passe aujourd&#39;hui, pour qui, et pourquoi ça ne va pas.");
     expect(page).toContain('<textarea id="r_donnees_personnelles" name="r_donnees_personnelles" rows="5" required');
-    expect(page).toContain('<script src="/request-draft.js" defer></script>');
+    expect(page).toMatch(/<script src="\/request-draft\.js\?v=[0-9a-f]{8}" defer><\/script>/);
     expect(page).toContain('data-draft-key="lf-request:acme/widget"');
   });
 

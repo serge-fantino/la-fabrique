@@ -92,7 +92,7 @@ describe("Project documentation", () => {
     mockFile(SHA, "README.md", README);
 
     const page = await (await get(`/projects/${REPO}/docs/README.md`, await adminCookie())).text();
-    expect(page).not.toMatch(/<script(?![^>]*\bsrc="\/fabrique\.js")/i);
+    expect(page).not.toMatch(/<script(?![^>]*\bsrc="\/fabrique\.js\?v=)/i);
     expect(page).toContain("&lt;script&gt;");
     expect(page).not.toContain('href="javascript:');
   });

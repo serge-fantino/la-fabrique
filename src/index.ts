@@ -2,7 +2,8 @@ import { effectiveRole } from "./accounts";
 import { finishLogin, startLogin } from "./auth";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
-import { css, html, json, redirect, script, text } from "./http";
+import { html, json, redirect, text } from "./http";
+import { isAsset, serveAsset } from "./assets";
 import { changePeople, showPeople } from "./people";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showSetup, showStories, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
@@ -13,10 +14,7 @@ const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/setup|\
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
-import stylesCss from "../site/styles.css";
 import releaseNotes from "../docs/release-notes.json";
-import requestDraftJs from "../site/request-draft.js";
-import fabriqueJs from "../site/fabrique.js";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
 import { renderMarkdown } from "./markdown";
@@ -74,15 +72,11 @@ export default {
     const { pathname } = new URL(request.url);
     const method = request.method;
 
+    if (isAsset(pathname)) return method === "GET" || method === "HEAD" ? serveAsset(request, pathname) : methodNotAllowed();
+
     switch (pathname) {
       case "/api/version":
         return json({ numero: releaseNotes[0]?.version ?? null, commit: env.COMMIT_SHA });
-      case "/styles.css":
-        return css(stylesCss);
-      case "/request-draft.js":
-        return script(requestDraftJs);
-      case "/fabrique.js":
-        return script(fabriqueJs);
       case "/auth/login":
         return method === "GET" ? startLogin(request, env) : methodNotAllowed();
       case "/auth/callback":
