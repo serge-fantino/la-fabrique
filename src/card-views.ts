@@ -108,6 +108,7 @@ function query(params: Record<string, string>): string {
 export function boardQueryString(board: BoardQuery): string {
   const { filters } = board;
   const params: Record<string, string> = { by: board.by, then: board.then === "none" ? "" : board.then };
+  if (board.hideEmpty) params["empty"] = "hide";
   if (filters.kind) params["kind"] = filters.kind;
   if (filters.status) params["status"] = filters.status;
   for (const dimension of FREE_DIMENSIONS) {
@@ -140,6 +141,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
         <legend>Arrange</legend>
         ${axisSelect("by", "Columns", board.by)}
         ${axisSelect("then", "Then rows", board.then)}
+        ${board.by === "none" ? "" : `<label class="check"><input type="checkbox" name="empty" value="hide"${board.hideEmpty ? " checked" : ""} data-autosubmit /> Hide empty lanes</label>`}
       </fieldset>
       <details class="board-show"${active ? " open" : ""}>
         <summary>Filters${active ? ` <span class="pill">${active} on</span>` : ""}</summary>
@@ -155,7 +157,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
           <input type="search" name="q" value="${escapeHtml(filters.q)}" placeholder="Words, C12" />
         </label>
         <label class="check"><input type="checkbox" name="all" value="1"${filters.all ? " checked" : ""} data-autosubmit /> Dropped and archived</label>
-        ${active ? `<a class="board-clear" href="${escapeHtml(base)}/board?by=${board.by}${board.then === "none" ? "" : `&amp;then=${board.then}`}">Clear the filters</a>` : ""}
+        ${active ? `<a class="board-clear" href="${escapeHtml(base)}/board?by=${board.by}${board.then === "none" ? "" : `&amp;then=${board.then}`}${board.hideEmpty ? "&amp;empty=hide" : ""}">Clear the filters</a>` : ""}
         </div>
       </details>
       <button type="submit" class="button quiet board-apply">Show</button>
@@ -202,8 +204,13 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   const base = projectUrl(project.repo);
   const { board, known, canWrite } = data;
   const back = boardQueryString(board).slice(1);
-  const columns = axisValues(board.by, known);
-  const rows = axisValues(board.then, known);
+  // Hiding empty lanes keeps only the values the cards shown have.
+  const lanes = (axis: Axis) => {
+    const values = axisValues(axis, known);
+    return board.hideEmpty && axis !== "none" ? values.filter((value) => data.cards.some((card) => valueOf(card, axis) === value)) : values;
+  };
+  const columns = lanes(board.by);
+  const rows = lanes(board.then);
   const cell = (columnValue: string, rowValue: string) => {
     const placed = { [board.by]: columnValue, [board.then]: rowValue };
     const cards = data.cards.filter((card) => valueOf(card, board.by) === columnValue && valueOf(card, board.then) === rowValue);
@@ -223,12 +230,12 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   if (board.by === "none") {
     grid = `<div class="board-free">${cell("", "")}</div>`;
   } else if (board.then === "none") {
-    const extra = canWrite && isFreeDimension(board.by) ? `<div class="board-column board-ghost">${addValueForm(viewer, base, board.by, back, "column")}</div>` : "";
+    const extra = canWrite && !board.hideEmpty && isFreeDimension(board.by) ? `<div class="board-column board-ghost">${addValueForm(viewer, base, board.by, back, "column")}</div>` : "";
     grid = `<div class="board-columns">${columns
       .map((value) => `<section class="board-column" aria-label="${escapeHtml(valueLabel(board.by, value))}">${head(value)}${cell(value, "")}</section>`)
       .join("")}${extra}</div>`;
   } else {
-    const ghostColumn = canWrite && isFreeDimension(board.by);
+    const ghostColumn = canWrite && !board.hideEmpty && isFreeDimension(board.by);
     const rowHtml = rows
       .map((rowValue) => {
         const label = valueLabel(board.then, rowValue);
@@ -242,7 +249,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
       })
       .join("");
     const ghostRow =
-      canWrite && isFreeDimension(board.then)
+      canWrite && !board.hideEmpty && isFreeDimension(board.then)
         ? `<div class="board-row"><div class="board-row-head board-ghost">${addValueForm(viewer, base, board.then, back, "row")}</div></div>`
         : "";
     grid = `<div class="board-grid">

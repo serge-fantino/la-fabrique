@@ -1,8 +1,8 @@
 [
   {
-    "version": "0.48",
+    "version": "0.49",
     "date": "2026-10-30",
-    "heure": "23:30",
+    "heure": "23:02",
     "titre": "Claude works in the background, and shows what it does",
     "changements": [
       "Writing, revising or answering Claude's questions no longer waits on the page: the request and your answers are saved at once, Claude works in the background, and you can leave the page or close it without losing anything.",
@@ -11,6 +11,17 @@
       "Claude stops asking when it knows enough to write the stories, and says why; Enough questions closes them when you decide it knows enough. Everything happens in the page, without a window."
     ],
     "stories": [80],
+    "liens": null
+  },
+  {
+    "version": "0.48",
+    "date": "2026-10-30",
+    "heure": "23:00",
+    "titre": "Hide the empty lanes of the board",
+    "changements": [
+      "Board: \"Hide empty lanes\" (next to Columns and Then rows) shows only the columns and rows that hold a card, filters included; kept on the device with the rest of the arrangement."
+    ],
+    "stories": [78],
     "liens": null
   },
   {
