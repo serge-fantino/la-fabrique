@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.24",
+    "date": "2026-10-30",
+    "heure": "11:32",
+    "titre": "To test",
+    "changements": [
+      "A To test tab answers \"what is new on int?\": the stories waiting on int, by epic, each with its acceptance criteria as a checklist, the release-notes changes production does not have yet, and a button to open int.",
+      "Without an integration branch, it says what the latest production version brought.",
+      "On a phone, the tabs scroll sideways on one line."
+    ],
+    "liens": null
+  },
+  {
     "version": "0.23",
     "date": "2026-10-30",
     "heure": "11:29",

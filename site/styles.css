@@ -493,7 +493,7 @@ th {
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 1.5rem;
+  gap: 0 1.05rem;
   border-bottom: 1px solid var(--rule);
   margin: 0 0 1.5rem;
 }
@@ -1312,4 +1312,93 @@ main:focus {
 
 .small {
   font-size: 0.85rem;
+}
+
+/* To test: a card per story, its acceptance criteria as a checklist. */
+.test-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 16px;
+  background: rgba(217, 169, 59, 0.18);
+}
+
+.test-summary p {
+  margin: 0;
+}
+
+.test-epic h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.test-story {
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  padding: 0.25rem 1rem 0.5rem;
+  margin-bottom: 0.6rem;
+  background: #fff;
+}
+
+.test-story h4 {
+  margin: 0.6rem 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.criteria {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.criteria li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+}
+
+.criteria .box {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1.5px solid var(--encre-faint);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  line-height: 1rem;
+  text-align: center;
+  transform: translateY(0.15rem);
+}
+
+.criteria li.done {
+  color: var(--encre-faint);
+}
+
+.criteria li.done .box {
+  border-color: var(--bon);
+  color: var(--bon);
+}
+
+/* On a phone, the tabs scroll sideways on one line. */
+@media (max-width: 640px) {
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding: 0 1rem;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabs a {
+    flex: none;
+  }
 }

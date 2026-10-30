@@ -10,11 +10,12 @@ import {
   findProject,
   isRepoName,
   listProjects,
+  productionBranch,
   type Project,
 } from "./projects";
 import { groupStories, loadStories, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
-import { loadProduction } from "./production";
+import { loadProduction, productionReady } from "./production";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
 import { requestFormPage, requestsPage } from "./requests-views";
@@ -22,12 +23,13 @@ import { loadActivity, RANGES } from "./activity";
 import { activityPage } from "./activity-views";
 import { deliveryReady, loadDelivery } from "./delivery";
 import { deliveryContent, deliveryLoading, deliveryPage } from "./delivery-views";
-import { epicProgress, loadReleases, type Release } from "./roadmap";
+import { epicProgress, loadReleases, storiesBetween, type Release } from "./roadmap";
 import { releasesPage, roadmapPage } from "./roadmap-views";
 import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
+import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
 import { cycleRules, isStage, stagesOf, storiesOnInt } from "./lifecycle";
 import { setupChecklist } from "./setup";
 import { setupPage } from "./setup-views";
@@ -311,4 +313,39 @@ export async function showSetup(request: Request, env: Env, viewer: Viewer, repo
     branches: view.knownBranches,
   });
   return html(setupPage(viewer, view, { items, failure: failure ?? releases.failure ?? stories.failure }), { cookies });
+}
+
+// What the PO validates on int (or what the latest version brought).
+export async function showToTest(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const { view, cookies } = await projectView(request, env, project);
+  const params = new URL(request.url).searchParams;
+  const part = params.get("part") === "content";
+  if (!part && params.get("wait") !== "1" && !(await productionReady(env, project, view.ref))) {
+    return html(toTestPage(viewer, view, toTestLoading(view.path)), { cookies });
+  }
+  const content = toTestContent(view, await toTestData(env, view));
+  return html(part ? content : toTestPage(viewer, view, content), { cookies });
+}
+
+async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
+  const config = view.check?.config;
+  const [production, stories] = await Promise.all([loadProduction(env, view, view.ref), loadStories(env, view)]);
+  const environment = Object.entries(config?.environnements ?? {}).find(
+    ([name]) => name !== "production" && name !== productionBranch(view),
+  );
+  let latest: ToTestData["latest"] = null;
+  if (!production.status) {
+    const releases = (await branchReleases(env, view)).releases.filter((release) => !release.upcoming);
+    const [release, previous] = releases;
+    if (release) latest = { release, stories: storiesBetween(stories.stories, previous, release) };
+  }
+  return {
+    status: production.status,
+    stories: stories.stories,
+    environment: environment ? { name: environment[0], url: environment[1].url } : null,
+    latest,
+    failure: production.failure ?? stories.failure,
+  };
 }

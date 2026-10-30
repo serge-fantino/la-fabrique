@@ -329,6 +329,12 @@ export interface ProductionView {
   stories: Story[];
 }
 
+// True when the page can be shown at once, without asking GitHub.
+export async function productionReady(env: Env, project: Project, ref: string | null = null): Promise<boolean> {
+  if (!(ref ?? project.check?.config?.branches?.integration)) return true;
+  return isFresh(await readSnapshot<ProductionStatus>(env.DB, project.repo, onBranch(PRODUCTION, ref)), MAX_AGE_MS);
+}
+
 export async function loadProduction(env: Env, project: Project, ref: string | null = null): Promise<ProductionView> {
   const config = project.check?.config;
   const stories = await readSnapshot<Story[]>(env.DB, project.repo, STORIES);

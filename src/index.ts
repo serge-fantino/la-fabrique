@@ -6,12 +6,12 @@ import { html, json, redirect, text } from "./http";
 import { isAsset, serveAsset } from "./assets";
 import { REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { changePeople, showPeople } from "./people";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showSetup, showStories, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, showSetup, showStories, showToTest, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/setup|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/branches|\/setup|\/to-test|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
@@ -125,6 +125,9 @@ export default {
         if (method !== "POST") return methodNotAllowed();
         const form = await protectedForm(request, viewer);
         return form ? submitRequest(request, form, env, viewer, repo) : forbidden(viewer);
+      }
+      if (projectRoute[2] === "/to-test") {
+        return method === "GET" ? showToTest(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/setup") {
         return method === "GET" ? showSetup(request, env, viewer, repo) : methodNotAllowed();

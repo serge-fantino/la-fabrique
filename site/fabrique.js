@@ -115,6 +115,7 @@
 
   // What each page needs once it is shown.
   function setUp() {
+    document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
     setUpFragments();
     setUpDiagnostic();
     setUpRefresh();
