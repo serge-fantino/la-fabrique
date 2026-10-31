@@ -64,7 +64,9 @@ export interface CardSpec {
 // Claude's proposal to split the spec into stories, to review before
 // anything goes to GitHub; edited by the person, then created.
 export interface CardSplit {
-  stories: { title: string; answers: Record<string, string> }[];
+  // `nice`: Claude's proposal (kept or not in the preview): nice to have,
+  // its priority one level below the card's.
+  stories: { title: string; answers: Record<string, string>; nice?: boolean }[];
   // When the card already has stories: Claude's review of each against
   // the spec; a change is a comment for the story's issue.
   review?: StoryReview[];
@@ -99,6 +101,8 @@ export interface Card extends CardTags {
   updatedAt: string;
   archivedAt: string | null;
   data: CardData;
+  // One of the project's priority labels; its stories take it when made.
+  priority: string | null;
 }
 
 export interface CardRevision {
@@ -210,10 +214,11 @@ interface CardRow {
   updated_at: string;
   archived_at: string | null;
   data: string | null;
+  priority: string | null;
 }
 
 const CARD_COLUMNS =
-  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data";
+  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data, priority";
 
 export function parseData(raw: string | null): CardData {
   if (!raw) return {};
@@ -244,6 +249,7 @@ function toCard(row: CardRow): Card {
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
     data: parseData(row.data),
+    priority: row.priority,
   };
 }
 
@@ -608,6 +614,16 @@ export async function reopenStatus(db: D1Database, repo: string, id: number, aut
   const card = await findCard(db, repo, id);
   if (!card || card.archivedAt || card.status !== "validated") return false;
   await moveCard(db, card, author, { set: { status: "to_validate" }, before: null, after: null }, NO_VALUES, reason);
+  return true;
+}
+
+// A card's priority: one of the project's labels, or none.
+export async function setCardPriority(db: D1Database, card: Card, priority: string | null, login: string): Promise<boolean> {
+  if ((card.priority ?? null) === priority) return false;
+  await db.batch([
+    db.prepare("UPDATE cards SET priority = ? WHERE id = ?").bind(priority, card.id),
+    activityStatement(db, { actor: login, action: "card_priority_set", repo: card.repo, details: { card: card.id, title: card.title, from: card.priority, to: priority } }),
+  ]);
   return true;
 }
 

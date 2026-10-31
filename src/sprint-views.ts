@@ -25,6 +25,10 @@ export interface SprintData {
   links: StoryCards;
   // Start, close, order, mark nice to have (Product Engineer and above).
   canOrder: boolean;
+  // The project's priorities (highest first) and whether its Definition of
+  // Ready asks for the ready label (then "Mark ready" sets it).
+  priorities: string[];
+  readyLabel: string | null;
   // Launching Claude Code (la-fabrique#113): tech lead and above, through
   // the project's own workflow; null when the project declares none.
   claude: { canLaunch: boolean; workflow: string | null; cap: number; launches: Map<number, { by: string; at: string }>; next: number | null };
@@ -54,6 +58,27 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     if (!data.claude.canLaunch || !data.claude.workflow || story?.stage !== "ready") return last;
     return `${button({ action: "launch", story: number }, `Launch Claude on #${number}`, launched ? "Launch again" : "Launch Claude", "quiet small claude")}${last}`;
   };
+  // A priority chosen from a list, sent at once (the button without script).
+  const prioritySelect = (fields: Record<string, string | number>, current: string | null, label: string) =>
+    `<form method="post" action="${escapeHtml(action)}" class="priority-form inline">${csrfField(viewer)}${Object.entries(fields)
+      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
+      .join("")}<select name="priority" aria-label="${escapeHtml(label)}" data-autosubmit>${[...data.priorities, ""]
+      .map((value) => `<option value="${escapeHtml(value)}"${(current ?? "") === value ? " selected" : ""}>${value ? escapeHtml(value) : "No priority"}</option>`)
+      .join("")}</select><button type="submit" class="button quiet small" data-autosubmit-button>Set</button></form>`;
+  // Why a story is not ready, and what fixes it here.
+  const readiness = (number: number, controls: boolean) => {
+    const story = data.stories.get(number);
+    if (!story || story.stage !== "backlog") return "";
+    const fixes = controls
+      ? [
+          story.missing.includes("not labelled ready") && data.readyLabel ? button({ action: "story_ready", story: number }, `Mark #${number} ready`, "Mark ready") : "",
+          story.missing.includes("no acceptance criteria")
+            ? `<a class="small" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">Add its criteria on GitHub</a>`
+            : "",
+        ].join("")
+      : "";
+    return `<br /><span class="muted small">Not ready: ${escapeHtml(story.missing.join(", "))}</span>${fixes ? ` <span class="sprint-fixes">${fixes}</span>` : ""}`;
+  };
   const storyRow = (number: number, card: number, index: number, count: number, controls: boolean, launchable: boolean) => {
     const story = data.stories.get(number);
     const others = (data.links.byStory.get(number) ?? []).filter((id) => id !== card);
@@ -66,7 +91,12 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     return `<tr id="story-${card}-${number}"${nice ? ' class="nice"' : ""}>
         <td class="mono number"><a href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a></td>
         <td>${story ? escapeHtml(story.title) : `<span class="muted">not read yet</span>`}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}</td>
-        <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}</td>
+        <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${readiness(number, controls)}</td>
+        ${
+          data.priorities.length
+            ? `<td>${controls ? prioritySelect({ action: "story_priority", card, story: number }, story?.priority ?? null, `Priority of #${number}`) : story?.priority ? `<span class="pill">${escapeHtml(story.priority)}</span>` : ""}</td>`
+            : ""
+        }
         ${launchable ? `<td class="sprint-claude">${claudeCell(number)}</td>` : ""}
         ${cell}
       </tr>`;
@@ -79,6 +109,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     return cards
       .map((card, index) => {
         const mine = storiesOf(card.id);
+        // The card's priority: its stories take it (one level lower when
+        // nice to have).
+        const priority = data.priorities.length
+          ? controls
+            ? `<span class="sprint-card-priority"><span class="muted small">Priority, for the card and its stories</span> ${prioritySelect({ action: "card_priority", card: card.id }, card.priority, `Priority of ${cardRef(card.id)} and its stories`)}</span>`
+            : card.priority
+              ? `<span class="pill">${escapeHtml(card.priority)}</span>`
+              : ""
+          : "";
         const order = controls
           ? `<span class="sprint-controls">${index > 0 ? button({ action: "card_up", card: card.id }, `Move ${cardRef(card.id)} up`, "↑") : ""}${
               index < cards.length - 1 ? button({ action: "card_down", card: card.id }, `Move ${cardRef(card.id)} down`, "↓") : ""
@@ -88,10 +127,10 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           project.repo,
           { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position },
           mine.length,
-        )}${order}</div>
+        )}${priority}${order}</div>
           ${
             mine.length
-              ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine
+              ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.priorities.length ? "<th>Priority</th>" : ""}${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine
                   .map((number, at) => storyRow(number, card.id, at, mine.length, controls, launchable))
                   .join("")}</tbody></table>`
               : `<p class="muted">No story yet: <a href="${escapeHtml(base)}/cards/${card.id}#spec">make them from the card</a>.</p>`

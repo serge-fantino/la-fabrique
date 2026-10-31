@@ -24,7 +24,7 @@ const DEFAULT_READY: ReadyCheck[] = ["criteres", "epique"];
 
 const MISSING: Record<ReadyCheck, string> = {
   criteres: "no acceptance criteria",
-  epique: "not in an epic",
+  epique: "not in an epic nor a card",
   priorite: "no priority",
   etiquette_prete: "not labelled ready",
 };
@@ -33,14 +33,26 @@ export interface CycleRules {
   checks: ReadyCheck[];
   priorities: string[];
   readyLabel: string | null;
+  // The stories made from a card: a card groups them as an epic would.
+  inCard: Set<number>;
 }
 
-export function cycleRules(config: FabriqueConfig | null | undefined): CycleRules {
+export function cycleRules(config: FabriqueConfig | null | undefined, inCard: Set<number> = new Set()): CycleRules {
   return {
     checks: config?.cycle?.pret ?? DEFAULT_READY,
     priorities: config?.cycle?.priorites ?? [],
     readyLabel: config?.demandes?.etiquettes?.["prete"] ?? null,
+    inCard,
   };
+}
+
+// The project's rules, knowing which stories come from a card.
+export async function projectRules(db: D1Database, project: Project): Promise<CycleRules> {
+  const { results } = await db
+    .prepare("SELECT DISTINCT l.ref FROM card_links l JOIN cards c ON c.id = l.card_id WHERE c.repo = ? AND l.kind = 'story' AND c.archived_at IS NULL")
+    .bind(project.repo)
+    .all<{ ref: string }>();
+  return cycleRules(project.check?.config, new Set(results.map((row) => Number(row.ref))));
 }
 
 export function isEpic(story: Story): boolean {
@@ -56,7 +68,7 @@ export function priorityOf(story: Story, rules: CycleRules): string | null {
 export function missingForReady(story: Story, rules: CycleRules): string[] {
   const met: Record<ReadyCheck, boolean> = {
     criteres: (story.criteria?.length ?? 0) > 0,
-    epique: story.parent !== null,
+    epique: story.parent !== null || rules.inCard.has(story.number),
     priorite: priorityOf(story, rules) !== null,
     etiquette_prete: rules.readyLabel !== null && story.labels.includes(rules.readyLabel),
   };

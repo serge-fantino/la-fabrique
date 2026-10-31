@@ -6,6 +6,9 @@ import { sprintPage } from "./sprint-views";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeWorkflow, launchClaude } from "./claude";
+import { applyCardPriority, markReady, storyPriority } from "./card-priority";
+import { setPriority } from "./backlog";
+import { cycleRules, projectRules } from "./lifecycle";
 import {
   addValue,
   archiveCard,
@@ -31,6 +34,7 @@ import {
   saveSpec,
   saveSplit,
   advanceStatus,
+  setCardPriority,
   reopenStatus,
   setStatus,
   updateCard,
@@ -209,6 +213,7 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
 const CARD_NOTICES: Record<string, string> = {
   saved: "Saved.",
   unchanged: "Nothing changed.",
+  priority: "Priority set: on the card, and on GitHub for its stories (one level lower when nice to have).",
   archived: "Archived: it no longer shows on the board.",
   restored: "Back on the board.",
   version_restored: "That version is back, as the newest one.",
@@ -278,6 +283,7 @@ async function renderCard(
       events,
       split: card.data.split,
       storyStates,
+      priorities: cycleRules(project.check?.config).priorities,
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -359,6 +365,14 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "to_validate", "questions closed");
     return redirect(`${url}?notice=enough#spec`);
   }
+  if (action === "priority") {
+    const priority = String(form.get("priority") ?? "") || null;
+    if ((priority && !cycleRules(project.check?.config).priorities.includes(priority)) || card.archivedAt) return redirect(url);
+    if (!(await setCardPriority(env.DB, card, priority, viewer.login))) return redirect(`${url}?notice=unchanged`);
+    const failed = priority ? await applyCardPriority(env, project, { ...card, priority }, viewer.login) : [];
+    if (failed.length) return renderCard(request, env, viewer, project, { ...card, priority }, { failure: `Priority set on the card; GitHub refused it for ${failed.join("; ")}`, status: 502 });
+    return redirect(`${url}?notice=priority`);
+  }
   if (action === "status") {
     const to = form.get("status");
     if (!isStatus(to) || card.archivedAt) return redirect(url);
@@ -436,6 +450,8 @@ export async function storyRoute(request: Request, env: Env, viewer: Viewer, pro
     );
   }
   await linkStory(env.DB, card, viewer.login, outcome.number, outcome.url);
+  // The story takes its card's priority.
+  if (card.priority && cycleRules(project.check?.config).priorities.includes(card.priority)) await setPriority(env, project, viewer.login, outcome.number, card.priority);
   await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story made");
   return redirect(`${url}?notice=story`);
 }
@@ -469,6 +485,8 @@ export async function importRoute(request: Request, env: Env, viewer: Viewer, pr
 const SPRINT_NOTICES: Record<string, string> = {
   started: "Sprint started: it took the cards of Next release.",
   closed: "Sprint closed: the cards done took the version that shipped them, the others went back to Next release.",
+  priority: "Priority set on GitHub.",
+  ready: "Marked ready for Claude on GitHub.",
   stopped: "Sprint stopped: its cards went back to Next release.",
 };
 
@@ -518,10 +536,40 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
     if (action === "story_up" || action === "story_down" || action === "nice") {
       const found = Number.isInteger(card) ? await findCard(env.DB, project.repo, card) : null;
       if (found && Number.isInteger(story) && story > 0) {
-        if (action === "nice") await setNice(env.DB, project.repo, card, story, form.get("nice") === "1", viewer.login);
-        else await moveStoryInCard(env.DB, project.repo, card, story, action === "story_up" ? "up" : "down", viewer.login);
+        if (action === "nice") {
+          const nice = form.get("nice") === "1";
+          // Nice to have: one priority level below its card's.
+          if ((await setNice(env.DB, project.repo, card, story, nice, viewer.login)) && found.priority) {
+            const to = storyPriority(await projectRules(env.DB, project), found.priority, nice);
+            const outcome = to ? await setPriority(env, project, viewer.login, story, to) : null;
+            if (outcome && !outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+          }
+        } else await moveStoryInCard(env.DB, project.repo, card, story, action === "story_up" ? "up" : "down", viewer.login);
       }
       return redirect(`${base}#story-${card}-${story}`);
+    }
+    // Priorities: a card's (given to its stories), or one story's; and a
+    // story declared ready for Claude.
+    const priority = String(form.get("priority") ?? "") || null;
+    if (action === "card_priority") {
+      const found = Number.isInteger(card) ? await findCard(env.DB, project.repo, card) : null;
+      if (!found || (priority && !cycleRules(project.check?.config).priorities.includes(priority))) return redirect(base);
+      await setCardPriority(env.DB, found, priority, viewer.login);
+      const failed = priority ? await applyCardPriority(env, project, { ...found, priority }, viewer.login) : [];
+      if (failed.length) return showSprint(request, env, viewer, project, `Priority set on the card; GitHub refused it for ${failed.join("; ")}`, 502);
+      return redirect(`${base}?notice=priority#card-${card}`);
+    }
+    if (action === "story_priority") {
+      if (!Number.isInteger(story) || story <= 0) return redirect(base);
+      const outcome = await setPriority(env, project, viewer.login, story, priority);
+      if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+      return redirect(`${base}?notice=priority#story-${card}-${story}`);
+    }
+    if (action === "story_ready") {
+      if (!Number.isInteger(story) || story <= 0) return redirect(base);
+      const outcome = await markReady(env, project, story, viewer.login);
+      if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, 502);
+      return redirect(`${base}?notice=ready`);
     }
     return redirect(base);
   }
@@ -566,6 +614,8 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       stories,
       links,
       canOrder: canWriteCards(viewer),
+      priorities: cycleRules(project.check?.config).priorities,
+      readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,
       claude: { canLaunch: canLaunchClaude(viewer.role), workflow: claudeWorkflow(project), cap: claudeCap(project), launches, next },
       notice:
         params.get("notice") === "launched" && Number.isInteger(launched) ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.` : SPRINT_NOTICES[params.get("notice") ?? ""],
@@ -597,7 +647,7 @@ function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]):
     const answers = Object.fromEntries(
       rubriques.map((rubrique) => [rubrique.cle, String(form.get(`s_${index}_${rubrique.cle}`) ?? story.answers[rubrique.cle] ?? "").replace(/\r\n/g, "\n").trim().slice(0, 20_000)]),
     );
-    return { title, answers };
+    return { title, answers, nice: form.get(`nice_${index}`) === "1" };
   });
   // A review: the comments for the stories to change, as edited.
   const commented: number[] = [];
@@ -666,6 +716,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     return redirect(`${url}?notice=split_discarded#spec`);
   }
   const edited = readSplitForm(form, split, rubriques);
+  const rules = await projectRules(env.DB, project);
   if (action === "save") {
     await saveSplit(env.DB, card, viewer.login, edited.split);
     return redirect(`${url}/stories?notice=saved`);
@@ -717,6 +768,10 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     const outcome = await createRequest(request, env, project, viewer.login, { title: story.title, answers: story.answers }, rubriques, originOf(position + 1, edited.kept.length, saved.rev));
     if (!outcome.ok) return stop(outcome, "to create the issue");
     await linkStory(env.DB, saved, viewer.login, outcome.number, outcome.url);
+    // Nice to have as proposed (and kept), and the priority its card gives.
+    if (story.nice) await setNice(env.DB, project.repo, card.id, outcome.number, true, viewer.login);
+    const to = storyPriority(rules, card.priority, Boolean(story.nice));
+    if (to) await setPriority(env, project, viewer.login, outcome.number, to);
     created.push(index);
   }
   const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;

@@ -255,7 +255,7 @@ function storyForClaude(story: CardStory): string {
 }
 
 interface SplitAnswer {
-  stories: { title: string; sections: Record<string, string> }[];
+  stories: { title: string; sections: Record<string, string>; nice?: boolean }[];
   existing?: { number: number; verdict: string; comment: string }[];
   note: string;
 }
@@ -284,9 +284,10 @@ function splitSchema(rubriques: Rubrique[], review: boolean): Record<string, unk
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["title", "sections"],
+          required: ["title", "sections", "nice"],
           properties: {
             title: { type: "string" },
+            nice: { type: "boolean" },
             sections: {
               type: "object",
               additionalProperties: false,
@@ -336,7 +337,7 @@ ${existing.map(storyForClaude).join("\n\n")}
 ${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
 Review these stories against the specification.
 - "existing": one entry per story above. "fits" when it still matches the specification, with an empty comment. "change" otherwise, with a comment for the team, written in the language of the specification: what to add, change or remove in this story, short and concrete. A story in production or closed does not change any more: say instead what a new story has to do, and propose that story.
-- "stories": only the new stories for what the existing ones do not cover; none is a fine answer. Each can be built, tested on int and put in production on its own. "title": short, what the person can do once the story is there. "sections": the story's own specification, in the same sections, with its own acceptance criteria.
+- "stories": only the new stories for what the existing ones do not cover; none is a fine answer. Each can be built, tested on int and put in production on its own. "title": short, what the person can do once the story is there. "sections": the story's own specification, in the same sections, with its own acceptance criteria. "nice": true when the feature stands without it (done if there is time), false otherwise.
 - "note": one sentence on what changed and what to do first.`
     : `${read.text}
 The specification to split:
@@ -347,6 +348,7 @@ ${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : 
 Split this specification into stories. Each story can be built, tested on int and put in production on its own, and gives people something they can see; together they cover the whole specification, without overlap. As few stories as make sense, from one to six: one story is a fine answer for a small feature.
 - "title": short, what the person can do once the story is there.
 - "sections": the story's own specification, in the same sections. Its acceptance criteria are its own: each criterion of the specification belongs to exactly one story. The context can be shared; say what this story adds. The release note says what this story makes visible.
+- "nice": true for a story that is nice to have: the feature stands without it, it is done if there is time (its priority goes one level below the card's). False for what the feature needs.
 - "note": one sentence on how you split, and in which order to build the stories.`;
   const outcome: CallOutcome<SplitAnswer> = await askJson<SplitAnswer>(
     env,
@@ -359,6 +361,7 @@ Split this specification into stories. Each story can be built, tested on int an
     .map((story) => ({
       title: String(story.title ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
       answers: Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, String(story.sections?.[rubrique.cle] ?? "").trim()])),
+      nice: story.nice === true,
     }))
     .filter((story) => story.title);
   const said = Array.isArray(outcome.value.existing) ? outcome.value.existing : [];
