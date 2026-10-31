@@ -236,3 +236,25 @@ npm run dev                            # http://localhost:8787
 npm run typecheck                      # strict TypeScript
 npm test                               # Vitest with the Workers pool
 ```
+
+## 10. Claude Code from the sprint (La Fabrique's own stories)
+
+The sprint's **Launch the next story** (and **Launch Claude** on a ready story)
+starts the project's `claude` workflow, declared in its `.fabrique.json`
+(`workflows.claude`). La Fabrique declares its own, `.github/workflows/claude.yml`:
+Claude Code makes a branch `claude/<issue>-<topic>` from `main`, does the
+story, runs the tests, adds the release-notes entry, and opens a pull request
+to `main`. It never pushes to `main`: you review and merge.
+
+Add two secrets to the `la-fabrique` repository (Settings → Secrets and
+variables → Actions):
+
+1. `CLAUDE_CODE_OAUTH_TOKEN` (a Claude subscription: run `claude setup-token`)
+   or `ANTHROPIC_API_KEY` (an API key). This is the repository's own key, not
+   the Worker's.
+2. `FABRIQUE_TOKEN`: a fine-grained token on this repository only, with
+   *Contents*, *Pull requests* and *Issues* in read and write. The branch and
+   pull request it creates start the CI (the `GITHUB_TOKEN` would not).
+
+At most `claude.plafond` runs at once (2 by default). Only tech leads and the
+super admin launch Claude; each launch is logged and said on the issue.

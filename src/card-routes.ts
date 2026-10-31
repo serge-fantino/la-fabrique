@@ -5,6 +5,7 @@ import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
+import { canLaunchClaude, claudeCap, claudeLaunches, claudeWorkflow, launchClaude } from "./claude";
 import {
   addValue,
   archiveCard,
@@ -479,6 +480,18 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
     if (!canWriteCards(viewer)) return forbidden(viewer);
     const action = String(form.get("action") ?? "");
     const running = await activeSprint(env.DB, project.repo);
+    // Claude Code on a story of the sprint (la-fabrique#113), through the
+    // project's own workflow; refused, the page says why.
+    if (action === "launch") {
+      if (!canLaunchClaude(viewer.role)) return forbidden(viewer);
+      const number = Number(form.get("story"));
+      const links = await storyCards(env.DB, project.repo);
+      const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
+      if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
+      const outcome = await launchClaude(env, project, viewer.login, number);
+      if (outcome.ok) return redirect(`${base}?notice=launched&story=${number}`);
+      return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
     if (action === "start") {
       const outcome = await startSprint(env, project, viewer.login);
       return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
@@ -512,16 +525,21 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
     }
     return redirect(base);
   }
+  return showSprint(request, env, viewer, project);
+}
+
+async function showSprint(request: Request, env: Env, viewer: Viewer, project: Project, refused?: string, status = 200): Promise<Response> {
   const params = new URL(request.url).searchParams;
   // First: a sprint whose needed stories are all out closes here.
   await settleSprint(env, project);
   const cards = await listCards(env.DB, project.repo);
   const { releases } = await knownValues(env, project, cards);
-  const [sprint, latest, links, { view, cookies }] = await Promise.all([
+  const [sprint, latest, links, { view, cookies }, launches] = await Promise.all([
     activeSprint(env.DB, project.repo),
     latestSprint(env.DB, project.repo),
     storyCards(env.DB, project.repo),
     projectView(request, env, project, viewer),
+    claudeLaunches(env.DB, project.repo),
   ]);
   const live = cards.filter((card) => !card.archivedAt).sort((a, b) => a.position - b.position || a.id - b.id);
   const inLane = (release: string) => live.filter((card) => card.release === release);
@@ -531,6 +549,11 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
   const integrationCards = integration ? inLane(integration.version) : [];
   const numbers = [...new Set([...sprintCards, ...nextCards, ...integrationCards].flatMap((card) => links.order.get(card.id) ?? []))];
   const failure = params.get("failure");
+  const stories = await cardStories(env, project, numbers);
+  // The next for Claude: in the sprint's order, the first ready story not
+  // launched yet.
+  const next = sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number)) ?? null;
+  const launched = Number(params.get("story"));
   return html(
     sprintPage(viewer, view, {
       sprint,
@@ -540,14 +563,17 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       nextCards,
       integration,
       integrationCards,
-      stories: await cardStories(env, project, numbers),
+      stories,
       links,
       canOrder: canWriteCards(viewer),
-      notice: SPRINT_NOTICES[params.get("notice") ?? ""],
+      claude: { canLaunch: canLaunchClaude(viewer.role), workflow: claudeWorkflow(project), cap: claudeCap(project), launches, next },
+      notice:
+        params.get("notice") === "launched" && Number.isInteger(launched) ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.` : SPRINT_NOTICES[params.get("notice") ?? ""],
       failure:
-        failure === "running" ? "A sprint is in progress: close or stop it first." : failure === "empty" ? "Next release has no card: place the cards of the next sprint in it first." : undefined,
+        refused ??
+        (failure === "running" ? "A sprint is in progress: close or stop it first." : failure === "empty" ? "Next release has no card: place the cards of the next sprint in it first." : undefined),
     }),
-    { cookies },
+    { cookies, status },
   );
 }
 

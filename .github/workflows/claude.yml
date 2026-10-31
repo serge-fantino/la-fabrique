@@ -1,0 +1,83 @@
+# Claude Code works on a story of La Fabrique itself (la-fabrique#113): launched by a tech lead or the super admin from
+# La Fabrique (the sprint's "Launch the next story", or "Launch Claude" on a ready story), or by hand (Actions > Claude >
+# Run workflow, issue number).
+# It follows CLAUDE.md: a branch claude/<number>-<topic> from main, tests, a release-notes entry, then a pull request to
+# main and a comment on the issue. It never pushes to main: a person reviews the pull request and merges it.
+# Repository secrets:
+# - CLAUDE_CODE_OAUTH_TOKEN (a Claude subscription: `claude setup-token`) or ANTHROPIC_API_KEY (an API key);
+# - FABRIQUE_TOKEN (fine-grained, this repository: Contents, Pull requests and Issues, read and write): the branch and
+#   the pull request it creates start the CI, which the GITHUB_TOKEN would not.
+name: Claude
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Issue number (the story)"
+        required: true
+      par:
+        description: "Who launched Claude (GitHub login, set by La Fabrique)"
+        required: false
+
+concurrency:
+  group: claude-${{ inputs.issue }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - name: Secrets
+        env:
+          FABRIQUE_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE: ${{ inputs.issue }}
+        run: |
+          [ -n "$FABRIQUE_TOKEN" ] || { echo "::error::Secret FABRIQUE_TOKEN missing (see this workflow's header)."; exit 1; }
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY" ] || { echo "::error::Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY."; exit 1; }
+          case "$ISSUE" in ''|*[!0-9]*) echo "::error::Not an issue number: $ISSUE"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FABRIQUE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dependencies
+        run: npm ci
+
+      - name: Commit identity
+        run: |
+          git config user.name "Claude (La Fabrique)"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+        with:
+          github_token: ${{ secrets.FABRIQUE_TOKEN }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
+          prompt: |
+            You work on story #${{ inputs.issue }} of this repository (${{ github.repository }}), launched${{ inputs.par && format(' by @{0}', inputs.par) || '' }} from La Fabrique.
+            1. Read it with its comments: `gh issue view ${{ inputs.issue }} --comments`. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
+            2. Follow CLAUDE.md (principles, security, conventions, design).
+            3. Create a branch `claude/${{ inputs.issue }}-<short topic>` from main (the current branch) and do the work.
+            4. Check: `npm run typecheck`, `npm test`; add tests for what you change.
+            5. If anything visible changes, add the next entry at the top of docs/release-notes.json (0.N+1, in English, today's date and the current Paris time; the person who merges sets the time of the merge) with `"stories": [${{ inputs.issue }}]`.
+            6. Push the branch and open a pull request to main: `gh pr create --base main`, a clear title, a body in English that says "Story #${{ inputs.issue }}", what is done and how to check it.
+            7. Comment on the issue: the pull request, what is done, what is left or what made you hesitate.
+            Never push to main; touch neither secrets nor workflows.

@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.61",
+    "date": "2026-10-31",
+    "heure": "11:54",
+    "titre": "Claude Code from the sprint",
+    "changements": [
+      "The sprint says which story comes next for Claude: the first ready one not launched yet, in the sprint's order. Launch the next story starts it; each ready story of the sprint has its own Launch Claude, and says who launched it and when.",
+      "It runs the project's own Claude workflow, at most as many at once as the project allows; when GitHub or the cap refuses, the sprint says why. Tech leads and the super admin only.",
+      "La Fabrique declares its own Claude workflow: Claude Code makes a branch from main, does the story, runs the tests and opens a pull request to main, never merged without you."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.60",
     "date": "2026-10-31",
     "heure": "11:51",
