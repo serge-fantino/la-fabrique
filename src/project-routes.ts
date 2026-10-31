@@ -15,7 +15,7 @@ import {
   productionBranch,
   type Project,
 } from "./projects";
-import { groupStories, loadStories, type StoryFilters } from "./stories";
+import { groupStories, loadStories, type Story, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
 import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
 import { readSnapshot } from "./snapshots";
@@ -551,7 +551,10 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
     ([name]) => name !== "production" && name !== productionBranch(view),
   );
   let latest: ToTestData["latest"] = null;
+  let toValidate: Story[] = [];
   if (!production.status) {
+    const rules = await projectRules(env.DB, view);
+    toValidate = stories.stories.filter((story) => stageOf(story, rules, new Set()) === "to_validate");
     const releases = (await branchReleases(env, view)).releases.filter((release) => !release.upcoming);
     const [release, previous] = releases;
     if (release) latest = { release, stories: storiesBetween(stories.stories, previous, release) };
@@ -564,6 +567,7 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
     stories: stories.stories,
     environment: environment ? { name: environment[0], url: environment[1].url } : null,
     latest,
+    toValidate,
     unlinked,
     failure: production.failure ?? stories.failure,
   };

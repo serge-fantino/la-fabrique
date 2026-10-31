@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.70",
+    "date": "2026-10-31",
+    "heure": "17:56",
+    "titre": "A merged story waits for its validation",
+    "changements": [
+      "A story whose pull request is merged, but still open, is now To validate (it stayed In development): its work is in, its acceptance criteria still have to be checked.",
+      "Without an integration branch (La Fabrique itself), To test lists the stories to validate in production, with their criteria to tick, Validate and Report a defect; validated, a story is done and its issue closed, so the sprint counts it as shipped."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.69",
     "date": "2026-10-31",
     "heure": "17:50",

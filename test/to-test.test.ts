@@ -124,9 +124,56 @@ describe("To test", () => {
         ]),
       );
     const page = await (await get(`/projects/${REPO}/to-test`, (await signIn("admin-one")).cookie)).text();
-    expect(page).toContain("No integration branch: what the latest production version brought.");
+    expect(page).toContain("No integration branch, and no merged story waits for its validation: what the latest production version brought.");
     expect(page).toContain('<span class="mono">0.3</span> · Lists');
     expect(page).toContain("Shopping lists.");
+  });
+
+  it("without an integration branch, lists the stories merged and still open to validate in production; validated, the issue is closed", async () => {
+    const merged = { number: 40, url: `https://github.com/${REPO}/pull/40`, state: "merged" };
+    await seed({ nom: "Widget" }, null);
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(
+        JSON.stringify([
+          ...STORIES,
+          story(34, "Merged, to check", { parent: null, pullRequests: [merged], criteria: [{ text: "Works in production", done: true }] }),
+          story(35, "Still in review", { parent: null, pullRequests: [merged, { ...merged, number: 41, state: "open" }] }),
+        ]),
+        REPO,
+      )
+      .run();
+    const { cookie, csrf } = await signIn("admin-one");
+    const page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
+    expect(page).toContain('Stories to validate <span class="muted mono">1</span>');
+    expect(page).toContain("Merged, to check");
+    expect(page).not.toContain("Still in review");
+    expect(page).toContain("Works in production");
+
+    const issue = { number: 34, title: "Merged, to check", state: "open", html_url: `https://github.com/${REPO}/issues/34`, user: { login: "pe" }, labels: [], created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", closed_at: null, body: "## Acceptance criteria\n\n- [x] Works in production" };
+    const github = () => fetchMock.get("https://api.github.com");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/issues/34` }).reply(200, JSON.stringify(issue), JSON_HEADERS);
+    let comment = "";
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues/34/comments` })
+      .reply(201, (options) => {
+        comment = JSON.parse(String(options.body)).body;
+        return "{}";
+      });
+    let closing: unknown = null;
+    github()
+      .intercept({ method: "PATCH", path: `/repos/${REPO}/issues/34` })
+      .reply(200, (options) => {
+        closing = JSON.parse(String(options.body));
+        return JSON.stringify({ ...issue, state: "closed" });
+      });
+    const response = await post(`/projects/${REPO}/to-test/validate`, { csrf, issue: "34" }, cookie);
+    expect(response.status).toBe(303);
+    expect(comment).toBe("Validé en production par @admin-one : tous les critères d'acceptation sont vérifiés. La demande est terminée.");
+    expect(closing).toEqual({ state: "closed", state_reason: "completed" });
+    expect(await logActions()).toContainEqual({ actor: "admin-one", action: "story_validated", details: JSON.stringify({ version: null }) });
+    // Done: no longer to validate.
+    expect(await (await get(`/projects/${REPO}/to-test`, cookie)).text()).not.toContain("Stories to validate");
   });
 });
 

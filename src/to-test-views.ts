@@ -137,6 +137,9 @@ export interface ToTestData {
   environment: { name: string; url: string } | null;
   // Without an integration branch: what the latest production version brought.
   latest: { release: Release; stories: Story[] } | null;
+  // Without an integration branch: the stories merged and still open, to
+  // validate in production.
+  toValidate?: Story[];
   failure?: string | undefined;
   // Open defects not linked to a story yet, to triage.
   unlinked?: { number: number; title: string; url: string; triage: boolean }[];
@@ -168,12 +171,19 @@ export function toTestContent(project: Project, data: ToTestData): string {
   const failure = notice(data.failure, "error");
 
   if (!data.status) {
+    const pending = (data.toValidate ?? []).filter((story) => !isEpic(story));
+    const toValidate = pending.length
+      ? `<p class="lede">No integration branch: the stories whose work is merged are checked in production. Validated, a story is done and its issue closed.</p>
+        <h2>Stories to validate <span class="muted mono">${pending.length}</span></h2>
+        ${byEpic(project.repo, pending, all, actions)}`
+      : "";
     if (!data.latest) {
-      return `${failure}<p>Nothing to test: this project has no integration branch, and its release notes do not say what the latest version brought yet.</p>`;
+      return `${failure}${toValidate || "<p>Nothing to test: this project has no integration branch, no merged story waits for its validation, and its release notes do not say what the latest version brought yet.</p>"}`;
     }
     const { release, stories } = data.latest;
     return `${failure}
-      <p class="lede">No integration branch: what the latest production version brought.</p>
+      ${toValidate || `<p class="lede">No integration branch, and no merged story waits for its validation: what the latest production version brought.</p>`}
+      <h2>Latest version</h2>
       <div class="release">
         <p><span class="pill ok">In production</span> <span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""} <span class="muted">· ${escapeHtml(release.date)}${release.time ? ` ${escapeHtml(release.time)}` : ""}</span></p>
         ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}

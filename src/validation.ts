@@ -103,11 +103,25 @@ export async function validateStory(
     if (criteria.some((criterion) => !criterion.done)) {
       return { ok: false, message: "Every acceptance criterion must be checked before validating.", status: 422 };
     }
-    version = await intVersion(env, project);
+    // Without an integration branch, the story is checked in production:
+    // validated, it is done, and its issue is closed.
+    const inProduction = !project.check?.config?.branches?.integration;
+    version = inProduction ? null : await intVersion(env, project);
     const comment = await write(request, env, project, (token) =>
-      githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, { body: words.validated(login, version) }),
+      githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, {
+        body: inProduction ? words.validatedInProduction(login) : words.validated(login, version),
+      }),
     );
     if (!comment.ok) return { ok: false, message: `GitHub refused the comment (HTTP ${comment.status}).`, status: 502 };
+    if (inProduction && issue.state !== "closed") {
+      const closed = await write(request, env, project, (token) =>
+        githubPatch(token, `/repos/${project.repo}/issues/${number}`, { state: "closed", state_reason: "completed" }),
+      );
+      if (!closed.ok) return { ok: false, message: `GitHub refused to close the issue (HTTP ${closed.status}).`, status: 502 };
+      issue.state = "closed";
+      issue.closed_at = new Date().toISOString();
+      await applyIssueEvent(env, project.repo, "closed", issue);
+    }
     const toValidate = project.check?.config?.demandes?.etiquettes?.["a_valider"];
     const labels = issue.labels.map((label) => (typeof label === "string" ? label : (label.name ?? "")));
     if (toValidate && labels.includes(toValidate)) {
