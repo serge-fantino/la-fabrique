@@ -2,7 +2,7 @@
   {
     "version": "0.57",
     "date": "2026-10-31",
-    "heure": "10:32",
+    "heure": "10:43",
     "titre": "Import cards, and releases spelled like the project's",
     "changements": [
       "Import cards (JSON), under the board: a file in the export's format, or pasted. Each card comes in as a new card with its text, tags, release, spec and stories; a card whose title is already on the board is skipped, so importing twice adds nothing.",
