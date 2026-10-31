@@ -26,9 +26,12 @@ export default defineWorkersConfig(async () => {
           miniflare: {
             compatibilityDate: "2025-10-01",
             compatibilityFlags: ["nodejs_compat", "global_fetch_strictly_public"],
-            // Tests run Claude's jobs themselves (worker.queue): the queue
-            // delivers nothing on its own within a test (batches of 100, one
-            // minute wait).
+            // Tests run Claude's jobs themselves (worker.queue): the jobs
+            // they send go to a queue nobody consumes. Delivered, they would
+            // reach queue() in the middle of a later file (the single runtime
+            // lives longer than the queue's minute) and write to D1 while its
+            // storage is being reset ("Isolated storage failed").
+            queueProducers: { CLAUDE_QUEUE: "la-fabrique-claude-tests" },
             queueConsumers: { "la-fabrique-claude": { maxBatchSize: 100, maxBatchTimeout: 60, maxRetries: 0 } },
             bindings: {
               COMMIT_SHA: "test-commit",
