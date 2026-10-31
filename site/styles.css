@@ -2659,6 +2659,22 @@ form[aria-busy="true"] button[type="submit"] {
   margin: 0.25rem 0 0.75rem;
 }
 
+/* After a review: each story already made, with Claude's verdict. */
+.split-review {
+  list-style: none;
+  margin: 0.25rem 0 0.75rem;
+  padding: 0;
+}
+
+.split-review li,
+.split-fits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-height: 44px;
+}
+
 .split-story {
   margin: 0 0 1.25rem;
   padding: 0.9rem 1.1rem;

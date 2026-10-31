@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.54",
+    "date": "2026-10-31",
+    "heure": "09:23",
+    "titre": "When the feature changes, its stories are reviewed",
+    "changements": [
+      "A validated card whose feature changes (its text, its spec, an older version brought back) goes back to To validate, with the reason in the journal.",
+      "Once a card has stories, Split into stories with Claude becomes Review the stories with Claude: Claude reads the stories already made (their stage and criteria) against the spec, and says which still fit, which to change, and which new stories are missing.",
+      "You review it all before GitHub: the comment for each story to change (edited, sent in your name, with a link to the card's spec version) and the new stories; then the card is Validated again."
+    ],
+    "stories": [80],
+    "liens": null
+  },
+  {
     "version": "0.53",
     "date": "2026-10-31",
     "heure": "08:41",

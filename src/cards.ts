@@ -65,11 +65,21 @@ export interface CardSpec {
 // anything goes to GitHub; edited by the person, then created.
 export interface CardSplit {
   stories: { title: string; answers: Record<string, string> }[];
+  // When the card already has stories: Claude's review of each against
+  // the spec; a change is a comment for the story's issue.
+  review?: StoryReview[];
   note?: string;
   // When the spec that was split was written: a later spec makes the
   // proposal out of date.
   specAt: string;
   at: string;
+}
+
+export interface StoryReview {
+  number: number;
+  title: string;
+  verdict: "fits" | "change";
+  comment: string;
 }
 
 export interface CardData {
@@ -589,6 +599,15 @@ export async function advanceStatus(db: D1Database, repo: string, id: number, au
   if (!card || card.archivedAt || card.status === "dropped") return false;
   if (STATUS_FLOW.indexOf(card.status) >= STATUS_FLOW.indexOf(to)) return false;
   await moveCard(db, card, author, { set: { status: to }, before: null, after: null }, NO_VALUES, reason);
+  return true;
+}
+
+// A validated card whose feature changes (its text or its spec) is to
+// validate again; its stories may need a review.
+export async function reopenStatus(db: D1Database, repo: string, id: number, author: string, reason: string): Promise<boolean> {
+  const card = await findCard(db, repo, id);
+  if (!card || card.archivedAt || card.status !== "validated") return false;
+  await moveCard(db, card, author, { set: { status: "to_validate" }, before: null, after: null }, NO_VALUES, reason);
   return true;
 }
 
