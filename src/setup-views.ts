@@ -92,6 +92,12 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
     how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>version</code> (the release to ship) and <code>par</code> (who gave the go). It promotes integration to production in the project's own way; its push must use a token that triggers the project's CI and deployment (the <code>GITHUB_TOKEN</code> does not). <a href="/guide/exemples/promouvoir.yml">The épicerie's, as an example</a>.</p>
       ${code(`"workflows": { "promouvoir": "promouvoir.yml" }`)}`,
   },
+  merge_workflow: {
+    title: "Merge workflow",
+    why: "Optional. Merge on a pull request of the sprint starts it: the release notes are numbered and dated at the merge, so pull requests written at the same time do not conflict on the next version.",
+    how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>pr</code> (the pull request) and <code>par</code> (who merges). It merges the base branch into the pull request, numbers and dates its release-notes entries after the newest, checks again and merges; its push must use a token that triggers the project's CI and deployment. Into the production branch, Merge is a go: the super admin only. La Fabrique's own: <code>.github/workflows/merge.yml</code> and <code>scripts/release-at-merge.ts</code> in its repository.</p>
+      ${code(`"workflows": { "fusionner": "merge.yml" }`)}`,
+  },
   claude_workflow: {
     title: "Claude workflow",
     why: "Optional. Tech leads and super admins launch Claude Code on a ready story, from the sprint (Launch the next story) or the Backlog; the project's own workflow runs it, with its own key.",
@@ -134,7 +140,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "claude_workflow", "app"]);
+const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "claude_workflow", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",

@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.73",
+    "date": "2026-10-31",
+    "heure": "18:08",
+    "titre": "To validate, on the dashboard and in the sprint; the merge workflow in Setup",
+    "changements": [
+      "Without an integration branch, the dashboard shows how many stories are To validate, linked to To test.",
+      "In the sprint, a story To validate points to To test, where its criteria are checked.",
+      "Setup says whether the project declares its merge workflow (workflows.fusionner), and how to write one."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.72",
     "date": "2026-10-31",
     "heure": "18:02",

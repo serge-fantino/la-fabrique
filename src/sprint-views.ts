@@ -173,7 +173,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <td>${story ? escapeHtml(story.title) : `<span class="muted">not read yet</span>`}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}${
           story?.pulls.length ? `<br />${pullsOf(number, controls)}` : ""
         }</td>
-        <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${readiness(number, controls)}</td>
+        <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${
+          story?.stage === "to_validate" ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Validate in To test</a>` : ""
+        }${readiness(number, controls)}</td>
         ${
           data.priorities.length
             ? `<td>${controls ? prioritySelect({ action: "story_priority", card, story: number }, story?.priority ?? null, `Priority of #${number}`) : story?.priority ? `<span class="pill">${escapeHtml(story.priority)}</span>` : ""}</td>`
