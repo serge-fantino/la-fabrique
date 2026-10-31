@@ -67,6 +67,10 @@ export function describe(entry: LogEntry, repo: string): string {
     }
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "card_priority_set":
+      return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
+    case "story_marked_ready":
+      return `marked ${story} ready for Claude`;
     case "sprint_started":
       return `started the sprint ${text(d["release"])}`;
     case "sprint_stopped":

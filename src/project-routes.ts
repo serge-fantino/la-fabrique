@@ -52,7 +52,7 @@ import { backlogPage } from "./backlog-views";
 import { inDevReady, loadInDev } from "./in-dev";
 import { inDevContent, inDevLoading, inDevPage } from "./in-dev-views";
 import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
-import { cycleRules, isStage, stageOf, stagesOf, storiesOnInt } from "./lifecycle";
+import { cycleRules, isStage, projectRules, stageOf, stagesOf, storiesOnInt } from "./lifecycle";
 import { setupChecklist } from "./setup";
 import { setupPage } from "./setup-views";
 
@@ -160,7 +160,7 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
     storiesOnInt(env, project),
     storyCards(env.DB, project.repo),
   ]);
-  const rules = cycleRules(project.check?.config);
+  const rules = await projectRules(env.DB, project);
   const stages = stagesOf(stories, rules, onInt);
   return html(
     storiesPage(viewer, view, {
@@ -580,7 +580,7 @@ export async function showInDev(request: Request, env: Env, viewer: Viewer, repo
     return html(inDevPage(viewer, view, inDevLoading(view.path)), { cookies });
   }
   const [work, stories, onInt] = await Promise.all([loadInDev(env, project), loadStories(env, project), storiesOnInt(env, project)]);
-  const stages = stagesOf(stories.stories, cycleRules(project.check?.config), onInt);
+  const stages = stagesOf(stories.stories, await projectRules(env.DB, project), onInt);
   const content = inDevContent(work, stories.stories, stages);
   return html(part ? content : inDevPage(viewer, view, content), { cookies });
 }
@@ -608,7 +608,7 @@ export async function showBacklog(
     claudeLaunches(env.DB, project.repo),
     group === "card" ? storyCards(env.DB, project.repo) : Promise.resolve(null),
   ]);
-  const rules = cycleRules(project.check?.config);
+  const rules = await projectRules(env.DB, project);
   const notice = params.get("notice");
   return html(
     backlogPage(viewer, view, {
@@ -681,7 +681,7 @@ export async function launchClaudeOn(request: Request, form: FormData, env: Env,
   if (!Number.isInteger(issue) || issue <= 0) return redirect(`/projects/${project.repo}/backlog`);
   const [stories, onInt] = await Promise.all([loadStories(env, project), storiesOnInt(env, project)]);
   const story = stories.stories.find((candidate) => candidate.number === issue);
-  if (!story || stageOf(story, cycleRules(project.check?.config), onInt) !== "ready") {
+  if (!story || stageOf(story, await projectRules(env.DB, project), onInt) !== "ready") {
     return showBacklog(request, env, viewer, repo, { message: `Story #${issue} is not ready: its Definition of Ready comes first.`, status: 422 });
   }
   const outcome = await launchClaude(env, project, viewer.login, issue);

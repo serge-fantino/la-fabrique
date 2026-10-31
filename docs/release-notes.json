@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.62",
+    "date": "2026-10-31",
+    "heure": "13:44",
+    "titre": "Getting the sprint's stories ready, and priorities from the card",
+    "changements": [
+      "A story made from a card no longer needs an epic to be ready: the card groups it, as an epic would.",
+      "In the sprint, each story not ready says what it lacks, and it is fixed there: its priority, Mark ready (the project's ready label), or a link to add its criteria on GitHub.",
+      "A card has a priority, set on its page or in the sprint: its stories take it, one level lower for those nice to have; the stories made from it later take it too.",
+      "When Claude splits a spec into stories, it says which are nice to have; the preview lets you change it before GitHub."
+    ],
+    "stories": [111, 113],
+    "liens": null
+  },
+  {
     "version": "0.61",
     "date": "2026-10-31",
     "heure": "12:41",

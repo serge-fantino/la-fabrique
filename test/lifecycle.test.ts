@@ -47,7 +47,9 @@ describe("stageOf", () => {
     expect(stageOf(story(), DEFAULT, new Set())).toBe("ready");
     const bare = story({ criteria: [], parent: null });
     expect(stageOf(bare, DEFAULT, new Set())).toBe("backlog");
-    expect(missingForReady(bare, DEFAULT)).toEqual(["no acceptance criteria", "not in an epic"]);
+    expect(missingForReady(bare, DEFAULT)).toEqual(["no acceptance criteria", "not in an epic nor a card"]);
+    // A story made from a card is grouped by it, as by an epic.
+    expect(missingForReady(bare, { ...DEFAULT, inCard: new Set([bare.number]) })).toEqual(["no acceptance criteria"]);
     // Snapshots written before criteria were read.
     const old = story();
     delete old.criteria;

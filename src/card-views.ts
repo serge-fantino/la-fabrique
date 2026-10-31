@@ -89,6 +89,7 @@ export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = 
         <a class="fiche-id mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a>
         <span class="pill kind">${KIND_LABELS[card.kind]}</span>
         <span class="pill card-${card.status}">${STATUS_LABELS[card.status]}</span>
+        ${card.priority ? `<span class="pill">${escapeHtml(card.priority)}</span>` : ""}
         ${card.archivedAt ? `<span class="pill alert">Archived</span>` : ""}
         ${working ? `<span class="pill warn">Claude working</span>` : ""}
         ${spend?.calls ? `<span class="fiche-cost mono" title="Claude on this card: ${escapeHtml(spendLine(spend))}">${formatUsd(spend.micros)}</span>` : ""}
@@ -506,6 +507,8 @@ function jobHtml(viewer: Viewer, url: string, job: Job | null, events: JobEvent[
 
 export interface CardPageData {
   card: Card;
+  // The project's priority labels, highest first.
+  priorities: string[];
   revisions: CardRevision[];
   links: CardLink[];
   shown: CardRevision | null;
@@ -568,6 +571,18 @@ function verdictPill(verdict: StoryReview["verdict"]): string {
 }
 
 // The status, changed in place; it also follows Claude's work by itself.
+// The card's priority, changed in place; its stories take it.
+function priorityForm(viewer: Viewer, url: string, current: string | null, priorities: string[]): string {
+  return `<form method="post" action="${escapeHtml(url)}" class="card-status-form">${csrfField(viewer)}
+      <input type="hidden" name="action" value="priority" />
+      <label class="visually-hidden" for="card-priority">Priority</label>
+      <select id="card-priority" name="priority" class="pill" data-autosubmit title="The priority of the card; its stories take it, one level lower when nice to have.">
+        ${[...priorities, ""].map((value) => `<option value="${escapeHtml(value)}"${(current ?? "") === value ? " selected" : ""}>${value ? escapeHtml(value) : "No priority"}</option>`).join("")}
+      </select>
+      <noscript><button type="submit" class="button quiet">Set</button></noscript>
+    </form>`;
+}
+
 function statusForm(viewer: Viewer, url: string, current: CardStatus): string {
   return `<form method="post" action="${escapeHtml(url)}" class="card-status-form">${csrfField(viewer)}
       <input type="hidden" name="action" value="status" />
@@ -731,6 +746,14 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       ${banner}
       <h1>${escapeHtml(heading)}</h1>
       <div class="fiche-tags">${cardPills(tags, data.canWrite && !shown && !card.archivedAt ? statusForm(viewer, url, card.status) : undefined)}${
+        data.priorities.length
+          ? data.canWrite && !shown && !card.archivedAt
+            ? ` ${priorityForm(viewer, url, card.priority, data.priorities)}`
+            : card.priority
+              ? ` <span class="pill">${escapeHtml(card.priority)}</span>`
+              : ""
+          : ""
+      }${
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">
@@ -969,6 +992,7 @@ export function splitPage(
       return `<fieldset class="split-story${data.errors[index] ? " invalid" : ""}">
           <legend class="visually-hidden">Story ${index + 1}</legend>
           <label class="check split-keep"><input type="checkbox" name="keep_${index}" value="1"${data.kept.has(index) ? " checked" : ""} /> Create this story</label>
+          <label class="check split-keep"><input type="checkbox" name="nice_${index}" value="1"${story.nice ? " checked" : ""} /> Nice to have <span class="muted small">(its priority one level below the card's)</span></label>
           ${data.errors[index] ? `<p class="notice error" role="alert">${escapeHtml(data.errors[index] ?? "")}</p>` : ""}
           <div class="field">
             <label for="title_${index}">Title</label>
