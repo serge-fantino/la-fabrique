@@ -102,6 +102,18 @@ export function buildCard(project: Project, found: Snapshots, role: Role, now = 
       tone: !status ? null : status.aheadBy === 0 || status.ready ? "ok" : "alert",
       path: `${base}/production`,
     });
+  } else {
+    // No integration branch: the stories merged and still open are
+    // validated in production, from To test.
+    const toValidate = count("to_validate");
+    tiles.push({
+      key: "to_test",
+      label: "To validate",
+      value: String(toValidate),
+      detail: toValidate ? "merged, criteria to check in production" : "nothing merged waits",
+      tone: toValidate ? "warn" : null,
+      path: `${base}/to-test`,
+    });
   }
 
   // Stories in development by their stage, and those the working branches
