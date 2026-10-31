@@ -1,8 +1,8 @@
 [
   {
     "version": "0.76",
-    "date": "2026-10-31",
-    "heure": "23:59",
+    "date": "2026-11-01",
+    "heure": "00:05",
     "titre": "Choose the next release with the go",
     "changements": [
       "Before giving the go, you choose how the next release is numbered: minor (1.4 → 1.5, by default) or major (1.4 → 2.0).",
