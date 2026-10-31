@@ -4,6 +4,7 @@ import { notice, projectContext, projectHeader, type ProjectView } from "./proje
 import type { Project } from "./projects";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 import type { goSummary, LastGo } from "./go";
+import { nextVersion } from "./next-release";
 import type { StoryChecks } from "./validation";
 import { projectUrl } from "./urls";
 
@@ -176,6 +177,17 @@ export interface GoPanel {
   failure?: string | undefined;
 }
 
+// Before the go: how the next release is numbered (minor by default).
+function nextReleaseChoice(version: string | null): string {
+  const minor = version ? nextVersion(version, "minor") : null;
+  const major = version ? nextVersion(version, "major") : null;
+  if (!version || !minor || !major) return "";
+  return `<fieldset class="next-release"><legend>Next release after <span class="mono">${escapeHtml(version)}</span></legend>
+          <label><input type="radio" name="next" value="minor" checked> Minor: <span class="mono">${escapeHtml(minor)}</span></label>
+          <label><input type="radio" name="next" value="major"> Major: <span class="mono">${escapeHtml(major)}</span></label>
+          <span class="muted small">Proposed on the integration branch as a pull request, with an empty release note.</span></fieldset>`;
+}
+
 // The go: what production will get, who validated it, and the button for
 // the super admin; the last go for everyone.
 function goSection(viewer: Viewer, project: Project, status: ProductionStatus, go: GoPanel): string {
@@ -223,6 +235,7 @@ function goSection(viewer: Viewer, project: Project, status: ProductionStatus, g
                <textarea id="go-reason" name="reason" rows="2" required maxlength="500"></textarea>`
             : ""
         }
+        ${nextReleaseChoice(summary.version)}
         <p><button type="submit" class="button">${summary.notValidated.length ? "Give the go anyway" : "Give the go"}</button>
           <span class="muted small">Starts <code>${escapeHtml(String(project.check?.config?.workflows?.["promouvoir"] ?? ""))}</code> on the project; it is in the log.</span></p>
       </form>

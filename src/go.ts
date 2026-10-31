@@ -35,6 +35,7 @@ export async function giveGo(
   status: ProductionStatus | null,
   summary: ReturnType<typeof goSummary> | null,
   reason: string,
+  next?: { version: string; kind: string },
 ): Promise<GoOutcome> {
   const file = project.check?.config?.workflows?.["promouvoir"];
   if (typeof file !== "string") return { ok: false, message: "This project declares no promotion workflow (workflows.promouvoir).", status: 422 };
@@ -72,6 +73,7 @@ export async function giveGo(
       commit: status.integrationHead,
       stories: summary.stories.map((story) => story.number),
       not_validated: summary.notValidated.map((story) => story.number),
+      ...(next ? { next: next.version, next_kind: next.kind } : {}),
       ...(reason ? { reason } : {}),
     },
   }).run();
