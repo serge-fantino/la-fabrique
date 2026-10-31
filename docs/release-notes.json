@@ -2,7 +2,7 @@
   {
     "version": "0.54",
     "date": "2026-10-31",
-    "heure": "09:05",
+    "heure": "09:23",
     "titre": "When the feature changes, its stories are reviewed",
     "changements": [
       "A validated card whose feature changes (its text, its spec, an older version brought back) goes back to To validate, with the reason in the journal.",
