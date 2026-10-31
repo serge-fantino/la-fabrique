@@ -2,7 +2,7 @@
   {
     "version": "0.58",
     "date": "2026-10-31",
-    "heure": "10:45",
+    "heure": "11:00",
     "titre": "Stories and backlog, grouped by card",
     "changements": [
       "Stories: Group by Card shows the stories of each card together, under the card's id, title, status and release; the newest release first; the stories from no card last.",
