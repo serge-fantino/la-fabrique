@@ -26,7 +26,7 @@ import {
   type CardTags,
   type FreeDimension,
 } from "./cards";
-import { isActive, jobLabel, type Job, type JobEvent } from "./jobs";
+import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
 import { stagePill } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
@@ -424,7 +424,7 @@ function questionsHtml(viewer: Viewer, url: string, spec: CardSpec | undefined, 
         <textarea id="answer_more" name="instruction" rows="2" maxlength="4000"></textarea>
       </div>
       <div class="card-actions">
-        <button type="submit" class="button" name="action" value="spec_answer">Send my answers to Claude</button>
+        <button type="submit" class="button claude" name="action" value="spec_answer">Send my answers to Claude</button>
         <button type="submit" class="button quiet" name="action" value="spec_enough" formnovalidate>Enough questions</button>
       </div>
     </form>`;
@@ -447,7 +447,7 @@ function jobHtml(viewer: Viewer, url: string, job: Job | null, events: JobEvent[
   const retry =
     job.status === "failed" && canRetry
       ? `<form method="post" action="${escapeHtml(url)}#claude-job" class="inline" data-busy="Sending…">${csrfField(viewer)}
-          <button type="submit" class="button" name="action" value="job_retry">Try again</button>
+          <button type="submit" class="button claude" name="action" value="job_retry">Try again</button>
         </form>`
       : "";
   return `<section class="claude-job${job.status === "failed" ? " failed" : ""}" id="claude-job"${
@@ -587,64 +587,72 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   const working = isActive(data.job);
   const canAnswer = data.canWrite && !shown && data.claude.usable && !working;
   if (data.canWrite && !shown && !working) {
-    const claude = data.claude.usable
-      ? spec
-        ? `<details class="claude-panel" data-autofocus${data.ask === "change" ? " open" : ""}>
-            <summary class="button quiet">Ask Claude for a change</summary>
-            <form method="post" action="${escapeHtml(url)}#claude-job" data-busy="Sending…">${csrfField(viewer)}
-              <div class="field">
-                <label for="change">What should change?</label>
-                <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the spec.</p>
-                <textarea id="change" name="instruction" rows="4" maxlength="4000" required aria-describedby="change_help">${escapeHtml(data.ask === "change" ? (data.instruction ?? "") : "")}</textarea>
-              </div>
-              <div class="card-actions">
-  <button type="submit" class="button" name="action" value="spec_revise">Ask Claude</button>
-                <button type="button" class="button quiet" data-panel-close>Cancel</button>
-              </div>
-            </form>
-          </details>`
-        : `<details class="claude-panel" data-autofocus${data.ask === "draft" ? " open" : ""}>
-            <summary class="button">Write the spec with Claude</summary>
-            <form method="post" action="${escapeHtml(url)}#claude-job" data-busy="Sending…">${csrfField(viewer)}
-              <p class="help">Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know. It works in the background: you can leave the page.</p>
-              <div class="field">
-                <label for="draft">Anything to tell Claude first? <span class="muted">(optional)</span></label>
-                <textarea id="draft" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.ask === "draft" ? (data.instruction ?? "") : "")}</textarea>
-              </div>
-              <div class="card-actions">
-  <button type="submit" class="button" name="action" value="spec_draft">Ask Claude</button>
-                <button type="button" class="button quiet" data-panel-close>Cancel</button>
-              </div>
-            </form>
-          </details>`
-      : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`;
-    const split = spec && data.claude.usable
-      ? `<details class="claude-panel" data-autofocus>
-          <summary class="button quiet">Split into stories with Claude</summary>
+    // What can come next, in one row; Claude's buttons carry a star. A
+    // panel unfolds under the row, one at a time.
+    const panel = (action: JobKind, summary: string, primary: boolean, open: boolean, inner: string): string =>
+      `<details class="claude-panel" name="spec-work" data-autofocus${open ? " open" : ""}>
+          <summary class="button${primary ? "" : " quiet"} claude">${summary}</summary>
           <form method="post" action="${escapeHtml(url)}#claude-job" data-busy="Sending…">${csrfField(viewer)}
-            <p class="help">Claude proposes stories that can each be built, tested on int and shipped alone, each with its own criteria. You review and edit them before anything goes to GitHub.</p>
-            <div class="field">
-              <label for="split">Anything about the split? <span class="muted">(optional)</span></label>
-              <textarea id="split" name="instruction" rows="2" maxlength="4000" placeholder="At most three stories; the offline case on its own."></textarea>
-            </div>
+            <p class="claude-panel-title">${summary}</p>
+            ${inner}
             <div class="card-actions">
-              <button type="submit" class="button" name="action" value="spec_split">Ask Claude</button>
+              <button type="submit" class="button claude" name="action" value="${action}">Ask Claude</button>
               <button type="button" class="button quiet" data-panel-close>Cancel</button>
             </div>
           </form>
-        </details>`
-      : "";
-    const story = spec
-      ? data.missing.length
-        ? `<p class="muted">To make the story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>`
-        : `<a class="button" href="${escapeHtml(url)}/story">Make one story on GitHub</a>`
-      : "";
-    work = `${claude}
-      ${data.split ? proposalHtml(url, data.split, spec) : split}
-      <div class="card-actions spec-actions">
-        ${story}
-        <a href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
-      </div>`;
+        </details>`;
+    const usable = data.claude.usable;
+    const draft =
+      usable && !spec
+        ? panel(
+            "spec_draft",
+            "Write the spec with Claude",
+            true,
+            data.ask === "draft",
+            `<p class="help">Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know. It works in the background: you can leave the page.</p>
+            <div class="field">
+              <label for="draft">Anything to tell Claude first? <span class="muted">(optional)</span></label>
+              <textarea id="draft" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.ask === "draft" ? (data.instruction ?? "") : "")}</textarea>
+            </div>`,
+          )
+        : "";
+    const split =
+      usable && spec && !data.split
+        ? panel(
+            "spec_split",
+            "Split into stories with Claude",
+            true,
+            false,
+            `<p class="help">Claude proposes stories that can each be built, tested on int and shipped alone, each with its own criteria. You review and edit them before anything goes to GitHub.</p>
+            <div class="field">
+              <label for="split">Anything about the split? <span class="muted">(optional)</span></label>
+              <textarea id="split" name="instruction" rows="2" maxlength="4000" placeholder="At most three stories; the offline case on its own."></textarea>
+            </div>`,
+          )
+        : "";
+    const change =
+      usable && spec
+        ? panel(
+            "spec_revise",
+            "Ask Claude for a change",
+            false,
+            data.ask === "change",
+            `<div class="field">
+              <label for="change">What should change?</label>
+              <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the spec.</p>
+              <textarea id="change" name="instruction" rows="4" maxlength="4000" required aria-describedby="change_help">${escapeHtml(data.ask === "change" ? (data.instruction ?? "") : "")}</textarea>
+            </div>`,
+          )
+        : "";
+    const story = spec && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
+    work = `${data.split ? proposalHtml(url, data.split, spec) : ""}
+      <div class="spec-actions">
+        ${draft}${split}${story}${change}
+        <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
+      </div>
+      ${split ? `<p class="help">A small feature makes one story; a bigger one, several that ship one by one: Claude proposes them, you review them before GitHub.</p>` : ""}
+      ${spec && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
+      ${usable ? "" : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`}`;
   }
 
   return layout(

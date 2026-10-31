@@ -42,7 +42,7 @@ function claudeCell(viewer: Viewer, project: Project, story: Story, stage: Stage
   return `<form method="post" action="${escapeHtml(projectUrl(project.repo))}/backlog/claude" class="claude-form">
       ${csrfField(viewer)}
       <input type="hidden" name="issue" value="${story.number}" />
-      <button type="submit" class="button quiet">${launched ? "Launch again" : "Launch Claude"}</button>
+      <button type="submit" class="button quiet claude">${launched ? "Launch again" : "Launch Claude"}</button>
     </form>${last}`;
 }
 

@@ -2542,6 +2542,17 @@ p.about-version-choice {
   background: #fff;
 }
 
+.claude-panel-title {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.claude-panel-title::before {
+  content: "\2726" / "";
+  margin-right: 0.45em;
+  color: var(--accent);
+}
+
 .claude-panel form > .help {
   margin-top: 0;
   color: var(--encre-faint);
@@ -2553,8 +2564,29 @@ p.about-version-choice {
   background: #fff;
 }
 
+/* What can come next on a spec, in one row; an unfolded panel goes
+   under the row, full width. */
 .spec-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
   margin-top: 1.5rem;
+}
+
+.spec-actions > .claude-panel {
+  margin: 0;
+}
+
+.spec-actions > .claude-panel[open] {
+  flex-basis: 100%;
+  order: 1;
+}
+
+/* A button that calls Claude carries a star. */
+.button.claude::before {
+  content: "\2726" / "";
+  margin-right: 0.45em;
 }
 
 form.spec-questions .field label {
