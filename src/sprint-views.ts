@@ -9,6 +9,7 @@ import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
 import { stagePill } from "./stories-views";
+import { progressPill, type Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -30,6 +31,8 @@ export interface SprintData {
   // The sprint stories' pull requests, as GitHub has them, and who can be
   // asked to review one.
   pulls: Map<number, PullDetail>;
+  // Each card's progress, from its stories.
+  progress?: Map<number, Progress>;
   // Merging through the project's workflow (workflows.fusionner), and who may.
   merge?: { workflow: string | null; can: (base: string | null) => boolean };
   reviewers: string[];
@@ -211,7 +214,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           project.repo,
           { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position },
           mine.length,
-        )}${priority}${order}</div>
+        )}${data.progress?.get(card.id) ? `<span class="sprint-card-progress">${progressPill(data.progress.get(card.id))}</span>` : ""}${priority}${order}</div>
           ${
             mine.length
               ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.priorities.length ? "<th>Priority</th>" : ""}${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine

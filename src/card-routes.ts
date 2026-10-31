@@ -3,6 +3,7 @@ import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, p
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
+import { cardProgress, progressSince } from "./card-progress";
 import { canMerge, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
@@ -97,7 +98,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
     cardSpends(env.DB, project.repo),
     workingCards(env.DB, project.repo),
   ]);
-  const { known, releases } = await knownValues(env, project, cards);
+  const [{ known, releases }, progress] = await Promise.all([knownValues(env, project, cards), cardProgress(env, project, cards)]);
   const notice = url.searchParams.get("notice");
   // A release that could not be planned: why, worked out again.
   const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
@@ -114,6 +115,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       failure: refused ? (planningProblem(project, refused, [...releases.values()]) ?? undefined) : undefined,
       releases,
       nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
+      progress,
     }),
     { cookies },
   );
@@ -151,6 +153,11 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const id = Number(form.get("card"));
   const card = Number.isInteger(id) && id > 0 ? await findCard(env.DB, project.repo, id) : null;
   if (!card) return json({ error: "This card is no longer here: reload the board." }, { status: 404 });
+  // Progress follows the card's stories: it is not changed by hand.
+  const progressSet = form.get("set_progress");
+  if (typeof progressSet === "string" && progressSet !== (card.progress ?? "")) {
+    return json({ error: "Progress follows the card's stories on GitHub: it cannot be changed by moving the card." }, { status: 409 });
+  }
   const set: Partial<Record<Dimension, string | null>> = {};
   for (const dimension of DIMENSIONS) {
     const value = form.get(`set_${dimension}`);
@@ -166,8 +173,8 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const moved = await moveCard(env.DB, card, viewer.login, { set, before: neighbour("before"), after: neighbour("after") }, known);
-  const [spends, working] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo)]);
-  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id)) });
+  const [spends, working, progress] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo), cardProgress(env, project, [moved])]);
+  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id)) });
 }
 
 function emptyInput(params: URLSearchParams): CardInput {
@@ -254,6 +261,9 @@ async function renderCard(
     project,
     links.filter((link) => link.kind === "story").map((link) => Number(link.ref)),
   );
+  // Its progress from those stories, and when it reached each stage.
+  const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
+  const progressHistory = await progressSince(env.DB, project.repo, card.id);
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
@@ -285,6 +295,8 @@ async function renderCard(
       split: card.data.split,
       storyStates,
       priorities: cycleRules(project.check?.config).priorities,
+      progress,
+      progressHistory,
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -637,7 +649,11 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   // The open pull requests of the sprint's stories, as GitHub has them.
   const inSprint = sprintCards.flatMap((card) => links.order.get(card.id) ?? []);
   const openPulls = inSprint.flatMap((number) => (stories.get(number)?.pulls ?? []).filter((pull) => pull.state === "open").map((pull) => pull.number));
-  const [pulls, people] = await Promise.all([pullDetails(env, project, openPulls), reviewers(env)]);
+  const [pulls, people, progress] = await Promise.all([
+    pullDetails(env, project, openPulls),
+    reviewers(env),
+    cardProgress(env, project, [...sprintCards, ...nextCards, ...integrationCards], links),
+  ]);
   // The next for Claude: in the sprint's order, the first ready story not
   // launched yet.
   const next = sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number)) ?? null;
@@ -656,6 +672,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       canOrder: canWriteCards(viewer),
       pulls,
       reviewers: people,
+      progress,
       merge: { workflow: mergeWorkflow(project), can: (base: string | null) => canMerge(viewer.role, project, base) },
       priorities: cycleRules(project.check?.config).priorities,
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,

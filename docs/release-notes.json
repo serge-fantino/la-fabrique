@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.74",
+    "date": "2026-10-31",
+    "heure": "22:22",
+    "titre": "A card's progress, from its stories",
+    "changements": [
+      "Besides its status (where the spec stands: Draft to Validated), a card has a progress, worked out from its stories and the sprint, never typed: Stories to prepare (2/3 ready), Ready for dev, In sprint, In development (1/3 developed), To test (2/3 validated), In production. The nice to have count only when all of a card's stories are.",
+      "The progress shows on the board's cards, the card's page (since when, and the stages it went through) and the sprint; the board can be laid out by Progress (Lane or Group by), and a card is not moved across it by hand.",
+      "Each change of progress is written in the log, dated."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.73",
     "date": "2026-10-31",
     "heure": "18:08",

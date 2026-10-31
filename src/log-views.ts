@@ -1,4 +1,5 @@
 import { LOG_GROUPS, type LogEntry, type LogFilters } from "./log";
+import { isProgressStage, PROGRESS_LABELS } from "./progress-stages";
 import { projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { projectUrl } from "./urls";
@@ -77,6 +78,11 @@ export function describe(entry: LogEntry, repo: string): string {
     }
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "card_progress_changed": {
+      const label = (value: unknown) => (isProgressStage(value) ? PROGRESS_LABELS[value] : "no story");
+      const count = Number(d["total"]) ? ` (${text(d["done"])}/${text(d["total"])})` : "";
+      return `saw card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} go from ${label(d["from"])} to ${label(d["to"])}${count}, from its stories`;
+    }
     case "card_priority_set":
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
     case "story_marked_ready":

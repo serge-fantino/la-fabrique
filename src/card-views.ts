@@ -31,6 +31,7 @@ import {
 import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
+import { isProgressStage, PROGRESS_LABELS, progressPill, type Progress } from "./progress-stages";
 import { stagePill } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { renderMarkdown } from "./markdown";
@@ -80,7 +81,7 @@ export function cardPills(tags: Partial<CardTags>, status?: string): string {
 }
 
 // One card on the board: a white card, its text and its tags.
-export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = false): string {
+export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = false, progress?: Progress | null): string {
   const url = cardUrl(card.repo, card.id);
   const text = excerpt(card.body);
   const free = FREE_DIMENSIONS.filter((dimension) => card[dimension]).map((dimension) => tag(dimension, card[dimension] ?? ""));
@@ -89,6 +90,7 @@ export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = 
         <a class="fiche-id mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a>
         <span class="pill kind">${KIND_LABELS[card.kind]}</span>
         <span class="pill card-${card.status}">${STATUS_LABELS[card.status]}</span>
+        ${progressPill(progress)}
         ${card.priority ? `<span class="pill">${escapeHtml(card.priority)}</span>` : ""}
         ${card.archivedAt ? `<span class="pill alert">Archived</span>` : ""}
         ${working ? `<span class="pill warn">Claude working</span>` : ""}
@@ -110,6 +112,7 @@ function axisSelect(name: string, label: string, current: Axis): string {
       <select name="${name}" data-autosubmit>
         ${option("none", name === "by" ? "None (free order)" : "None", current === "none")}
         ${DIMENSIONS.map((dimension) => option(dimension, DIMENSION_LABELS[dimension], current === dimension)).join("")}
+        ${option("progress", "Progress", current === "progress")}
       </select>
     </label>`;
 }
@@ -226,6 +229,8 @@ export interface BoardData {
   // The project's releases, shipped, in progress or planned, by version.
   releases: Map<string, BoardRelease>;
   nextRelease: string | null;
+  // Each card's progress, from its stories.
+  progress?: Map<number, Progress>;
 }
 
 // Shipped is done, in progress is on its way, planned is not started.
@@ -260,7 +265,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   const cell = (columnValue: string, rowValue: string) => {
     const placed = { [board.by]: columnValue, [board.then]: rowValue };
     const cards = data.cards.filter((card) => valueOf(card, board.by) === columnValue && valueOf(card, board.then) === rowValue);
-    return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite, data.spends.get(card.id), data.working.has(card.id))).join("")}</div>`;
+    return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite, data.spends.get(card.id), data.working.has(card.id), data.progress?.get(card.id))).join("")}</div>`;
   };
   const count = (predicate: (card: Card) => boolean) => data.cards.filter(predicate).length;
   const head = (value: string) => {
@@ -268,7 +273,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
     return `<div class="board-head">
         <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${escapeHtml(label)}${releaseNote(board.by, value)}</span>
         <span class="mono muted small" data-count-column="${escapeHtml(value)}">${count((card) => valueOf(card, board.by) === value)}</span>
-        ${canWrite ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
+        ${canWrite && board.by !== "progress" ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
       </div>`;
   };
 
@@ -530,6 +535,9 @@ export interface CardPageData {
   split: CardSplit | undefined;
   // The card's stories as GitHub has them: title and stage.
   storyStates: Map<number, StoryState>;
+  // Its progress from those stories, and the stages it went through (log).
+  progress?: Progress | null;
+  progressHistory?: { to: string | null; at: string }[];
 }
 
 export interface StoryState {
@@ -538,11 +546,15 @@ export interface StoryState {
   closed: boolean;
 }
 
-// "2 of 3 in production"
-function storiesSummary(states: Map<number, StoryState>): string {
-  if (!states.size) return "";
-  const done = [...states.values()].filter((state) => state.stage === "done" || state.closed).length;
-  return `<p class="muted">${done} of ${states.size} in production.</p>`;
+// "In development 1/3 developed", then the stages it went through, dated.
+function progressSummary(progress: Progress | null | undefined, history: { to: string | null; at: string }[]): string {
+  if (!progress) return "";
+  const since = history.at(-1)?.at ?? null;
+  const steps = history
+    .map((step) => `<li><span class="mono">${escapeHtml(step.at.slice(0, 16).replace("T", " "))}</span> ${isProgressStage(step.to) ? PROGRESS_LABELS[step.to] : "No story"}</li>`)
+    .join("");
+  return `<p class="card-progress">Progress: ${progressPill(progress, since)}${since ? ` <span class="muted small">since ${escapeHtml(since.slice(0, 10))}</span>` : ""}</p>
+    ${history.length > 1 ? `<details class="card-progress-history"><summary>How it went</summary><ol>${steps}</ol></details>` : ""}`;
 }
 
 // What Claude proposes, waiting to be reviewed.
@@ -753,7 +765,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
               ? ` <span class="pill">${escapeHtml(card.priority)}</span>`
               : ""
           : ""
-      }${
+      }${data.progress ? ` ${progressPill(data.progress, data.progressHistory?.at(-1)?.at ?? null)}` : ""}${
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">
@@ -770,7 +782,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
       </section>
       ${
         stories.length
-          ? `<h2 id="stories">Stories</h2>${storiesSummary(data.storyStates)}<ul class="card-stories">${stories
+          ? `<h2 id="stories">Stories</h2>${progressSummary(data.progress, data.progressHistory ?? [])}<ul class="card-stories">${stories
               .map((link) => {
                 const state = data.storyStates.get(Number(link.ref));
                 return `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${escapeHtml(link.ref)}">#${escapeHtml(link.ref)}</a>
