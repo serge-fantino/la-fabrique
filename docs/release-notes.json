@@ -2,7 +2,7 @@
   {
     "version": "0.70",
     "date": "2026-10-31",
-    "heure": "17:50",
+    "heure": "17:56",
     "titre": "A merged story waits for its validation",
     "changements": [
       "A story whose pull request is merged, but still open, is now To validate (it stayed In development): its work is in, its acceptance criteria still have to be checked.",
