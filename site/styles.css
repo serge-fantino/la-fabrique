@@ -1977,38 +1977,61 @@ p.about-version-choice {
   margin: 0;
 }
 
-.board-filters {
-  align-items: flex-end;
+/* The board's header, on one line when it fits: how the board is
+   arranged, its filters, the count, a new lane and a new card. */
+.board-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.board-bar .board-filters {
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
 }
 
 .board-filters fieldset {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.5rem 0.75rem;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
-.board-filters legend {
-  float: left;
-  width: 100%;
-  margin-bottom: 0.25rem;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--encre-faint);
+.board-arrange label:not(.check) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.board-filters .board-arrange {
-  padding-right: 0.75rem;
-  border-right: 1px solid var(--rule);
+.board-bar-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.board-new > summary {
+  list-style: none;
+}
+
+.board-new > summary::-webkit-details-marker {
+  display: none;
+}
+
+.board-new[open] > summary {
+  display: none;
 }
 
 .board-show {
-  align-self: flex-end;
+  align-self: center;
 }
 
 .board-show summary {
@@ -2084,8 +2107,7 @@ p.about-version-choice {
 }
 
 .board-row > .board-cell,
-.board-row > .board-head,
-.board-row > .board-ghost {
+.board-row > .board-head {
   flex: 0 0 17rem;
 }
 
@@ -2148,18 +2170,14 @@ p.about-version-choice {
   width: calc(100vw - 2.5rem);
 }
 
-.board-ghost {
-  padding-top: 0.25rem;
-}
-
 .board-new-value {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
 }
 
 .board-new-value input {
-  flex: 1;
-  min-width: 0;
+  width: 9rem;
 }
 
 .board-foot {

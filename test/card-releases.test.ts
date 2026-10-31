@@ -18,7 +18,7 @@ async function seed(): Promise<void> {
     ).bind(REPO, JSON.stringify(CONFIG)),
     env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'releases', ?, '2099-01-01T00:00:00.000Z')").bind(
       REPO,
-      JSON.stringify({ commitSha: "abc", releases: [release("v1.10", "10:00"), release("v1.9", "09:00"), release("v1.2", "08:00")] }),
+      JSON.stringify({ commitSha: "abc", releases: [release("v1.10", "10:00"), release("v1.9", "09:00"), release("v1.2", "08:00"), release("v1.1", null)] }),
     ),
     env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, '2000-01-01T00:00:00.000Z')").bind(
       REPO,
@@ -63,7 +63,12 @@ describe("The board's releases", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(all).toContain('title="Being built">v1.11 <span class="pill warn small">In progress</span>');
     expect(all).toContain('v1.13 <span class="pill kind small">Planned</span>');
-    expect(all).toContain('placeholder="Plan v1.14"');
+    // Older than the first entry with a time: shipped before times were written.
+    expect(all).toContain('v1.1 <span class="pill ok small">Shipped</span>');
+    expect(all).toContain('<summary class="button quiet">Plan a release</summary>');
+    expect(all).toContain('placeholder="v1.14" value="v1.14"');
+    // Not set first, so what is not placed yet stays in sight.
+    expect(all.indexOf('aria-label="Not set"')).toBeLessThan(order[0] ?? 0);
 
     const hidden = await (await get(`/projects/${REPO}/board?by=release&empty=hide`, session.cookie)).text();
     expect(hidden).toContain("/> Hide closed lanes</label>");
@@ -72,6 +77,7 @@ describe("The board's releases", () => {
     expect(hidden).toContain('aria-label="v1.9"');
     expect(hidden).not.toContain('aria-label="v1.10"');
     expect(hidden).not.toContain('aria-label="v1.2"');
+    expect(hidden).not.toContain('aria-label="v1.1"');
   });
 
   it("plans a release only ahead, in the project's numbering", async () => {

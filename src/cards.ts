@@ -769,7 +769,8 @@ export function axisValues(axis: Axis, known: Record<FreeDimension, string[]>): 
   if (axis === "none") return [""];
   if (axis === "kind") return [...CARD_KINDS];
   if (axis === "status") return [...CARD_STATUSES];
-  return [...known[axis], ""];
+  // "Not set" first: what is not placed yet stays in sight.
+  return ["", ...known[axis]];
 }
 
 export function valueOf(card: Card, axis: Axis): string {

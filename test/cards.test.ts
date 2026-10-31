@@ -98,19 +98,24 @@ describe("Cards", () => {
     await newCard(session, { title: "Loose idea", kind: "idea" });
 
     const byStatus = await (await get(`/projects/${REPO}/board?by=status`, session.cookie)).text();
-    expect(byStatus).toContain("<strong>3 cards</strong>.");
+    expect(byStatus).toContain("<strong>3 cards</strong>");
     expect(byStatus).toContain('data-cell data-set-status="draft"');
     expect(byStatus).toContain('<script src="/board.js?v=');
 
     const crossed = await (await get(`/projects/${REPO}/board?by=segment&then=domain`, session.cookie)).text();
     expect(crossed).toContain('data-cell data-set-segment="pro" data-set-domain="Basket"');
+    // New lanes from the header: a segment for the lanes, a domain for the groups.
+    expect(crossed).toContain('<summary class="button quiet">New lane</summary>');
     expect(crossed).toContain('placeholder="New segment"');
+    expect(crossed).toContain('<summary class="button quiet">New group</summary>');
     expect(crossed).toContain('placeholder="New domain"');
+    expect(crossed).toContain("Lane\n      <select name=\"by\"");
+    expect(crossed).toContain("Group by\n      <select name=\"then\"");
     const proCell = crossed.slice(crossed.indexOf('data-set-segment="pro" data-set-domain="Basket"'));
     expect(proCell.slice(0, proCell.indexOf("</div>\n"))).toContain("Pro reorder");
 
     const filtered = await (await get(`/projects/${REPO}/board?by=none&kind=idea`, session.cookie)).text();
-    expect(filtered).toContain("<strong>1 card</strong> of 3.");
+    expect(filtered).toContain("<strong>1 card</strong> of 3");
     expect(filtered).toContain("Loose idea");
     expect(filtered).not.toContain("Family menu");
 
@@ -183,7 +188,8 @@ describe("Cards", () => {
     expect(hidden).toContain('data-cell data-set-status="draft" data-set-segment="pro"');
     expect(hidden).not.toContain('data-set-status="shaping"');
     expect(hidden).not.toContain('data-set-segment="family"');
-    expect(hidden).not.toContain('placeholder="New segment"');
+    // The new group stays in the header.
+    expect(hidden).toContain('placeholder="New segment"');
     expect(hidden).toContain(`board?by=status&amp;then=segment&amp;empty=hide">Clear the filters</a>`);
   });
 

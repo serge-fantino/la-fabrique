@@ -106,7 +106,7 @@ function option(value: string, label: string, selected: boolean): string {
 function axisSelect(name: string, label: string, current: Axis): string {
   return `<label>${label}
       <select name="${name}" data-autosubmit>
-        ${option("none", name === "by" ? "Nothing (free order)" : "Nothing", current === "none")}
+        ${option("none", name === "by" ? "None (free order)" : "None", current === "none")}
         ${DIMENSIONS.map((dimension) => option(dimension, DIMENSION_LABELS[dimension], current === dimension)).join("")}
       </select>
     </label>`;
@@ -151,9 +151,9 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
     (filters.all ? 1 : 0);
   return `<form method="get" action="${escapeHtml(base)}/board" class="filters board-filters" data-board-arrange>
       <fieldset class="board-arrange">
-        <legend>Arrange</legend>
-        ${axisSelect("by", "Columns", board.by)}
-        ${axisSelect("then", "Then rows", board.then)}
+        <legend class="visually-hidden">Arrange</legend>
+        ${axisSelect("by", "Lane", board.by)}
+        ${board.by === "none" ? "" : axisSelect("then", "Group by", board.then)}
         ${board.by === "none" ? "" : `<label class="check"><input type="checkbox" name="empty" value="hide"${board.hideEmpty ? " checked" : ""} data-autosubmit /> ${board.by === "release" || board.then === "release" ? "Hide closed lanes" : "Hide empty lanes"}</label>`}
       </fieldset>
       <details class="board-show"${active ? " open" : ""}>
@@ -190,18 +190,24 @@ function cellAttributes(placed: Record<string, string>): string {
     .join("");
 }
 
-function addValueForm(viewer: Viewer, base: string, dimension: FreeDimension, back: string, where: "column" | "row", next: string | null = null): string {
-  // A release is planned ahead, in the project's numbering.
+// "New lane" in the board's header: a button that unfolds its field. A
+// release is planned ahead, in the project's numbering.
+function addValueForm(viewer: Viewer, base: string, dimension: FreeDimension, back: string, where: "lane" | "group", next: string | null = null): string {
   const release = dimension === "release";
-  const what = release ? "Plan a release" : `New ${DIMENSION_LABELS[dimension].toLowerCase()}`;
-  return `<form method="post" action="${escapeHtml(base)}/board" class="board-new-value board-new-${where}">${csrfField(viewer)}
-      <input type="hidden" name="action" value="add_value" />
-      <input type="hidden" name="dimension" value="${dimension}" />
-      <input type="hidden" name="back" value="${escapeHtml(back)}" />
-      <label class="visually-hidden" for="new-${where}">${what}</label>
-      <input id="new-${where}" name="value" maxlength="${MAX_VALUE}" required placeholder="${escapeHtml(release && next ? `Plan ${next}` : what)}" />
-      <button type="submit" class="button quiet">${release ? "Plan" : "Add"}</button>
-    </form>`;
+  const what = release ? "Plan a release" : where === "lane" ? "New lane" : "New group";
+  const field = release ? "Version" : `New ${DIMENSION_LABELS[dimension].toLowerCase()}`;
+  return `<details class="board-new" data-autofocus>
+      <summary class="button quiet">${what}</summary>
+      <form method="post" action="${escapeHtml(base)}/board" class="board-new-value">${csrfField(viewer)}
+        <input type="hidden" name="action" value="add_value" />
+        <input type="hidden" name="dimension" value="${dimension}" />
+        <input type="hidden" name="back" value="${escapeHtml(back)}" />
+        <label class="visually-hidden" for="new-${where}">${field}</label>
+        <input id="new-${where}" name="value" maxlength="${MAX_VALUE}" required placeholder="${escapeHtml(release && next ? next : field)}"${release && next ? ` value="${escapeHtml(next)}"` : ""} />
+        <button type="submit" class="button">${release ? "Plan" : "Add"}</button>
+        <button type="button" class="button quiet" data-panel-close>Cancel</button>
+      </form>
+    </details>`;
 }
 
 export interface BoardData {
@@ -265,12 +271,10 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   if (board.by === "none") {
     grid = `<div class="board-free">${cell("", "")}</div>`;
   } else if (board.then === "none") {
-    const extra = canWrite && !board.hideEmpty && isFreeDimension(board.by) ? `<div class="board-column board-ghost">${addValueForm(viewer, base, board.by, back, "column", data.nextRelease)}</div>` : "";
     grid = `<div class="board-columns">${columns
       .map((value) => `<section class="board-column" aria-label="${escapeHtml(valueLabel(board.by, value))}">${head(value)}${cell(value, "")}</section>`)
-      .join("")}${extra}</div>`;
+      .join("")}</div>`;
   } else {
-    const ghostColumn = canWrite && !board.hideEmpty && isFreeDimension(board.by);
     const rowHtml = rows
       .map((rowValue) => {
         const label = valueLabel(board.then, rowValue);
@@ -283,35 +287,36 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
           </div>`;
       })
       .join("");
-    const ghostRow =
-      canWrite && !board.hideEmpty && isFreeDimension(board.then)
-        ? `<div class="board-row"><div class="board-row-head board-ghost">${addValueForm(viewer, base, board.then, back, "row", data.nextRelease)}</div></div>`
-        : "";
     grid = `<div class="board-grid">
-        <div class="board-row board-row-heads"><div class="board-row-head"></div>${columns.map(head).join("")}${
-          ghostColumn ? `<div class="board-ghost">${addValueForm(viewer, base, board.by as FreeDimension, back, "column", data.nextRelease)}</div>` : ""
-        }</div>
+        <div class="board-row board-row-heads"><div class="board-row-head"></div>${columns.map(head).join("")}</div>
         ${rowHtml}
-        ${ghostRow}
       </div>`;
   }
 
   const shown = data.cards.length;
-  const summary =
-    data.total === 0
-      ? `No card yet. A card is a few lines about a feature or an idea, before it becomes a story (if ever).`
-      : `<strong>${shown} card${shown === 1 ? "" : "s"}</strong>${shown === data.total ? "" : ` of ${data.total}`}.`;
+  const summary = `<strong>${shown} card${shown === 1 ? "" : "s"}</strong>${shown === data.total ? "" : ` of ${data.total}`}`;
+  // A new lane, and a new group when the rows are a free dimension too.
+  const newLanes = canWrite
+    ? [
+        ...(isFreeDimension(board.by) ? [addValueForm(viewer, base, board.by, back, "lane", data.nextRelease)] : []),
+        ...(isFreeDimension(board.then) && board.then !== board.by ? [addValueForm(viewer, base, board.then, back, "group", data.nextRelease)] : []),
+      ].join("")
+    : "";
 
   return layout(
     title(project, "Board"),
     `${projectHeader(project, "board")}
-      <div class="title-row">
-        <p class="board-summary">${summary}</p>
-        ${canWrite ? `<a class="button" href="${escapeHtml(base)}/cards/new">New card</a>` : ""}
-      </div>
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
-      ${filterBar(base, board, known)}
+      <div class="board-bar">
+        ${filterBar(base, board, known)}
+        <div class="board-bar-end">
+          <span class="board-summary">${summary}</span>
+          ${newLanes}
+          ${canWrite ? `<a class="button" href="${escapeHtml(base)}/cards/new">New card</a>` : ""}
+        </div>
+      </div>
+      ${data.total === 0 ? `<p class="muted">No card yet. A card is a few lines about a feature or an idea, before it becomes a story (if ever).</p>` : ""}
       <p class="board-status muted" data-board-status role="status" aria-live="polite"></p>
       <div class="board-scroll">
         <div class="board" data-board data-by="${board.by}" data-then="${board.then}" data-move="${escapeHtml(base)}/board" data-csrf="${escapeHtml(viewer.csrfToken)}">
