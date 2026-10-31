@@ -79,6 +79,8 @@ describe("The go", () => {
     expect(page).toContain("#31</a> Plan the week");
     expect(page).toContain('<span class="pill ok">Validated</span> <span class="muted small">by @qa</span>');
     expect(page).toContain('<span class="pill alert">Not validated</span>');
+    expect(page).toContain("The go is blocked: 1 story is not validated on int.");
+    expect(page).toContain("Give the go anyway");
     expect(page).toContain("1 not validated on int: why give the go anyway?");
   });
 
@@ -136,7 +138,7 @@ describe("The go", () => {
     await seed({ ...STATUS, ready: false, blockers: [{ text: "CI failed on integration.", url: null }] });
     const { cookie, csrf } = await signIn("admin-one");
     const page = await (await get(`/projects/${REPO}/production`, cookie)).text();
-    expect(page).toContain("The go waits until production is ready");
+    expect(page).toContain("<strong>The go is blocked</strong> until production is ready");
     expect(page).not.toContain("/production/go");
     const response = await post(`/projects/${REPO}/production/go`, { csrf, reason: "please" }, cookie);
     expect(response.status).toBe(409);

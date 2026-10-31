@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.68",
+    "date": "2026-10-31",
+    "heure": "17:37",
+    "titre": "The go says what blocks it",
+    "changements": [
+      "The go is shown as blocked, with the reason: the stories on int that are not validated (listed; the super admin can still give the go anyway by saying why), a failing check on the integration branch, or nothing new since the last production version."
+    ],
+    "stories": [102],
+    "liens": null
+  },
+  {
     "version": "0.67",
     "date": "2026-10-31",
     "heure": "17:09",
