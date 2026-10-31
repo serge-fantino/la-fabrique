@@ -18,6 +18,7 @@ export type SetupKey =
   | "working_branches"
   | "cycle"
   | "promotion"
+  | "merge_workflow"
   | "claude_workflow"
   | "app"
   | "integration";
@@ -206,6 +207,17 @@ export function setupChecklist({ check, releases, stories, branches, versions, a
       "promotion",
       typeof promotion === "string",
       typeof promotion === "string" ? `\`${promotion}\`: Product Engineers and super admins give the go from Production.` : "No `workflows.promouvoir`: promotion is done outside La Fabrique.",
+      true,
+    ),
+  );
+  const merge = config?.workflows?.["fusionner"];
+  items.push(
+    item(
+      "merge_workflow",
+      typeof merge === "string",
+      typeof merge === "string"
+        ? `\`${merge}\`: Merge on a pull request of the sprint starts it; it numbers and dates the release notes at the merge.`
+        : "No `workflows.fusionner`: pull requests are merged outside La Fabrique, and their release notes numbered by hand.",
       true,
     ),
   );

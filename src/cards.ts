@@ -1,4 +1,5 @@
 import { activityStatement } from "./activity-log";
+import { isProgressStage, PROGRESS_LABELS, PROGRESS_STAGES } from "./progress-stages";
 
 // Cards: the upstream of dev (la-fabrique#74), stored in La Fabrique and
 // attached to a project. The text (Markdown with annotations) is the
@@ -103,6 +104,9 @@ export interface Card extends CardTags {
   data: CardData;
   // One of the project's priority labels; its stories take it when made.
   priority: string | null;
+  // Its progress as last seen (src/card-progress.ts), worked out from its
+  // stories: never typed.
+  progress: string | null;
 }
 
 export interface CardRevision {
@@ -215,10 +219,11 @@ interface CardRow {
   archived_at: string | null;
   data: string | null;
   priority: string | null;
+  progress: string | null;
 }
 
 const CARD_COLUMNS =
-  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data, priority";
+  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data, priority, progress";
 
 export function parseData(raw: string | null): CardData {
   if (!raw) return {};
@@ -250,6 +255,7 @@ function toCard(row: CardRow): Card {
     archivedAt: row.archived_at,
     data: parseData(row.data),
     priority: row.priority,
+    progress: row.progress ?? null,
   };
 }
 
@@ -777,7 +783,9 @@ export async function importCards(db: D1Database, repo: string, author: string, 
 
 // ---- The board ---------------------------------------------------------
 
-export type Axis = Dimension | "none";
+// "progress": computed from the stories (src/card-progress.ts), so a card
+// is placed by it but never moved across it.
+export type Axis = Dimension | "none" | "progress";
 
 export interface BoardFilters {
   kind: CardKind | null;
@@ -797,7 +805,7 @@ export interface BoardQuery {
 }
 
 export function isAxis(value: unknown): value is Axis {
-  return value === "none" || isDimension(value);
+  return value === "none" || value === "progress" || isDimension(value);
 }
 
 export function readBoardQuery(params: URLSearchParams): BoardQuery {
@@ -851,17 +859,21 @@ export function axisValues(axis: Axis, known: Record<FreeDimension, string[]>): 
   if (axis === "none") return [""];
   if (axis === "kind") return [...CARD_KINDS];
   if (axis === "status") return [...CARD_STATUSES];
+  // "" first: the cards without a story yet.
+  if (axis === "progress") return ["", ...PROGRESS_STAGES];
   // "Not set" first: what is not placed yet stays in sight.
   return ["", ...known[axis]];
 }
 
 export function valueOf(card: Card, axis: Axis): string {
   if (axis === "none") return "";
+  if (axis === "progress") return isProgressStage(card.progress) ? card.progress : "";
   return card[axis] ?? "";
 }
 
 export function valueLabel(axis: Axis, value: string): string {
   if (axis === "kind" && isKind(value)) return KIND_LABELS[value];
   if (axis === "status" && isStatus(value)) return STATUS_LABELS[value];
+  if (axis === "progress") return isProgressStage(value) ? PROGRESS_LABELS[value] : "No story";
   return value || "Not set";
 }
