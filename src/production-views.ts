@@ -36,7 +36,7 @@ function issueLink(repo: string, number: number, titles: Map<number, string>): s
 
 function banner(status: ProductionStatus): string {
   if (status.aheadBy === 0) {
-    return `<p class="notice ok" role="status">Production is up to date: <code>${escapeHtml(status.integration)}</code> has nothing that <code>${escapeHtml(status.production)}</code> lacks.</p>`;
+    return `<p class="notice ok" role="status">Production is up to date: <code>${escapeHtml(status.integration)}</code> has nothing that <code>${escapeHtml(status.production)}</code> lacks. <strong>The go is blocked:</strong> there is nothing new to push.</p>`;
   }
   if (status.ready) {
     return `<p class="notice ok banner" role="status"><strong>Ready for production.</strong> CI and the deployment to int passed on the latest commit of <code>${escapeHtml(status.integration)}</code>.</p>`;
@@ -196,7 +196,7 @@ function goSection(viewer: Viewer, project: Project, status: ProductionStatus, g
   }
   if (status.aheadBy === 0 || !go.summary) return `<section class="go">${messages}${last}</section>`;
   if (!status.ready) {
-    return `<section class="go">${messages}${last}<p class="muted">The go waits until production is ready (see above).</p></section>`;
+    return `<section class="go">${messages}${last}<p class="muted"><strong>The go is blocked</strong> until production is ready (see above).</p></section>`;
   }
   const summary = go.summary;
   const storyLine = (story: Story) => {
@@ -216,11 +216,14 @@ function goSection(viewer: Viewer, project: Project, status: ProductionStatus, g
         ${summary.stories.length ? `<ul class="go-stories">${summary.stories.map(storyLine).join("")}</ul>` : `<p class="muted">No story is referred to by the work waiting.</p>`}
         ${
           summary.notValidated.length
-            ? `<label for="go-reason">${summary.notValidated.length} not validated on int: why give the go anyway?</label>
+            ? `<div class="notice error" role="alert"><p><strong>The go is blocked: ${summary.notValidated.length} stor${summary.notValidated.length === 1 ? "y is" : "ies are"} not validated on int.</strong></p><ul>${summary.notValidated
+                .map((story) => `<li><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)}</li>`)
+                .join("")}</ul></div>
+               <label for="go-reason">${summary.notValidated.length} not validated on int: why give the go anyway?</label>
                <textarea id="go-reason" name="reason" rows="2" required maxlength="500"></textarea>`
             : ""
         }
-        <p><button type="submit" class="button">Give the go</button>
+        <p><button type="submit" class="button">${summary.notValidated.length ? "Give the go anyway" : "Give the go"}</button>
           <span class="muted small">Starts <code>${escapeHtml(String(project.check?.config?.workflows?.["promouvoir"] ?? ""))}</code> on the project; it is in the log.</span></p>
       </form>
     </section>`;
