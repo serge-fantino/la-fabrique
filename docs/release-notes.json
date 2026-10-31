@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.64",
+    "date": "2026-10-31",
+    "heure": "13:56",
+    "titre": "What version is running",
+    "changements": [
+      "An (i) next to La Fabrique's name: on hover or focus, the version running, when it was released (Paris time) and its commit, with Update, which reloads when a newer version is out and says so otherwise."
+    ],
+    "stories": [],
+    "liens": null
+  },
+  {
     "version": "0.63",
     "date": "2026-10-31",
     "heure": "13:49",
