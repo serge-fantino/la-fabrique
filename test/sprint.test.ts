@@ -53,7 +53,7 @@ describe("The sprint", () => {
     const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
     expect(page).toContain('<span class="mono">0.57</span> <span class="pill warn">In progress</span>');
     expect(page).toContain("Started by <span class=\"mono\">@pe</span>");
-    expect(page).toContain("<strong>2 cards</strong>, 2 stories, 0 in production.");
+    expect(page).toContain("<strong>2 stories left before the release</strong> · 2 cards, 2 stories, 0 in production.");
     expect(page).toContain("Week menu");
     expect(page).toContain("Choose the week");
     expect(page).toContain("No story yet: <a");
@@ -70,6 +70,42 @@ describe("The sprint", () => {
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "stop" }, session.cookie);
     expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).toContain("No sprint in progress.");
     expect((await logActions()).map((entry) => entry.action).filter((action) => action.startsWith("sprint_"))).toEqual(["sprint_started", "sprint_stopped"]);
+  });
+
+  it("orders the cards, then each card's stories; a nice-to-have story does not hold the release", async () => {
+    await seed([release("0.56", "10:00")]);
+    await grantRole("pe", "product_engineer");
+    const session = await signIn("pe");
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start", release: "0.57" }, session.cookie);
+    const ids = (await env.DB.prepare("SELECT id, title FROM cards WHERE release = '0.57' ORDER BY id").all<{ id: number; title: string }>()).results;
+    const [week, empty] = [ids[0]?.id ?? 0, ids[1]?.id ?? 0];
+    const page = async () => (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    const at = (text: string, needle: string) => text.indexOf(needle);
+
+    // Cards: the board's order, moved in the sprint.
+    let text = await page();
+    expect(at(text, "Week menu")).toBeLessThan(at(text, "No story yet"));
+    const moved = await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "card_up", card: String(empty) }, session.cookie);
+    expect(moved.headers.get("location")).toBe(`/projects/${REPO}/sprint#card-${empty}`);
+    text = await page();
+    expect(at(text, "No story yet")).toBeLessThan(at(text, "Week menu"));
+
+    // Stories in the card: #21 then #22, then #22 first.
+    expect(at(text, "Choose the week")).toBeLessThan(at(text, "Print the week"));
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "story_down", card: String(week), story: "21" }, session.cookie);
+    text = await page();
+    expect(at(text, "Print the week")).toBeLessThan(at(text, "Choose the week"));
+
+    // Nice to have: shown, and no longer left before the release.
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "nice", card: String(week), story: "22", nice: "1" }, session.cookie);
+    text = await page();
+    expect(text).toContain('Print the week <span class="pill kind small">Nice to have</span>');
+    expect(text).toContain("<strong>1 story left before the release</strong>");
+    // The same order and mark in the backlog, by card.
+    const backlog = await (await get(`/projects/${REPO}/backlog?group=card`, session.cookie)).text();
+    expect(at(backlog, "Print the week")).toBeLessThan(at(backlog, "Choose the week"));
+    expect(backlog).toContain('Print the week</a> <span class="pill kind small">Nice to have</span>');
+    expect((await logActions()).map((entry) => entry.action)).toEqual(expect.arrayContaining(["sprint_card_moved", "sprint_story_moved", "story_nice_set"]));
   });
 
   it("ends by itself when the release notes date the release", async () => {

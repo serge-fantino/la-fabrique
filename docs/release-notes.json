@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.60",
+    "date": "2026-10-31",
+    "heure": "11:15",
+    "titre": "The order in the sprint, and nice to have",
+    "changements": [
+      "In the sprint, move a card up or down (the board's order follows), and a card's stories up or down.",
+      "Mark a story nice to have: done if there is time; it does not count in the stories left before the release, now at the top of the sprint.",
+      "The backlog grouped by card shows each card's stories in the same order, with nice to have marked."
+    ],
+    "stories": [111],
+    "liens": null
+  },
+  {
     "version": "0.59",
     "date": "2026-10-31",
     "heure": "11:12",

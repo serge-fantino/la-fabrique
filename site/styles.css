@@ -2791,3 +2791,30 @@ form[aria-busy="true"] button[type="submit"] {
   gap: 0.5rem 0.75rem;
   min-height: 44px;
 }
+
+/* Ordering the sprint: small buttons, still 44 px to touch. */
+.sprint-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.sprint-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.sprint-order .button.small {
+  min-width: 44px;
+  padding: 0 0.7rem;
+  font-size: 0.9rem;
+}
+
+tr.nice td {
+  color: var(--encre-faint);
+}

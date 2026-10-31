@@ -3,7 +3,7 @@ import { knownValues, nextVersion, plannedSpelling, planningProblem } from "./ca
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
-import { activeSprint, endSprint, latestSprint, startSprint } from "./sprints";
+import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice, startSprint } from "./sprints";
 import {
   addValue,
   archiveCard,
@@ -479,6 +479,22 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (running) await endSprint(env.DB, running, viewer.login, "stopped");
       return redirect(`${base}?notice=stopped`);
     }
+    // The order in the sprint, and nice to have (la-fabrique#111).
+    const card = Number(form.get("card"));
+    const story = Number(form.get("story"));
+    if (action === "card_up" || action === "card_down") {
+      const found = Number.isInteger(card) ? await findCard(env.DB, project.repo, card) : null;
+      if (found?.release) await moveCardInRelease(env.DB, project.repo, found.release, card, action === "card_up" ? "up" : "down", viewer.login);
+      return redirect(`${base}#card-${card}`);
+    }
+    if (action === "story_up" || action === "story_down" || action === "nice") {
+      const found = Number.isInteger(card) ? await findCard(env.DB, project.repo, card) : null;
+      if (found && Number.isInteger(story) && story > 0) {
+        if (action === "nice") await setNice(env.DB, project.repo, card, story, form.get("nice") === "1", viewer.login);
+        else await moveStoryInCard(env.DB, project.repo, card, story, action === "story_up" ? "up" : "down", viewer.login);
+      }
+      return redirect(`${base}#story-${card}-${story}`);
+    }
     if (action === "start") {
       const release = cleanValue(form.get("release"));
       const { releases } = await knownValues(env, project, await listCards(env.DB, project.repo));
@@ -515,7 +531,8 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       shipped: !sprint && latest?.endReason === "shipped" ? latest : null,
       cards: inRelease,
       stories: await cardStories(env, project, numbers),
-      links: links.byStory,
+      links,
+      canOrder: canWriteCards(viewer),
       planned: all.filter((release) => release.state === "planned"),
       canStart: canWriteCards(viewer),
       notice: SPRINT_NOTICES[params.get("notice") ?? ""],

@@ -1,4 +1,4 @@
-import { cardGroupHead, groupByCard, sharedWith, type StoryCards } from "./card-groups";
+import { cardGroupHead, groupByCard, nicePill, sharedWith, type StoryCards } from "./card-groups";
 import { isEpic, missingForReady, priorityOf, type CycleRules, type Stage } from "./lifecycle";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -80,7 +80,7 @@ export function backlogPage(viewer: Viewer, project: Project, data: BacklogData)
     const current = priorityOf(story, data.rules);
     return `<tr id="issue-${story.number}">
         <td class="mono number"><a href="${escapeHtml(story.url)}">#${story.number}</a></td>
-        <td><a href="${escapeHtml(story.url)}">${escapeHtml(story.title)}</a>${data.group === "card" && data.cards ? sharedWith(data.cards, story.number, card) : ""}${
+        <td><a href="${escapeHtml(story.url)}">${escapeHtml(story.title)}</a>${data.group === "card" && data.cards ? nicePill(data.cards, card, story.number) + sharedWith(data.cards, story.number, card) : ""}${
           epic ? `<br /><span class="muted small">#${epic.number} ${escapeHtml(epic.title)}</span>` : ""
         }</td>
         <td>${stagePill(stage)}${missing.length ? `<br /><span class="muted small">${escapeHtml(missing.join(", "))}</span>` : ""}</td>
@@ -97,13 +97,10 @@ export function backlogPage(viewer: Viewer, project: Project, data: BacklogData)
           <thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.claude.show ? '<th class="claude-col">Claude</th>' : ""}${data.rules.priorities.length ? "<th>Priority</th>" : ""}</tr></thead>
           <tbody>${items.map((story) => row(story, card)).join("")}</tbody>
         </table>`;
-  // By card: each card's stories not started yet, the ready ones first.
+  // By card: each card's stories not started yet, in the card's order.
   const sections =
     data.group === "card" && data.cards
-      ? groupByCard(
-          [...waiting].sort((a, b) => ready(a) - ready(b) || a.number - b.number),
-          data.cards,
-        )
+      ? groupByCard(waiting, data.cards)
           .map((group) => `<section>${cardGroupHead(project.repo, group.card, group.items.length)}${table(group.items, group.card?.id ?? null)}</section>`)
           .join("")
       : groups
