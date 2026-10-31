@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.55",
+    "date": "2026-10-31",
+    "heure": "09:41",
+    "titre": "The project's releases on the board",
+    "changements": [
+      "Arranged by release, the board shows the project's own releases, read from its release notes: shipped, and the one in progress. They go from the newest on the left to the oldest on the right, each with its state and its title on hover.",
+      "By release, Hide empty lanes becomes Hide closed lanes: it hides only shipped releases with no card; the release in progress and those planned stay visible.",
+      "Plan a release ahead from the board: it follows the project's numbering (v1.N, 0.N…) and comes after the last one out; the field suggests the next number."
+    ],
+    "stories": [82],
+    "liens": null
+  },
+  {
     "version": "0.54",
     "date": "2026-10-31",
     "heure": "09:23",
