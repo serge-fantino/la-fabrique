@@ -63,7 +63,7 @@ describe("Backlog", () => {
     await seed();
     const page = await (await get(`/projects/${REPO}/backlog`, (await signIn("admin-one")).cookie)).text();
     expect(page).toContain('aria-current="page">Backlog</a>');
-    expect(page).toContain("<strong>4 stories not started</strong>, 3 ready · P1 <strong>2</strong> · P2 <strong>1</strong> · P3 <strong>0</strong> · no priority <strong>1</strong>.");
+    expect(page).toContain(`<strong>4 stories not started</strong>, 3 ready (<a href="/projects/${REPO}/setup#lifecycle">Definition of Ready</a>) · P1 <strong>2</strong> · P2 <strong>1</strong> · P3 <strong>0</strong> · no priority <strong>1</strong>.`);
     expect(page).not.toContain("Being built");
     expect(page).not.toContain("Epic: Menu</a>");
     // Within P1, the ready story first.
