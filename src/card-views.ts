@@ -27,6 +27,7 @@ import {
   type CardTags,
   type FreeDimension,
 } from "./cards";
+import { RELEASE_STATE_LABELS, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
 import { stagePill } from "./stories-views";
@@ -189,14 +190,17 @@ function cellAttributes(placed: Record<string, string>): string {
     .join("");
 }
 
-function addValueForm(viewer: Viewer, base: string, dimension: FreeDimension, back: string, where: "column" | "row"): string {
+function addValueForm(viewer: Viewer, base: string, dimension: FreeDimension, back: string, where: "column" | "row", next: string | null = null): string {
+  // A release is planned ahead, in the project's numbering.
+  const release = dimension === "release";
+  const what = release ? "Plan a release" : `New ${DIMENSION_LABELS[dimension].toLowerCase()}`;
   return `<form method="post" action="${escapeHtml(base)}/board" class="board-new-value board-new-${where}">${csrfField(viewer)}
       <input type="hidden" name="action" value="add_value" />
       <input type="hidden" name="dimension" value="${dimension}" />
       <input type="hidden" name="back" value="${escapeHtml(back)}" />
-      <label class="visually-hidden" for="new-${where}">New ${DIMENSION_LABELS[dimension].toLowerCase()}</label>
-      <input id="new-${where}" name="value" maxlength="${MAX_VALUE}" required placeholder="New ${DIMENSION_LABELS[dimension].toLowerCase()}" />
-      <button type="submit" class="button quiet">Add</button>
+      <label class="visually-hidden" for="new-${where}">${what}</label>
+      <input id="new-${where}" name="value" maxlength="${MAX_VALUE}" required placeholder="${escapeHtml(release && next ? `Plan ${next}` : what)}" />
+      <button type="submit" class="button quiet">${release ? "Plan" : "Add"}</button>
     </form>`;
 }
 
@@ -210,16 +214,35 @@ export interface BoardData {
   // The cards where Claude is working.
   working: Set<number>;
   notice?: string | undefined;
+  failure?: string | undefined;
+  // The project's releases, shipped, in progress or planned, by version.
+  releases: Map<string, BoardRelease>;
+  nextRelease: string | null;
 }
+
+// Shipped is done, in progress is on its way, planned is not started.
+const RELEASE_TONES: Record<BoardRelease["state"], string> = { shipped: "ok", in_progress: "warn", planned: "kind" };
 
 export function boardPage(viewer: Viewer, project: Project, data: BoardData): string {
   const base = projectUrl(project.repo);
   const { board, known, canWrite } = data;
   const back = boardQueryString(board).slice(1);
-  // Hiding empty lanes keeps only the values the cards shown have.
+  // Hiding empty lanes keeps only the values the cards shown have, and
+  // every release still open (in progress, planned).
+  const open = (axis: Axis, value: string) => axis === "release" && (data.releases.get(value)?.state ?? "shipped") !== "shipped";
   const lanes = (axis: Axis) => {
     const values = axisValues(axis, known);
-    return board.hideEmpty && axis !== "none" ? values.filter((value) => data.cards.some((card) => valueOf(card, axis) === value)) : values;
+    return board.hideEmpty && axis !== "none"
+      ? values.filter((value) => open(axis, value) || data.cards.some((card) => valueOf(card, axis) === value))
+      : values;
+  };
+  const releaseNote = (axis: Axis, value: string) => {
+    const release = axis === "release" ? data.releases.get(value) : undefined;
+    return release ? ` <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span>` : "";
+  };
+  const titleOf = (axis: Axis, value: string) => {
+    const release = axis === "release" ? data.releases.get(value) : undefined;
+    return release?.title ? ` title="${escapeHtml(release.title)}"` : "";
   };
   const columns = lanes(board.by);
   const rows = lanes(board.then);
@@ -232,7 +255,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   const head = (value: string) => {
     const label = valueLabel(board.by, value);
     return `<div class="board-head">
-        <span class="board-head-label${value ? "" : " muted"}">${escapeHtml(label)}</span>
+        <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${escapeHtml(label)}${releaseNote(board.by, value)}</span>
         <span class="mono muted small" data-count-column="${escapeHtml(value)}">${count((card) => valueOf(card, board.by) === value)}</span>
         ${canWrite ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
       </div>`;
@@ -242,7 +265,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   if (board.by === "none") {
     grid = `<div class="board-free">${cell("", "")}</div>`;
   } else if (board.then === "none") {
-    const extra = canWrite && !board.hideEmpty && isFreeDimension(board.by) ? `<div class="board-column board-ghost">${addValueForm(viewer, base, board.by, back, "column")}</div>` : "";
+    const extra = canWrite && !board.hideEmpty && isFreeDimension(board.by) ? `<div class="board-column board-ghost">${addValueForm(viewer, base, board.by, back, "column", data.nextRelease)}</div>` : "";
     grid = `<div class="board-columns">${columns
       .map((value) => `<section class="board-column" aria-label="${escapeHtml(valueLabel(board.by, value))}">${head(value)}${cell(value, "")}</section>`)
       .join("")}${extra}</div>`;
@@ -253,7 +276,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         const label = valueLabel(board.then, rowValue);
         return `<div class="board-row" role="group" aria-label="${escapeHtml(label)}">
             <div class="board-row-head">
-              <span class="board-head-label${rowValue ? "" : " muted"}">${escapeHtml(label)}</span>
+              <span class="board-head-label${rowValue ? "" : " muted"}"${titleOf(board.then, rowValue)}>${escapeHtml(label)}${releaseNote(board.then, rowValue)}</span>
               <span class="mono muted small" data-count-row="${escapeHtml(rowValue)}">${count((card) => valueOf(card, board.then) === rowValue)}</span>
             </div>
             ${columns.map((value) => cell(value, rowValue)).join("")}
@@ -262,11 +285,11 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
       .join("");
     const ghostRow =
       canWrite && !board.hideEmpty && isFreeDimension(board.then)
-        ? `<div class="board-row"><div class="board-row-head board-ghost">${addValueForm(viewer, base, board.then, back, "row")}</div></div>`
+        ? `<div class="board-row"><div class="board-row-head board-ghost">${addValueForm(viewer, base, board.then, back, "row", data.nextRelease)}</div></div>`
         : "";
     grid = `<div class="board-grid">
         <div class="board-row board-row-heads"><div class="board-row-head"></div>${columns.map(head).join("")}${
-          ghostColumn ? `<div class="board-ghost">${addValueForm(viewer, base, board.by as FreeDimension, back, "column")}</div>` : ""
+          ghostColumn ? `<div class="board-ghost">${addValueForm(viewer, base, board.by as FreeDimension, back, "column", data.nextRelease)}</div>` : ""
         }</div>
         ${rowHtml}
         ${ghostRow}
@@ -287,6 +310,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         ${canWrite ? `<a class="button" href="${escapeHtml(base)}/cards/new">New card</a>` : ""}
       </div>
       ${notice(data.notice, "ok")}
+      ${notice(data.failure, "error")}
       ${filterBar(base, board, known)}
       <p class="board-status muted" data-board-status role="status" aria-live="polite"></p>
       <div class="board-scroll">

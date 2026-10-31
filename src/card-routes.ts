@@ -1,4 +1,5 @@
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { knownValues, nextVersion, planningProblem } from "./card-releases";
 import { cardStories } from "./card-stories";
 import {
   addValue,
@@ -77,8 +78,10 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
     cardSpends(env.DB, project.repo),
     workingCards(env.DB, project.repo),
   ]);
-  const known = await dimensionValues(env.DB, project.repo, cards);
+  const { known, releases } = await knownValues(env, project, cards);
   const notice = url.searchParams.get("notice");
+  // A release that could not be planned: why, worked out again.
+  const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
   return html(
     boardPage(viewer, view, {
       cards: filterCards(cards, board.filters),
@@ -89,6 +92,9 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       spends,
       working,
       notice: notice ? BOARD_NOTICES[notice] : undefined,
+      failure: refused ? (planningProblem(project, refused, [...releases.values()]) ?? undefined) : undefined,
+      releases,
+      nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
     }),
     { cookies },
   );
@@ -106,15 +112,18 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   if (action === "add_value") {
     const dimension = form.get("dimension");
     const value = cleanValue(form.get("value"));
+    const back = backTo(project, form);
+    const then = (query: string) => redirect(`${back}${back.includes("?") ? "&" : "?"}${query}`);
     if (isFreeDimension(dimension) && value) {
       const cards = await listCards(env.DB, project.repo);
-      const known = await dimensionValues(env.DB, project.repo, cards);
-      if (!known[dimension].some((existing) => existing.toLowerCase() === value.toLowerCase())) {
-        await addValue(env.DB, project.repo, dimension, value, viewer.login);
-      }
+      const { known, releases } = await knownValues(env, project, cards);
+      if (known[dimension].some((existing) => existing.toLowerCase() === value.toLowerCase())) return then("notice=added");
+      // A release planned ahead follows the project's numbering.
+      const problem = dimension === "release" ? planningProblem(project, value, [...releases.values()]) : null;
+      if (problem) return then(`failure=release&value=${encodeURIComponent(value)}`);
+      await addValue(env.DB, project.repo, dimension, value, viewer.login);
     }
-    const back = backTo(project, form);
-    return redirect(`${back}${back.includes("?") ? "&" : "?"}notice=added`);
+    return then("notice=added");
   }
   if (action !== "move") return json({ error: "Unknown action." }, { status: 400 });
 
@@ -163,7 +172,7 @@ export async function showCardForm(request: Request, env: Env, viewer: Viewer, p
   const card = id ? await findCard(env.DB, project.repo, id) : null;
   if (id && !card) return notFound(viewer, "There is no such card in this project.");
   const [cards, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
-  const known = await dimensionValues(env.DB, project.repo, cards);
+  const { known } = await knownValues(env, project, cards);
   const input = card ? { title: card.title, body: card.body, tags: card } : emptyInput(new URL(request.url).searchParams);
   return html(cardFormPage(viewer, view, { card, input, known }), { cookies });
 }
