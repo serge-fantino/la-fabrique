@@ -2,7 +2,7 @@ import { can } from "./rights";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
-import { githubJson, githubPost, installationToken } from "./github-app";
+import { dispatchRefusal, githubJson, githubPost, installationToken } from "./github-app";
 import { productionBranch, type Project } from "./projects";
 import { applyIssueEvent, type RestIssue } from "./stories";
 import { wordingFor } from "./wording";
@@ -51,7 +51,7 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
     if (!response.ok) {
       return {
         ok: false,
-        message: `GitHub refused to start ${file} (HTTP ${response.status}). The workflow must be on ${ref} and take the issue number as input.`,
+        message: dispatchRefusal(file, ref, response.status, "take the issue number as input"),
         status: 502,
       };
     }
