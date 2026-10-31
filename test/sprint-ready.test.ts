@@ -54,7 +54,7 @@ afterEach(() => fetchMock.assertNoPendingInterceptors());
 
 describe("A story's priority from its card's", () => {
   it("is the card's for a needed story, one level lower when nice to have", () => {
-    const rules = cycleRules(CONFIG);
+    const rules = cycleRules(CONFIG as Parameters<typeof cycleRules>[0]);
     expect(storyPriority(rules, "P1", false)).toBe("P1");
     expect(storyPriority(rules, "P1", true)).toBe("P2");
     expect(storyPriority(rules, "P3", true)).toBe("P3");

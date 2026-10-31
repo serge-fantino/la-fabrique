@@ -122,7 +122,7 @@ export function backlogPage(viewer: Viewer, project: Project, data: BacklogData)
     `${projectHeader(project, "backlog")}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
-      <p class="test-summary"><span><strong>${waiting.length} stor${waiting.length === 1 ? "y" : "ies"} not started</strong>, ${readyCount} ready${
+      <p class="test-summary"><span><strong>${waiting.length} stor${waiting.length === 1 ? "y" : "ies"} not started</strong>, ${readyCount} ready (<a href="${escapeHtml(projectUrl(project.repo))}/setup#lifecycle">Definition of Ready</a>)${
         counts ? ` · ${counts}` : ""
       }.</span>${data.fetchedAt ? ` <span class="muted small">From GitHub, read ${formatDate(data.fetchedAt)}.</span>` : ""}</p>
       ${

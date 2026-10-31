@@ -77,7 +77,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : "",
         ].join("")
       : "";
-    return `<br /><span class="muted small">Not ready: ${escapeHtml(story.missing.join(", "))}</span>${fixes ? ` <span class="sprint-fixes">${fixes}</span>` : ""}`;
+    return `<br /><span class="muted small">Not ready: ${escapeHtml(story.missing.join(", "))} (<a href="${escapeHtml(base)}/setup#lifecycle">Definition of Ready</a>)</span>${fixes ? ` <span class="sprint-fixes">${fixes}</span>` : ""}`;
   };
   const storyRow = (number: number, card: number, index: number, count: number, controls: boolean, launchable: boolean) => {
     const story = data.stories.get(number);
@@ -163,7 +163,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             "Launch the next story",
             "claude",
           )}<p class="muted small">At most ${data.claude.cap} Claude run${data.claude.cap === 1 ? "" : "s"} at once on this project.</p></div>`
-        : `<p class="muted">No story ready for Claude: a story is ready once it meets the project's Definition of Ready (<a href="${escapeHtml(base)}/backlog?group=card">Backlog</a> says what is missing).</p>`;
+        : `<p class="muted">No story ready for Claude: a story is ready once it meets the project's <a href="${escapeHtml(base)}/setup#lifecycle">Definition of Ready</a>; each story below says what it lacks.</p>`;
 
   const lastLine = data.last
     ? data.last.endReason === "stopped"

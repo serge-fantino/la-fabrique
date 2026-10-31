@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.63",
+    "date": "2026-10-31",
+    "heure": "13:49",
+    "titre": "Claude's setup explained, and the Definition of Ready one click away",
+    "changements": [
+      "Setup explains the Claude workflow step by step: the workflow file and its examples, the two ways to give Claude its key (a subscription token or an API key), the token that lets its pull request run the CI, and the cap.",
+      "The sprint and the backlog link to the project's Definition of Ready, changed from Setup (Story lifecycle) as a pull request on the project; a story made from a card is said to meet the epic check."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.62",
     "date": "2026-10-31",
     "heure": "13:44",

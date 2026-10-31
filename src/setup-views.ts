@@ -80,7 +80,7 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
   cycle: {
     title: "Definition of Ready and priorities",
     why: "Optional. Each story's stage (Backlog, Ready, In development, On int, In production) depends on it, and the backlog is sorted by priority.",
-    how: `<p>List the checks a story must pass to be <em>Ready</em> (<code>criteres</code>: acceptance criteria under an <em>Acceptance criteria</em> heading; <code>epique</code>: a sub-issue of an epic; <code>priorite</code>: a priority label; <code>etiquette_prete</code>: the circuit's ready label), and the priority labels, highest first. ${guide("cycle-dune-story", "The lifecycle")}.</p>
+    how: `<p>List the checks a story must pass to be <em>Ready</em> (<code>criteres</code>: acceptance criteria under an <em>Acceptance criteria</em> heading; <code>epique</code>: a sub-issue of an epic, or made from a card; <code>priorite</code>: a priority label; <code>etiquette_prete</code>: the circuit's ready label, set by <em>Mark ready</em> in the sprint), and the priority labels, highest first. Change them below, in <a href="#lifecycle">Story lifecycle</a>. ${guide("cycle-dune-story", "The lifecycle")}.</p>
       ${code(`"cycle": {
   "pret": ["criteres", "epique", "priorite"],
   "priorites": ["P1", "P2", "P3"]
@@ -94,10 +94,21 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
   },
   claude_workflow: {
     title: "Claude workflow",
-    why: "Optional. Tech leads and super admins launch Claude on a ready story from the Backlog; the project's own workflow runs it, with its own key.",
-    how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>issue</code> (the story's number) and <code>par</code> (who launched it). It runs Claude Code on the issue, on a working branch, and opens a pull request; the secrets (<code>CLAUDE_CODE_OAUTH_TOKEN</code> or <code>ANTHROPIC_API_KEY</code>) stay in the project. <code>claude.plafond</code> caps the runs at once (2 by default). <a href="/guide/exemples/claude.yml">The épicerie's, as an example</a>.</p>
+    why: "Optional. Tech leads and super admins launch Claude Code on a ready story, from the sprint (Launch the next story) or the Backlog; the project's own workflow runs it, with its own key.",
+    how: `<ol>
+        <li><strong>The workflow</strong>, in <code>.github/workflows/</code> on the production branch: started by <code>workflow_dispatch</code> with inputs <code>issue</code> (the story's number) and <code>par</code> (who launched it). It runs Claude Code on the issue, on a working branch, and opens a pull request; it never pushes to production. Start from an example: <a href="/guide/exemples/claude.yml">the épicerie's</a> (pull request to <code>integration</code>), or La Fabrique's own <code>.github/workflows/claude.yml</code> (no integration branch: pull request to <code>main</code>).</li>
+        <li><strong>Claude's key</strong>, a repository secret (Settings → Secrets and variables → Actions), one of the two:
+          <ul>
+            <li><code>CLAUDE_CODE_OAUTH_TOKEN</code>: a Claude subscription (Pro or Max); create it with <code>claude setup-token</code> in a terminal. The runs count in the subscription's usage.</li>
+            <li><code>ANTHROPIC_API_KEY</code>: an API key from the Anthropic Console; the runs are billed to that account. Not La Fabrique's own key: the project's.</li>
+          </ul>
+          The workflow uses whichever is there.</li>
+        <li><strong><code>FABRIQUE_TOKEN</code></strong>, another repository secret: a fine-grained personal access token (GitHub → Settings → Developer settings → Fine-grained tokens), on this repository only, with <em>Contents</em>, <em>Pull requests</em> and <em>Issues</em> in read and write. Claude pushes its branch and opens its pull request with it, so that the CI runs on them (the workflow's <code>GITHUB_TOKEN</code> would not start it).</li>
+        <li><strong>Declare it</strong> in <code>.fabrique.json</code>; <code>claude.plafond</code> caps the runs at once (2 by default, 1 to 10):</li>
+      </ol>
       ${code(`"workflows": { "claude": "claude.yml" },
-"claude": { "plafond": 2 }`)}`,
+"claude": { "plafond": 2 }`)}
+      <p>A story is launched only once <em>Ready</em> (<a href="#lifecycle">Definition of Ready</a>). Without the secrets, the run stops at its first step and says which is missing.</p>`,
   },
   app: {
     title: "Connected app (defect reports)",
@@ -127,7 +138,7 @@ const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "claude
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",
-  epique: "Attached to an epic, as a sub-issue",
+  epique: "Attached to an epic (a sub-issue), or made from a card",
   priorite: "Has a priority label",
   etiquette_prete: "Carries the circuit's ready label (demandes.etiquettes.prete)",
 };
