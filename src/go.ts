@@ -1,11 +1,13 @@
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
-import { dispatchRefusal, githubPost, installationToken } from "./github-app";
+import { dispatchRefusal, githubFetch, githubPatch, githubPost, installationToken } from "./github-app";
 import { isEpic } from "./lifecycle";
 import { productionChanged, type ProductionStatus } from "./production";
 import { productionBranch, type Project } from "./projects";
-import type { Story } from "./stories";
-import type { StoryChecks } from "./validation";
+import { applyIssueEvent, type RestIssue, type Story } from "./stories";
+import { storyChecks, type StoryChecks } from "./validation";
+import type { RestWorkflowRun } from "./claude";
+import { wordingFor } from "./wording";
 
 // What the go would ship: the stories on int, and which are not validated.
 export function goSummary(
@@ -99,4 +101,46 @@ export async function lastGo(db: D1Database, repo: string): Promise<LastGo | nul
     version: typeof details["version"] === "string" ? details["version"] : null,
     reason: typeof details["reason"] === "string" ? details["reason"] : null,
   };
+}
+
+// The promotion workflow ended well (webhook workflow_run): the stories of
+// the last go that were validated on int are in production, so done; their
+// issues are closed, with a word and in the log. A story sent anyway, not
+// validated, stays open: To validate.
+export async function promotionRunEvent(env: Env, project: Project, action: string, run: RestWorkflowRun): Promise<number[]> {
+  const file = project.check?.config?.workflows?.["promouvoir"];
+  if (typeof file !== "string" || action !== "completed" || run.conclusion !== "success" || !run.path?.endsWith(`/${file}`)) return [];
+  const row = await env.DB.prepare("SELECT id, occurred_at, details FROM activity_log WHERE repo = ? AND action = 'go_given' ORDER BY id DESC LIMIT 1")
+    .bind(project.repo)
+    .first<{ id: number; occurred_at: string; details: string | null }>();
+  if (!row) return [];
+  // Once per go.
+  const done = await env.DB.prepare("SELECT 1 AS found FROM activity_log WHERE repo = ? AND action = 'stories_shipped' AND id > ?").bind(project.repo, row.id).first();
+  if (done) return [];
+  const details = row.details ? (JSON.parse(row.details) as Record<string, unknown>) : {};
+  const version = typeof details["version"] === "string" ? details["version"] : null;
+  const stories = Array.isArray(details["stories"]) ? details["stories"].filter((n): n is number => typeof n === "number") : [];
+  const checks = await storyChecks(env.DB, project.repo);
+  const validated = stories.filter((number) => checks.get(number)?.validated);
+  const closed: number[] = [];
+  const words = wordingFor(project);
+  const token = await installationToken(env, project.installationId);
+  for (const number of validated) {
+    const response = await githubFetch(token, `/repos/${project.repo}/issues/${number}`);
+    if (!response.ok) continue;
+    const issue = (await response.json()) as RestIssue;
+    if (issue.state === "closed") continue;
+    await githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, { body: words.shipped(version) });
+    const patched = await githubPatch(token, `/repos/${project.repo}/issues/${number}`, { state: "closed", state_reason: "completed" });
+    if (!patched.ok) continue;
+    await applyIssueEvent(env, project.repo, "closed", { ...issue, state: "closed", closed_at: new Date().toISOString() });
+    closed.push(number);
+  }
+  await activityStatement(env.DB, {
+    actor: "github",
+    action: "stories_shipped",
+    repo: project.repo,
+    details: { version, closed, not_validated: stories.filter((number) => !validated.includes(number)), run: run.html_url ?? null },
+  }).run();
+  return closed;
 }

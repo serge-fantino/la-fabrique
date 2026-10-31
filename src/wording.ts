@@ -8,6 +8,7 @@ const WORDS = {
     validated: (login: string, version: string | null) =>
       `Validé sur int par @${login}${version ? ` (version ${version})` : ""} : tous les critères d'acceptation sont vérifiés.`,
     validatedInProduction: (login: string) => `Validé en production par @${login} : tous les critères d'acceptation sont vérifiés. La demande est terminée.`,
+    shipped: (version: string | null) => `En production${version ? ` en version ${version}` : ""}, après sa validation sur int : la demande est terminée (La Fabrique extraordinaire).`,
     defectIntro: (story: number) => `Défaut trouvé sur int en testant #${story}.`,
     did: "Ce que j'ai fait",
     saw: "Ce que j'ai vu",
@@ -48,6 +49,7 @@ const WORDS = {
     validated: (login: string, version: string | null) =>
       `Validated on int by @${login}${version ? ` (version ${version})` : ""}: every acceptance criterion checked.`,
     validatedInProduction: (login: string) => `Validated in production by @${login}: every acceptance criterion checked. The story is done.`,
+    shipped: (version: string | null) => `In production${version ? ` in version ${version}` : ""}, after its validation on int: the story is done (La Fabrique extraordinaire).`,
     defectIntro: (story: number) => `Defect found on int while testing #${story}.`,
     did: "What I did",
     saw: "What I saw",
