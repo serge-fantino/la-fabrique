@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.66",
+    "date": "2026-10-31",
+    "heure": "16:57",
+    "titre": "The sprint follows Claude's work and its pull requests",
+    "changements": [
+      "The sprint updates by itself when Claude starts or ends a run, or when a pull request moves on GitHub; the end of each run is written in the log.",
+      "Each story of the sprint shows its pull requests (open, draft, merged) and who was asked to review them; Ask for a review asks a tech lead or super admin, on GitHub, in your name."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.65",
     "date": "2026-10-31",
     "heure": "15:38",

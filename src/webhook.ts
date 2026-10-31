@@ -1,3 +1,5 @@
+import { claudeRunEvent, type RestWorkflowRun } from "./claude";
+import { sprintLiveFor } from "./live";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
 import { json } from "./http";
@@ -31,6 +33,7 @@ interface Payload {
   repository?: { full_name?: string; default_branch?: string };
   head_commit?: { timestamp?: string } | null;
   issue?: RestIssue;
+  workflow_run?: RestWorkflowRun;
 }
 
 const STORY_EVENTS = new Set(["sub_issues", "pull_request", "create", "delete"]);
@@ -58,11 +61,17 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   }
   if (STORY_EVENTS.has(event)) {
     await storiesChanged(env, project.repo);
+    // A pull request moved: the open sprint pages show it.
+    if (event === "pull_request") {
+      await sprintLiveFor(env, project.repo)?.notify({ kind: "pull_request", issue: null, status: payload.action ?? "", conclusion: null, url: "", at: new Date().toISOString() });
+    }
     await inDevChanged(env, project.repo);
     if (event === "create" || event === "delete") await branchesChanged(env, project.repo);
     return json({ refresh: "stories" });
   }
   if (event === "workflow_run") {
+    // A run of the Claude workflow: the sprint follows it.
+    if (payload.workflow_run) await claudeRunEvent(env, project, payload.action ?? "", payload.workflow_run);
     await productionChanged(env, project.repo);
     await deliveryChanged(env, project.repo);
     await inDevChanged(env, project.repo);

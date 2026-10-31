@@ -1,4 +1,4 @@
-import { env, fetchMock } from "cloudflare:test";
+import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Story } from "../src/stories";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
@@ -118,5 +118,80 @@ describe("Claude Code from the sprint", () => {
     const refused = await post(`/projects/${REPO}/sprint`, { csrf, action: "launch", story: "12" }, cookie);
     expect(refused.status).toBe(409);
     expect(await refused.text()).toContain("Claude already runs 1 time on this project (cap 1)");
+  });
+});
+
+async function webhook(event: string, payload: unknown): Promise<Response> {
+  const body = JSON.stringify(payload);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("test-webhook-secret"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)));
+  return SELF.fetch("https://la-fabrique.test/api/github/webhook", {
+    method: "POST",
+    headers: { "x-github-event": event, "x-hub-signature-256": `sha256=${[...mac].map((b) => b.toString(16).padStart(2, "0")).join("")}` },
+    body,
+  });
+}
+
+describe("Claude's runs, as GitHub reports them", () => {
+  it("reads the runs again, logs the end of a run, and leaves other workflows alone", async () => {
+    await seed();
+    await env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'claude_runs', '[]', ?)").bind(REPO, new Date().toISOString()).run();
+    const run = (path: string, title: string) => ({
+      action: "completed",
+      repository: { full_name: REPO },
+      workflow_run: { path, display_title: title, status: "completed", conclusion: "failure", html_url: "https://github.com/run/2", updated_at: "2026-10-31T15:00:00Z" },
+    });
+
+    // Another workflow: the Claude runs are not touched.
+    expect((await webhook("workflow_run", run(".github/workflows/ci.yml", "CI"))).status).toBe(200);
+    expect(await env.DB.prepare("SELECT kind FROM snapshots WHERE repo = ? AND kind = 'claude_runs'").bind(REPO).first()).toEqual({ kind: "claude_runs" });
+
+    expect((await webhook("workflow_run", run(".github/workflows/claude.yml", "Claude #12"))).status).toBe(200);
+    expect(await env.DB.prepare("SELECT kind FROM snapshots WHERE repo = ? AND kind = 'claude_runs'").bind(REPO).first()).toBeNull();
+    const logged = await env.DB.prepare("SELECT actor, issue_number, details FROM activity_log WHERE action = 'claude_run_finished'").first<{ actor: string; issue_number: number; details: string }>();
+    expect(logged).toMatchObject({ actor: "github", issue_number: 12 });
+    expect(JSON.parse(logged?.details ?? "{}")).toEqual({ conclusion: "failure", url: "https://github.com/run/2" });
+  });
+});
+
+describe("The pull requests of the sprint's stories", () => {
+  it("shows each story's pull request and the reviews asked, and asks one in the person's name", async () => {
+    await seed();
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(
+        JSON.stringify([
+          story(1, "Epic", { parent: null, subTotal: 3 }),
+          story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }], branches: ["claude/12-ready"] }),
+          story(13, "Bare one", { criteria: [] }),
+        ]),
+        REPO,
+      )
+      .run();
+    await grantRole("lead", "tech_lead");
+    const { cookie, csrf } = await signIn("lead");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30` })
+      .reply(200, JSON.stringify({ number: 30, title: "Story #12", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, draft: false, user: { login: "claude[bot]" }, requested_reviewers: [{ login: "admin-two" }] }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(page).toMatch(/PR #30 open<\/a> <span class="muted small">review asked from @admin-two<\/span>/);
+    // Who can be asked: the tech leads and super admins, not one already asked.
+    expect(page).toContain('<option value="lead">@lead</option>');
+    expect(page).not.toContain('<option value="admin-two">');
+
+    let asked: unknown = null;
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/pulls/30/requested_reviewers` })
+      .reply(201, (options) => {
+        asked = JSON.parse(String(options.body));
+        return "{}";
+      });
+    const response = await post(`/projects/${REPO}/sprint`, { csrf, action: "review", pull: "30", reviewer: "lead" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=review`);
+    expect(asked).toEqual({ reviewers: ["lead"] });
+    expect((await logActions()).map((entry) => entry.action)).toContain("review_requested");
+    // Only someone La Fabrique knows as a reviewer.
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "review", pull: "30", reviewer: "stranger" }, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint`);
   });
 });

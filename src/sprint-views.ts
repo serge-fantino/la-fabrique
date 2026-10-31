@@ -3,6 +3,7 @@ import { cardGroupHead, isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { cardRef } from "./card-views";
 import { isRunning, type ClaudeRun } from "./claude";
+import type { PullDetail } from "./sprint-pulls";
 import type { Card } from "./cards";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -26,6 +27,10 @@ export interface SprintData {
   links: StoryCards;
   // Start, close, order, mark nice to have (Product Engineer and above).
   canOrder: boolean;
+  // The sprint stories' pull requests, as GitHub has them, and who can be
+  // asked to review one.
+  pulls: Map<number, PullDetail>;
+  reviewers: string[];
   // The project's priorities (highest first) and whether its Definition of
   // Ready asks for the ready label (then "Mark ready" sets it).
   priorities: string[];
@@ -103,6 +108,36 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       : "";
     return `<br /><span class="muted small">Not ready: ${escapeHtml(story.missing.join(", "))} (<a href="${escapeHtml(base)}/setup#lifecycle">Definition of Ready</a>)</span>${fixes ? ` <span class="sprint-fixes">${fixes}</span>` : ""}`;
   };
+  // A story's pull requests: open first; what each waits for; a review to ask.
+  const pullsOf = (number: number, controls: boolean) => {
+    const pulls = [...(data.stories.get(number)?.pulls ?? [])].sort((a, b) => (a.state === "open" ? -1 : 0) - (b.state === "open" ? -1 : 0) || b.number - a.number);
+    return pulls
+      .map((pull) => {
+        const detail = data.pulls.get(pull.number);
+        const state = detail?.draft && pull.state === "open" ? "draft" : pull.state;
+        const tone = state === "merged" ? "ok" : state === "open" ? "warn" : "";
+        const waiting = detail?.reviewers.length
+          ? ` <span class="muted small">review asked from ${detail.reviewers.map((login) => `@${escapeHtml(login)}`).join(", ")}</span>`
+          : pull.state === "open"
+            ? ` <span class="muted small">no review asked</span>`
+            : "";
+        const ask =
+          controls && pull.state === "open" && data.reviewers.length
+            ? `<form method="post" action="${escapeHtml(action)}" class="inline sprint-review">${csrfField(viewer)}
+                <input type="hidden" name="action" value="review" />
+                <input type="hidden" name="pull" value="${pull.number}" />
+                <label class="visually-hidden" for="reviewer-${pull.number}">Reviewer of pull request #${pull.number}</label>
+                <select id="reviewer-${pull.number}" name="reviewer">${data.reviewers
+                  .filter((login) => login !== detail?.author && !detail?.reviewers.includes(login))
+                  .map((login) => `<option value="${escapeHtml(login)}">@${escapeHtml(login)}</option>`)
+                  .join("")}</select>
+                <button type="submit" class="button quiet small">Ask for a review</button>
+              </form>`
+            : "";
+        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${waiting}${ask}</span>`;
+      })
+      .join("");
+  };
   const storyRow = (number: number, card: number, index: number, count: number, controls: boolean, launchable: boolean) => {
     const story = data.stories.get(number);
     const others = (data.links.byStory.get(number) ?? []).filter((id) => id !== card);
@@ -114,7 +149,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       : "";
     return `<tr id="story-${card}-${number}"${nice ? ' class="nice"' : ""}>
         <td class="mono number"><a href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a></td>
-        <td>${story ? escapeHtml(story.title) : `<span class="muted">not read yet</span>`}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}</td>
+        <td>${story ? escapeHtml(story.title) : `<span class="muted">not read yet</span>`}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}${
+          story?.pulls.length ? `<br />${pullsOf(number, controls)}` : ""
+        }</td>
         <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${readiness(number, controls)}</td>
         ${
           data.priorities.length
@@ -178,8 +215,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   const nextStory = data.claude.next !== null ? data.stories.get(data.claude.next) : undefined;
   // Claude's runs on GitHub: those in progress, and where to see them all.
   const running = data.claude.runs.filter(isRunning);
+  // With the script, the page follows Claude's runs as GitHub reports them.
   const runsLine = data.claude.workflow
-    ? `<p class="sprint-runs">${
+    ? `<p class="sprint-runs" data-sprint-live="${escapeHtml(action)}/live">${
         running.length
           ? `Claude is working: ${running.map((run) => `${runPill(run)}${run.issue ? ` <span class="mono">#${run.issue}</span>` : ""}`).join(" · ")}`
           : `<span class="muted">Claude is not working now.</span>`
