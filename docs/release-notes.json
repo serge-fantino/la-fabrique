@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.67",
+    "date": "2026-10-31",
+    "heure": "16:58",
+    "titre": "What's new in La Fabrique",
+    "changements": [
+      "A What's new page lists La Fabrique's own releases, newest first: date and time, what changed, and the stories each one brought (linked to GitHub when La Fabrique is one of its own projects).",
+      "The (i) next to the name leads to it, at the version running."
+    ],
+    "stories": [],
+    "liens": null
+  },
+  {
     "version": "0.66",
     "date": "2026-10-31",
     "heure": "16:57",

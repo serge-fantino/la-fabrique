@@ -3,6 +3,7 @@ import type { ActivityRow } from "./activity-log";
 import { assetUrl } from "./assets";
 import { buildInfo } from "./build";
 import { logoMark } from "./logo";
+import { releaseAnchor, WHATS_NEW_PATH } from "./urls";
 import { availablePerspectives, PERSPECTIVE_LABELS, type Perspective } from "./perspectives";
 
 export interface Viewer {
@@ -98,7 +99,7 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
   <body>
     <div class="loading" data-loading aria-hidden="true"><i></i></div>
     <header class="bar">
-      <span class="brand-line"><a class="brand" href="/" aria-label="La Fabrique extraordinaire">${logoMark("brand-mark")}<span class="brand-words" aria-hidden="true"><span class="brand-top">La Fabrique</span><span class="brand-bottom"><span class="strike">extra</span>ordinaire</span></span></a>${versionInfo()}</span>
+      <span class="brand-line"><a class="brand" href="/" aria-label="La Fabrique extraordinaire">${logoMark("brand-mark")}<span class="brand-words" aria-hidden="true"><span class="brand-top">La Fabrique</span><span class="brand-bottom"><span class="strike">extra</span>ordinaire</span></span></a>${versionInfo(viewer)}</span>
       ${nav}
     </header>
     ${subbar}
@@ -111,7 +112,7 @@ ${externalLinks(body)}
 
 // The (i) next to the name: the version running, when it was released
 // (Paris time) and its commit; Update reloads when a newer one is out.
-function versionInfo(): string {
+function versionInfo(viewer?: Viewer): string {
   const info = buildInfo();
   const short = info.commit.slice(0, 7);
   return `<span class="version-info">
@@ -120,7 +121,10 @@ function versionInfo(): string {
         <strong>${info.version ? `Version <span class="mono">${escapeHtml(info.version)}</span>` : "Version unknown"}</strong>
         ${info.date ? `<span>Released <span class="mono">${escapeHtml(info.date)}${info.time ? ` ${escapeHtml(info.time)}` : ""}</span> (Paris)</span>` : ""}
         <span>Commit <code>${escapeHtml(short)}</code></span>
-        <a class="button quiet small" href="" data-update data-commit="${escapeHtml(info.commit)}"><span aria-hidden="true">🔄</span> Update</a>
+        <span class="version-actions">
+          ${viewer ? `<a class="button quiet small" href="${WHATS_NEW_PATH}${info.version ? `#${releaseAnchor(info.version)}` : ""}">What's new</a>` : ""}
+          <a class="button quiet small" href="" data-update data-commit="${escapeHtml(info.commit)}"><span aria-hidden="true">🔄</span> Update</a>
+        </span>
       </span>
     </span>`;
 }
