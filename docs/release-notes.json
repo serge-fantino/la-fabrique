@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.72",
+    "date": "2026-10-31",
+    "heure": "18:30",
+    "titre": "Product Engineers can give the go to production",
+    "changements": [
+      "Product Engineers can now give the go that pushes the version on integration to production, like the super admin; tech leads and testers cannot (the page hides it and the request is refused). Merging a pull request into the production branch follows the same rule."
+    ],
+    "stories": [101],
+    "liens": null
+  },
+  {
     "version": "0.71",
     "date": "2026-10-31",
     "heure": "18:01",

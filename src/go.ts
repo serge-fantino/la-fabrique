@@ -26,7 +26,7 @@ export function goSummary(
 
 export type GoOutcome = { ok: true } | { ok: false; message: string; status: 409 | 422 | 502 };
 
-// Only the super admin gives the go; La Fabrique dispatches the project's
+// Only a Product Engineer or a super admin gives the go; La Fabrique dispatches the project's
 // own promotion workflow and keeps who gave it, when, and why if anyway.
 export async function giveGo(
   env: Env,

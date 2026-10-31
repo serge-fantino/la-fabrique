@@ -174,7 +174,7 @@ describe("Setup tab", () => {
     ]);
     const { cookie } = await signIn("admin-one");
     const page = await (await get(`/projects/${REPO}/setup`, cookie)).text();
-    expect(page).toContain("<code>promouvoir.yml</code>: the super admin gives the go from Production.");
+    expect(page).toContain("<code>promouvoir.yml</code>: Product Engineers and super admins give the go from Production.");
     expect(page).toContain("No <code>workflows.claude</code>: Claude is not launched from La Fabrique.");
     expect(page).toContain('href="/guide/exemples/claude.yml"');
     const example = await get("/guide/exemples/claude.yml", cookie);

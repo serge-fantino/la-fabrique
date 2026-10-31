@@ -201,7 +201,7 @@ export async function showProduction(
   const go = view.ref
     ? undefined
     : {
-        canGo: viewer.role === "super_admin",
+        canGo: can(viewer.role, "promote"),
         declared: typeof project.check?.config?.workflows?.["promouvoir"] === "string",
         last,
         checks,
@@ -212,10 +212,10 @@ export async function showProduction(
   return html(productionPage(viewer, view, production, go), { cookies, status: failed?.status ?? 200 });
 }
 
-// The go: only the super admin; the project's workflow does the promotion.
+// The go: a Product Engineer or a super admin; the project's workflow does the promotion.
 export async function goToProduction(request: Request, form: FormData, env: Env, viewer: Viewer, repo: string): Promise<Response> {
-  if (viewer.role !== "super_admin") {
-    return html(messagePage("Not allowed", "Only a super admin gives the go to production.", viewer), { status: 403 });
+  if (!can(viewer.role, "promote")) {
+    return html(messagePage("Not allowed", "Only a Product Engineer or a super admin gives the go to production.", viewer), { status: 403 });
   }
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);

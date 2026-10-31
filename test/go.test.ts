@@ -84,13 +84,29 @@ describe("The go", () => {
     expect(page).toContain("1 not validated on int: why give the go anyway?");
   });
 
-  it("is for the super admin only", async () => {
+  it("is refused to tech leads and testers, who do not see it", async () => {
     await seed();
-    await grantRole("lead", "tech_lead");
-    const { cookie, csrf } = await signIn("lead");
+    for (const [login, role] of [["lead", "tech_lead"], ["qa2", "tester"]] as const) {
+      await grantRole(login, role);
+      const { cookie, csrf } = await signIn(login);
+      const page = await (await get(`/projects/${REPO}/production`, cookie)).text();
+      expect(page).not.toContain("Give the go");
+      expect((await post(`/projects/${REPO}/production/go`, { csrf }, cookie)).status).toBe(403);
+    }
+  });
+
+  it("is open to a Product Engineer, who sees it and is not refused", async () => {
+    await seed();
+    await grantRole("pe", "product_engineer");
+    const github = fetchMock.get("https://api.github.com");
+    github
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/promouvoir.yml/dispatches` }).reply(204, "");
+    const { cookie, csrf } = await signIn("pe");
     const page = await (await get(`/projects/${REPO}/production`, cookie)).text();
-    expect(page).not.toContain("Give the go");
-    expect((await post(`/projects/${REPO}/production/go`, { csrf }, cookie)).status).toBe(403);
+    expect(page).toContain("Give the go");
+    expect((await post(`/projects/${REPO}/production/go`, { csrf }, cookie)).status).toBe(303);
   });
 
   it("dispatches the project's promotion workflow on the production branch and logs the go", async () => {

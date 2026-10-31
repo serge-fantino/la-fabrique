@@ -12,13 +12,19 @@ export type Action =
   | "request"
   // Launch Claude, review, change the project's setup.
   | "launch_claude"
-  // Go to production, roles, projects, apps.
-  | "go";
+  // Roles, projects, apps.
+  | "go"
+  // The go to production: a Product Engineer or a super admin, not a tech
+  // lead (a matrix, not the cumulative scale).
+  | "promote";
 
 const RANK: Record<Role, number> = { tester: 1, product_engineer: 2, tech_lead: 3, super_admin: 4 };
 
-const NEEDS: Record<Action, number> = { report_defect: 0, validate: 1, request: 2, launch_claude: 3, go: 4 };
+const NEEDS: Record<Action, number> = { report_defect: 0, validate: 1, request: 2, launch_claude: 3, go: 4, promote: 2 };
+
+const PROMOTERS: Role[] = ["product_engineer", "super_admin"];
 
 export function can(role: Role | null, action: Action): boolean {
+  if (action === "promote") return role !== null && PROMOTERS.includes(role);
   return (role ? RANK[role] : 0) >= NEEDS[action];
 }

@@ -88,7 +88,7 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
   },
   promotion: {
     title: "Promotion workflow (the go)",
-    why: "Optional. The super admin gives the go from the Production tab; the project's own workflow promotes, with its own secrets.",
+    why: "Optional. Product Engineers and super admins give the go from the Production tab; the project's own workflow promotes, with its own secrets.",
     how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>version</code> (the release to ship) and <code>par</code> (who gave the go). It promotes integration to production in the project's own way; its push must use a token that triggers the project's CI and deployment (the <code>GITHUB_TOKEN</code> does not). <a href="/guide/exemples/promouvoir.yml">The épicerie's, as an example</a>.</p>
       ${code(`"workflows": { "promouvoir": "promouvoir.yml" }`)}`,
   },

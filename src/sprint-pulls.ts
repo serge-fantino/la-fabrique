@@ -101,7 +101,7 @@ export async function requestReview(
 
 // Merging from La Fabrique: the project's own workflow (`workflows.fusionner`),
 // which numbers and dates the release notes at the merge, checks again and
-// merges. Into the production branch, it is a go: the super admin only;
+// merges. Into the production branch, it is a go: Product Engineer or super admin;
 // into another branch (integration), a tech lead.
 export function mergeWorkflow(project: Project): string | null {
   const file = project.check?.config?.workflows?.["fusionner"];
@@ -109,7 +109,7 @@ export function mergeWorkflow(project: Project): string | null {
 }
 
 export function canMerge(role: Role, project: Project, base: string | null): boolean {
-  return can(role, base !== null && base !== (productionBranch(project) ?? "main") ? "launch_claude" : "go");
+  return can(role, base !== null && base !== (productionBranch(project) ?? "main") ? "launch_claude" : "promote");
 }
 
 export async function mergePull(env: Env, project: Project, login: string, pull: number): Promise<{ ok: true } | { ok: false; message: string; status: number }> {
