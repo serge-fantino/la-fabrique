@@ -30,6 +30,8 @@ export interface SprintData {
   // The sprint stories' pull requests, as GitHub has them, and who can be
   // asked to review one.
   pulls: Map<number, PullDetail>;
+  // Merging through the project's workflow (workflows.fusionner), and who may.
+  merge?: { workflow: string | null; can: (base: string | null) => boolean };
   reviewers: string[];
   // The project's priorities (highest first) and whether its Definition of
   // Ready asks for the ready label (then "Mark ready" sets it).
@@ -145,10 +147,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           stale && controls && data.claude.canLaunch && data.claude.workflow && !running
             ? button({ action: "update", story: number, pull: pull.number }, `Bring pull request #${pull.number} up to date with Claude`, "Update with Claude", "quiet small claude")
             : "";
+        const mergeable = pull.state === "open" && !detail?.draft && detail && detail.mergeable !== "dirty" && !running;
+        const merge =
+          mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
+            ? button({ action: "merge", pull: pull.number }, `Merge pull request #${pull.number}`, "Merge", "small")
+            : "";
         const guessed = pull.guessed
           ? ` <span class="muted small" title="Only the pull request's text names this story: no linked branch, no closing reference, not its branch name.">guessed from its text</span>`
           : "";
-        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${update}${guessed}${waiting}${ask}</span>`;
+        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${update}${merge}${guessed}${waiting}${ask}</span>`;
       })
       .join("");
   };

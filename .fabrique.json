@@ -12,7 +12,8 @@
     "ci": "ci.yml",
     "migrations_production": "deploy.yml",
     "promouvoir": null,
-    "claude": "claude.yml"
+    "claude": "claude.yml",
+    "fusionner": "merge.yml"
   },
   "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
   "documentation": [

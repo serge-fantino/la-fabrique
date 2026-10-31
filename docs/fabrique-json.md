@@ -62,6 +62,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `workflows.deploiement_int`, `migrations_production` | Workflows suivis (état, dernier passage). |
 | `workflows.promouvoir` | Workflow `workflow_dispatch` que le « go » du super admin déclenche. `null` : pas de go depuis La Fabrique. |
 | `workflows.claude` | Workflow qui fait travailler Claude sur une demande (`workflow_dispatch` avec le numéro d'issue). `null` : pas de bouton « Lancer Claude ». |
+| `workflows.fusionner` | Workflow `workflow_dispatch` (entrées `pr` et `par`) que le bouton « Merge » d'une PR du sprint déclenche : il numérote et date les notes de version au moment de la fusion, relance les vérifications et fusionne. Vers la branche de production, c'est un go : super admin seulement ; vers une autre branche, tech lead. `null` ou absent : pas de bouton. |
 | `version.fichier`, `.forme` | Le fichier des notes de version, au format Fabrique (ci-dessous), et la forme des numéros (`v1.N`, `0.N`…). Il alimente Production (ce qui va sortir), Roadmap (calendrier) et Releases. |
 | `documentation[]` | Pages publiées dans La Fabrique : un fichier Markdown ou un dossier (tous ses `.md`), rendus depuis la branche de production. |
 | `demandes.etiquettes` | Étiquettes GitHub du circuit : demande écrite, prête pour Claude, à valider sur int. |

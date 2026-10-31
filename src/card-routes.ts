@@ -3,7 +3,7 @@ import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, p
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
-import { pullDetails, requestReview, reviewers } from "./sprint-pulls";
+import { canMerge, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude, updateWithClaude } from "./claude";
@@ -526,6 +526,17 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=updating&story=${number}&pull=${pull}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // Merged by the project's workflow, release notes numbered there.
+    if (action === "merge") {
+      const pull = Number(form.get("pull"));
+      if (!Number.isInteger(pull) || pull <= 0) return redirect(base);
+      const detail = (await pullDetails(env, project, [pull])).get(pull);
+      if (!detail || detail.state !== "open") return redirect(base);
+      if (!canMerge(viewer.role, project, detail.base)) return forbidden(viewer);
+      const outcome = await mergePull(env, project, viewer.login, pull);
+      if (outcome.ok) return redirect(`${base}?notice=merging&pull=${pull}`);
+      return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
     if (action === "start") {
       const outcome = await startSprint(env, project, viewer.login);
       return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
@@ -645,6 +656,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       canOrder: canWriteCards(viewer),
       pulls,
       reviewers: people,
+      merge: { workflow: mergeWorkflow(project), can: (base: string | null) => canMerge(viewer.role, project, base) },
       priorities: cycleRules(project.check?.config).priorities,
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,
       claude: {
@@ -659,7 +671,9 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       notice:
         params.get("notice") === "launched" && Number.isInteger(launched)
           ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.`
-          : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))
+          : params.get("notice") === "merging" && Number.isInteger(Number(params.get("pull")))
+            ? `Pull request #${Number(params.get("pull"))} is being merged by the project's workflow: it numbers and dates the release notes, checks again, then merges.`
+            : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))
             ? `Claude is bringing pull request #${Number(params.get("pull"))} up to date: it merges the base branch, resolves the conflicts and pushes to the same branch.`
             : SPRINT_NOTICES[params.get("notice") ?? ""],
       failure:
