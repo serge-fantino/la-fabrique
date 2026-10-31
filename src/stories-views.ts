@@ -25,7 +25,7 @@ function links(story: Story): string {
   return [...pulls, ...branches].join(" ");
 }
 
-const STAGE_TONES: Record<Stage, string> = { backlog: "", ready: "ok", in_dev: "warn", on_int: "warn", done: "ok" };
+const STAGE_TONES: Record<Stage, string> = { backlog: "", ready: "ok", in_dev: "warn", on_int: "warn", to_validate: "warn", done: "ok" };
 
 export function stagePill(stage: Stage): string {
   const label = STAGES.find((candidate) => candidate.id === stage)?.label ?? stage;

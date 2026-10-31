@@ -6,13 +6,16 @@ import { readSnapshot } from "./snapshots";
 import type { Story } from "./stories";
 
 // Where a story stands, computed from what GitHub says; never stored.
-export type Stage = "backlog" | "ready" | "in_dev" | "on_int" | "done";
+export type Stage = "backlog" | "ready" | "in_dev" | "on_int" | "to_validate" | "done";
 
 export const STAGES: { id: Stage; label: string }[] = [
   { id: "backlog", label: "Backlog" },
   { id: "ready", label: "Ready" },
   { id: "in_dev", label: "In development" },
   { id: "on_int", label: "On int" },
+  // Merged, still open: the story waits for its acceptance criteria to be
+  // checked (on a project without integration, in production).
+  { id: "to_validate", label: "To validate" },
   { id: "done", label: "In production" },
 ];
 
@@ -80,7 +83,9 @@ export function stageOf(story: Story, rules: CycleRules, onInt: Set<number>): St
   if (isEpic(story)) return null;
   if (onInt.has(story.number)) return "on_int";
   if (story.state === "closed") return "done";
-  if (story.branches.length > 0 || story.pullRequests.some((pull) => pull.state !== "closed")) return "in_dev";
+  if (story.pullRequests.some((pull) => pull.state === "open")) return "in_dev";
+  if (story.pullRequests.some((pull) => pull.state === "merged")) return "to_validate";
+  if (story.branches.length > 0) return "in_dev";
   return missingForReady(story, rules).length ? "backlog" : "ready";
 }
 

@@ -110,7 +110,7 @@ export function buildCard(project: Project, found: Snapshots, role: Role, now = 
   const stalled = inDev ? inDev.items.filter((item) => isStalled(item, now)).length : 0;
   const developing = new Set([...stages].filter(([, stage]) => stage === "in_dev").map(([number]) => number));
   for (const item of inDev?.items ?? []) {
-    for (const number of item.stories) if (stages.has(number) && stages.get(number) !== "done" && stages.get(number) !== "on_int") developing.add(number);
+    for (const number of item.stories) if (stages.has(number) && !["done", "on_int", "to_validate"].includes(stages.get(number) ?? "")) developing.add(number);
   }
   tiles.push({
     key: "in_dev",
