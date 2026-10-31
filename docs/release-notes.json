@@ -1,7 +1,8 @@
 [
   {
-    "version": "next",
+    "version": "0.78",
     "date": "2026-11-01",
+    "heure": "00:26",
     "titre": "One status for a card, from the spec to production",
     "changements": [
       "A card has one status. Draft, Shaping, To validate and Validated say where its spec stands; once Validated with stories, the status follows them by itself: Stories to prepare, Ready for dev, In sprint, In development, To test, In production, with its count (In development 1/3 developed) and, on hovering, every count (3 stories: 3 ready, 2 developed, 1 validated, 0 in production).",
@@ -12,8 +13,9 @@
     "liens": null
   },
   {
-    "version": "next",
+    "version": "0.77",
     "date": "2026-11-01",
+    "heure": "00:26",
     "titre": "Why a merge was refused",
     "changements": [
       "When the merge workflow refuses a pull request (conflicts with main and in which files, checks failing, not open, a draft), it says why: in a comment on the pull request, in the log, and in the sprint next to the pull request, with the run."
