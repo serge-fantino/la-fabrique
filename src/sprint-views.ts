@@ -25,6 +25,9 @@ export interface SprintData {
   links: StoryCards;
   // Start, close, order, mark nice to have (Product Engineer and above).
   canOrder: boolean;
+  // Launching Claude Code (la-fabrique#113): tech lead and above, through
+  // the project's own workflow; null when the project declares none.
+  claude: { canLaunch: boolean; workflow: string | null; cap: number; launches: Map<number, { by: string; at: string }>; next: number | null };
   notice?: string | undefined;
   failure?: string | undefined;
 }
@@ -44,7 +47,14 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
   const storiesOf = (card: number) => data.links.order.get(card) ?? [];
 
-  const storyRow = (number: number, card: number, index: number, count: number, controls: boolean) => {
+  const claudeCell = (number: number) => {
+    const story = data.stories.get(number);
+    const launched = data.claude.launches.get(number);
+    const last = launched ? `<span class="muted small">Claude launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : "";
+    if (!data.claude.canLaunch || !data.claude.workflow || story?.stage !== "ready") return last;
+    return `${button({ action: "launch", story: number }, `Launch Claude on #${number}`, launched ? "Launch again" : "Launch Claude", "quiet small claude")}${last}`;
+  };
+  const storyRow = (number: number, card: number, index: number, count: number, controls: boolean, launchable: boolean) => {
     const story = data.stories.get(number);
     const others = (data.links.byStory.get(number) ?? []).filter((id) => id !== card);
     const nice = isNice(data.links, card, number);
@@ -57,13 +67,16 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <td class="mono number"><a href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a></td>
         <td>${story ? escapeHtml(story.title) : `<span class="muted">not read yet</span>`}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}</td>
         <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}</td>
+        ${launchable ? `<td class="sprint-claude">${claudeCell(number)}</td>` : ""}
         ${cell}
       </tr>`;
   };
 
   // Cards with their stories; with controls, in an order one can change.
-  const cardsSection = (cards: Card[], controls: boolean) =>
-    cards
+  // Claude is launched from the sprint only.
+  const cardsSection = (cards: Card[], controls: boolean, claude = false) => {
+    const launchable = claude && Boolean(data.claude.workflow);
+    return cards
       .map((card, index) => {
         const mine = storiesOf(card.id);
         const order = controls
@@ -78,14 +91,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         )}${order}</div>
           ${
             mine.length
-              ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine
-                  .map((number, at) => storyRow(number, card.id, at, mine.length, controls))
+              ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine
+                  .map((number, at) => storyRow(number, card.id, at, mine.length, controls, launchable))
                   .join("")}</tbody></table>`
               : `<p class="muted">No story yet: <a href="${escapeHtml(base)}/cards/${card.id}#spec">make them from the card</a>.</p>`
           }
         </section>`;
       })
       .join("");
+  };
 
   // What is left: the needed stories not done yet (a story needed by one
   // card is needed).
@@ -95,6 +109,22 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const left = numbers.filter((number) => !isDone(number) && cards.some((card) => storiesOf(card.id).includes(number) && !isNice(data.links, card.id, number))).length;
     return `<p class="test-summary"><span><strong>${left} stor${left === 1 ? "y" : "ies"} left</strong> · ${cards.length} card${cards.length === 1 ? "" : "s"}, ${numbers.length} stor${numbers.length === 1 ? "y" : "ies"}, ${done} in production.</span></p>`;
   };
+
+  // Claude Code takes the stories in the sprint's order: the next one is the
+  // first ready story not launched yet.
+  const nextStory = data.claude.next !== null ? data.stories.get(data.claude.next) : undefined;
+  const claudeNext = !data.claude.canLaunch
+    ? ""
+    : !data.claude.workflow
+      ? `<p class="muted">To launch Claude Code from the sprint, the project declares its Claude workflow (<code>workflows.claude</code> in <code>.fabrique.json</code>): <a href="${escapeHtml(base)}/setup">Setup</a> says how.</p>`
+      : data.claude.next !== null
+        ? `<div class="sprint-next"><p>Next for Claude: <a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${data.claude.next}">#${data.claude.next}</a> ${escapeHtml(nextStory?.title ?? "")}</p>${button(
+            { action: "launch", story: data.claude.next },
+            `Launch Claude on #${data.claude.next}`,
+            "Launch the next story",
+            "claude",
+          )}<p class="muted small">At most ${data.claude.cap} Claude run${data.claude.cap === 1 ? "" : "s"} at once on this project.</p></div>`
+        : `<p class="muted">No story ready for Claude: a story is ready once it meets the project's Definition of Ready (<a href="${escapeHtml(base)}/backlog?group=card">Backlog</a> says what is missing).</p>`;
 
   const lastLine = data.last
     ? data.last.endReason === "stopped"
@@ -116,8 +146,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : ""
         }
         ${summary(data.sprintCards)}
+        ${claudeNext}
       </section>
-      ${cardsSection(data.sprintCards, data.canOrder) || `<p class="muted">No card in the sprint.</p>`}`
+      ${cardsSection(data.sprintCards, data.canOrder, true) || `<p class="muted">No card in the sprint.</p>`}`
     : `<section class="sprint-head">
         <h2>No sprint in progress</h2>
         <p>${lastLine} ${

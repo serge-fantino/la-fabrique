@@ -12,7 +12,7 @@
     "ci": "ci.yml",
     "migrations_production": "deploy.yml",
     "promouvoir": null,
-    "claude": null
+    "claude": "claude.yml"
   },
   "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
   "documentation": [

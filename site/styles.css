@@ -2818,3 +2818,19 @@ form[aria-busy="true"] button[type="submit"] {
 tr.nice td {
   color: var(--encre-faint);
 }
+
+/* Claude Code from the sprint (la-fabrique#113). */
+.sprint-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.sprint-next p {
+  margin: 0;
+}
+
+.sprint-claude {
+  white-space: nowrap;
+}
