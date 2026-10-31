@@ -154,7 +154,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
         <legend>Arrange</legend>
         ${axisSelect("by", "Columns", board.by)}
         ${axisSelect("then", "Then rows", board.then)}
-        ${board.by === "none" ? "" : `<label class="check"><input type="checkbox" name="empty" value="hide"${board.hideEmpty ? " checked" : ""} data-autosubmit /> Hide empty lanes</label>`}
+        ${board.by === "none" ? "" : `<label class="check"><input type="checkbox" name="empty" value="hide"${board.hideEmpty ? " checked" : ""} data-autosubmit /> ${board.by === "release" || board.then === "release" ? "Hide closed lanes" : "Hide empty lanes"}</label>`}
       </fieldset>
       <details class="board-show"${active ? " open" : ""}>
         <summary>Filters${active ? ` <span class="pill">${active} on</span>` : ""}</summary>

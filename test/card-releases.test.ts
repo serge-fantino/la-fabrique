@@ -66,6 +66,7 @@ describe("The board's releases", () => {
     expect(all).toContain('placeholder="Plan v1.14"');
 
     const hidden = await (await get(`/projects/${REPO}/board?by=release&empty=hide`, session.cookie)).text();
+    expect(hidden).toContain("/> Hide closed lanes</label>");
     expect(hidden).toContain('aria-label="v1.13"');
     expect(hidden).toContain('aria-label="v1.11"');
     expect(hidden).toContain('aria-label="v1.9"');
