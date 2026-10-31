@@ -1,4 +1,4 @@
-import { cardGroupHead, sharedWith, type StoryCards } from "./card-groups";
+import { cardGroupHead, nicePill, sharedWith, type StoryCards } from "./card-groups";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Story, StoryFilters, StoryGroup } from "./stories";
@@ -68,7 +68,7 @@ function groupSection(group: StoryGroup, circuit: Set<string>, info: StageInfo, 
   const body = group.items.length
     ? `<table>
         <thead><tr><th>#</th><th>Story</th><th>Stage</th><th>Pull requests and branches</th></tr></thead>
-        <tbody>${group.items.map((story) => storyRow(story, circuit, info, byCard ? sharedWith(cards, story.number, group.card?.id ?? null) : "")).join("")}</tbody>
+        <tbody>${group.items.map((story) => storyRow(story, circuit, info, byCard ? nicePill(cards, group.card?.id ?? null, story.number) + sharedWith(cards, story.number, group.card?.id ?? null) : "")).join("")}</tbody>
       </table>`
     : `<p class="muted">No story matches these filters.</p>`;
   return `<section>${head}${body}</section>`;

@@ -76,10 +76,11 @@ describe("The board's releases", () => {
     expect(all).toContain('v1.13 <span class="pill kind small">Planned</span>');
     // Older than the first entry with a time: shipped before times were written.
     expect(all).toContain('v1.1 <span class="pill ok small">Shipped</span>');
-    expect(all).toContain('<summary class="button quiet">Plan a release</summary>');
-    expect(all).toContain('placeholder="v1.14" value="v1.14"');
-    // Not set first, so what is not placed yet stays in sight.
-    expect(all.indexOf('aria-label="Not set"')).toBeLessThan(order[0] ?? 0);
+    // Not set first, then Next release, then the versions; no release
+    // planned by number from the board any more.
+    expect(all.indexOf('aria-label="Not set"')).toBeLessThan(all.indexOf('aria-label="Next release"'));
+    expect(all.indexOf('aria-label="Next release"')).toBeLessThan(order[0] ?? 0);
+    expect(all).not.toContain("Plan a release");
 
     const hidden = await (await get(`/projects/${REPO}/board?by=release&empty=hide`, session.cookie)).text();
     expect(hidden).toContain("/> Hide closed lanes</label>");

@@ -21,6 +21,17 @@ export interface BoardRelease {
   sprint?: boolean;
 }
 
+// Two lanes with no version: what the next sprint will take, and the
+// sprint running. A version is given to a card only once it ships: a
+// release planned by number could ship with other work and carry the card
+// away undone.
+export const NEXT_RELEASE = "Next release";
+export const SPRINT_LANE = "Sprint";
+
+export function isFixedLane(value: string): boolean {
+  return value === NEXT_RELEASE || value === SPRINT_LANE;
+}
+
 export const RELEASE_STATE_LABELS: Record<ReleaseState, string> = { shipped: "Shipped", in_progress: "In progress", planned: "Planned" };
 
 function numbers(version: string): number[] | null {
@@ -89,7 +100,7 @@ export function planningProblem(project: Project, version: string, releases: Boa
   const pattern = versionPattern(forme);
   const next = nextVersion(forme, releases);
   if (pattern && !pattern.test(version)) return `A release follows the project's numbering, ${forme}${next ? `: the next one is ${next}` : ""}.`;
-  const out = releases.find((release) => release.state !== "planned" && compareVersions(version, release.version) >= 0);
+  const out = releases.find((release) => release.state !== "planned" && !isFixedLane(release.version) && compareVersions(version, release.version) >= 0);
   if (out) return `${version} is not ahead of ${out.version}, already ${RELEASE_STATE_LABELS[out.state].toLowerCase()}${next ? `: the next one is ${next}` : ""}.`;
   return null;
 }
@@ -114,15 +125,20 @@ export async function boardReleases(env: Env, project: Project, planned: string[
     if (found.has(value) || (pattern && !pattern.test(value))) continue;
     found.set(value, { version: value, title: null, state: "planned" });
   }
-  // The sprint's release is in progress until the release notes date it;
-  // dated, the sprint ends by itself.
+  // A sprint started on a planned version (before the fixed lanes) is in
+  // progress until the release notes date it; dated, it ends by itself.
   const sprint = await activeSprint(env.DB, project.repo);
-  if (sprint) {
+  if (sprint && sprint.release !== SPRINT_LANE) {
     const release = found.get(sprint.release);
     if (release?.state === "shipped") await endSprint(env.DB, sprint, "la-fabrique", "shipped");
     else found.set(sprint.release, { ...(release ?? { version: sprint.release, title: null }), state: "in_progress", sprint: true });
   }
-  return [...found.values()].sort((a, b) => compareVersions(a.version, b.version));
+  const fixed: BoardRelease[] = [
+    { version: NEXT_RELEASE, title: "What the next sprint takes", state: "planned" },
+    ...(sprint?.release === SPRINT_LANE ? [{ version: SPRINT_LANE, title: "The sprint in progress", state: "in_progress" as const, sprint: true }] : []),
+  ];
+  for (const lane of fixed) found.delete(lane.version);
+  return [...fixed, ...[...found.values()].sort((a, b) => compareVersions(a.version, b.version))];
 }
 
 // The values of the board's free dimensions, the project's releases among
@@ -135,6 +151,13 @@ export async function knownValues(
   const known = await dimensionValues(env.DB, project.repo, cards);
   const releases = await boardReleases(env, project, known.release);
   const others = known.release.filter((value) => !releases.some((release) => release.version === value));
-  known.release = [...others.filter((value) => !numbers(value)), ...[...releases.map((release) => release.version), ...others.filter((value) => numbers(value))].sort(compareVersions)];
+  const fixed = releases.filter((release) => isFixedLane(release.version)).map((release) => release.version);
+  // Next release and Sprint first, then the values without a number, then
+  // the versions, newest first.
+  known.release = [
+    ...fixed,
+    ...others.filter((value) => !numbers(value)),
+    ...[...releases.filter((release) => !isFixedLane(release.version)).map((release) => release.version), ...others.filter((value) => numbers(value))].sort(compareVersions),
+  ];
   return { known, releases: new Map(releases.map((release) => [release.version, release])) };
 }
