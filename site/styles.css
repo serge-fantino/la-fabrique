@@ -2834,3 +2834,56 @@ tr.nice td {
 .sprint-claude {
   white-space: nowrap;
 }
+
+/* The (i) next to the name: the version running, on hover or focus. */
+.brand-line {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.version-info {
+  position: relative;
+  display: inline-flex;
+}
+
+.version-i {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--encre-faint);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  cursor: help;
+}
+
+.version-pop {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 20;
+  min-width: 15rem;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(24, 33, 27, 0.12);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.version-info:hover .version-pop,
+.version-info:focus-within .version-pop {
+  display: flex;
+}
+
+.version-pop .button {
+  align-self: flex-start;
+}

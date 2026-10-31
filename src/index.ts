@@ -30,6 +30,7 @@ import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import releaseNotes from "../docs/release-notes.json";
+import { setCommit } from "./build";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
 import promotionExample from "../docs/exemples/promouvoir.yml";
@@ -460,6 +461,7 @@ export default {
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    setCommit(env.COMMIT_SHA);
     const oauthEnv: Env = { ...env, OAUTH_KV: d1KeyValue(env.DB) };
     const { pathname, origin } = new URL(request.url);
     const provider = providerFor(origin);

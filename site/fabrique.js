@@ -80,7 +80,7 @@
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-    if (!link || link.target || link.hasAttribute("download")) return;
+    if (!link || link.target || link.hasAttribute("download") || link.hasAttribute("data-update")) return;
     const url = new URL(link.href, location.href);
     if (!followable(url)) return;
     if (withoutHash(url.href) === shown && url.hash) return;
@@ -171,6 +171,25 @@
   document.addEventListener("click", (event) => {
     for (const menu of document.querySelectorAll("details[data-menu][open]")) {
       if (event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    }
+  });
+
+  // Update, under the (i) next to the name: reloads when another version
+  // is deployed than the one this page came from; says so otherwise.
+  document.addEventListener("click", async (event) => {
+    const link = event.target instanceof Element ? event.target.closest("[data-update]") : null;
+    if (!link) return;
+    event.preventDefault();
+    try {
+      const response = await fetch("/api/version", { cache: "no-store", headers: { accept: "application/json" } });
+      const latest = await response.json();
+      if (latest.commit && latest.commit !== link.getAttribute("data-commit")) {
+        location.reload();
+        return;
+      }
+      link.textContent = `Up to date (${latest.numero ?? "?"})`;
+    } catch {
+      location.reload();
     }
   });
 
