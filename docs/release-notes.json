@@ -2,7 +2,7 @@
   {
     "version": "0.65",
     "date": "2026-10-31",
-    "heure": "14:47",
+    "heure": "15:38",
     "titre": "Follow Claude's runs from the sprint",
     "changements": [
       "The sprint shows Claude's runs: those in progress at the top, and on each story the state of its last run (queued, working, done, failed, cancelled), linked to the run on GitHub; Every Claude run on GitHub, and Refresh. A story whose run is in progress is not launched twice.",
