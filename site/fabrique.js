@@ -193,6 +193,51 @@
     }
   });
 
+  // The sprint follows Claude's runs: GitHub tells La Fabrique when one
+  // starts or ends, and La Fabrique tells the open page, which reloads.
+  let sprintLive = null;
+  function setUpSprintLive() {
+    if (sprintLive) sprintLive.stop();
+    sprintLive = null;
+    const line = document.querySelector("[data-sprint-live]");
+    if (!line || !("WebSocket" in window)) return;
+    let socket = null;
+    let stopped = false;
+    let tries = 0;
+    const connect = () => {
+      if (stopped) return;
+      const url = new URL(line.getAttribute("data-sprint-live"), location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url);
+      socket.addEventListener("open", () => {
+        tries = 0;
+      });
+      socket.addEventListener("message", (message) => {
+        let event = null;
+        try {
+          event = JSON.parse(message.data);
+        } catch {
+          return;
+        }
+        // What happened before the page was shown is already on it.
+        if (!event || (event.kind !== "claude_run" && event.kind !== "pull_request") || event.replay) return;
+        stop();
+        location.reload();
+      });
+      socket.addEventListener("close", () => {
+        if (stopped || !line.isConnected) return;
+        tries++;
+        setTimeout(connect, Math.min(30000, 1000 * 2 ** tries));
+      });
+    };
+    const stop = () => {
+      stopped = true;
+      if (socket) socket.close();
+    };
+    connect();
+    sprintLive = { stop };
+  }
+
   // What each page needs once it is shown.
   function setUp() {
     document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
@@ -200,6 +245,7 @@
     setUpDiagnostic();
     setUpRefresh();
     setUpBranchMenu();
+    setUpSprintLive();
     setUpAboutPicker();
     setUpLive();
   }

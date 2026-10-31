@@ -2887,3 +2887,18 @@ tr.nice td {
 .version-pop .button {
   align-self: flex-start;
 }
+
+/* A story's pull request in the sprint, and the review to ask. */
+.sprint-pull {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.sprint-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

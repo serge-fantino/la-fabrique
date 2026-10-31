@@ -71,6 +71,13 @@ export function describe(entry: LogEntry, repo: string): string {
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
     case "story_marked_ready":
       return `marked ${story} ready for Claude`;
+    case "review_requested":
+      return `asked @${text(d["reviewer"])} to review pull request ${story}`;
+    case "claude_run_finished": {
+      const words: Record<string, string> = { success: "finished", failure: "failed", cancelled: "was cancelled", timed_out: "timed out" };
+      const url = typeof d["url"] === "string" ? d["url"] : "";
+      return `Claude ${words[String(d["conclusion"])] ?? `ended (${text(d["conclusion"])})`} on ${story}${url.startsWith("https://github.com/") ? ` (<a href="${escapeHtml(url)}">the run</a>)` : ""}`;
+    }
     case "sprint_started":
       return `started the sprint ${text(d["release"])}`;
     case "sprint_stopped":

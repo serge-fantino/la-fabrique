@@ -5,6 +5,7 @@ import type { Env } from "./env";
 import { dispatchRefusal, githubJson, githubPost, installationToken } from "./github-app";
 import { productionBranch, type Project } from "./projects";
 import { applyIssueEvent, type RestIssue } from "./stories";
+import { sprintLiveFor } from "./live";
 import { isFresh, readSnapshot, writeSnapshot } from "./snapshots";
 import { wordingFor } from "./wording";
 
@@ -146,4 +147,41 @@ export async function claudeRuns(env: Env, project: Project): Promise<ClaudeRun[
 
 export function isRunning(run: ClaudeRun): boolean {
   return run.status !== "completed";
+}
+
+// GitHub's workflow_run webhook for the project's Claude workflow: the
+// sprint reads its runs again, its open pages are told, and a run that
+// ends is written in the log.
+export interface RestWorkflowRun {
+  path?: string;
+  display_title?: string;
+  status?: string;
+  conclusion?: string | null;
+  html_url?: string;
+  updated_at?: string;
+}
+
+export async function claudeRunEvent(env: Env, project: Project, action: string, run: RestWorkflowRun): Promise<boolean> {
+  const file = claudeWorkflow(project);
+  if (!file || !run.path || !run.path.endsWith(`/${file}`)) return false;
+  await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = ?").bind(project.repo, CLAUDE_RUNS).run();
+  const issue = Number(/#(\d+)/.exec(run.display_title ?? "")?.[1] ?? NaN) || null;
+  if (action === "completed") {
+    await activityStatement(env.DB, {
+      actor: "github",
+      action: "claude_run_finished",
+      repo: project.repo,
+      ...(issue ? { issueNumber: issue } : {}),
+      details: { conclusion: run.conclusion ?? null, url: run.html_url ?? null },
+    }).run();
+  }
+  await sprintLiveFor(env, project.repo)?.notify({
+    kind: "claude_run",
+    issue,
+    status: run.status ?? action,
+    conclusion: run.conclusion ?? null,
+    url: run.html_url ?? "",
+    at: run.updated_at ?? new Date().toISOString(),
+  });
+  return true;
 }
