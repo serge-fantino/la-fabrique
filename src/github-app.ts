@@ -134,6 +134,25 @@ export async function githubPost(token: string, path: string, body: unknown): Pr
   });
 }
 
+// GitHub's GraphQL API: for what REST does not say, such as the links of
+// an issue's Development section. Throws on an HTTP or GraphQL error.
+export async function githubGraphql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`${API}/graphql`, {
+    method: "POST",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+      "user-agent": USER_AGENT,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!response.ok) throw new GitHubError(response.status, `GitHub answered ${response.status} for GraphQL`);
+  const result = (await response.json()) as { data?: T; errors?: { message?: string }[] };
+  if (!result.data) throw new GitHubError(502, `GitHub GraphQL: ${result.errors?.[0]?.message ?? "no data"}`);
+  return result.data;
+}
+
 export async function githubJson<T>(token: string, path: string): Promise<T> {
   const response = await githubFetch(token, path);
   if (!response.ok) throw new GitHubError(response.status, `GitHub answered ${response.status} for ${path}`);

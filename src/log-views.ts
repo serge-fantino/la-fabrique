@@ -15,6 +15,10 @@ export function describe(entry: LogEntry, repo: string): string {
   const story = issue(entry.issue);
   const card = (id: unknown) =>
     typeof id === "number" ? `<a class="mono" href="${escapeHtml(projectUrl(repo))}/cards/${id}">C${id}</a>` : "";
+  const pull = (number: unknown) =>
+    typeof number === "number" ? `<a href="https://github.com/${escapeHtml(repo)}/pull/${number}">#${number}</a>` : "";
+  const runLink = (url: unknown) =>
+    typeof url === "string" && url.startsWith("https://github.com/") ? ` (<a href="${escapeHtml(url)}">the run</a>)` : "";
   const d = entry.details;
   switch (entry.action) {
     case "request_created":
@@ -78,6 +82,12 @@ export function describe(entry: LogEntry, repo: string): string {
       const url = typeof d["url"] === "string" ? d["url"] : "";
       return `Claude ${words[String(d["conclusion"])] ?? `ended (${text(d["conclusion"])})`} on ${story}${url.startsWith("https://github.com/") ? ` (<a href="${escapeHtml(url)}">the run</a>)` : ""}`;
     }
+    case "claude_update_launched":
+      return `had Claude bring pull request ${pull(d["pull"])} of ${story} up to date`;
+    case "claude_pr_opened":
+      return `Claude opened pull request ${pull(d["pull"])} for ${story}${runLink(d["run"])}`;
+    case "claude_pr_updated":
+      return `Claude ${d["conclusion"] === "success" ? "brought" : "tried to bring"} pull request ${pull(d["pull"])} of ${story} up to date${runLink(d["run"])}`;
     case "sprint_started":
       return `started the sprint ${text(d["release"])}`;
     case "sprint_stopped":

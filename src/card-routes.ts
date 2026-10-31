@@ -6,7 +6,7 @@ import { sprintPage } from "./sprint-views";
 import { pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
-import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude } from "./claude";
+import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude, updateWithClaude } from "./claude";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
 import { cycleRules, projectRules } from "./lifecycle";
@@ -512,6 +512,20 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=launched&story=${number}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // An open pull request of a sprint story, brought up to date by Claude.
+    if (action === "update") {
+      if (!canLaunchClaude(viewer.role)) return forbidden(viewer);
+      const number = Number(form.get("story"));
+      const pull = Number(form.get("pull"));
+      const links = await storyCards(env.DB, project.repo);
+      const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
+      if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
+      const stories = await cardStories(env, project, [number]);
+      if (!stories.get(number)?.pulls.some((candidate) => candidate.number === pull && candidate.state === "open")) return redirect(base);
+      const outcome = await updateWithClaude(env, project, viewer.login, number, pull);
+      if (outcome.ok) return redirect(`${base}?notice=updating&story=${number}&pull=${pull}`);
+      return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
     if (action === "start") {
       const outcome = await startSprint(env, project, viewer.login);
       return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
@@ -643,7 +657,11 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
         runsUrl: claudeWorkflow(project) ? `https://github.com/${project.repo}/actions/workflows/${encodeURIComponent(claudeWorkflow(project) ?? "")}` : null,
       },
       notice:
-        params.get("notice") === "launched" && Number.isInteger(launched) ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.` : SPRINT_NOTICES[params.get("notice") ?? ""],
+        params.get("notice") === "launched" && Number.isInteger(launched)
+          ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.`
+          : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))
+            ? `Claude is bringing pull request #${Number(params.get("pull"))} up to date: it merges the base branch, resolves the conflicts and pushes to the same branch.`
+            : SPRINT_NOTICES[params.get("notice") ?? ""],
       failure:
         refused ??
         (failure === "running" ? "A sprint is in progress: close or stop it first." : failure === "empty" ? "Next release has no card: place the cards of the next sprint in it first." : undefined),

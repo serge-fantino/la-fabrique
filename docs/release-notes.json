@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.69",
+    "date": "2026-10-31",
+    "heure": "17:50",
+    "titre": "A story's pull request, linked for sure; Update with Claude",
+    "changements": [
+      "A pull request belongs to the story GitHub links it to (a branch created from the issue, a pull request that closes it) or whose number its branch carries; a pull request that only mentions a story in its text is shown as guessed from its text, and one that cites another issue in passing is no longer attached to it.",
+      "When a Claude run ends, the log says which pull request it opened, or which one it brought up to date, with the run.",
+      "In the sprint, a pull request in conflict with its base branch, or behind it, says so; Update with Claude (tech lead and above) has Claude merge the base branch into it, resolve the conflicts, check again and push to the same pull request.",
+      "La Fabrique's Claude workflow, and the example in Setup, create the story's branch linked to its issue, open a pull request that starts with Refs #N (the story stays open until it is validated) and say how each acceptance criterion is checked; they take a pr input to bring a pull request up to date."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.68",
     "date": "2026-10-31",
     "heure": "17:37",

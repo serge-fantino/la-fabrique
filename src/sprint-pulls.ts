@@ -18,6 +18,10 @@ export interface PullDetail {
   author: string | null;
   // Asked to review and not done yet.
   reviewers: string[];
+  // Against its base branch, as GitHub computes it: "dirty" (in conflict),
+  // "behind", "clean", "blocked", "unstable"…; null while GitHub computes.
+  mergeable: string | null;
+  base: string | null;
 }
 
 interface RestPullDetail {
@@ -29,6 +33,8 @@ interface RestPullDetail {
   draft?: boolean;
   user: { login: string } | null;
   requested_reviewers?: { login: string }[];
+  mergeable_state?: string;
+  base?: { ref: string };
 }
 
 export async function pullDetails(env: Env, project: Project, numbers: number[]): Promise<Map<number, PullDetail>> {
@@ -49,6 +55,8 @@ export async function pullDetails(env: Env, project: Project, numbers: number[])
         draft: Boolean(pull.draft),
         author: pull.user?.login ?? null,
         reviewers: (pull.requested_reviewers ?? []).map((reviewer) => reviewer.login),
+        mergeable: pull.mergeable_state && pull.mergeable_state !== "unknown" ? pull.mergeable_state : null,
+        base: pull.base?.ref ?? null,
       });
     }
   } catch {

@@ -16,6 +16,8 @@ const WORDS = {
     defectOnStory: (login: string, number: number) => `Défaut signalé par @${login} : #${number}`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude lancé sur cette demande par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
+    claudeUpdating: (login: string, url: string | null) =>
+      `Claude remet cette PR à jour (fusion de la branche de base, conflits, vérifications), lancé par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
     appDefectIntro: (environment: string, story: number | null) =>
       `Défaut signalé depuis l'app, sur ${environment}${story ? `, en testant #${story}` : ""}.`,
     onIntThen: (stories: number[]) => `Sur ${stories.length > 1 ? "int à ce moment-là" : "int"} : ${stories.map((n) => `#${n}`).join(", ")}.`,
@@ -53,6 +55,8 @@ const WORDS = {
     defectOnStory: (login: string, number: number) => `Defect reported by @${login}: #${number}`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude launched on this story by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
+    claudeUpdating: (login: string, url: string | null) =>
+      `Claude brings this pull request up to date (merges its base branch, resolves the conflicts, checks again), launched by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
     appDefectIntro: (environment: string, story: number | null) =>
       `Defect reported from the app, on ${environment}${story ? `, while testing #${story}` : ""}.`,
     onIntThen: (stories: number[]) => `On int at the time: ${stories.map((n) => `#${n}`).join(", ")}.`,

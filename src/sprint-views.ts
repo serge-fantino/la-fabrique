@@ -134,7 +134,21 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
                 <button type="submit" class="button quiet small">Ask for a review</button>
               </form>`
             : "";
-        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${waiting}${ask}</span>`;
+        // Behind or in conflict with its base: Claude can bring it up to date.
+        const stale = pull.state === "open" && (detail?.mergeable === "dirty" || detail?.mergeable === "behind");
+        const against = detail?.base ? ` <code>${escapeHtml(detail.base)}</code>` : " its base";
+        const mergeState = stale
+          ? ` <span class="pill ${detail?.mergeable === "dirty" ? "alert" : "warn"} small">${detail?.mergeable === "dirty" ? `In conflict with${against}` : `Behind${against}`}</span>`
+          : "";
+        const running = data.claude.runs.some((run) => run.issue === number && isRunning(run));
+        const update =
+          stale && controls && data.claude.canLaunch && data.claude.workflow && !running
+            ? button({ action: "update", story: number, pull: pull.number }, `Bring pull request #${pull.number} up to date with Claude`, "Update with Claude", "quiet small claude")
+            : "";
+        const guessed = pull.guessed
+          ? ` <span class="muted small" title="Only the pull request's text names this story: no linked branch, no closing reference, not its branch name.">guessed from its text</span>`
+          : "";
+        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${update}${guessed}${waiting}${ask}</span>`;
       })
       .join("");
   };
