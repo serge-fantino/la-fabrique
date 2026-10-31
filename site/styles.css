@@ -2341,6 +2341,37 @@ p.about-version-choice {
   color: var(--alerte);
 }
 
+/* Validated with stories, the status follows them, to production. */
+.pill.card-to_prepare {
+  background: color-mix(in srgb, var(--bon) 8%, transparent);
+  color: var(--bon);
+}
+
+.pill.card-ready {
+  background: color-mix(in srgb, var(--bon) 18%, transparent);
+  color: var(--bon);
+}
+
+.pill.card-in_sprint {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.pill.card-in_dev {
+  background: color-mix(in srgb, var(--moyen) 30%, transparent);
+  color: #6a4b0c;
+}
+
+.pill.card-to_test {
+  background: color-mix(in srgb, var(--moyen) 45%, transparent);
+  color: var(--encre);
+}
+
+.pill.card-in_production {
+  background: var(--bon);
+  color: #fff;
+}
+
 .tag {
   display: inline-flex;
   align-items: baseline;

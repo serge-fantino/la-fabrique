@@ -3,6 +3,7 @@ import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { refreshUserToken } from "./github";
 import { dispatchRefusal, githubJson, githubPost, installationToken } from "./github-app";
+import { sprintLiveFor } from "./live";
 import { productionBranch, type Project } from "./projects";
 import { can } from "./rights";
 import type { Role } from "./accounts";
@@ -125,4 +126,81 @@ export async function mergePull(env: Env, project: Project, login: string, pull:
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error), status: 502 };
   }
+}
+
+// The end of a merge run (webhook workflow_run): merged, or refused and why
+// (the run's "Merge refused" annotation), in the log; the open sprint pages
+// reload to show it next to the pull request.
+interface RestRun {
+  id?: number;
+  path?: string;
+  display_title?: string;
+  conclusion?: string | null;
+  html_url?: string;
+}
+
+interface RestAnnotation {
+  annotation_level?: string;
+  title?: string | null;
+  message?: string;
+}
+
+export async function mergeRunEvent(env: Env, project: Project, action: string, run: RestRun): Promise<boolean> {
+  const file = mergeWorkflow(project);
+  if (!file || action !== "completed" || !run.path?.endsWith(`/${file}`)) return false;
+  const pull = Number(/#(\d+)/.exec(run.display_title ?? "")?.[1] ?? NaN);
+  if (!Number.isInteger(pull)) return false;
+  let reason: string | null = null;
+  if (run.conclusion !== "success" && run.id) {
+    try {
+      const token = await installationToken(env, project.installationId);
+      const { jobs } = await githubJson<{ jobs: { id: number; conclusion: string | null }[] }>(token, `/repos/${project.repo}/actions/runs/${run.id}/jobs`);
+      for (const job of jobs.filter((candidate) => candidate.conclusion === "failure")) {
+        const annotations = await githubJson<RestAnnotation[]>(token, `/repos/${project.repo}/check-runs/${job.id}/annotations`);
+        const failures = annotations.filter((note) => note.annotation_level === "failure" && note.message && !/^Process completed with exit code/.test(note.message));
+        const found = failures.find((note) => note.title === "Merge refused") ?? failures[0];
+        if (found?.message) {
+          reason = found.message.slice(0, 500);
+          break;
+        }
+      }
+    } catch {
+      // The run's link says the rest.
+    }
+  }
+  await activityStatement(env.DB, {
+    actor: "github",
+    action: "pull_merge_finished",
+    repo: project.repo,
+    issueNumber: pull,
+    details: { conclusion: run.conclusion ?? null, reason, url: run.html_url ?? null },
+  }).run();
+  await sprintLiveFor(env, project.repo)?.notify({ kind: "pull_request", issue: null, status: "merge", conclusion: run.conclusion ?? null, url: run.html_url ?? "", at: new Date().toISOString() });
+  return true;
+}
+
+export interface MergeAttempt {
+  conclusion: string | null;
+  reason: string | null;
+  url: string | null;
+  at: string;
+}
+
+// The last merge run of each pull request, from the log.
+export async function lastMergeAttempts(db: D1Database, repo: string): Promise<Map<number, MergeAttempt>> {
+  const { results } = await db
+    .prepare("SELECT occurred_at, issue_number, details FROM activity_log WHERE repo = ? AND action = 'pull_merge_finished' AND issue_number IS NOT NULL ORDER BY id")
+    .bind(repo)
+    .all<{ occurred_at: string; issue_number: number; details: string | null }>();
+  const found = new Map<number, MergeAttempt>();
+  for (const row of results) {
+    const details = row.details ? (JSON.parse(row.details) as Record<string, unknown>) : {};
+    found.set(row.issue_number, {
+      conclusion: typeof details["conclusion"] === "string" ? details["conclusion"] : null,
+      reason: typeof details["reason"] === "string" ? details["reason"] : null,
+      url: typeof details["url"] === "string" ? details["url"] : null,
+      at: row.occurred_at,
+    });
+  }
+  return found;
 }

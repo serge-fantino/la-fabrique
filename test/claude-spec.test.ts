@@ -455,7 +455,7 @@ describe("From a card to a story", () => {
     // The story as GitHub has it: its title and its stage.
     expect(page).toContain('Reprendre le panier <span class="pill stage-');
     // Its progress, from that story.
-    expect(page).toMatch(/Progress: <span class="pill progress-(to_prepare|ready)/);
+    expect(page).toMatch(/From its stories: <span class="pill card-(to_prepare|ready)/);
   });
 
   it("keeps a permanent address for the card and the version of its spec", async () => {

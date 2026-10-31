@@ -12,6 +12,9 @@ import {
   MAX_TITLE,
   MAX_IMPORT,
   MAX_VALUE,
+  SHOWN_STATUSES,
+  shownStatus,
+  shownStatusLabel,
   STATUS_LABELS,
   valueLabel,
   valueOf,
@@ -24,14 +27,13 @@ import {
   type CardSpec,
   type CardSplit,
   type StoryReview,
-  type CardStatus,
   type CardTags,
   type FreeDimension,
 } from "./cards";
 import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
-import { isProgressStage, PROGRESS_LABELS, progressPill, type Progress } from "./progress-stages";
+import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, type Progress } from "./progress-stages";
 import { stagePill } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { renderMarkdown } from "./markdown";
@@ -80,6 +82,14 @@ export function cardPills(tags: Partial<CardTags>, status?: string): string {
   return pills.filter(Boolean).join(" ");
 }
 
+// A card's status: where its spec stands, then, once Validated with
+// stories, where its stories stand, with their count.
+export function statusPill(card: Pick<Card, "status" | "progress">, progress?: Progress | null, since?: string | null): string {
+  const shown = shownStatus(card);
+  if (isProgressStage(shown) && progress) return progressPill(progress, since);
+  return `<span class="pill card-${shown}">${shownStatusLabel(shown)}</span>`;
+}
+
 // One card on the board: a white card, its text and its tags.
 export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = false, progress?: Progress | null): string {
   const url = cardUrl(card.repo, card.id);
@@ -89,8 +99,7 @@ export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = 
       <div class="fiche-top">
         <a class="fiche-id mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a>
         <span class="pill kind">${KIND_LABELS[card.kind]}</span>
-        <span class="pill card-${card.status}">${STATUS_LABELS[card.status]}</span>
-        ${progressPill(progress)}
+        ${statusPill(card, progress)}
         ${card.priority ? `<span class="pill">${escapeHtml(card.priority)}</span>` : ""}
         ${card.archivedAt ? `<span class="pill alert">Archived</span>` : ""}
         ${working ? `<span class="pill warn">Claude working</span>` : ""}
@@ -112,7 +121,6 @@ function axisSelect(name: string, label: string, current: Axis): string {
       <select name="${name}" data-autosubmit>
         ${option("none", name === "by" ? "None (free order)" : "None", current === "none")}
         ${DIMENSIONS.map((dimension) => option(dimension, DIMENSION_LABELS[dimension], current === dimension)).join("")}
-        ${option("progress", "Progress", current === "progress")}
       </select>
     </label>`;
 }
@@ -168,7 +176,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
           <select name="kind" data-autosubmit>${option("", "Any", !filters.kind)}${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], filters.kind === kind)).join("")}</select>
         </label>
         <label>Status
-          <select name="status" data-autosubmit>${option("", "Any", !filters.status)}${CARD_STATUSES.map((status) => option(status, STATUS_LABELS[status], filters.status === status)).join("")}</select>
+          <select name="status" data-autosubmit>${option("", "Any", !filters.status)}${SHOWN_STATUSES.map((status) => option(status, shownStatusLabel(status), filters.status === status)).join("")}</select>
         </label>
         ${free}
         <label>Text
@@ -273,7 +281,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
     return `<div class="board-head">
         <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${escapeHtml(label)}${releaseNote(board.by, value)}</span>
         <span class="mono muted small" data-count-column="${escapeHtml(value)}">${count((card) => valueOf(card, board.by) === value)}</span>
-        ${canWrite && board.by !== "progress" ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
+        ${canWrite && !(board.by === "status" && isProgressStage(value)) ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
       </div>`;
   };
 
@@ -546,14 +554,15 @@ export interface StoryState {
   closed: boolean;
 }
 
-// "In development 1/3 developed", then the stages it went through, dated.
+// The status its stories give it, since when, then the stages it went
+// through, dated.
 function progressSummary(progress: Progress | null | undefined, history: { to: string | null; at: string }[]): string {
   if (!progress) return "";
   const since = history.at(-1)?.at ?? null;
   const steps = history
     .map((step) => `<li><span class="mono">${escapeHtml(step.at.slice(0, 16).replace("T", " "))}</span> ${isProgressStage(step.to) ? PROGRESS_LABELS[step.to] : "No story"}</li>`)
     .join("");
-  return `<p class="card-progress">Progress: ${progressPill(progress, since)}${since ? ` <span class="muted small">since ${escapeHtml(since.slice(0, 10))}</span>` : ""}</p>
+  return `<p class="card-progress">From its stories: ${progressPill(progress, since)}${since ? ` <span class="muted small">since ${escapeHtml(since.slice(0, 10))}</span>` : ""}</p>
     ${history.length > 1 ? `<details class="card-progress-history"><summary>How it went</summary><ol>${steps}</ol></details>` : ""}`;
 }
 
@@ -595,13 +604,26 @@ function priorityForm(viewer: Viewer, url: string, current: string | null, prior
     </form>`;
 }
 
-function statusForm(viewer: Viewer, url: string, current: CardStatus): string {
+function statusForm(viewer: Viewer, url: string, card: Pick<Card, "status" | "progress">, progress: Progress | null | undefined): string {
+  const current = card.status;
+  const shown = shownStatus(card);
+  // Validated with stories: the status follows them; the other choices
+  // stay (To validate when the feature changes, Dropped).
+  const following = isProgressStage(shown) && progress;
+  const options = following
+    ? [
+        `<option value="validated" selected>${escapeHtml(`${PROGRESS_LABELS[progress.stage]}${progressDetail(progress) ? ` ${progressDetail(progress)}` : ""}`)}</option>`,
+        ...CARD_STATUSES.filter((status) => status !== "validated").map((status) => `<option value="${status}">${STATUS_LABELS[status]}</option>`),
+      ]
+    : CARD_STATUSES.map((status) => `<option value="${status}"${status === current ? " selected" : ""}>${STATUS_LABELS[status]}</option>`);
+  const title = following
+    ? "Validated, the status follows the card's stories: Stories to prepare, Ready for dev, In sprint, In development, To test, In production. Choose To validate when the feature changes, Dropped to give it up."
+    : "Moves by itself as the card's work goes: Shaping when Claude is asked, To validate when the need is clear, Validated when its story is made; then it follows the stories.";
   return `<form method="post" action="${escapeHtml(url)}" class="card-status-form">${csrfField(viewer)}
       <input type="hidden" name="action" value="status" />
       <label class="visually-hidden" for="card-status">Status</label>
-      <select id="card-status" name="status" class="pill card-${current}" data-autosubmit
-        title="Moves by itself as the card's work goes: Shaping when Claude is asked, To validate when the need is clear, Validated when its story is made.">
-        ${CARD_STATUSES.map((status) => `<option value="${status}"${status === current ? " selected" : ""}>${STATUS_LABELS[status]}</option>`).join("")}
+      <select id="card-status" name="status" class="pill card-${shown}" data-autosubmit title="${escapeHtml(title)}">
+        ${options.join("")}
       </select>
       <noscript><button type="submit" class="button quiet">Set</button></noscript>
     </form>`;
@@ -757,7 +779,14 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       <p class="crumbs"><a href="${escapeHtml(base)}/board#card-${card.id}">Board</a> <span aria-hidden="true">›</span> <span class="mono">${cardRef(card.id)}</span></p>
       ${banner}
       <h1>${escapeHtml(heading)}</h1>
-      <div class="fiche-tags">${cardPills(tags, data.canWrite && !shown && !card.archivedAt ? statusForm(viewer, url, card.status) : undefined)}${
+      <div class="fiche-tags">${cardPills(
+        tags,
+        shown
+          ? undefined
+          : data.canWrite && !card.archivedAt
+            ? statusForm(viewer, url, card, data.progress)
+            : statusPill(card, data.progress, data.progressHistory?.at(-1)?.at ?? null),
+      )}${
         data.priorities.length
           ? data.canWrite && !shown && !card.archivedAt
             ? ` ${priorityForm(viewer, url, card.priority, data.priorities)}`
@@ -765,7 +794,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
               ? ` <span class="pill">${escapeHtml(card.priority)}</span>`
               : ""
           : ""
-      }${data.progress ? ` ${progressPill(data.progress, data.progressHistory?.at(-1)?.at ?? null)}` : ""}${
+      }${
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">

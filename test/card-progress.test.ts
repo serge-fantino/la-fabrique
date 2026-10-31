@@ -34,19 +34,21 @@ describe("A card's progress, from its stories", () => {
   it("goes from stories to prepare to production, the furthest stage the whole card has reached", () => {
     const at = (stages: Record<number, Stage | "closed">, card: { id: number; status: "validated" | "dropped"; release: string | null } = CARD, checks = NONE) =>
       progressOf(card, links([1, 2, 3]), stories(stages), checks, "Sprint");
-    expect(at({ 1: "backlog", 2: "ready", 3: "backlog" })).toEqual({ stage: "to_prepare", done: 1, total: 3 });
-    expect(at({ 1: "ready", 2: "ready", 3: "ready" })).toEqual({ stage: "ready", done: 3, total: 3 });
-    expect(at({ 1: "ready", 2: "backlog", 3: "ready" }, { ...CARD, release: "Sprint" })).toEqual({ stage: "in_sprint", done: 2, total: 3 });
-    expect(at({ 1: "to_validate", 2: "in_dev", 3: "ready" }, { ...CARD, release: "Sprint" })).toEqual({ stage: "in_dev", done: 1, total: 3 });
+    expect(at({ 1: "backlog", 2: "ready", 3: "backlog" })).toMatchObject({ stage: "to_prepare", done: 1, total: 3 });
+    expect(at({ 1: "ready", 2: "ready", 3: "ready" })).toMatchObject({ stage: "ready", done: 3, total: 3 });
+    expect(at({ 1: "ready", 2: "backlog", 3: "ready" }, { ...CARD, release: "Sprint" })).toMatchObject({ stage: "in_sprint", done: 2, total: 3 });
+    expect(at({ 1: "to_validate", 2: "in_dev", 3: "ready" }, { ...CARD, release: "Sprint" })).toMatchObject({ stage: "in_dev", done: 1, total: 3 });
     const checks = new Map<number, StoryChecks>([[2, { validated: { by: "qa", at: "", version: null }, defects: [] }]]);
-    expect(at({ 1: "closed", 2: "on_int", 3: "to_validate" }, CARD, checks)).toEqual({ stage: "to_test", done: 2, total: 3 });
-    expect(at({ 1: "closed", 2: "closed", 3: "closed" })).toEqual({ stage: "in_production", done: 3, total: 3 });
+    expect(at({ 1: "closed", 2: "on_int", 3: "to_validate" }, CARD, checks)).toMatchObject({ stage: "to_test", done: 2, total: 3 });
+    expect(at({ 1: "closed", 2: "closed", 3: "closed" })).toMatchObject({ stage: "in_production", done: 3, total: 3 });
+    // Every count, for the pill's title.
+    expect(at({ 1: "closed", 2: "on_int", 3: "in_dev" })?.counts).toEqual({ ready: 3, developed: 2, validated: 1, out: 1 });
     expect(at({ 1: "closed", 2: "closed", 3: "closed" }, { ...CARD, status: "dropped" })).toBeNull();
   });
 
   it("counts the stories needed, not the nice to have; none without a story", () => {
-    expect(progressOf(CARD, links([1, 2], [2]), stories({ 1: "closed", 2: "backlog" }), NONE, null)).toEqual({ stage: "in_production", done: 1, total: 1 });
-    expect(progressOf(CARD, links([1], [1]), stories({ 1: "in_dev" }), NONE, null)).toEqual({ stage: "in_dev", done: 0, total: 1 });
+    expect(progressOf(CARD, links([1, 2], [2]), stories({ 1: "closed", 2: "backlog" }), NONE, null)).toMatchObject({ stage: "in_production", done: 1, total: 1 });
+    expect(progressOf(CARD, links([1], [1]), stories({ 1: "in_dev" }), NONE, null)).toMatchObject({ stage: "in_dev", done: 0, total: 1 });
     expect(progressOf(CARD, links([]), stories({}), NONE, null)).toBeNull();
   });
 });
@@ -74,35 +76,45 @@ async function seed(): Promise<number> {
   return id;
 }
 
-describe("Progress on the board and the card", () => {
-  it("places the cards by progress, refuses to move one across it, and writes each change in the log, once", async () => {
+describe("The status follows the stories once validated", () => {
+  it("shows the stage as the card's status on the board and the card, refuses to move a card across it, and writes each change in the log, once", async () => {
     const id = await seed();
     await grantRole("pe", "product_engineer");
     const { cookie, csrf } = await signIn("pe");
-    const board = await (await get(`/projects/${REPO}/board?by=progress`, cookie)).text();
-    expect(board).toContain('<option value="progress" selected>Progress</option>');
+    const board = await (await get(`/projects/${REPO}/board?by=status`, cookie)).text();
     expect(board).toContain('aria-label="In development"');
-    expect(board).toContain('aria-label="No story"');
-    expect(board).toContain('<span class="pill progress-in_dev warn"');
-    expect(board).toContain('In development <span class="mono">1/3 developed</span>');
+    expect(board).toContain('aria-label="Validated"');
+    // One status pill: the stage and its count; no "Validated" next to it.
+    expect(board).toMatch(/<span class="pill card-in_dev" title="Status from the card's stories\. 3 stories: 3 ready, 1 developed, 1 validated, 1 in production\.">In development <span class="mono">1\/3 developed<\/span><\/span>/);
+    expect(board).not.toContain('<span class="pill card-validated">Validated</span>');
     expect(board).not.toContain("New card in In development");
+    // The filter knows the stages.
+    expect(await (await get(`/projects/${REPO}/board?by=none&status=in_dev`, cookie)).text()).toContain("Week menu");
 
     const logged = async () => (await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'card_progress_changed'").all<{ details: string }>()).results.map((row) => JSON.parse(row.details));
     expect(await logged()).toEqual([{ card: id, title: "Week menu", from: null, to: "in_dev", done: 1, total: 3 }]);
     // Seen again: nothing new to write.
-    await get(`/projects/${REPO}/board?by=progress`, cookie);
+    await get(`/projects/${REPO}/board?by=status`, cookie);
     expect(await logged()).toHaveLength(1);
 
-    const moved = await post(`/projects/${REPO}/board`, { csrf, action: "move", card: String(id), set_progress: "in_production" }, cookie);
-    expect(moved.status).toBe(409);
-    expect(((await moved.json()) as { error: string }).error).toContain("Progress follows the card's stories");
+    const move = (status: string) => post(`/projects/${REPO}/board`, { csrf, action: "move", card: String(id), set_status: status }, cookie);
+    const refused = await move("in_production");
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toContain("follows the card's stories");
+    expect((await move("validated")).status).toBe(409);
+    // Within its lane, it moves; the feature changed: back to To validate.
+    expect((await move("in_dev")).status).toBe(200);
+    expect((await move("to_validate")).status).toBe(200);
+    expect(await (await get(`/projects/${REPO}/board?by=status`, cookie)).text()).toContain('<span class="pill card-to_validate">To validate</span>');
+    await env.DB.prepare("UPDATE cards SET status = 'validated' WHERE id = ?").bind(id).run();
 
     // The stories move on: the card follows.
     await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
       .bind(JSON.stringify([story(1, { state: "closed" }), story(2, { state: "closed" }), story(3, { state: "closed" })]), REPO)
       .run();
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
-    expect(page).toContain('Progress: <span class="pill progress-in_production ok"');
+    expect(page).toContain('<select id="card-status" name="status" class="pill card-in_production"');
+    expect(page).toContain('<option value="validated" selected>In production 3/3</option>');
     expect(page).toContain("How it went");
     expect((await logged()).map((entry) => entry.to)).toEqual(["in_dev", "in_production"]);
     const log = await (await get(`/projects/${REPO}/log`, cookie)).text();

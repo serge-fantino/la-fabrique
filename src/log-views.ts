@@ -96,6 +96,10 @@ export function describe(entry: LogEntry, repo: string): string {
       const url = typeof d["url"] === "string" ? d["url"] : "";
       return `Claude ${words[String(d["conclusion"])] ?? `ended (${text(d["conclusion"])})`} on ${story}${url.startsWith("https://github.com/") ? ` (<a href="${escapeHtml(url)}">the run</a>)` : ""}`;
     }
+    case "pull_merge_finished":
+      return d["conclusion"] === "success"
+        ? `saw pull request ${pull(entry.issue)} merged by the project's workflow${runLink(d["url"])}`
+        : `saw the merge of pull request ${pull(entry.issue)} refused: ${text(d["reason"]) || "the workflow stopped"}${runLink(d["url"])}`;
     case "pull_merge_launched":
       return `asked the project's workflow to merge pull request ${pull(entry.issue)} (release notes numbered at the merge)`;
     case "claude_update_launched":

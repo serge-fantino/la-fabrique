@@ -46,6 +46,9 @@ export default defineWorkersConfig(async () => {
               CLAUDE_MONTHLY_BUDGET_USD: "1",
               TEST_APP_PUBLIC_KEY: appKey.publicKey,
               TEST_MIGRATIONS: migrations,
+              // On main (CI and deploy), a release-notes entry must be
+              // numbered and dated; on a branch it may still be "next".
+              TEST_ON_MAIN: process.env["GITHUB_REF_NAME"] === "main" ? "1" : "",
             },
           },
         },

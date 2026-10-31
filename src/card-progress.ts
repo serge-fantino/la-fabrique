@@ -37,18 +37,19 @@ export function progressOf(
     const story = stories.get(number);
     return story?.closed ? "done" : (story?.stage ?? null);
   };
-  const out = counted.filter((number) => stageOf(number) === "done").length;
-  if (out === total) return { stage: "in_production", done: out, total };
-  const developed = counted.filter((number) => DEVELOPED.has(stageOf(number) ?? "")).length;
-  if (developed === total) {
-    const validated = counted.filter((number) => stageOf(number) === "done" || checks.get(number)?.validated).length;
-    return { stage: "to_test", done: validated, total };
-  }
-  const started = counted.some((number) => stageOf(number) === "in_dev" || DEVELOPED.has(stageOf(number) ?? ""));
-  if (started) return { stage: "in_dev", done: developed, total };
-  const ready = counted.filter((number) => stageOf(number) === "ready").length;
-  if (sprintLane !== null && card.release === sprintLane) return { stage: "in_sprint", done: ready, total };
-  return ready === total ? { stage: "ready", done: ready, total } : { stage: "to_prepare", done: ready, total };
+  const count = (test: (number: number) => boolean) => counted.filter(test).length;
+  const out = count((number) => stageOf(number) === "done");
+  const developed = count((number) => DEVELOPED.has(stageOf(number) ?? ""));
+  const validated = count((number) => stageOf(number) === "done" || Boolean(checks.get(number)?.validated));
+  // Ready, or further: a story started was ready.
+  const ready = count((number) => stageOf(number) === "ready" || stageOf(number) === "in_dev" || DEVELOPED.has(stageOf(number) ?? ""));
+  const counts = { ready, developed, validated, out };
+  const at = (stage: Progress["stage"], done: number): Progress => ({ stage, done, total, counts });
+  if (out === total) return at("in_production", out);
+  if (developed === total) return at("to_test", validated);
+  if (counted.some((number) => stageOf(number) === "in_dev") || developed > 0) return at("in_dev", developed);
+  if (sprintLane !== null && card.release === sprintLane) return at("in_sprint", ready);
+  return at(ready === total ? "ready" : "to_prepare", ready);
 }
 
 // The progress of each card, worked out from the stories; a change since

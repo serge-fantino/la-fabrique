@@ -34,6 +34,9 @@ jobs:
     env:
       WRANGLER_SEND_METRICS: "false"
       NOTES: docs/release-notes.json
+      # Why the merge was refused, in a sentence: an annotation of the run (La Fabrique reads it) and a comment on the
+      # pull request.
+      REASON_FILE: /tmp/merge-reason
     steps:
       - name: Inputs
         env:
@@ -60,14 +63,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Main merged into the pull request, release notes numbered
+        id: prepare
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
           PR: ${{ inputs.pr }}
         run: |
+          refuse() { echo "::error title=Merge refused::$1"; echo "$1" > "$REASON_FILE"; exit 1; }
           info=$(gh pr view "$PR" --json headRefName,baseRefName,state,isDraft,title)
-          [ "$(jq -r .state <<<"$info")" = "OPEN" ] || { echo "::error::Pull request #$PR is not open."; exit 1; }
-          [ "$(jq -r .baseRefName <<<"$info")" = "main" ] || { echo "::error::Pull request #$PR does not target main."; exit 1; }
-          [ "$(jq -r .isDraft <<<"$info")" = "false" ] || { echo "::error::Pull request #$PR is a draft."; exit 1; }
+          [ "$(jq -r .state <<<"$info")" = "OPEN" ] || refuse "Pull request #$PR is not open."
+          [ "$(jq -r .baseRefName <<<"$info")" = "main" ] || refuse "Pull request #$PR does not target main."
+          [ "$(jq -r .isDraft <<<"$info")" = "false" ] || refuse "Pull request #$PR is a draft."
           branch=$(jq -r .headRefName <<<"$info")
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
           echo "TITLE=$(jq -r .title <<<"$info")" >> "$GITHUB_ENV"
@@ -80,11 +85,8 @@ jobs:
           git merge --no-commit --no-ff origin/main >/dev/null 2>&1 || true
           versions=$(node --experimental-strip-types scripts/release-at-merge.ts "$tmp/base.json" "$tmp/branch.json" "$tmp/main.json" "$NOTES")
           git add "$NOTES"
-          left=$(git diff --name-only --diff-filter=U)
-          if [ -n "$left" ]; then
-            echo "::error::Conflicts with main besides the release notes: $left. Bring the pull request up to date first (Update with Claude)."
-            exit 1
-          fi
+          left=$(git diff --name-only --diff-filter=U | tr '\n' ' ' | sed 's/ $//')
+          [ -z "$left" ] || refuse "Conflicts with main in: $left. Bring the pull request up to date first (Update with Claude), then merge again."
           echo "VERSIONS=$versions" >> "$GITHUB_ENV"
           if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
             git commit -q -m "Merge main${versions:+; release $versions at merge}"
@@ -96,10 +98,14 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck
+        id: typecheck
+        run: |
+          npm run typecheck || { echo "The typecheck fails once main is merged into the pull request." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
 
       - name: Tests
-        run: npm test
+        id: tests
+        run: |
+          npm test || { echo "Tests fail once main is merged into the pull request: see the run." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
 
       - name: Push, then squash-merge
         env:
@@ -118,9 +124,20 @@ jobs:
               merged=yes
               break
             fi
-            [ "$state" = "$head CONFLICTING" ] && { echo "::error::Pull request #$PR conflicts with main again: run Merge once more."; exit 1; }
+            [ "$state" = "$head CONFLICTING" ] && { echo "Pull request #$PR conflicts with main again (main moved meanwhile): run Merge once more." > "$REASON_FILE"; echo "::error title=Merge refused::Pull request #$PR conflicts with main again (main moved meanwhile): run Merge once more."; exit 1; }
             echo "GitHub is not ready to merge #$PR yet ($state): trying again in 10 seconds."
             sleep 10
           done
-          [ "${merged:-}" = yes ] || { echo "::error::GitHub did not merge #$PR; the branch is pushed, numbered and checked: run Merge again."; exit 1; }
+          [ "${merged:-}" = yes ] || { echo "GitHub did not merge #$PR in time; the branch is pushed, numbered and checked: run Merge again." > "$REASON_FILE"; echo "::error title=Merge refused::GitHub did not merge #$PR in time; the branch is pushed, numbered and checked: run Merge again."; exit 1; }
           gh pr comment "$PR" --body "Merged into main${VERSIONS:+ as release $VERSIONS}${PAR:+, at the request of @$PAR}, from La Fabrique."
+
+      # Refused: the reason on the pull request too, with the run.
+      - name: Say why on the pull request
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          reason=$(cat "$REASON_FILE" 2>/dev/null || echo "The merge workflow stopped: see the run.")
+          gh pr comment "$PR" --body "Merge refused: $reason ([the run]($RUN))"

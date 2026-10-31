@@ -1,5 +1,27 @@
 [
   {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "One status for a card, from the spec to production",
+    "changements": [
+      "A card has one status. Draft, Shaping, To validate and Validated say where its spec stands; once Validated with stories, the status follows them by itself: Stories to prepare, Ready for dev, In sprint, In development, To test, In production, with its count (In development 1/3 developed) and, on hovering, every count (3 stories: 3 ready, 2 developed, 1 validated, 0 in production).",
+      "The board's Status lanes have these stages; a card cannot be moved into or out of them by hand, only to To validate (the feature changed) or Dropped. The card's page says since when, and the stages it went through.",
+      "A pull request no longer writes a version number in the release notes: its entry says next, and the merge gives the number and the time."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "Why a merge was refused",
+    "changements": [
+      "When the merge workflow refuses a pull request (conflicts with main and in which files, checks failing, not open, a draft), it says why: in a comment on the pull request, in the log, and in the sprint next to the pull request, with the run."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.76",
     "date": "2026-11-01",
     "heure": "00:05",

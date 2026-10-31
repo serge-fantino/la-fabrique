@@ -359,3 +359,45 @@ describe("A merged story in the sprint", () => {
     expect(page).toContain('<span class="pill stage-to_validate warn">To validate</span> <a class="small" href="/projects/acme/widget/to-test#story-12">Validate in To test</a>');
   });
 });
+
+describe("A merge refused", () => {
+  it("says why, from the run's annotation, in the log and next to the pull request in the sprint", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", fusionner: "merge.yml" }, claude: { plafond: 1 } });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]), REPO)
+      .run();
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/actions/runs/77/jobs` }).reply(200, JSON.stringify({ jobs: [{ id: 501, conclusion: "failure" }] }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/check-runs/501/annotations` })
+      .reply(
+        200,
+        JSON.stringify([
+          { annotation_level: "failure", title: "Merge refused", message: "Conflicts with main in: CLAUDE.md src/rights.ts. Bring the pull request up to date first (Update with Claude), then merge again." },
+          { annotation_level: "failure", title: "", message: "Process completed with exit code 1." },
+        ]),
+        JSON_HEADERS,
+      );
+    const run = { id: 77, path: ".github/workflows/merge.yml", display_title: "Merge #30", status: "completed", conclusion: "failure", html_url: "https://github.com/run/77" };
+    expect((await webhook("workflow_run", { action: "completed", repository: { full_name: REPO }, workflow_run: run })).status).toBe(200);
+    const logged = await env.DB.prepare("SELECT issue_number, details FROM activity_log WHERE action = 'pull_merge_finished'").first<{ issue_number: number; details: string }>();
+    expect(logged?.issue_number).toBe(30);
+    expect(JSON.parse(logged?.details ?? "{}")).toEqual({
+      conclusion: "failure",
+      reason: "Conflicts with main in: CLAUDE.md src/rights.ts. Bring the pull request up to date first (Update with Claude), then merge again.",
+      url: "https://github.com/run/77",
+    });
+
+    const { cookie } = await signIn("admin-one");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30` })
+      .reply(200, JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "dirty", base: { ref: "main" } }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(page).toContain('<span class="pill alert small">Merge refused</span> <span class="small">Conflicts with main in: CLAUDE.md src/rights.ts.');
+    expect(page).toMatch(/<a [^>]*class="small" href="https:\/\/github.com\/run\/77">the run<\/a>/);
+    const log = await (await get(`/projects/${REPO}/log`, cookie)).text();
+    expect(log).toContain("refused: Conflicts with main in: CLAUDE.md src/rights.ts.");
+  });
+});

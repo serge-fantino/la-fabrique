@@ -16,17 +16,17 @@ export function isProgressStage(value: unknown): value is ProgressStage {
   return typeof value === "string" && (PROGRESS_STAGES as readonly string[]).includes(value);
 }
 
-const TONES: Record<ProgressStage, string> = { to_prepare: "", ready: "ok", in_sprint: "warn", in_dev: "warn", to_test: "warn", in_production: "ok" };
-
 export interface Progress {
   stage: ProgressStage;
   // How far the stage goes: stories ready, developed, validated, out; of the
   // stories needed (the nice to have count only when all are).
   done: number;
   total: number;
+  // All the counts, for the pill's title: "3 stories: 3 ready, 2 developed…".
+  counts?: { ready: number; developed: number; validated: number; out: number };
 }
 
-// What the count of a stage means.
+// What the count of a stage means: "1/3 developed".
 export function progressDetail(progress: Progress): string {
   const of = `${progress.done}/${progress.total}`;
   switch (progress.stage) {
@@ -44,12 +44,15 @@ export function progressDetail(progress: Progress): string {
   }
 }
 
+// The card's status pill once its stories carry it: the stage and its
+// count; the title says all the counts.
 export function progressPill(progress: Progress | null | undefined, since?: string | null): string {
   if (!progress) return "";
   const detail = progressDetail(progress);
-  const title = `Progress, from the card's stories${since ? `: since ${since.slice(0, 16).replace("T", " ")} UTC` : ""}`;
-  return `<span class="pill progress-${progress.stage}${TONES[progress.stage] ? ` ${TONES[progress.stage]}` : ""}" title="${title}">${PROGRESS_LABELS[progress.stage]}${
-    detail ? ` <span class="mono">${detail}</span>` : ""
-  }</span>`;
+  const counts = progress.counts;
+  const breakdown = counts
+    ? `${progress.total} stor${progress.total === 1 ? "y" : "ies"}: ${counts.ready} ready, ${counts.developed} developed, ${counts.validated} validated, ${counts.out} in production`
+    : `${progress.total} stor${progress.total === 1 ? "y" : "ies"}`;
+  const title = `Status from the card's stories. ${breakdown}${since ? `. Since ${since.slice(0, 16).replace("T", " ")} UTC` : ""}.`;
+  return `<span class="pill card-${progress.stage}" title="${title}">${PROGRESS_LABELS[progress.stage]}${detail ? ` <span class="mono">${detail}</span>` : ""}</span>`;
 }
-
