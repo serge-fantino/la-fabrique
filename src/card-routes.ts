@@ -1,6 +1,9 @@
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { knownValues, nextVersion, plannedSpelling, planningProblem } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { storyCards } from "./card-groups";
+import { sprintPage } from "./sprint-views";
+import { activeSprint, endSprint, latestSprint, startSprint } from "./sprints";
 import {
   addValue,
   archiveCard,
@@ -51,7 +54,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -459,6 +462,70 @@ export async function importRoute(request: Request, env: Env, viewer: Viewer, pr
   return redirect(`${projectUrl(project.repo)}/board?notice=imported&created=${outcome.created.length}&skipped=${outcome.skipped.length}`);
 }
 
+const SPRINT_NOTICES: Record<string, string> = {
+  started: "Sprint started: its release is in progress.",
+  stopped: "Sprint stopped: its release is planned again.",
+};
+
+// The sprint (la-fabrique#109): the release worked on, its cards and their
+// stories; start one from a planned release, stop it.
+export async function sprintRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
+  const base = `${projectUrl(project.repo)}/sprint`;
+  if (form) {
+    if (!canWriteCards(viewer)) return forbidden(viewer);
+    const action = String(form.get("action") ?? "");
+    if (action === "stop") {
+      const running = await activeSprint(env.DB, project.repo);
+      if (running) await endSprint(env.DB, running, viewer.login, "stopped");
+      return redirect(`${base}?notice=stopped`);
+    }
+    if (action === "start") {
+      const release = cleanValue(form.get("release"));
+      const { releases } = await knownValues(env, project, await listCards(env.DB, project.repo));
+      if (!release || releases.get(release)?.state !== "planned") return redirect(`${base}?failure=not_planned`);
+      const outcome = await startSprint(env.DB, project.repo, release, viewer.login);
+      return redirect(`${base}?${outcome.ok ? "notice=started" : "failure=running"}`);
+    }
+    return redirect(base);
+  }
+  const params = new URL(request.url).searchParams;
+  const cards = await listCards(env.DB, project.repo);
+  // Read first: a sprint whose release is out ends here.
+  const { releases } = await knownValues(env, project, cards);
+  const [sprint, latest, links, { view, cookies }] = await Promise.all([
+    activeSprint(env.DB, project.repo),
+    latestSprint(env.DB, project.repo),
+    storyCards(env.DB, project.repo),
+    projectView(request, env, project, viewer),
+  ]);
+  const all = [...releases.values()];
+  const current = (sprint ? releases.get(sprint.release) : undefined) ?? all.find((release) => release.state === "in_progress") ?? null;
+  const inRelease = current ? cards.filter((card) => card.release === current.version && !card.archivedAt).sort((a, b) => a.position - b.position) : [];
+  const numbers = [
+    ...new Set([
+      ...[...links.byStory.entries()].filter(([, ids]) => ids.some((id) => inRelease.some((card) => card.id === id))).map(([number]) => number),
+      ...(current?.stories ?? []),
+    ]),
+  ];
+  const failure = params.get("failure");
+  return html(
+    sprintPage(viewer, view, {
+      current,
+      sprint,
+      shipped: !sprint && latest?.endReason === "shipped" ? latest : null,
+      cards: inRelease,
+      stories: await cardStories(env, project, numbers),
+      links: links.byStory,
+      planned: all.filter((release) => release.state === "planned"),
+      canStart: canWriteCards(viewer),
+      notice: SPRINT_NOTICES[params.get("notice") ?? ""],
+      failure:
+        failure === "running" ? "A sprint is in progress: stop it first." : failure === "not_planned" ? "Only a planned release can start a sprint." : undefined,
+    }),
+    { cookies },
+  );
+}
+
 export async function downloadCards(env: Env, project: Project): Promise<Response> {
   const name = project.repo.replace("/", "-");
   return json(await exportCards(env.DB, project.repo), {
@@ -638,6 +705,11 @@ export async function cardRoute(
   if (path === "board") {
     if (method === "GET") return showBoard(request, env, viewer, project);
     if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));
+    return notAllowed();
+  }
+  if (path === "sprint") {
+    if (method === "GET") return sprintRoute(request, env, viewer, project, null);
+    if (method === "POST") return withForm((data) => sprintRoute(request, env, viewer, project, data));
     return notAllowed();
   }
   if (path === "cards/new") return method === "GET" ? showCardForm(request, env, viewer, project, null) : notAllowed();

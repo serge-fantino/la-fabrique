@@ -4,6 +4,7 @@ import { PRODUCTION, type ProductionStatus } from "./production";
 import type { Project } from "./projects";
 import { loadReleases } from "./roadmap";
 import { readSnapshot } from "./snapshots";
+import { activeSprint, endSprint } from "./sprints";
 
 // The board's releases: the project's own (its release notes), shipped or
 // in progress, and those planned ahead in La Fabrique (a value of the
@@ -14,6 +15,10 @@ export interface BoardRelease {
   version: string;
   title: string | null;
   state: ReleaseState;
+  // The stories its release-notes entry declares (none for a planned one).
+  stories?: number[] | null;
+  // Started as the sprint in La Fabrique (la-fabrique#109).
+  sprint?: boolean;
 }
 
 export const RELEASE_STATE_LABELS: Record<ReleaseState, string> = { shipped: "Shipped", in_progress: "In progress", planned: "Planned" };
@@ -99,15 +104,23 @@ export async function boardReleases(env: Env, project: Project, planned: string[
   for (const release of releases) {
     // Entries newer than the newest one with a time are not out yet; older
     // ones without a time came before times were written down.
-    found.set(release.version, { version: release.version, title: release.title, state: release.upcoming ? "in_progress" : "shipped" });
+    found.set(release.version, { version: release.version, title: release.title, state: release.upcoming ? "in_progress" : "shipped", stories: release.stories });
   }
   for (const waiting of production?.data.waiting ?? []) {
-    if (!found.has(waiting.version)) found.set(waiting.version, { version: waiting.version, title: waiting.title, state: "in_progress" });
+    if (!found.has(waiting.version)) found.set(waiting.version, { version: waiting.version, title: waiting.title, state: "in_progress", stories: waiting.stories ?? null });
   }
   const pattern = versionPattern(project.check?.config?.version?.forme);
   for (const value of planned) {
     if (found.has(value) || (pattern && !pattern.test(value))) continue;
     found.set(value, { version: value, title: null, state: "planned" });
+  }
+  // The sprint's release is in progress until the release notes date it;
+  // dated, the sprint ends by itself.
+  const sprint = await activeSprint(env.DB, project.repo);
+  if (sprint) {
+    const release = found.get(sprint.release);
+    if (release?.state === "shipped") await endSprint(env.DB, sprint, "la-fabrique", "shipped");
+    else found.set(sprint.release, { ...(release ?? { version: sprint.release, title: null }), state: "in_progress", sprint: true });
   }
   return [...found.values()].sort((a, b) => compareVersions(a.version, b.version));
 }
