@@ -1,4 +1,5 @@
 import { can } from "./rights";
+import { storyCards } from "./card-groups";
 import type { Env } from "./env";
 import { listInstalledRepos } from "./github-app";
 import { html, json, redirect } from "./http";
@@ -140,6 +141,7 @@ function parseFilters(url: URL): StoryFilters {
   const epic = Number(url.searchParams.get("epic"));
   const state = url.searchParams.get("state");
   return {
+    group: url.searchParams.get("group") === "card" ? "card" : "epic",
     epic: Number.isInteger(epic) && epic > 0 ? epic : null,
     label: url.searchParams.get("label") || null,
     state: state === "open" || state === "closed" ? state : "all",
@@ -152,10 +154,11 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const filters = parseFilters(new URL(request.url));
-  const [{ stories, fetchedAt, failure }, { view, cookies }, onInt] = await Promise.all([
+  const [{ stories, fetchedAt, failure }, { view, cookies }, onInt, cards] = await Promise.all([
     loadStories(env, project),
     projectView(request, env, project, viewer),
     storiesOnInt(env, project),
+    storyCards(env.DB, project.repo),
   ]);
   const rules = cycleRules(project.check?.config);
   const stages = stagesOf(stories, rules, onInt);
@@ -164,8 +167,9 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
       stories,
       stages,
       rules,
-      groups: groupStories(stories, filters, viewer.login, stages),
+      groups: groupStories(stories, filters, viewer.login, stages, cards),
       filters,
+      cards,
       fetchedAt,
       failure,
     }),
@@ -595,14 +599,17 @@ export async function showBacklog(
 ): Promise<Response> {
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
-  const [{ view, cookies }, stories, onInt, launches] = await Promise.all([
+  const params = new URL(request.url).searchParams;
+  const group = params.get("group") === "card" ? "card" : "priority";
+  const [{ view, cookies }, stories, onInt, launches, cards] = await Promise.all([
     projectView(request, env, project, viewer),
     loadStories(env, project),
     storiesOnInt(env, project),
     claudeLaunches(env.DB, project.repo),
+    group === "card" ? storyCards(env.DB, project.repo) : Promise.resolve(null),
   ]);
   const rules = cycleRules(project.check?.config);
-  const notice = new URL(request.url).searchParams.get("notice");
+  const notice = params.get("notice");
   return html(
     backlogPage(viewer, view, {
       stories: stories.stories,
@@ -611,6 +618,8 @@ export async function showBacklog(
       canPrioritize: canPrioritize(viewer.role),
       claude: { show: canLaunchClaude(viewer.role) && claudeWorkflow(project) !== null, launches, cap: claudeCap(project) },
       fetchedAt: stories.fetchedAt,
+      group,
+      cards,
       notice: notice ? BACKLOG_NOTICES[notice] : undefined,
       failure: failed?.message ?? stories.failure,
     }),
@@ -628,7 +637,7 @@ export async function prioritize(request: Request, form: FormData, env: Env, vie
   const priority = String(form.get("priority") ?? "");
   if (!Number.isInteger(issue) || issue <= 0) return redirect(`/projects/${project.repo}/backlog`);
   const outcome = await setPriority(env, project, viewer.login, issue, priority || null);
-  if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?notice=set#issue-${issue}`);
+  if (outcome.ok) return redirect(`/projects/${project.repo}/backlog?${form.get("group") === "card" ? "group=card&" : ""}notice=set#issue-${issue}`);
   return showBacklog(request, env, viewer, repo, outcome);
 }
 

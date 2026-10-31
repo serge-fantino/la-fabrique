@@ -1,3 +1,4 @@
+import { groupByCard, type CardHead, type StoryCards } from "./card-groups";
 import type { Env } from "./env";
 import { githubAll, installationToken } from "./github-app";
 import { describeFailure, type Project } from "./projects";
@@ -232,6 +233,8 @@ export async function storiesChanged(env: Env, repo: string): Promise<void> {
 }
 
 export interface StoryFilters {
+  // Grouped by epic (GitHub's sub-issues), or by the card a story was made from.
+  group?: "epic" | "card";
   epic: number | null;
   label: string | null;
   state: "open" | "closed" | "all";
@@ -242,6 +245,8 @@ export interface StoryFilters {
 export interface StoryGroup {
   epic: Story | null;
   items: Story[];
+  // Grouped by card: the card (null: the stories from no card).
+  card?: CardHead | null;
 }
 
 export function groupStories(
@@ -249,6 +254,7 @@ export function groupStories(
   filters: StoryFilters,
   viewerLogin: string,
   stages: Map<number, string> = new Map(),
+  cards: StoryCards | null = null,
 ): StoryGroup[] {
   const byNumber = new Map(stories.map((story) => [story.number, story]));
   const isEpic = (story: Story) => story.subTotal > 0;
@@ -269,6 +275,10 @@ export function groupStories(
     .filter((story) => !isEpic(story) && (story.parent === null || !byNumber.has(story.parent)) && matches(story))
     .sort((a, b) => a.number - b.number);
 
+  if (cards && filters.group === "card") {
+    const shown = stories.filter((story) => !isEpic(story) && matches(story) && (filters.epic === null || story.parent === filters.epic));
+    return groupByCard(shown.sort((a, b) => a.number - b.number), cards).map((group) => ({ epic: null, card: group.card, items: group.items }));
+  }
   if (filters.epic !== null) return groups.filter((group) => group.epic?.number === filters.epic);
   const filtering = filters.label !== null || filters.mine || filters.state !== "all" || Boolean(filters.stage);
   return [
