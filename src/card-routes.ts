@@ -1,9 +1,10 @@
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
-import { knownValues, nextVersion, plannedSpelling, planningProblem } from "./card-releases";
+import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
-import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice, startSprint } from "./sprints";
+import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
+import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
 import {
   addValue,
   archiveCard,
@@ -82,6 +83,8 @@ function importedNotice(params: URLSearchParams): string {
 export async function showBoard(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   const url = new URL(request.url);
   const board = readBoardQuery(url.searchParams);
+  // A sprint whose needed stories are all out closes before the board shows.
+  await settleSprint(env, project);
   const [cards, { view, cookies }, spends, working] = await Promise.all([
     listCards(env.DB, project.repo),
     projectView(request, env, project, viewer),
@@ -463,20 +466,32 @@ export async function importRoute(request: Request, env: Env, viewer: Viewer, pr
 }
 
 const SPRINT_NOTICES: Record<string, string> = {
-  started: "Sprint started: its release is in progress.",
-  stopped: "Sprint stopped: its release is planned again.",
+  started: "Sprint started: it took the cards of Next release.",
+  closed: "Sprint closed: the cards done took the version that shipped them, the others went back to Next release.",
+  stopped: "Sprint stopped: its cards went back to Next release.",
 };
 
-// The sprint (la-fabrique#109): the release worked on, its cards and their
-// stories; start one from a planned release, stop it.
+// The sprint (la-fabrique#109): it takes the cards of Next release, has no
+// version while it runs, and closes once its needed stories are out.
 export async function sprintRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
   const base = `${projectUrl(project.repo)}/sprint`;
   if (form) {
     if (!canWriteCards(viewer)) return forbidden(viewer);
     const action = String(form.get("action") ?? "");
+    const running = await activeSprint(env.DB, project.repo);
+    if (action === "start") {
+      const outcome = await startSprint(env, project, viewer.login);
+      return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
+    }
+    if (action === "close") {
+      if (running && running.release === SPRINT_LANE) await closeSprint(env, project, running, viewer.login, "closed");
+      return redirect(`${base}?notice=closed`);
+    }
     if (action === "stop") {
-      const running = await activeSprint(env.DB, project.repo);
-      if (running) await endSprint(env.DB, running, viewer.login, "stopped");
+      if (running) {
+        if (running.release === SPRINT_LANE) await stopSprint(env, project, running, viewer.login);
+        else await endSprint(env.DB, running, viewer.login, "stopped");
+      }
       return redirect(`${base}?notice=stopped`);
     }
     // The order in the sprint, and nice to have (la-fabrique#111).
@@ -495,18 +510,12 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       }
       return redirect(`${base}#story-${card}-${story}`);
     }
-    if (action === "start") {
-      const release = cleanValue(form.get("release"));
-      const { releases } = await knownValues(env, project, await listCards(env.DB, project.repo));
-      if (!release || releases.get(release)?.state !== "planned") return redirect(`${base}?failure=not_planned`);
-      const outcome = await startSprint(env.DB, project.repo, release, viewer.login);
-      return redirect(`${base}?${outcome.ok ? "notice=started" : "failure=running"}`);
-    }
     return redirect(base);
   }
   const params = new URL(request.url).searchParams;
+  // First: a sprint whose needed stories are all out closes here.
+  await settleSprint(env, project);
   const cards = await listCards(env.DB, project.repo);
-  // Read first: a sprint whose release is out ends here.
   const { releases } = await knownValues(env, project, cards);
   const [sprint, latest, links, { view, cookies }] = await Promise.all([
     activeSprint(env.DB, project.repo),
@@ -514,30 +523,29 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
     storyCards(env.DB, project.repo),
     projectView(request, env, project, viewer),
   ]);
-  const all = [...releases.values()];
-  const current = (sprint ? releases.get(sprint.release) : undefined) ?? all.find((release) => release.state === "in_progress") ?? null;
-  const inRelease = current ? cards.filter((card) => card.release === current.version && !card.archivedAt).sort((a, b) => a.position - b.position) : [];
-  const numbers = [
-    ...new Set([
-      ...[...links.byStory.entries()].filter(([, ids]) => ids.some((id) => inRelease.some((card) => card.id === id))).map(([number]) => number),
-      ...(current?.stories ?? []),
-    ]),
-  ];
+  const live = cards.filter((card) => !card.archivedAt).sort((a, b) => a.position - b.position || a.id - b.id);
+  const inLane = (release: string) => live.filter((card) => card.release === release);
+  const integration = [...releases.values()].find((release) => release.state === "in_progress" && !isFixedLane(release.version) && !release.sprint) ?? null;
+  const sprintCards = sprint ? inLane(sprint.release) : [];
+  const nextCards = inLane(NEXT_RELEASE);
+  const integrationCards = integration ? inLane(integration.version) : [];
+  const numbers = [...new Set([...sprintCards, ...nextCards, ...integrationCards].flatMap((card) => links.order.get(card.id) ?? []))];
   const failure = params.get("failure");
   return html(
     sprintPage(viewer, view, {
-      current,
       sprint,
-      shipped: !sprint && latest?.endReason === "shipped" ? latest : null,
-      cards: inRelease,
+      legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
+      last: !sprint && latest?.endedAt ? latest : null,
+      sprintCards,
+      nextCards,
+      integration,
+      integrationCards,
       stories: await cardStories(env, project, numbers),
       links,
       canOrder: canWriteCards(viewer),
-      planned: all.filter((release) => release.state === "planned"),
-      canStart: canWriteCards(viewer),
       notice: SPRINT_NOTICES[params.get("notice") ?? ""],
       failure:
-        failure === "running" ? "A sprint is in progress: stop it first." : failure === "not_planned" ? "Only a planned release can start a sprint." : undefined,
+        failure === "running" ? "A sprint is in progress: close or stop it first." : failure === "empty" ? "Next release has no card: place the cards of the next sprint in it first." : undefined,
     }),
     { cookies },
   );

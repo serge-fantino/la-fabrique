@@ -3,13 +3,14 @@
     "version": "0.60",
     "date": "2026-10-31",
     "heure": "11:15",
-    "titre": "The order in the sprint, and nice to have",
+    "titre": "Next release, a sprint without a version, and the order in the sprint",
     "changements": [
-      "In the sprint, move a card up or down (the board's order follows), and a card's stories up or down.",
-      "Mark a story nice to have: done if there is time; it does not count in the stories left before the release, now at the top of the sprint.",
+      "Next release: a lane of the board with no version, always first after Not set, where the next sprint is prepared. Planning a release by number is gone: a numbered release could ship with other work and carry its cards away undone.",
+      "Start the sprint (Sprint tab) takes the cards of Next release into the Sprint lane. The sprint closes by itself once every needed story of its cards is in production: each card takes the version that shipped it, what is not done goes back to Next release. Close the sprint and Stop the sprint do it by hand.",
+      "In the sprint and in Next release, move cards up or down (the board's order follows), and a card's stories up or down; mark a story nice to have: done if there is time, it does not count in the stories left.",
       "The backlog grouped by card shows each card's stories in the same order, with nice to have marked."
     ],
-    "stories": [111],
+    "stories": [109, 111],
     "liens": null
   },
   {

@@ -28,7 +28,7 @@ import {
   type CardTags,
   type FreeDimension,
 } from "./cards";
-import { RELEASE_STATE_LABELS, type BoardRelease } from "./card-releases";
+import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
 import { stagePill } from "./stories-views";
@@ -245,7 +245,10 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   };
   const releaseNote = (axis: Axis, value: string) => {
     const release = axis === "release" ? data.releases.get(value) : undefined;
-    return release ? ` <span class="pill ${RELEASE_TONES[release.state]} small">${release.sprint ? "Sprint" : RELEASE_STATE_LABELS[release.state]}</span>` : "";
+    // Next release needs no pill; the Sprint lane says it is in progress.
+    if (!release || release.version === NEXT_RELEASE) return "";
+    const label = release.sprint && release.version !== SPRINT_LANE ? "Sprint" : RELEASE_STATE_LABELS[release.state];
+    return ` <span class="pill ${RELEASE_TONES[release.state]} small">${label}</span>`;
   };
   const titleOf = (axis: Axis, value: string) => {
     const release = axis === "release" ? data.releases.get(value) : undefined;
@@ -299,8 +302,10 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   // A new lane, and a new group when the rows are a free dimension too.
   const newLanes = canWrite
     ? [
-        ...(isFreeDimension(board.by) ? [addValueForm(viewer, base, board.by, back, "lane", data.nextRelease)] : []),
-        ...(isFreeDimension(board.then) && board.then !== board.by ? [addValueForm(viewer, base, board.then, back, "group", data.nextRelease)] : []),
+        // No release planned by number: it could ship with other work and
+        // carry its cards away undone; Next release is there instead.
+        ...(isFreeDimension(board.by) && board.by !== "release" ? [addValueForm(viewer, base, board.by, back, "lane", data.nextRelease)] : []),
+        ...(isFreeDimension(board.then) && board.then !== board.by && board.then !== "release" ? [addValueForm(viewer, base, board.then, back, "group", data.nextRelease)] : []),
       ].join("")
     : "";
 

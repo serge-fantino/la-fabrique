@@ -11,7 +11,7 @@ export interface Sprint {
   startedBy: string;
   endedAt: string | null;
   endedBy: string | null;
-  endReason: "stopped" | "shipped" | null;
+  endReason: "stopped" | "shipped" | "closed" | null;
 }
 
 interface SprintRow {
@@ -34,7 +34,7 @@ function toSprint(row: SprintRow): Sprint {
     startedBy: row.started_by,
     endedAt: row.ended_at,
     endedBy: row.ended_by,
-    endReason: row.end_reason === "stopped" || row.end_reason === "shipped" ? row.end_reason : null,
+    endReason: row.end_reason === "stopped" || row.end_reason === "shipped" || row.end_reason === "closed" ? row.end_reason : null,
   };
 }
 
@@ -47,16 +47,6 @@ export async function latestSprint(db: D1Database, repo: string): Promise<Sprint
 export async function activeSprint(db: D1Database, repo: string): Promise<Sprint | null> {
   const sprint = await latestSprint(db, repo);
   return sprint && !sprint.endedAt ? sprint : null;
-}
-
-export async function startSprint(db: D1Database, repo: string, release: string, login: string): Promise<{ ok: true } | { ok: false; message: string }> {
-  const running = await activeSprint(db, repo);
-  if (running) return { ok: false, message: `The sprint ${running.release} is in progress: stop it first.` };
-  await db.batch([
-    db.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, ?, ?)").bind(repo, release, login),
-    activityStatement(db, { actor: login, action: "sprint_started", repo, details: { release } }),
-  ]);
-  return { ok: true };
 }
 
 export async function endSprint(db: D1Database, sprint: Sprint, login: string, reason: "stopped" | "shipped"): Promise<void> {
