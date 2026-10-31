@@ -1,8 +1,8 @@
 [
   {
     "version": "0.75",
-    "date": "2026-10-31",
-    "heure": "22:12",
+    "date": "2026-11-01",
+    "heure": "00:00",
     "titre": "Product Engineers can give the go to production",
     "changements": [
       "Product Engineers can now give the go that pushes the version on integration to production, like the super admin; tech leads and testers cannot (the page hides it and the request is refused). Merging a pull request into the production branch follows the same rule."
