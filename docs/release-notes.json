@@ -2,7 +2,7 @@
   {
     "version": "0.59",
     "date": "2026-10-31",
-    "heure": "11:05",
+    "heure": "11:12",
     "titre": "The sprint",
     "changements": [
       "A Sprint tab: the release we work on, its cards, and under each card its stories with their stage; how many are in production; the stories its release notes declare that come from no card.",
