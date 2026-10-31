@@ -16,6 +16,13 @@ export default defineWorkersConfig(async () => {
       poolOptions: {
         workers: {
           wrangler: { configPath: "./wrangler.jsonc" },
+          // One runtime for every file, run one after another; storage is
+          // still reset between tests. Without it, the pool starts one
+          // workerd per test file, all at once: on the CI runner one of
+          // them sometimes dies ("fetch failed: other side closed") and its
+          // file's results are lost, which failed the deploy with no test
+          // failing. Measured locally: 63 s instead of 59 s.
+          singleWorker: true,
           miniflare: {
             compatibilityDate: "2025-10-01",
             compatibilityFlags: ["nodejs_compat", "global_fetch_strictly_public"],

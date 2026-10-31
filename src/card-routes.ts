@@ -3,6 +3,7 @@ import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, p
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
+import { pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude } from "./claude";
@@ -52,7 +53,7 @@ import { findProject, type Project } from "./projects";
 import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
 import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
 import { enqueue, isActive, jobEvents, latestJob, workingCards, type JobKind } from "./jobs";
-import { liveFor } from "./live";
+import { liveFor, sprintLiveFor } from "./live";
 import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
@@ -60,7 +61,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -487,6 +488,7 @@ const SPRINT_NOTICES: Record<string, string> = {
   closed: "Sprint closed: the cards done took the version that shipped them, the others went back to Next release.",
   priority: "Priority set on GitHub.",
   ready: "Marked ready for Claude on GitHub.",
+  review: "Review asked on GitHub.",
   stopped: "Sprint stopped: its cards went back to Next release.",
 };
 
@@ -565,6 +567,14 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
       return redirect(`${base}?notice=priority#story-${card}-${story}`);
     }
+    if (action === "review") {
+      const pull = Number(form.get("pull"));
+      const reviewer = String(form.get("reviewer") ?? "");
+      if (!Number.isInteger(pull) || pull <= 0 || !(await reviewers(env)).includes(reviewer)) return redirect(base);
+      const outcome = await requestReview(request, env, project, viewer.login, pull, reviewer);
+      if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+      return redirect(`${base}?notice=review`);
+    }
     if (action === "story_ready") {
       if (!Number.isInteger(story) || story <= 0) return redirect(base);
       const outcome = await markReady(env, project, story, viewer.login);
@@ -599,6 +609,10 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const numbers = [...new Set([...sprintCards, ...nextCards, ...integrationCards].flatMap((card) => links.order.get(card.id) ?? []))];
   const failure = params.get("failure");
   const stories = await cardStories(env, project, numbers);
+  // The open pull requests of the sprint's stories, as GitHub has them.
+  const inSprint = sprintCards.flatMap((card) => links.order.get(card.id) ?? []);
+  const openPulls = inSprint.flatMap((number) => (stories.get(number)?.pulls ?? []).filter((pull) => pull.state === "open").map((pull) => pull.number));
+  const [pulls, people] = await Promise.all([pullDetails(env, project, openPulls), reviewers(env)]);
   // The next for Claude: in the sprint's order, the first ready story not
   // launched yet.
   const next = sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number)) ?? null;
@@ -615,6 +629,8 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       stories,
       links,
       canOrder: canWriteCards(viewer),
+      pulls,
+      reviewers: people,
       priorities: cycleRules(project.check?.config).priorities,
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,
       claude: {
@@ -821,6 +837,12 @@ export async function cardRoute(
     if (method === "GET") return showBoard(request, env, viewer, project);
     if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));
     return notAllowed();
+  }
+  // The sprint's live connection: Claude's runs, pushed (CardLive).
+  if (path === "sprint/live") {
+    if (method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("A WebSocket is expected.", { status: 426 });
+    const live = sprintLiveFor(env, project.repo);
+    return live ? live.fetch(request) : new Response("Not found", { status: 404 });
   }
   if (path === "sprint") {
     if (method === "GET") return sprintRoute(request, env, viewer, project, null);

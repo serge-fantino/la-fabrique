@@ -1,13 +1,37 @@
 [
   {
-    "version": "0.66",
+    "version": "0.68",
     "date": "2026-10-31",
-    "heure": "16:00",
+    "heure": "17:23",
     "titre": "The go says what blocks it",
     "changements": [
       "The go is shown as blocked, with the reason: the stories on int that are not validated (listed; the super admin can still give the go anyway by saying why), a failing check on the integration branch, or nothing new since the last production version."
     ],
     "stories": [102],
+    "liens": null
+  },
+  {
+    "version": "0.67",
+    "date": "2026-10-31",
+    "heure": "17:09",
+    "titre": "What's new in La Fabrique",
+    "changements": [
+      "A What's new page lists La Fabrique's own releases, newest first: date and time, what changed, and the stories each one brought (linked to GitHub when La Fabrique is one of its own projects).",
+      "The (i) next to the name leads to it, at the version running."
+    ],
+    "stories": [],
+    "liens": null
+  },
+  {
+    "version": "0.66",
+    "date": "2026-10-31",
+    "heure": "16:57",
+    "titre": "The sprint follows Claude's work and its pull requests",
+    "changements": [
+      "The sprint updates by itself when Claude starts or ends a run, or when a pull request moves on GitHub; the end of each run is written in the log.",
+      "Each story of the sprint shows its pull requests (open, draft, merged) and who was asked to review them; Ask for a review asks a tech lead or super admin, on GitHub, in your name."
+    ],
+    "stories": [113],
     "liens": null
   },
   {

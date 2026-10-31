@@ -2884,6 +2884,61 @@ tr.nice td {
   display: flex;
 }
 
-.version-pop .button {
-  align-self: flex-start;
+.version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* La Fabrique's own release notes (/whats-new). */
+.whats-new-entry {
+  max-width: 46rem;
+  border-top: 1px solid var(--rule);
+  padding: 0.75rem 0 0.5rem;
+  scroll-margin-top: 1rem;
+}
+
+.whats-new-entry h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.whats-new-entry h2 a {
+  color: var(--accent);
+  margin-right: 0.35rem;
+}
+
+.whats-new-entry:target {
+  background: #fff;
+  border-radius: 14px;
+  padding-left: 0.9rem;
+  padding-right: 0.9rem;
+}
+
+.whats-new-when {
+  margin: 0.2rem 0 0;
+}
+
+.whats-new-entry ul {
+  margin: 0.5rem 0;
+  padding-left: 1.2rem;
+}
+
+.whats-new-entry li + li {
+  margin-top: 0.3rem;
+}
+
+/* A story's pull request in the sprint, and the review to ask. */
+.sprint-pull {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.sprint-review {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
