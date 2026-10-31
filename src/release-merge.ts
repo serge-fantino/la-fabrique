@@ -47,7 +47,9 @@ export function mergeReleaseNotes(base: string, branch: string, main: string, no
   if (!top) throw new Error("main's release notes have no version to number after");
   const numbered = own.map((entry, index) => {
     const key = "version" in entry || !("numero" in entry) ? "version" : "numero";
-    return { ...entry, [key]: bump(top, own.length - index), date: now.date, heure: now.time };
+    // version, date, heure first, as the file writes them.
+    const { [key]: _version, date: _date, heure: _time, ...rest } = entry;
+    return { [key]: bump(top, own.length - index), date: now.date, heure: now.time, ...rest };
   });
   const body = main.trimStart();
   if (!body.startsWith("[")) throw new Error("main's release notes do not start with [");

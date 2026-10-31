@@ -1,5 +1,6 @@
 import { compareVersions } from "./card-releases";
-import { cardPills, cardRef, cardUrl } from "./card-views";
+import { cardPills, cardRef, cardUrl, statusPill } from "./card-views";
+import type { Progress } from "./progress-stages";
 import type { CardStatus } from "./cards";
 import { escapeHtml } from "./views";
 
@@ -11,6 +12,8 @@ export interface CardHead {
   status: CardStatus;
   release: string | null;
   position: number;
+  // Its stage from its stories, as last seen (cards.progress).
+  progress?: string | null;
 }
 
 export interface StoryCards {
@@ -30,7 +33,7 @@ export function isNice(links: StoryCards, card: number, story: number): boolean 
 export async function storyCards(db: D1Database, repo: string): Promise<StoryCards> {
   const { results } = await db
     .prepare(
-      `SELECT c.id, c.title, c.status, c.release, c.position, l.ref, l.position AS rank, l.nice FROM card_links l JOIN cards c ON c.id = l.card_id
+      `SELECT c.id, c.title, c.status, c.release, c.position, c.progress, l.ref, l.position AS rank, l.nice FROM card_links l JOIN cards c ON c.id = l.card_id
        WHERE c.repo = ? AND l.kind = 'story' AND c.archived_at IS NULL
        ORDER BY c.position, c.id, l.position IS NULL, l.position, CAST(l.ref AS INTEGER)`,
     )
@@ -41,7 +44,7 @@ export async function storyCards(db: D1Database, repo: string): Promise<StoryCar
   const order = new Map<number, number[]>();
   const nice = new Set<string>();
   for (const row of results) {
-    cards.set(row.id, { id: row.id, title: row.title, status: row.status, release: row.release, position: row.position });
+    cards.set(row.id, { id: row.id, title: row.title, status: row.status, release: row.release, position: row.position, progress: row.progress ?? null });
     const number = Number(row.ref);
     byStory.set(number, [...(byStory.get(number) ?? []), row.id]);
     order.set(row.id, [...(order.get(row.id) ?? []), number]);
@@ -75,11 +78,11 @@ export function groupByCard<T extends { number: number }>(items: T[], links: Sto
 }
 
 // A card group's heading: the card, its status and its release.
-export function cardGroupHead(repo: string, card: CardHead | null, count: number): string {
+export function cardGroupHead(repo: string, card: CardHead | null, count: number, progress?: Progress | null): string {
   if (!card) return `<div class="group-head"><h2>No card <span class="muted mono">${count}</span></h2></div>`;
   return `<div class="group-head">
       <h2><a class="mono" href="${escapeHtml(cardUrl(repo, card.id))}">${cardRef(card.id)}</a> ${escapeHtml(card.title)} <span class="muted mono">${count}</span></h2>
-      <span class="fiche-tags">${cardPills({ status: card.status, release: card.release })}</span>
+      <span class="fiche-tags">${cardPills({ release: card.release }, statusPill({ status: card.status, progress: card.progress ?? null }, progress))}</span>
     </div>`;
 }
 

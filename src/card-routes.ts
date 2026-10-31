@@ -3,8 +3,8 @@ import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, p
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
-import { cardProgress, progressSince } from "./card-progress";
-import { canMerge, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
+import { cardProgress, isProgressStage, progressSince } from "./card-progress";
+import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude, updateWithClaude } from "./claude";
@@ -39,6 +39,7 @@ import {
   setCardPriority,
   reopenStatus,
   setStatus,
+  shownStatus,
   updateCard,
   type CardSplit,
   type Card,
@@ -153,10 +154,14 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const id = Number(form.get("card"));
   const card = Number.isInteger(id) && id > 0 ? await findCard(env.DB, project.repo, id) : null;
   if (!card) return json({ error: "This card is no longer here: reload the board." }, { status: 404 });
-  // Progress follows the card's stories: it is not changed by hand.
-  const progressSet = form.get("set_progress");
-  if (typeof progressSet === "string" && progressSet !== (card.progress ?? "")) {
-    return json({ error: "Progress follows the card's stories on GitHub: it cannot be changed by moving the card." }, { status: 409 });
+  // Validated with stories, the status follows them: not changed by moving
+  // the card into or out of those stages (only to To validate or Dropped).
+  const statusSet = form.get("set_status");
+  if (typeof statusSet === "string" && statusSet !== shownStatus(card)) {
+    const following = isProgressStage(shownStatus(card));
+    if (isProgressStage(statusSet) || (following && statusSet === "validated")) {
+      return json({ error: "This status follows the card's stories on GitHub: it cannot be set by moving the card." }, { status: 409 });
+    }
   }
   const set: Partial<Record<Dimension, string | null>> = {};
   for (const dimension of DIMENSIONS) {
@@ -649,10 +654,11 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   // The open pull requests of the sprint's stories, as GitHub has them.
   const inSprint = sprintCards.flatMap((card) => links.order.get(card.id) ?? []);
   const openPulls = inSprint.flatMap((number) => (stories.get(number)?.pulls ?? []).filter((pull) => pull.state === "open").map((pull) => pull.number));
-  const [pulls, people, progress] = await Promise.all([
+  const [pulls, people, progress, merges] = await Promise.all([
     pullDetails(env, project, openPulls),
     reviewers(env),
     cardProgress(env, project, [...sprintCards, ...nextCards, ...integrationCards], links),
+    lastMergeAttempts(env.DB, project.repo),
   ]);
   // The next for Claude: in the sprint's order, the first ready story not
   // launched yet.
@@ -673,6 +679,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       pulls,
       reviewers: people,
       progress,
+      merges,
       merge: { workflow: mergeWorkflow(project), can: (base: string | null) => canMerge(viewer.role, project, base) },
       priorities: cycleRules(project.check?.config).priorities,
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,

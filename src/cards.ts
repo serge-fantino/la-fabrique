@@ -1,5 +1,5 @@
 import { activityStatement } from "./activity-log";
-import { isProgressStage, PROGRESS_LABELS, PROGRESS_STAGES } from "./progress-stages";
+import { isProgressStage, PROGRESS_LABELS, PROGRESS_STAGES, type ProgressStage } from "./progress-stages";
 
 // Cards: the upstream of dev (la-fabrique#74), stored in La Fabrique and
 // attached to a project. The text (Markdown with annotations) is the
@@ -18,6 +18,27 @@ export const STATUS_LABELS: Record<CardStatus, string> = {
   validated: "Validated",
   dropped: "Dropped",
 };
+
+// The status a card shows (la-fabrique#113): its stored status says where
+// the spec stands (Draft … Validated, Dropped); once Validated with stories,
+// the status goes on by itself with them (src/card-progress.ts): Stories to
+// prepare, Ready for dev, In sprint, In development, To test, In production.
+// A change of the feature sends it back to To validate (stored), and so out
+// of these stages until it is Validated again.
+export type ShownStatus = CardStatus | ProgressStage;
+export const SHOWN_STATUSES: readonly ShownStatus[] = ["draft", "shaping", "to_validate", "validated", ...PROGRESS_STAGES, "dropped"];
+
+export function shownStatus(card: Pick<Card, "status" | "progress">): ShownStatus {
+  return card.status === "validated" && isProgressStage(card.progress) ? card.progress : card.status;
+}
+
+export function isShownStatus(value: unknown): value is ShownStatus {
+  return isStatus(value) || isProgressStage(value);
+}
+
+export function shownStatusLabel(status: ShownStatus): string {
+  return isProgressStage(status) ? PROGRESS_LABELS[status] : STATUS_LABELS[status];
+}
 
 // Free dimensions: their values are the project's own, created from the
 // board or by writing them on a card.
@@ -783,13 +804,11 @@ export async function importCards(db: D1Database, repo: string, author: string, 
 
 // ---- The board ---------------------------------------------------------
 
-// "progress": computed from the stories (src/card-progress.ts), so a card
-// is placed by it but never moved across it.
-export type Axis = Dimension | "none" | "progress";
+export type Axis = Dimension | "none";
 
 export interface BoardFilters {
   kind: CardKind | null;
-  status: CardStatus | null;
+  status: ShownStatus | null;
   // A free dimension's value; "" for "not set".
   values: Partial<Record<FreeDimension, string>>;
   q: string;
@@ -805,7 +824,7 @@ export interface BoardQuery {
 }
 
 export function isAxis(value: unknown): value is Axis {
-  return value === "none" || value === "progress" || isDimension(value);
+  return value === "none" || isDimension(value);
 }
 
 export function readBoardQuery(params: URLSearchParams): BoardQuery {
@@ -827,7 +846,7 @@ export function readBoardQuery(params: URLSearchParams): BoardQuery {
     hideEmpty: params.get("empty") === "hide",
     filters: {
       kind: isKind(kind) ? kind : null,
-      status: isStatus(status) ? status : null,
+      status: isShownStatus(status) ? status : null,
       values,
       q: (params.get("q") ?? "").trim().slice(0, 100),
       all: params.get("all") === "1",
@@ -840,7 +859,7 @@ export function filterCards(cards: Card[], filters: BoardFilters): Card[] {
   return cards.filter((card) => {
     if (!filters.all && (card.archivedAt || (card.status === "dropped" && filters.status !== "dropped"))) return false;
     if (filters.kind && card.kind !== filters.kind) return false;
-    if (filters.status && card.status !== filters.status) return false;
+    if (filters.status && shownStatus(card) !== filters.status) return false;
     for (const dimension of FREE_DIMENSIONS) {
       const wanted = filters.values[dimension];
       if (wanted === undefined) continue;
@@ -858,22 +877,19 @@ export function filterCards(cards: Card[], filters: BoardFilters): Card[] {
 export function axisValues(axis: Axis, known: Record<FreeDimension, string[]>): string[] {
   if (axis === "none") return [""];
   if (axis === "kind") return [...CARD_KINDS];
-  if (axis === "status") return [...CARD_STATUSES];
-  // "" first: the cards without a story yet.
-  if (axis === "progress") return ["", ...PROGRESS_STAGES];
+  if (axis === "status") return [...SHOWN_STATUSES];
   // "Not set" first: what is not placed yet stays in sight.
   return ["", ...known[axis]];
 }
 
 export function valueOf(card: Card, axis: Axis): string {
   if (axis === "none") return "";
-  if (axis === "progress") return isProgressStage(card.progress) ? card.progress : "";
+  if (axis === "status") return shownStatus(card);
   return card[axis] ?? "";
 }
 
 export function valueLabel(axis: Axis, value: string): string {
   if (axis === "kind" && isKind(value)) return KIND_LABELS[value];
-  if (axis === "status" && isStatus(value)) return STATUS_LABELS[value];
-  if (axis === "progress") return isProgressStage(value) ? PROGRESS_LABELS[value] : "No story";
+  if (axis === "status" && isShownStatus(value)) return shownStatusLabel(value);
   return value || "Not set";
 }

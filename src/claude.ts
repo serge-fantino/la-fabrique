@@ -200,6 +200,7 @@ export function isRunning(run: ClaudeRun): boolean {
 // sprint reads its runs again, its open pages are told, and a run that
 // ends is written in the log.
 export interface RestWorkflowRun {
+  id?: number;
   path?: string;
   display_title?: string;
   status?: string;

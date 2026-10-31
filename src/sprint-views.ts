@@ -9,7 +9,7 @@ import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
 import { stagePill } from "./stories-views";
-import { progressPill, type Progress } from "./progress-stages";
+import type { Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -31,6 +31,8 @@ export interface SprintData {
   // The sprint stories' pull requests, as GitHub has them, and who can be
   // asked to review one.
   pulls: Map<number, PullDetail>;
+  // The last merge run of each pull request: refused, and why.
+  merges?: Map<number, { conclusion: string | null; reason: string | null; url: string | null; at: string }>;
   // Each card's progress, from its stories.
   progress?: Map<number, Progress>;
   // Merging through the project's workflow (workflows.fusionner), and who may.
@@ -155,10 +157,17 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
             ? button({ action: "merge", pull: pull.number }, `Merge pull request #${pull.number}`, "Merge", "small")
             : "";
+        const attempt = pull.state === "open" ? data.merges?.get(pull.number) : undefined;
+        const refused =
+          attempt && attempt.conclusion !== "success"
+            ? ` <span class="sprint-merge-refused"><span class="pill alert small">Merge refused</span> <span class="small">${escapeHtml(attempt.reason ?? "The merge workflow stopped.")}</span>${
+                attempt.url?.startsWith("https://github.com/") ? ` <a class="small" href="${escapeHtml(attempt.url)}">the run</a>` : ""
+              }</span>`
+            : "";
         const guessed = pull.guessed
           ? ` <span class="muted small" title="Only the pull request's text names this story: no linked branch, no closing reference, not its branch name.">guessed from its text</span>`
           : "";
-        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${update}${merge}${guessed}${waiting}${ask}</span>`;
+        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${update}${merge}${refused}${guessed}${waiting}${ask}</span>`;
       })
       .join("");
   };
@@ -212,9 +221,10 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           : "";
         return `<section id="card-${card.id}" class="sprint-card"><div class="sprint-card-head">${cardGroupHead(
           project.repo,
-          { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position },
+          { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position, progress: card.progress },
           mine.length,
-        )}${data.progress?.get(card.id) ? `<span class="sprint-card-progress">${progressPill(data.progress.get(card.id))}</span>` : ""}${priority}${order}</div>
+          data.progress?.get(card.id),
+        )}${priority}${order}</div>
           ${
             mine.length
               ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.priorities.length ? "<th>Priority</th>" : ""}${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine

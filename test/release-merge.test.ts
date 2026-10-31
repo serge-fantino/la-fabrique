@@ -31,6 +31,14 @@ describe("Release notes numbered at the merge", () => {
     expect(mergeReleaseNotes(base, base, main, NOW)).toEqual({ text: main, versions: [] });
   });
 
+  it("numbers the entries a pull request wrote as next, without a time, and puts the time after the date", () => {
+    const base = file(entry("0.75", "Go"));
+    const draft = { version: "next", date: "2026-11-01", titre: "One status", changements: ["One status."], stories: [113], liens: null };
+    const merged = mergeReleaseNotes(base, file(draft, draft, entry("0.75", "Go")), file(entry("0.75", "Go")), NOW);
+    expect(merged.versions).toEqual(["0.77", "0.76"]);
+    expect(merged.text.startsWith('[\n  {\n    "version": "0.77",\n    "date": "2026-10-31",\n    "heure": "18:05",\n    "titre": "One status",')).toBe(true);
+  });
+
   it("bumps the last number of a version", () => {
     expect(bump("0.69", 1)).toBe("0.70");
     expect(bump("v1.169", 3)).toBe("v1.172");
