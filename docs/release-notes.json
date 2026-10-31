@@ -2,7 +2,7 @@
   {
     "version": "0.69",
     "date": "2026-10-31",
-    "heure": "17:42",
+    "heure": "17:50",
     "titre": "A story's pull request, linked for sure; Update with Claude",
     "changements": [
       "A pull request belongs to the story GitHub links it to (a branch created from the issue, a pull request that closes it) or whose number its branch carries; a pull request that only mentions a story in its text is shown as guessed from its text, and one that cites another issue in passing is no longer attached to it.",
