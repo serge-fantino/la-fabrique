@@ -67,6 +67,10 @@ export function describe(entry: LogEntry, repo: string): string {
     }
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "card_imported": {
+      const stories = Array.isArray(d["stories"]) ? (d["stories"] as unknown[]).map((n) => `#${text(n)}`).join(", ") : "";
+      return `imported card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${stories ? `, with ${stories}` : ""}`;
+    }
     case "card_value_added":
       return `added ${text(d["dimension"])} “${text(d["value"])}” to the board`;
     default:

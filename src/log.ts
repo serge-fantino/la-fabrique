@@ -7,7 +7,7 @@ export const LOG_GROUPS: { id: string; label: string; actions: string[] }[] = [
   { id: "backlog", label: "Priorities", actions: ["priority_set"] },
   { id: "production", label: "Go to production", actions: ["go_given"] },
   { id: "claude", label: "Claude", actions: ["claude_launched"] },
-  { id: "cards", label: "Cards", actions: ["card_created", "card_edited", "card_moved", "card_archived", "card_restored", "card_value_added", "card_spec_written", "card_version_restored", "card_story_created", "card_split_proposed", "card_stories_reviewed"] },
+  { id: "cards", label: "Cards", actions: ["card_created", "card_edited", "card_moved", "card_archived", "card_restored", "card_value_added", "card_spec_written", "card_version_restored", "card_story_created", "card_split_proposed", "card_stories_reviewed", "card_imported"] },
   { id: "setup", label: "Project setup", actions: ["project_added", "config_change_proposed"] },
 ];
 

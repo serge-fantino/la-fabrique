@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.57",
+    "date": "2026-10-31",
+    "heure": "10:32",
+    "titre": "Import cards, and releases spelled like the project's",
+    "changements": [
+      "Import cards (JSON), under the board: a file in the export's format, or pasted. Each card comes in as a new card with its text, tags, release, spec and stories; a card whose title is already on the board is skipped, so importing twice adds nothing.",
+      "A planned release is spelled as the project's release notes write their versions: on the épicerie, 1.170 after 1.169 (not v1.170, nor v1.1)."
+    ],
+    "stories": [114, 82],
+    "liens": null
+  },
+  {
     "version": "0.56",
     "date": "2026-10-31",
     "heure": "09:57",

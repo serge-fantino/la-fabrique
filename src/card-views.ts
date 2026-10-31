@@ -10,6 +10,7 @@ import {
   KIND_LABELS,
   MAX_BODY,
   MAX_TITLE,
+  MAX_IMPORT,
   MAX_VALUE,
   STATUS_LABELS,
   valueLabel,
@@ -324,7 +325,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         </div>
       </div>
       <p class="muted small board-foot">Drag a card by its handle to another place: it takes that place's values.
-        <a href="${escapeHtml(base)}/cards/export">Export every card (JSON)</a></p>`,
+        <a href="${escapeHtml(base)}/cards/export">Export every card (JSON)</a>${canWrite ? ` · <a href="${escapeHtml(base)}/cards/import">Import cards (JSON)</a>` : ""}</p>`,
     viewer,
     [BOARD_SCRIPT],
     projectContext(project),
@@ -834,6 +835,37 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
 }
 
 // ---- The spec by hand, and the story ----------------------------------------
+
+// Cards written elsewhere, brought in: a file in the export's format, or
+// pasted.
+export function importPage(viewer: Viewer, project: Project, data: { error?: string | undefined; text?: string }): string {
+  const base = projectUrl(project.repo);
+  return layout(
+    title(project, "Import cards"),
+    `${projectHeader(project, "board", "Import cards")}
+      <p class="crumbs"><a href="${escapeHtml(base)}/board">Board</a> <span aria-hidden="true">›</span> Import cards</p>
+      ${notice(data.error, "error")}
+      <p>Cards in the format of <a href="${escapeHtml(base)}/cards/export">the export</a>: a list of cards, each with its <code>title</code> and, if it has them, its <code>body</code>, <code>kind</code>, <code>status</code>, <code>epic</code>, <code>domain</code>, <code>segment</code>, <code>release</code>, its spec (<code>data.spec</code>) and its stories (<code>links</code>, <code>{"kind": "story", "ref": "138"}</code>).</p>
+      <p class="muted">Each becomes a new card, under your name. A card whose title is already on the board is skipped: importing twice creates nothing the second time. Up to ${MAX_IMPORT} cards at once.</p>
+      <form method="post" action="${escapeHtml(base)}/cards/import" enctype="multipart/form-data" class="request-form" data-busy="Importing…">${csrfField(viewer)}
+        <div class="field">
+          <label for="file">A JSON file</label>
+          <input id="file" name="file" type="file" accept="application/json,.json" />
+        </div>
+        <div class="field">
+          <label for="text">Or the JSON, pasted</label>
+          <textarea id="text" name="text" rows="10" spellcheck="false" class="mono">${escapeHtml(data.text ?? "")}</textarea>
+        </div>
+        <div class="card-actions">
+          <button type="submit" class="button">Import</button>
+          <a href="${escapeHtml(base)}/board">Cancel</a>
+        </div>
+      </form>`,
+    viewer,
+    [],
+    projectContext(project),
+  );
+}
 
 export function specFormPage(viewer: Viewer, project: Project, data: { card: Card; rubriques: Rubrique[]; spec: CardSpec | undefined }): string {
   const { card } = data;

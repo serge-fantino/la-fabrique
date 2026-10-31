@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { compareVersions, nextVersion, planningProblem, versionPattern, type BoardRelease } from "../src/card-releases";
+import { compareVersions, nextVersion, plannedSpelling, planningProblem, versionPattern, type BoardRelease } from "../src/card-releases";
 import type { Project } from "../src/projects";
 import { get, grantRole, post, signIn } from "./helpers";
 
@@ -44,6 +44,17 @@ describe("Versions", () => {
     expect(planningProblem(project, "2.0", releases)).toBe("A release follows the project's numbering, v1.N: the next one is v1.12.");
     expect(planningProblem(project, "v1.11", releases)).toBe("v1.11 is not ahead of v1.11, already in progress: the next one is v1.12.");
     expect(planningProblem(project, "v1.3", releases)).toBe("v1.3 is not ahead of v1.11, already in progress: the next one is v1.12.");
+ 
+  });
+
+  it("spells a planned release as the project's release notes do, whatever the prefix", () => {
+    // The épicerie: "v1.N" in .fabrique.json, "1.169" in its release notes.
+    const releases: BoardRelease[] = [{ version: "1.169", title: null, state: "in_progress" }];
+    expect(versionPattern("v1.N")?.test("1.169")).toBe(true);
+    expect(nextVersion("v1.N", releases)).toBe("1.170");
+    expect(plannedSpelling("v1.N", releases, "v1.171")).toBe("1.171");
+    expect(plannedSpelling("v1.N", [], "v1.2")).toBe("v1.2");
+    expect(plannedSpelling("v1.N", releases, "Later")).toBe("Later");
   });
 });
 
