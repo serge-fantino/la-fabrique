@@ -2,7 +2,7 @@
   {
     "version": "0.56",
     "date": "2026-10-31",
-    "heure": "09:49",
+    "heure": "09:57",
     "titre": "A compact board header; Not set first",
     "changements": [
       "The board's header fits on one or two lines: Lane and Group by (were Columns and Then rows), the hide box, Filters, the count, and the buttons.",
