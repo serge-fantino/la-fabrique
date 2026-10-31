@@ -2,7 +2,7 @@
   {
     "version": "0.61",
     "date": "2026-10-31",
-    "heure": "11:54",
+    "heure": "12:41",
     "titre": "Claude Code from the sprint",
     "changements": [
       "The sprint says which story comes next for Claude: the first ready one not launched yet, in the sprint's order. Launch the next story starts it; each ready story of the sprint has its own Launch Claude, and says who launched it and when.",
