@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.58",
+    "date": "2026-10-31",
+    "heure": "10:45",
+    "titre": "Stories and backlog, grouped by card",
+    "changements": [
+      "Stories: Group by Card shows the stories of each card together, under the card's id, title, status and release; the newest release first; the stories from no card last.",
+      "Backlog: Group by Priority or Card; by card, each card's stories not started yet, the ready ones first. Setting a priority keeps the grouping.",
+      "A story made from two cards appears under each, saying where else it is (also in C8)."
+    ],
+    "stories": [110],
+    "liens": null
+  },
+  {
     "version": "0.57",
     "date": "2026-10-31",
     "heure": "10:43",

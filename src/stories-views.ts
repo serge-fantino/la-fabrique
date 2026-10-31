@@ -1,3 +1,4 @@
+import { cardGroupHead, sharedWith, type StoryCards } from "./card-groups";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Story, StoryFilters, StoryGroup } from "./stories";
@@ -42,18 +43,21 @@ function stageCell(story: Story, info: StageInfo): string {
   return `${stagePill(stage)}${missing.length ? `<br /><span class="muted small">${escapeHtml(missing.join(", "))}</span>` : ""}`;
 }
 
-function storyRow(story: Story, circuit: Set<string>, info: StageInfo): string {
+function storyRow(story: Story, circuit: Set<string>, info: StageInfo, shared = ""): string {
   return `<tr>
       <td class="mono number"><a href="${escapeHtml(story.url)}">#${story.number}</a></td>
-      <td><a href="${escapeHtml(story.url)}">${escapeHtml(story.title)}</a><br />${labelChips(story, circuit)}</td>
+      <td><a href="${escapeHtml(story.url)}">${escapeHtml(story.title)}</a>${shared}<br />${labelChips(story, circuit)}</td>
       <td>${stageCell(story, info)}</td>
       <td class="links-cell">${links(story)}</td>
     </tr>`;
 }
 
-function groupSection(group: StoryGroup, circuit: Set<string>, info: StageInfo): string {
+function groupSection(group: StoryGroup, circuit: Set<string>, info: StageInfo, repo: string, cards: StoryCards | null): string {
   const epic = group.epic;
-  const head = epic
+  const byCard = group.card !== undefined && cards;
+  const head = byCard
+    ? cardGroupHead(repo, group.card ?? null, group.items.length)
+    : epic
     ? `<div class="group-head">
         <h2><a href="${escapeHtml(epic.url)}">#${epic.number}</a> ${escapeHtml(epic.title)}</h2>
         ${statePill(epic)}
@@ -64,7 +68,7 @@ function groupSection(group: StoryGroup, circuit: Set<string>, info: StageInfo):
   const body = group.items.length
     ? `<table>
         <thead><tr><th>#</th><th>Story</th><th>Stage</th><th>Pull requests and branches</th></tr></thead>
-        <tbody>${group.items.map((story) => storyRow(story, circuit, info)).join("")}</tbody>
+        <tbody>${group.items.map((story) => storyRow(story, circuit, info, byCard ? sharedWith(cards, story.number, group.card?.id ?? null) : "")).join("")}</tbody>
       </table>`
     : `<p class="muted">No story matches these filters.</p>`;
   return `<section>${head}${body}</section>`;
@@ -83,6 +87,7 @@ export function storiesPage(
     rules: CycleRules;
     groups: StoryGroup[];
     filters: StoryFilters;
+    cards: StoryCards | null;
     fetchedAt: string | null;
     failure?: string | undefined;
   },
@@ -96,6 +101,9 @@ export function storiesPage(
   const { filters } = data;
 
   const form = `<form method="get" action="${escapeHtml(projectUrl(project.repo))}/stories" class="filters">
+      <label>Group by
+        <select name="group">${option("epic", "Epic", filters.group !== "card")}${option("card", "Card", filters.group === "card")}</select>
+      </label>
       <label>Epic
         <select name="epic">${option("", "All epics", filters.epic === null)}${epics
           .map((epic) => option(String(epic.number), `#${epic.number} ${epic.title}`, filters.epic === epic.number))
@@ -132,7 +140,7 @@ export function storiesPage(
       ${notice(data.failure, "error")}
       ${form}
       ${meta}
-      ${data.groups.length ? data.groups.map((group) => groupSection(group, circuit, { stages: data.stages, rules: data.rules })).join("") : `<p>No story matches these filters.</p>`}`,
+      ${data.groups.length ? data.groups.map((group) => groupSection(group, circuit, { stages: data.stages, rules: data.rules }, project.repo, data.cards)).join("") : `<p>No story matches these filters.</p>`}`,
     viewer,
     [],
     projectContext(project),

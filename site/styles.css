@@ -2750,3 +2750,23 @@ form[aria-busy="true"] button[type="submit"] {
   gap: 0.4rem 0.6rem;
   min-height: 44px;
 }
+
+/* Backlog: by priority or by card. */
+.group-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.group-switch a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.group-switch a[aria-current="true"] {
+  font-weight: 600;
+  color: var(--encre);
+  text-decoration: none;
+}
