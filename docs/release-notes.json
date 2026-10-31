@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.72",
+    "date": "2026-10-31",
+    "heure": "18:02",
+    "titre": "Stories validated on int are closed once in production",
+    "changements": [
+      "When the project's promotion workflow ends well, La Fabrique closes the stories of that go that were validated on int, with a word on each (in the project's language), and writes it in the log; a story sent anyway, without its validation, stays open and To validate. The sprint then sees them shipped and closes by itself."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.71",
     "date": "2026-10-31",
     "heure": "18:01",

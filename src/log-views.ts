@@ -45,6 +45,12 @@ export function describe(entry: LogEntry, repo: string): string {
       return `gave the go to production${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}${
         d["reason"] ? `, anyway: “${text(d["reason"])}”` : ""
       }`;
+    case "stories_shipped": {
+      const list = (key: string) => (Array.isArray(d[key]) ? (d[key] as unknown[]).map((n) => issue(n)).filter(Boolean).join(", ") : "");
+      const closed = list("closed");
+      const left = list("not_validated");
+      return `saw the promotion${d["version"] ? ` of <span class="mono">${text(d["version"])}</span>` : ""} done: ${closed ? `closed ${closed}, validated and in production` : "no validated story to close"}${left ? `; ${left} not validated, left open` : ""}`;
+    }
     case "claude_launched":
       return `launched Claude on ${story}`;
     case "card_created":
