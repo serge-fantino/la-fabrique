@@ -1,15 +1,18 @@
 # Claude travaille sur une demande prête (#60 de La Fabrique) : lancé par un tech lead ou le super admin depuis La
 # Fabrique (bouton « Launch Claude » d'une story Ready), ou à la main (Actions > Claude > Run workflow, numéro d'issue).
-# Il suit CLAUDE.md : branche feature/<numéro>-<sujet> depuis integration, tests, entrée « Quoi de neuf » sans heure
-# (ou [coulisses]), puis une PR vers integration et un commentaire sur l'issue. Il ne pousse jamais sur integration ni
-# sur main : un humain relit la PR et l'intègre (scripts/integrer.sh), puis on valide sur int.
+# Il suit CLAUDE.md : branche feature/<numéro>-<sujet> depuis integration, liée à l'issue (rubrique Development de
+# GitHub : La Fabrique y retrouve la PR de la story), tests, entrée « Quoi de neuf » sans heure (ou [coulisses]), puis
+# une PR vers integration qui dit comment chaque critère d'acceptation est vérifié, et un commentaire sur l'issue.
+# Avec `pr`, il remet cette PR à jour : fusionne integration dans sa branche, résout les conflits, revérifie et pousse
+# sur la même branche (« Update with Claude » du sprint). Il ne pousse jamais sur integration ni sur main : un humain
+# relit la PR et l'intègre (scripts/integrer.sh), puis on valide sur int.
 # Secrets du dépôt :
 # - CLAUDE_CODE_OAUTH_TOKEN (abonnement Claude : `claude setup-token`) ou ANTHROPIC_API_KEY (clé d'API) ;
 # - FABRIQUE_TOKEN (le même que la promotion, avec en plus Pull requests et Issues read and write) : la branche et la
 #   PR qu'il crée déclenchent la CI, ce que le GITHUB_TOKEN ne ferait pas.
 name: Claude
 # Le numéro de l'issue dans le nom du run : La Fabrique y retrouve le run de chaque story.
-run-name: "Claude #${{ inputs.issue }}"
+run-name: "Claude #${{ inputs.issue }}${{ inputs.pr && format(' · update #{0}', inputs.pr) || '' }}"
 
 on:
   workflow_dispatch:
@@ -19,6 +22,9 @@ on:
         required: true
       par:
         description: "Qui a lancé Claude (identifiant GitHub, renseigné par La Fabrique)"
+        required: false
+      pr:
+        description: "Une PR de cette demande à remettre à jour (numéro) ; vide : travailler sur la demande"
         required: false
 
 concurrency:
@@ -41,10 +47,12 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE: ${{ inputs.issue }}
+          PR: ${{ inputs.pr }}
         run: |
           [ -n "$FABRIQUE_TOKEN" ] || { echo "::error::Secret FABRIQUE_TOKEN absent (voir l'en-tête de ce workflow)."; exit 1; }
           [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY" ] || { echo "::error::Ni CLAUDE_CODE_OAUTH_TOKEN ni ANTHROPIC_API_KEY."; exit 1; }
           case "$ISSUE" in ''|*[!0-9]*) echo "::error::Numéro d'issue invalide : $ISSUE"; exit 1 ;; esac
+          case "$PR" in *[!0-9]*) echo "::error::Numéro de PR invalide : $PR"; exit 1 ;; esac
 
       - uses: actions/checkout@v4
         with:
@@ -69,6 +77,35 @@ jobs:
           git config user.name "Claude (La Fabrique)"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # La branche de la demande, créée liée à son issue (rubrique Development de GitHub), ou la branche de la PR à
+      # remettre à jour, integration fusionnée dedans (les conflits sont laissés à Claude).
+      - name: Branche de travail
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          ISSUE: ${{ inputs.issue }}
+          PR: ${{ inputs.pr }}
+        run: |
+          if [ -n "$PR" ]; then
+            branch=$(gh pr view "$PR" --json headRefName,state --jq 'select(.state == "OPEN") | .headRefName')
+            [ -n "$branch" ] || { echo "::error::La PR #$PR n'est pas ouverte."; exit 1; }
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+            if git merge --no-edit origin/integration; then echo "CONFLITS=aucun" >> "$GITHUB_ENV"; else echo "CONFLITS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')" >> "$GITHUB_ENV"; fi
+          else
+            data=$(gh issue view "$ISSUE" --json id,title)
+            slug=$(jq -r .title <<<"$data" | iconv -f utf-8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//' | cut -c1-40 | sed -E 's/-+$//')
+            branch="feature/$ISSUE-${slug:-demande}"
+            if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+              gh api graphql \
+                -f query='mutation($issue: ID!, $oid: GitObjectID!, $name: String!) { createLinkedBranch(input: { issueId: $issue, oid: $oid, name: $name }) { linkedBranch { id } } }' \
+                -f issue="$(jq -r .id <<<"$data")" -f oid="$(git rev-parse HEAD)" -f name="$branch" >/dev/null \
+                || git push origin "HEAD:refs/heads/$branch"
+            fi
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+          fi
+          echo "BRANCHE=$branch" >> "$GITHUB_ENV"
+
       - uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
@@ -80,12 +117,14 @@ jobs:
           allowed_bots: la-fabrique-extraordinaire
           claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
           prompt: |
-            Tu travailles sur la demande #${{ inputs.issue }} de ce dépôt (${{ github.repository }}), lancée${{ inputs.par && format(' par @{0}', inputs.par) || '' }} depuis La Fabrique.
-            1. Lis-la avec ses commentaires : `gh issue view ${{ inputs.issue }} --comments`. Ses critères d'acceptation disent quand c'est fini.
+            ${{ inputs.pr && format('Tu remets à jour la PR #{0} de la demande #{1} ({2}), lancé{3} depuis La Fabrique.', inputs.pr, inputs.issue, github.repository, inputs.par && format(' par @{0}', inputs.par) || '') || format('Tu travailles sur la demande #{0} de ce dépôt ({1}), lancée{2} depuis La Fabrique.', inputs.issue, github.repository, inputs.par && format(' par @{0}', inputs.par) || '') }}
+            Tu es sur la branche `${{ env.BRANCHE }}`${{ !inputs.pr && ', créée depuis integration et liée à l''issue' || '' }} : travaille là, jamais sur integration ni main.
+            ${{ inputs.pr && format('integration y est fusionnée ; fichiers restés en conflit : {0}.', env.CONFLITS) || '' }}
+            1. Lis la demande avec ses commentaires : `gh issue view ${{ inputs.issue }} --comments`${{ inputs.pr && format(', et la PR avec ses relectures : `gh pr view {0} --comments`', inputs.pr) || '' }}. Ses critères d'acceptation disent quand c'est fini.
             2. Suis CLAUDE.md (principes, données personnelles, design V2, compatibilité avec la base en ligne, version de l'app).
-            3. Crée une branche `feature/${{ inputs.issue }}-<sujet court>` depuis integration (la branche actuelle) et fais le travail.
+            3. ${{ inputs.pr && 'Résous les conflits en gardant l''intention des deux côtés (termine la fusion par `git commit --no-edit`), et réponds à ce que les relectures demandent encore.' || 'Fais le travail.' }}
             4. Vérifie : `npm run typecheck`, `npm test` ; `npm run e2e` si tu touches au Worker ou aux pages.
-            5. Ajoute l'entrée « Quoi de neuf » suivante, sans heure, si un utilisateur voit la différence ; sinon chaque commit porte `[coulisses]`.
-            6. Pousse la branche et ouvre une PR vers `integration` : `gh pr create --base integration`, titre clair, corps en français avec « Demande #${{ inputs.issue }} », ce qui est fait et comment le vérifier sur int.
+            5. « Quoi de neuf » : si un utilisateur voit la différence, cette branche a une entrée en tête, sans heure, numérotée après la plus récente d'integration (renumérote-la si integration a avancé), avec `"stories": [${{ inputs.issue }}]` ; sinon chaque commit porte `[coulisses]`.
+            6. Pousse : `git push origin HEAD:${{ env.BRANCHE }}` (jamais en force). ${{ inputs.pr && format('Puis mets à jour la description de #{0} si ce qu''elle dit a changé.', inputs.pr) || format('Ouvre une PR vers integration : `gh pr create --base integration --head {0}`, titre clair, corps en français qui commence par « Refs #{1} » (la demande ; pas « Closes » : elle reste ouverte jusqu''à sa validation sur int), dit ce qui est fait et comment le vérifier sur int, puis une rubrique « ## Critères d''acceptation » avec une ligne par critère de l''issue : `- [x] <critère> : <le test qui le vérifie>`, ou `- [ ] <critère> : <l''étape à faire à la main sur int, ou pourquoi ce n''est pas fait>`.', env.BRANCHE, inputs.issue) }}
             7. Commente l'issue : la PR, ce qui est fait, ce qui reste ou ce qui t'a fait hésiter.
             Ne pousse jamais sur integration ni sur main ; ne touche ni aux secrets ni aux workflows.

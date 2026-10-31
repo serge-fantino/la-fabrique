@@ -4,9 +4,10 @@ import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { dispatchRefusal, githubJson, githubPost, installationToken } from "./github-app";
 import { productionBranch, type Project } from "./projects";
-import { applyIssueEvent, type RestIssue } from "./stories";
+import { developmentLinks, pullStories } from "./pull-links";
+import { applyIssueEvent, STORIES, type RestIssue } from "./stories";
 import { sprintLiveFor } from "./live";
-import { isFresh, readSnapshot, writeSnapshot } from "./snapshots";
+import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
 import { wordingFor } from "./wording";
 
 export const DEFAULT_CAP = 2;
@@ -76,6 +77,52 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
       repo,
       issueNumber: number,
       details: { workflow: file, running: running + 1, cap },
+    }).run();
+    await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = ?").bind(repo, CLAUDE_RUNS).run();
+    return { ok: true, running: running + 1 };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error), status: 502 };
+  }
+}
+
+// "Update with Claude" (la-fabrique#113): the same workflow with `pr`, on
+// an open pull request of the story: Claude merges its base branch into it,
+// resolves the conflicts, checks again and pushes to the same branch.
+export async function updateWithClaude(env: Env, project: Project, login: string, story: number, pull: number): Promise<LaunchOutcome> {
+  const file = claudeWorkflow(project);
+  if (!file) return { ok: false, message: "This project declares no Claude workflow (workflows.claude).", status: 422 };
+  const repo = project.repo;
+  try {
+    const token = await installationToken(env, project.installationId);
+    const runs = await githubJson<{ workflow_runs: RestRun[] }>(token, `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/runs?per_page=30`);
+    const running = runs.workflow_runs.filter((run) => run.status !== "completed").length;
+    const cap = claudeCap(project);
+    if (running >= cap) {
+      return { ok: false, message: `Claude already runs ${running} time${running > 1 ? "s" : ""} on this project (cap ${cap}): wait for one to end.`, status: 409 };
+    }
+    const ref = productionBranch(project) ?? "main";
+    const response = await githubPost(token, `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/dispatches`, {
+      ref,
+      inputs: { issue: String(story), par: login, pr: String(pull) },
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        message:
+          response.status === 422
+            ? `GitHub refused to start ${file} with a pull request: the workflow on ${ref} needs a \`pr\` input (see Setup, Claude Code).`
+            : dispatchRefusal(file, ref, response.status, "take the issue and pull request numbers as inputs"),
+        status: 502,
+      };
+    }
+    const runsUrl = `https://github.com/${repo}/actions/workflows/${encodeURIComponent(file)}`;
+    await githubPost(token, `/repos/${repo}/issues/${pull}/comments`, { body: wordingFor(project).claudeUpdating(login, runsUrl) });
+    await activityStatement(env.DB, {
+      actor: login,
+      action: "claude_update_launched",
+      repo,
+      issueNumber: story,
+      details: { workflow: file, pull, running: running + 1, cap },
     }).run();
     await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = ?").bind(repo, CLAUDE_RUNS).run();
     return { ok: true, running: running + 1 };
@@ -159,6 +206,44 @@ export interface RestWorkflowRun {
   conclusion?: string | null;
   html_url?: string;
   updated_at?: string;
+  run_started_at?: string;
+  created_at?: string;
+}
+
+interface RestRecentPull {
+  number: number;
+  title: string;
+  body: string | null;
+  html_url: string;
+  created_at: string;
+  head: { ref: string };
+}
+
+// The pull request a finished run opened (created since it started, and
+// linked to its story) or updated ("Claude #12 · update #30"): written in
+// the log, so story → run → pull request is traced (principle 4).
+async function logRunPull(env: Env, project: Project, issue: number, run: RestWorkflowRun): Promise<void> {
+  const updated = Number(/update #(\d+)/.exec(run.display_title ?? "")?.[1] ?? NaN);
+  const details = (pull: number, url: string | null) => ({ pull, url, run: run.html_url ?? null, conclusion: run.conclusion ?? null });
+  if (Number.isInteger(updated)) {
+    await activityStatement(env.DB, { actor: "github", action: "claude_pr_updated", repo: project.repo, issueNumber: issue, details: details(updated, null) }).run();
+    return;
+  }
+  const since = run.run_started_at ?? run.created_at;
+  if (!since) return;
+  try {
+    const token = await installationToken(env, project.installationId);
+    const [pulls, links] = await Promise.all([
+      githubJson<RestRecentPull[]>(token, `/repos/${project.repo}/pulls?state=all&sort=created&direction=desc&per_page=20`),
+      developmentLinks(token, project.repo),
+    ]);
+    for (const pull of pulls) {
+      if (pull.created_at < since || !pullStories(pull, links).stories.includes(issue)) continue;
+      await activityStatement(env.DB, { actor: "github", action: "claude_pr_opened", repo: project.repo, issueNumber: issue, details: details(pull.number, pull.html_url) }).run();
+    }
+  } catch {
+    // The run is logged anyway; the stories, read again, still show the PR.
+  }
 }
 
 export async function claudeRunEvent(env: Env, project: Project, action: string, run: RestWorkflowRun): Promise<boolean> {
@@ -174,6 +259,10 @@ export async function claudeRunEvent(env: Env, project: Project, action: string,
       ...(issue ? { issueNumber: issue } : {}),
       details: { conclusion: run.conclusion ?? null, url: run.html_url ?? null },
     }).run();
+    if (issue) {
+      await logRunPull(env, project, issue, run);
+      await markStale(env.DB, project.repo, STORIES);
+    }
   }
   await sprintLiveFor(env, project.repo)?.notify({
     kind: "claude_run",

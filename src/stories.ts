@@ -1,6 +1,7 @@
 import { groupByCard, type CardHead, type StoryCards } from "./card-groups";
 import type { Env } from "./env";
 import { githubAll, installationToken } from "./github-app";
+import { branchIssue, developmentLinks, pullStories } from "./pull-links";
 import { describeFailure, type Project } from "./projects";
 import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
 
@@ -11,6 +12,8 @@ export interface LinkedPull {
   number: number;
   url: string;
   state: "open" | "closed" | "merged";
+  // Only the pull request's text names the story (src/pull-links.ts).
+  guessed?: boolean;
 }
 
 export interface Story {
@@ -73,10 +76,7 @@ export function issueRefs(text: string): number[] {
 }
 
 // Working branches carry their issue number (`.fabrique.json`, branches.travail).
-export function branchIssue(name: string): number | null {
-  const match = /(?:^|[/_-])(\d+)(?=$|[/_-])/.exec(name);
-  return match ? Number(match[1]) : null;
-}
+export { branchIssue };
 
 const CRITERIA_HEADING = /^#{1,6}\s*(acceptance criteria|crit[eè]res d['’]acceptation)\b/i;
 const MAX_CRITERIA = 30;
@@ -151,27 +151,27 @@ export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "
 async function fetchStories(env: Env, project: Project): Promise<Story[]> {
   const token = await installationToken(env, project.installationId);
   const repo = project.repo;
-  const [issues, pulls, branches] = await Promise.all([
+  const [issues, pulls, branches, links] = await Promise.all([
     githubAll<RestIssue>(token, `/repos/${repo}/issues?state=all&per_page=100`),
     githubAll<RestPull>(token, `/repos/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=100`, 3),
     githubAll<{ name: string }>(token, `/repos/${repo}/branches?per_page=100`, 3),
+    developmentLinks(token, repo),
   ]);
 
   const pullsByIssue = new Map<number, LinkedPull[]>();
   for (const pull of pulls) {
-    const refs = new Set(issueRefs(`${pull.title}\n${pull.body ?? ""}`));
-    const fromBranch = branchIssue(pull.head.ref);
-    if (fromBranch !== null) refs.add(fromBranch);
+    const { stories, guessed } = pullStories(pull, links);
     const linked: LinkedPull = {
       number: pull.number,
       url: pull.html_url,
       state: pull.merged_at ? "merged" : pull.state === "closed" ? "closed" : "open",
+      ...(guessed ? { guessed: true } : {}),
     };
-    for (const ref of refs) pullsByIssue.set(ref, [...(pullsByIssue.get(ref) ?? []), linked]);
+    for (const ref of stories) pullsByIssue.set(ref, [...(pullsByIssue.get(ref) ?? []), linked]);
   }
   const branchesByIssue = new Map<number, string[]>();
   for (const branch of branches) {
-    const ref = branchIssue(branch.name);
+    const ref = links.branches.get(branch.name) ?? branchIssue(branch.name);
     if (ref !== null) branchesByIssue.set(ref, [...(branchesByIssue.get(ref) ?? []), branch.name]);
   }
 

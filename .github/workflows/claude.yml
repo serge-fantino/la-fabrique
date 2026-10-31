@@ -1,15 +1,18 @@
 # Claude Code works on a story of La Fabrique itself (la-fabrique#113): launched by a tech lead or the super admin from
 # La Fabrique (the sprint's "Launch the next story", or "Launch Claude" on a ready story), or by hand (Actions > Claude >
 # Run workflow, issue number).
-# It follows CLAUDE.md: a branch claude/<number>-<topic> from main, tests, a release-notes entry, then a pull request to
-# main and a comment on the issue. It never pushes to main: a person reviews the pull request and merges it.
+# It follows CLAUDE.md: a branch claude/<number>-<topic> from main, linked to the issue (GitHub's Development section: La
+# Fabrique finds the story's pull request by it), tests, a release-notes entry, then a pull request to main that says
+# how each acceptance criterion is checked, and a comment on the issue. With `pr`, it brings that pull request up to
+# date instead: merges main into its branch, resolves the conflicts, checks again and pushes to the same branch.
+# It never pushes to main: a person reviews the pull request and merges it.
 # Repository secrets:
 # - CLAUDE_CODE_OAUTH_TOKEN (a Claude subscription: `claude setup-token`) or ANTHROPIC_API_KEY (an API key);
 # - FABRIQUE_TOKEN (fine-grained, this repository: Contents, Pull requests and Issues, read and write): the branch and
 #   the pull request it creates start the CI, which the GITHUB_TOKEN would not.
 name: Claude
 # The issue number in the run's name: La Fabrique finds the run of each story by it.
-run-name: "Claude #${{ inputs.issue }}"
+run-name: "Claude #${{ inputs.issue }}${{ inputs.pr && format(' · update #{0}', inputs.pr) || '' }}"
 
 on:
   workflow_dispatch:
@@ -19,6 +22,9 @@ on:
         required: true
       par:
         description: "Who launched Claude (GitHub login, set by La Fabrique)"
+        required: false
+      pr:
+        description: "A pull request of this story to bring up to date (number); empty: work on the story"
         required: false
 
 concurrency:
@@ -41,10 +47,12 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE: ${{ inputs.issue }}
+          PR: ${{ inputs.pr }}
         run: |
           [ -n "$FABRIQUE_TOKEN" ] || { echo "::error::Secret FABRIQUE_TOKEN missing (see this workflow's header)."; exit 1; }
           [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY" ] || { echo "::error::Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY."; exit 1; }
           case "$ISSUE" in ''|*[!0-9]*) echo "::error::Not an issue number: $ISSUE"; exit 1 ;; esac
+          case "$PR" in *[!0-9]*) echo "::error::Not a pull request number: $PR"; exit 1 ;; esac
 
       - uses: actions/checkout@v4
         with:
@@ -65,6 +73,35 @@ jobs:
           git config user.name "Claude (La Fabrique)"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      # The story's branch, created linked to its issue (GitHub's Development section), or the branch of the pull
+      # request to bring up to date, with main merged in (the conflicts are left for Claude).
+      - name: Working branch
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          ISSUE: ${{ inputs.issue }}
+          PR: ${{ inputs.pr }}
+        run: |
+          if [ -n "$PR" ]; then
+            branch=$(gh pr view "$PR" --json headRefName,state --jq 'select(.state == "OPEN") | .headRefName')
+            [ -n "$branch" ] || { echo "::error::Pull request #$PR is not open."; exit 1; }
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+            if git merge --no-edit origin/main; then echo "CONFLICTS=none" >> "$GITHUB_ENV"; else echo "CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')" >> "$GITHUB_ENV"; fi
+          else
+            data=$(gh issue view "$ISSUE" --json id,title)
+            slug=$(jq -r .title <<<"$data" | iconv -f utf-8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//' | cut -c1-40 | sed -E 's/-+$//')
+            branch="claude/$ISSUE-${slug:-story}"
+            if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+              gh api graphql \
+                -f query='mutation($issue: ID!, $oid: GitObjectID!, $name: String!) { createLinkedBranch(input: { issueId: $issue, oid: $oid, name: $name }) { linkedBranch { id } } }' \
+                -f issue="$(jq -r .id <<<"$data")" -f oid="$(git rev-parse HEAD)" -f name="$branch" >/dev/null \
+                || git push origin "HEAD:refs/heads/$branch"
+            fi
+            git fetch origin "$branch"
+            git checkout -B "$branch" "origin/$branch"
+          fi
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
+
       - uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
@@ -76,12 +113,14 @@ jobs:
           allowed_bots: la-fabrique-extraordinaire
           claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
           prompt: |
-            You work on story #${{ inputs.issue }} of this repository (${{ github.repository }}), launched${{ inputs.par && format(' by @{0}', inputs.par) || '' }} from La Fabrique.
-            1. Read it with its comments: `gh issue view ${{ inputs.issue }} --comments`. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
+            ${{ inputs.pr && format('You bring pull request #{0} of story #{1} up to date ({2}), launched{3} from La Fabrique.', inputs.pr, inputs.issue, github.repository, inputs.par && format(' by @{0}', inputs.par) || '') || format('You work on story #{0} of this repository ({1}), launched{2} from La Fabrique.', inputs.issue, github.repository, inputs.par && format(' by @{0}', inputs.par) || '') }}
+            You are on branch `${{ env.BRANCH }}`${{ !inputs.pr && ', created from main and linked to the issue' || '' }}: work there, never on main.
+            ${{ inputs.pr && format('main is merged into it; files left in conflict: {0}.', env.CONFLICTS) || '' }}
+            1. Read the story with its comments: `gh issue view ${{ inputs.issue }} --comments`${{ inputs.pr && format(', and the pull request with its reviews: `gh pr view {0} --comments`', inputs.pr) || '' }}. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
             2. Follow CLAUDE.md (principles, security, conventions, design).
-            3. Create a branch `claude/${{ inputs.issue }}-<short topic>` from main (the current branch) and do the work.
+            3. ${{ inputs.pr && 'Resolve the conflicts keeping both sides'' intent (finish the merge with `git commit --no-edit`), and answer what the reviews still ask.' || 'Do the work.' }}
             4. Check: `npm run typecheck`, `npm test`; add tests for what you change.
-            5. If anything visible changes, add the next entry at the top of docs/release-notes.json (0.N+1, in English, today's date and the current Paris time; the person who merges sets the time of the merge) with `"stories": [${{ inputs.issue }}]`.
-            6. Push the branch and open a pull request to main: `gh pr create --base main`, a clear title, a body in English that says "Story #${{ inputs.issue }}", what is done and how to check it.
+            5. Release notes: if anything visible changes, this branch has one entry at the top of docs/release-notes.json, numbered after main's newest (`git show origin/main:docs/release-notes.json`: 0.N there, 0.N+1 here; renumber it if main moved on), in English, today's date and the current Paris time (the person who merges sets the time of the merge), `"stories": [${{ inputs.issue }}]`.
+            6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it, then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}
             7. Comment on the issue: the pull request, what is done, what is left or what made you hesitate.
             Never push to main; touch neither secrets nor workflows.

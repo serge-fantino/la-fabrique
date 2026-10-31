@@ -154,6 +154,51 @@ describe("Claude's runs, as GitHub reports them", () => {
   });
 });
 
+describe("The pull request a Claude run opened", () => {
+  it("is written in the log when the run ends: the story, the run and the pull request; an update says which one", async () => {
+    await seed();
+    const ended = (title: string) => ({
+      action: "completed",
+      repository: { full_name: REPO },
+      workflow_run: {
+        path: ".github/workflows/claude.yml",
+        display_title: title,
+        status: "completed",
+        conclusion: "success",
+        html_url: "https://github.com/run/3",
+        run_started_at: "2026-10-31T14:00:00Z",
+        updated_at: "2026-10-31T14:20:00Z",
+      },
+    });
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    const recent = (number: number, branch: string, created: string, body = "") => ({ number, title: "x", body, html_url: `https://github.com/acme/widget/pull/${number}`, created_at: created, head: { ref: branch } });
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls?state=all&sort=created&direction=desc&per_page=20` })
+      .reply(
+        200,
+        JSON.stringify([
+          recent(41, "claude/12-ready-one", "2026-10-31T14:15:00Z"),
+          recent(40, "claude/13-bare", "2026-10-31T14:10:00Z", "Refs #12"),
+          recent(39, "claude/12-ready-one-old", "2026-10-30T09:00:00Z"),
+        ]),
+        JSON_HEADERS,
+      );
+    github().intercept({ method: "POST", path: "/graphql" }).reply(200, JSON.stringify({ data: { repository: { pullRequests: { nodes: [] }, issues: { nodes: [] } } } }), JSON_HEADERS);
+    expect((await webhook("workflow_run", ended("Claude #12"))).status).toBe(200);
+    const opened = await env.DB.prepare("SELECT issue_number, details FROM activity_log WHERE action = 'claude_pr_opened'").all<{ issue_number: number; details: string }>();
+    expect(opened.results.map((row) => [row.issue_number, JSON.parse(row.details).pull])).toEqual([[12, 41]]);
+    expect(JSON.parse(opened.results[0]?.details ?? "{}")).toEqual({ pull: 41, url: "https://github.com/acme/widget/pull/41", run: "https://github.com/run/3", conclusion: "success" });
+
+    expect((await webhook("workflow_run", ended("Claude #12 · update #41"))).status).toBe(200);
+    const updated = await env.DB.prepare("SELECT issue_number, details FROM activity_log WHERE action = 'claude_pr_updated'").first<{ issue_number: number; details: string }>();
+    expect(updated?.issue_number).toBe(12);
+    expect(JSON.parse(updated?.details ?? "{}")).toMatchObject({ pull: 41, conclusion: "success" });
+    const page = await (await get(`/projects/${REPO}/log`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toMatch(/Claude opened pull request <a [^>]*href="https:\/\/github.com\/acme\/widget\/pull\/41">#41<\/a> for/);
+    expect(page).toMatch(/Claude brought pull request <a [^>]*href="https:\/\/github.com\/acme\/widget\/pull\/41">#41<\/a> of/);
+  });
+});
+
 describe("The pull requests of the sprint's stories", () => {
   it("shows each story's pull request and the reviews asked, and asks one in the person's name", async () => {
     await seed();
@@ -193,5 +238,68 @@ describe("The pull requests of the sprint's stories", () => {
     expect((await logActions()).map((entry) => entry.action)).toContain("review_requested");
     // Only someone La Fabrique knows as a reviewer.
     expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "review", pull: "30", reviewer: "stranger" }, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint`);
+  });
+});
+
+describe("A pull request brought up to date with Claude", () => {
+  it("shows a pull request in conflict with its base, and starts the workflow on it with `pr`", async () => {
+    await seed();
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(
+        JSON.stringify([
+          story(1, "Epic", { parent: null, subTotal: 3 }),
+          story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }, { number: 29, url: "https://github.com/acme/widget/pull/29", state: "merged" }] }),
+          story(13, "Bare one", { criteria: [], pullRequests: [{ number: 31, url: "https://github.com/acme/widget/pull/31", state: "open", guessed: true }] }),
+        ]),
+        REPO,
+      )
+      .run();
+    await grantRole("lead", "tech_lead");
+    const { cookie, csrf } = await signIn("lead");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    const detail = (number: number, mergeable: string) =>
+      JSON.stringify({ number, title: "x", html_url: `https://github.com/acme/widget/pull/${number}`, state: "open", merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: mergeable, base: { ref: "main" } });
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail(30, "dirty"), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/pulls/31` }).reply(200, detail(31, "clean"), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(page).toContain('PR #30 open</a> <span class="pill alert small">In conflict with <code>main</code></span>');
+    expect(page).toContain('aria-label="Bring pull request #30 up to date with Claude">Update with Claude</button>');
+    expect(page).not.toContain("Bring pull request #31 up to date");
+    // A link that only the text makes says so.
+    expect(page).toMatch(/PR #31 open<\/a> <span class="muted small" title="[^"]*">guessed from its text<\/span>/);
+
+    // Started: the same workflow, with the pull request; a word on it; logged.
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    let dispatched: unknown = null;
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` })
+      .reply(204, (options) => {
+        dispatched = JSON.parse(String(options.body));
+        return "";
+      });
+    let comment = "";
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues/30/comments` })
+      .reply(201, (options) => {
+        comment = JSON.parse(String(options.body)).body;
+        return "{}";
+      });
+    const response = await post(`/projects/${REPO}/sprint`, { csrf, action: "update", story: "12", pull: "30" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=updating&story=12&pull=30`);
+    expect(dispatched).toEqual({ ref: "main", inputs: { issue: "12", par: "lead", pr: "30" } });
+    expect(comment).toContain("Claude remet cette PR à jour");
+    const logged = await env.DB.prepare("SELECT issue_number, details FROM activity_log WHERE action = 'claude_update_launched'").first<{ issue_number: number; details: string }>();
+    expect(logged?.issue_number).toBe(12);
+    expect(JSON.parse(logged?.details ?? "{}")).toMatchObject({ pull: 30 });
+
+    // Not a pull request of the story, or a merged one: nothing is started.
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "update", story: "12", pull: "29" }, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint`);
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "update", story: "12", pull: "31" }, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint`);
+    // Not for a Product Engineer.
+    await grantRole("pe", "product_engineer");
+    const pe = await signIn("pe");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "update", story: "12", pull: "30" }, pe.cookie)).status).toBe(403);
   });
 });

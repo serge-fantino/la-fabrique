@@ -18,7 +18,8 @@ function labelChips(story: Story, circuit: Set<string>): string {
 
 function links(story: Story): string {
   const pulls = story.pullRequests.map(
-    (pull) => `<span class="link-item"><a href="${escapeHtml(pull.url)}">PR #${pull.number}</a> <span class="muted">${pull.state}</span></span>`,
+    (pull) =>
+      `<span class="link-item"><a href="${escapeHtml(pull.url)}">PR #${pull.number}</a> <span class="muted">${pull.state}${pull.guessed ? ", guessed from its text" : ""}</span></span>`,
   );
   const branches = story.branches.map((branch) => `<span class="link-item"><code>${escapeHtml(branch)}</code></span>`);
   return [...pulls, ...branches].join(" ");
