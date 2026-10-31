@@ -2,7 +2,7 @@
   {
     "version": "0.60",
     "date": "2026-10-31",
-    "heure": "11:15",
+    "heure": "11:51",
     "titre": "Next release, a sprint without a version, and the order in the sprint",
     "changements": [
       "Next release: a lane of the board with no version, always first after Not set, where the next sprint is prepared. Planning a release by number is gone: a numbered release could ship with other work and carry its cards away undone.",
