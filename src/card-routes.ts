@@ -1,5 +1,5 @@
-import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
-import { knownValues, nextVersion, planningProblem } from "./card-releases";
+import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { knownValues, nextVersion, plannedSpelling, planningProblem } from "./card-releases";
 import { cardStories } from "./card-stories";
 import {
   addValue,
@@ -11,6 +11,7 @@ import {
   dimensionValues,
   DIMENSIONS,
   exportCards,
+  importCards,
   filterCards,
   findCard,
   isFreeDimension,
@@ -49,8 +50,8 @@ import { projectUrl } from "./urls";
 import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
-// /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+// /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -68,6 +69,12 @@ function forbidden(viewer: Viewer): Response {
 const BOARD_NOTICES: Record<string, string> = {
   added: "Added.",
 };
+
+function importedNotice(params: URLSearchParams): string {
+  const created = Number(params.get("created")) || 0;
+  const skipped = Number(params.get("skipped")) || 0;
+  return `${created} card${created === 1 ? "" : "s"} imported${skipped ? `; ${skipped} skipped, already on the board` : ""}.`;
+}
 
 export async function showBoard(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   const url = new URL(request.url);
@@ -91,7 +98,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       canWrite: canWriteCards(viewer),
       spends,
       working,
-      notice: notice ? BOARD_NOTICES[notice] : undefined,
+      notice: notice === "imported" ? importedNotice(url.searchParams) : notice ? BOARD_NOTICES[notice] : undefined,
       failure: refused ? (planningProblem(project, refused, [...releases.values()]) ?? undefined) : undefined,
       releases,
       nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
@@ -111,12 +118,14 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const action = String(form.get("action") ?? "");
   if (action === "add_value") {
     const dimension = form.get("dimension");
-    const value = cleanValue(form.get("value"));
+    const typed = cleanValue(form.get("value"));
     const back = backTo(project, form);
     const then = (query: string) => redirect(`${back}${back.includes("?") ? "&" : "?"}${query}`);
-    if (isFreeDimension(dimension) && value) {
+    if (isFreeDimension(dimension) && typed) {
       const cards = await listCards(env.DB, project.repo);
       const { known, releases } = await knownValues(env, project, cards);
+      // A release planned is spelled as the project's releases are.
+      const value = dimension === "release" ? plannedSpelling(project.check?.config?.version?.forme, [...releases.values()], typed) : typed;
       if (known[dimension].some((existing) => existing.toLowerCase() === value.toLowerCase())) return then("notice=added");
       // A release planned ahead follows the project's numbering.
       const problem = dimension === "release" ? planningProblem(project, value, [...releases.values()]) : null;
@@ -424,6 +433,32 @@ export async function storyRoute(request: Request, env: Env, viewer: Viewer, pro
   return redirect(`${url}?notice=story`);
 }
 
+// Cards brought in from a JSON file (the export's format), or pasted.
+export async function importRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const page = async (data: { error?: string; text?: string; status?: number } = {}) => {
+    const { view, cookies } = await projectView(request, env, project, viewer);
+    return html(importPage(viewer, view, data), { cookies, status: data.status ?? 200 });
+  };
+  if (!form) return page();
+  const file: unknown = form.get("file");
+  const uploaded = file instanceof File && file.size ? file : null;
+  if (uploaded && uploaded.size > 2_000_000) return page({ error: "This file is over 2 MB.", status: 413 });
+  const text = uploaded ? await uploaded.text() : String(form.get("text") ?? "").trim();
+  if (!text) return page({ error: "Choose a file, or paste the JSON.", status: 422 });
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return page({ error: "This is not JSON.", text: uploaded ? "" : text, status: 422 });
+  }
+  const outcome = await importCards(env.DB, project.repo, viewer.login, data);
+  if (!outcome.created.length && !outcome.skipped.length) {
+    return page({ error: "No card found: the JSON has no list of cards with a title.", text: uploaded ? "" : text, status: 422 });
+  }
+  return redirect(`${projectUrl(project.repo)}/board?notice=imported&created=${outcome.created.length}&skipped=${outcome.skipped.length}`);
+}
+
 export async function downloadCards(env: Env, project: Project): Promise<Response> {
   const name = project.repo.replace("/", "-");
   return json(await exportCards(env.DB, project.repo), {
@@ -607,6 +642,11 @@ export async function cardRoute(
   }
   if (path === "cards/new") return method === "GET" ? showCardForm(request, env, viewer, project, null) : notAllowed();
   if (path === "cards/export") return method === "GET" ? downloadCards(env, project) : notAllowed();
+  if (path === "cards/import") {
+    if (method === "GET") return importRoute(request, env, viewer, project, null);
+    if (method === "POST") return withForm((data) => importRoute(request, env, viewer, project, data));
+    return notAllowed();
+  }
   if (path === "cards") return method === "POST" ? withForm((data) => submitCard(request, data, env, viewer, project)) : notAllowed();
   if (id && match[4] === "/edit") return method === "GET" ? showCardForm(request, env, viewer, project, id) : notAllowed();
   // The card's live connection: what Claude's job does, pushed (CardLive).

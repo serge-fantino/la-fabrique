@@ -35,19 +35,47 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-// The project's numbering (`version.forme`, "v1.N", "0.N"): N is the number.
+// The project's numbering (`version.forme`, "v1.N", "0.N"): N is the
+// number. A leading prefix is optional: "v1.N" matches "1.169" too, as a
+// project's release notes may write it.
 export function versionPattern(forme: string | undefined): RegExp | null {
   if (!forme || !forme.includes("N")) return null;
-  const parts = forme.split("N").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`^${parts.join("(\\d+)")}$`, "i");
+  const escape = (part: string) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefix = /^[^\dN]*/.exec(forme)?.[0] ?? "";
+  const parts = forme.slice(prefix.length).split("N").map(escape);
+  return new RegExp(`^${prefix ? `(?:${escape(prefix)})?` : ""}${parts.join("(\\d+)")}$`, "i");
+}
+
+// The newest of the project's own releases (not planned) in its numbering.
+function newest(pattern: RegExp, releases: BoardRelease[]): { release: BoardRelease; n: number } | null {
+  let found: { release: BoardRelease; n: number } | null = null;
+  for (const release of releases) {
+    const n = Number(pattern.exec(release.version)?.[1] ?? NaN);
+    if (Number.isInteger(n) && (!found || n > found.n)) found = { release, n };
+  }
+  return found;
+}
+
+// A version spelled as the project's releases are ("1.170" when they say
+// "1.169"), or as its numbering says when there is none yet.
+export function spellVersion(forme: string | undefined, releases: BoardRelease[], n: number): string | null {
+  const pattern = versionPattern(forme);
+  if (!forme || !pattern) return null;
+  const model = newest(pattern, releases.filter((release) => release.state !== "planned"))?.release.version;
+  return model ? model.replace(/(\d+)(?!.*\d)/, String(n)) : forme.replace("N", String(n));
 }
 
 // The version after the newest one, in the project's numbering.
 export function nextVersion(forme: string | undefined, releases: BoardRelease[]): string | null {
   const pattern = versionPattern(forme);
   if (!forme || !pattern) return null;
-  const highest = Math.max(0, ...releases.map((release) => Number(pattern.exec(release.version)?.[1] ?? 0)));
-  return forme.replace("N", String(highest + 1));
+  return spellVersion(forme, releases, (newest(pattern, releases)?.n ?? 0) + 1);
+}
+
+// A version typed to plan, spelled as the project's releases are.
+export function plannedSpelling(forme: string | undefined, releases: BoardRelease[], value: string): string {
+  const n = Number(versionPattern(forme)?.exec(value)?.[1] ?? NaN);
+  return Number.isInteger(n) ? (spellVersion(forme, releases, n) ?? value) : value;
 }
 
 // Why a release cannot be planned; null when it can.

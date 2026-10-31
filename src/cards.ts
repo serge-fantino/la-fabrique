@@ -693,6 +693,72 @@ export async function exportCards(db: D1Database, repo: string): Promise<unknown
   };
 }
 
+// Cards written elsewhere (an export, or after the fact), brought into a
+// project: each is a new card with its text, tags, spec and story links;
+// one whose title is already there is skipped, so an import never
+// overwrites and can run twice.
+export const MAX_IMPORT = 200;
+
+export interface ImportOutcome {
+  created: { id: number; title: string }[];
+  skipped: string[];
+  invalid: number;
+}
+
+export async function importCards(db: D1Database, repo: string, author: string, data: unknown): Promise<ImportOutcome> {
+  const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
+  const list = Array.isArray(data) ? data : Array.isArray(record["cards"]) ? record["cards"] : [];
+  const existing = new Set((await listCards(db, repo)).map((card) => card.title.toLowerCase()));
+  const outcome: ImportOutcome = { created: [], skipped: [], invalid: 0 };
+  for (const entry of list.slice(0, MAX_IMPORT)) {
+    const item = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>) : {};
+    const title = typeof item["title"] === "string" ? item["title"].replace(/\s+/g, " ").trim().slice(0, MAX_TITLE) : "";
+    if (!title) {
+      outcome.invalid++;
+      continue;
+    }
+    if (existing.has(title.toLowerCase())) {
+      outcome.skipped.push(title);
+      continue;
+    }
+    existing.add(title.toLowerCase());
+    const body = typeof item["body"] === "string" ? item["body"].replace(/\r\n/g, "\n").slice(0, MAX_BODY) : "";
+    const tags: CardTags = {
+      kind: isKind(item["kind"]) ? item["kind"] : "feature",
+      status: isStatus(item["status"]) ? item["status"] : "draft",
+      epic: cleanValue(item["epic"]),
+      domain: cleanValue(item["domain"]),
+      segment: cleanValue(item["segment"]),
+      release: cleanValue(item["release"]),
+    };
+    // The spec comes along; a pending split proposal does not.
+    const given = typeof item["data"] === "object" && item["data"] !== null ? (item["data"] as Record<string, unknown>) : {};
+    const cardData: CardData = typeof given["spec"] === "object" && given["spec"] !== null ? { spec: given["spec"] as CardSpec } : {};
+    const stories = (Array.isArray(item["links"]) ? item["links"] : [])
+      .map((link) => (typeof link === "object" && link !== null ? (link as Record<string, unknown>) : {}))
+      .filter((link) => link["kind"] === "story")
+      .map((link) => Number(String(link["ref"] ?? "").replace(/^#/, "")))
+      .filter((number) => Number.isInteger(number) && number > 0);
+    const last = await db.prepare("SELECT MAX(position) AS position FROM cards WHERE repo = ?").bind(repo).first<{ position: number | null }>();
+    const row = await db
+      .prepare(
+        `INSERT INTO cards (repo, kind, status, title, body, epic, domain, segment, release, position, author, data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      )
+      .bind(repo, tags.kind, tags.status, title, body, tags.epic, tags.domain, tags.segment, tags.release, (last?.position ?? 0) + 1, author, Object.keys(cardData).length ? JSON.stringify(cardData) : null)
+      .first<{ id: number }>();
+    const id = row?.id ?? 0;
+    await db.batch([
+      revisionStatement(db, id, 1, { title, body, tags }, author, cardData),
+      ...linkStatements(db, id, body),
+      ...[...new Set(stories)].map((number) => db.prepare("INSERT OR IGNORE INTO card_links (card_id, kind, ref) VALUES (?, 'story', ?)").bind(id, String(number))),
+      activityStatement(db, { actor: author, action: "card_imported", repo, details: { card: id, title, stories: [...new Set(stories)] } }),
+    ]);
+    outcome.created.push({ id, title });
+  }
+  return outcome;
+}
+
 // ---- The board ---------------------------------------------------------
 
 export type Axis = Dimension | "none";
