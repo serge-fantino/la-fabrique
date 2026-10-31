@@ -44,8 +44,10 @@ export function describe(entry: LogEntry, repo: string): string {
       return "added the project to La Fabrique";
     case "go_given":
       return `gave the go to production${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}${
-        d["reason"] ? `, anyway: “${text(d["reason"])}”` : ""
-      }`;
+        d["next"] ? `, next release <span class="mono">${text(d["next"])}</span> (${text(d["next_kind"])})` : ""
+      }${d["reason"] ? `, anyway: “${text(d["reason"])}”` : ""}`;
+    case "next_release_proposed":
+      return `proposed the next release <span class="mono">${text(d["next"])}</span> (${text(d["kind"])}, after <span class="mono">${text(d["from"])}</span>) with an empty release note: <a href="https://github.com/${escapeHtml(repo)}/pull/${entry.issue ?? ""}">PR #${entry.issue ?? ""}</a>`;
     case "stories_shipped": {
       const list = (key: string) => (Array.isArray(d[key]) ? (d[key] as unknown[]).map((n) => issue(n)).filter(Boolean).join(", ") : "");
       const closed = list("closed");

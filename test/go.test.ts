@@ -128,7 +128,7 @@ describe("The go", () => {
     expect(await logActions()).toContainEqual({
       actor: "admin-one",
       action: "go_given",
-      details: JSON.stringify({ version: "1.169", commit: "abc123", stories: [31, 32], not_validated: [] }),
+      details: JSON.stringify({ version: "1.169", commit: "abc123", stories: [31, 32], not_validated: [], next: "1.170", next_kind: "minor" }),
     });
   });
 
@@ -147,7 +147,7 @@ describe("The go", () => {
     const response = await post(`/projects/${REPO}/production/go`, { csrf, reason: "Hotfix, tested by hand" }, cookie);
     expect(response.status).toBe(303);
     const log = await (await get(`/projects/${REPO}/log`, cookie)).text();
-    expect(log).toContain("gave the go to production (version <span class=\"mono\">1.169</span>), anyway: “Hotfix, tested by hand”");
+    expect(log).toContain("gave the go to production (version <span class=\"mono\">1.169</span>), next release <span class=\"mono\">1.170</span> (minor), anyway: “Hotfix, tested by hand”");
   });
 
   it("refuses the go when production is not ready", async () => {

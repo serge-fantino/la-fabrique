@@ -40,6 +40,7 @@ import { forgetReference } from "./reference";
 import { projectView } from "./view-context";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeWorkflow, launchClaude } from "./claude";
 import { giveGo, goSummary, lastGo } from "./go";
+import { nextVersion, proposeNextRelease, readKind } from "./next-release";
 import { LOG_GROUPS, readLog } from "./log";
 import { logPage } from "./log-views";
 import { defectUrl, projectUrl } from "./urls";
@@ -179,6 +180,7 @@ export async function showStories(request: Request, env: Env, viewer: Viewer, re
 
 const GO_NOTICES: Record<string, string> = {
   given: "Go given: the promotion workflow is starting on GitHub. Its run shows here in a moment.",
+  "given-opened": "Go given: the promotion workflow is starting on GitHub, and the next release is proposed as a pull request on the integration branch.",
 };
 
 export async function showProduction(
@@ -207,7 +209,7 @@ export async function showProduction(
         checks,
         summary: production.status ? goSummary(production.status, production.stories, checks) : null,
         notice: notice ? GO_NOTICES[notice] : undefined,
-        failure: failed?.message,
+        failure: failed?.message ?? new URL(request.url).searchParams.get("next")?.slice(0, 300) ?? undefined,
       };
   return html(productionPage(viewer, view, production, go), { cookies, status: failed?.status ?? 200 });
 }
@@ -222,8 +224,21 @@ export async function goToProduction(request: Request, form: FormData, env: Env,
   const [production, checks] = await Promise.all([loadProduction(env, project), storyChecks(env.DB, project.repo)]);
   const summary = production.status ? goSummary(production.status, production.stories, checks) : null;
   const reason = String(form.get("reason") ?? "").trim().slice(0, 500);
-  const outcome = await giveGo(env, project, viewer.login, production.status, summary, reason);
-  if (outcome.ok) return redirect(`/projects/${project.repo}/production?notice=given`);
+  const kind = readKind(form.get("next"));
+  const from = summary?.version ?? null;
+  const next = from ? nextVersion(from, kind) : null;
+  const outcome = await giveGo(env, project, viewer.login, production.status, summary, reason, next ? { version: next, kind } : undefined);
+  if (outcome.ok) {
+    // The go is given either way; a refused pull request is said, not hidden.
+    if (from && next && project.check?.config?.version?.fichier && project.check.config.branches?.integration) {
+      const proposed = await proposeNextRelease(request, env, project, viewer.login, from, next, kind);
+      if (!proposed.ok) {
+        return redirect(`/projects/${project.repo}/production?notice=given&next=${encodeURIComponent(proposed.message)}`);
+      }
+      return redirect(`/projects/${project.repo}/production?notice=given-opened`);
+    }
+    return redirect(`/projects/${project.repo}/production?notice=given`);
+  }
   return showProduction(request, env, viewer, repo, outcome);
 }
 
