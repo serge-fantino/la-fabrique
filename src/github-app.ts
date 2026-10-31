@@ -190,3 +190,13 @@ export async function listInstalledRepos(env: Env): Promise<InstalledRepo[]> {
   }
   return repos.sort((a, b) => a.repo.localeCompare(b.repo));
 }
+
+// Why GitHub refused to start a project's workflow, in words the person
+// can act on: a permission of the App, or the workflow itself.
+export function dispatchRefusal(file: string, ref: string, status: number, expects: string): string {
+  if (status === 403) {
+    return `GitHub refused to start ${file} (HTTP 403): La Fabrique's GitHub App may not run this repository's workflows. On GitHub, its permissions must include Actions in read and write, and the installation on this repository must accept them (Settings → Applications → La Fabrique extraordinaire → Configure, or the permission request GitHub sends).`;
+  }
+  if (status === 404) return `GitHub refused to start ${file} (HTTP 404): no such workflow on ${ref}. It must be on ${ref}, the branch GitHub starts workflows from.`;
+  return `GitHub refused to start ${file} (HTTP ${status}). The workflow must be on ${ref} and ${expects}.`;
+}

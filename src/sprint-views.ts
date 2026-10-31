@@ -2,6 +2,7 @@ import { RELEASE_STATE_LABELS, type BoardRelease } from "./card-releases";
 import { cardGroupHead, isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { cardRef } from "./card-views";
+import { isRunning, type ClaudeRun } from "./claude";
 import type { Card } from "./cards";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -31,9 +32,31 @@ export interface SprintData {
   readyLabel: string | null;
   // Launching Claude Code (la-fabrique#113): tech lead and above, through
   // the project's own workflow; null when the project declares none.
-  claude: { canLaunch: boolean; workflow: string | null; cap: number; launches: Map<number, { by: string; at: string }>; next: number | null };
+  claude: {
+    canLaunch: boolean;
+    workflow: string | null;
+    cap: number;
+    launches: Map<number, { by: string; at: string }>;
+    next: number | null;
+    // The workflow's runs, newest first, and its page on GitHub.
+    runs: ClaudeRun[];
+    runsUrl: string | null;
+  };
   notice?: string | undefined;
   failure?: string | undefined;
+}
+
+// A run's state: queued, working (since when), done, failed; its link.
+function runPill(run: ClaudeRun): string {
+  const [label, tone] =
+    run.status !== "completed"
+      ? [run.status === "in_progress" ? "Claude working" : "Claude queued", "warn"]
+      : run.conclusion === "success"
+        ? ["Claude done", "ok"]
+        : run.conclusion === "cancelled"
+          ? ["Claude cancelled", ""]
+          : ["Claude failed", "alert"];
+  return `<a class="pill ${tone} small" href="${escapeHtml(run.url)}" title="Started ${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC">${label}</a>`;
 }
 
 export function sprintPage(viewer: Viewer, project: Project, data: SprintData): string {
@@ -54,8 +77,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   const claudeCell = (number: number) => {
     const story = data.stories.get(number);
     const launched = data.claude.launches.get(number);
-    const last = launched ? `<span class="muted small">Claude launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : "";
-    if (!data.claude.canLaunch || !data.claude.workflow || story?.stage !== "ready") return last;
+    const run = data.claude.runs.find((candidate) => candidate.issue === number);
+    const last = `${run ? runPill(run) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
+    if (!data.claude.canLaunch || !data.claude.workflow || story?.stage !== "ready" || (run && isRunning(run))) return last;
     return `${button({ action: "launch", story: number }, `Launch Claude on #${number}`, launched ? "Launch again" : "Launch Claude", "quiet small claude")}${last}`;
   };
   // A priority chosen from a list, sent at once (the button without script).
@@ -152,6 +176,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   // Claude Code takes the stories in the sprint's order: the next one is the
   // first ready story not launched yet.
   const nextStory = data.claude.next !== null ? data.stories.get(data.claude.next) : undefined;
+  // Claude's runs on GitHub: those in progress, and where to see them all.
+  const running = data.claude.runs.filter(isRunning);
+  const runsLine = data.claude.workflow
+    ? `<p class="sprint-runs">${
+        running.length
+          ? `Claude is working: ${running.map((run) => `${runPill(run)}${run.issue ? ` <span class="mono">#${run.issue}</span>` : ""}`).join(" · ")}`
+          : `<span class="muted">Claude is not working now.</span>`
+      }${data.claude.runsUrl ? ` <a class="small" href="${escapeHtml(data.claude.runsUrl)}">Every Claude run on GitHub</a>` : ""} <a class="small" href="${escapeHtml(action)}">Refresh</a></p>`
+    : "";
   const claudeNext = !data.claude.canLaunch
     ? ""
     : !data.claude.workflow
@@ -185,6 +218,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : ""
         }
         ${summary(data.sprintCards)}
+        ${runsLine}
         ${claudeNext}
       </section>
       ${cardsSection(data.sprintCards, data.canOrder, true) || `<p class="muted">No card in the sprint.</p>`}`

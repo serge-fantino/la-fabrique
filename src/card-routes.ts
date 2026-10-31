@@ -5,7 +5,7 @@ import { storyCards } from "./card-groups";
 import { sprintPage } from "./sprint-views";
 import { activeSprint, endSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, settleSprint, startSprint, stopSprint } from "./sprint-flow";
-import { canLaunchClaude, claudeCap, claudeLaunches, claudeWorkflow, launchClaude } from "./claude";
+import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude } from "./claude";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
 import { cycleRules, projectRules } from "./lifecycle";
@@ -582,12 +582,13 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   await settleSprint(env, project);
   const cards = await listCards(env.DB, project.repo);
   const { releases } = await knownValues(env, project, cards);
-  const [sprint, latest, links, { view, cookies }, launches] = await Promise.all([
+  const [sprint, latest, links, { view, cookies }, launches, runs] = await Promise.all([
     activeSprint(env.DB, project.repo),
     latestSprint(env.DB, project.repo),
     storyCards(env.DB, project.repo),
     projectView(request, env, project, viewer),
     claudeLaunches(env.DB, project.repo),
+    claudeRuns(env, project),
   ]);
   const live = cards.filter((card) => !card.archivedAt).sort((a, b) => a.position - b.position || a.id - b.id);
   const inLane = (release: string) => live.filter((card) => card.release === release);
@@ -616,7 +617,15 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       canOrder: canWriteCards(viewer),
       priorities: cycleRules(project.check?.config).priorities,
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,
-      claude: { canLaunch: canLaunchClaude(viewer.role), workflow: claudeWorkflow(project), cap: claudeCap(project), launches, next },
+      claude: {
+        canLaunch: canLaunchClaude(viewer.role),
+        workflow: claudeWorkflow(project),
+        cap: claudeCap(project),
+        launches,
+        next,
+        runs,
+        runsUrl: claudeWorkflow(project) ? `https://github.com/${project.repo}/actions/workflows/${encodeURIComponent(claudeWorkflow(project) ?? "")}` : null,
+      },
       notice:
         params.get("notice") === "launched" && Number.isInteger(launched) ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.` : SPRINT_NOTICES[params.get("notice") ?? ""],
       failure:

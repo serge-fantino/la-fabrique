@@ -90,9 +90,20 @@ describe("Claude Code from the sprint", () => {
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=launched&story=12`);
     expect(dispatched).toEqual({ ref: "main", inputs: { issue: "12", par: "admin-one" } });
     expect((await logActions()).map((entry) => entry.action)).toContain("claude_launched");
+    // The page reads the workflow's runs: #12's is in progress.
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` })
+      .reply(
+        200,
+        JSON.stringify({ workflow_runs: [{ display_title: "Claude #12", status: "in_progress", conclusion: null, html_url: "https://github.com/run/1", created_at: "2026-10-31T14:00:00Z", updated_at: "2026-10-31T14:01:00Z" }] }),
+        JSON_HEADERS,
+      );
     const after = await (await get(response.headers.get("location") ?? "", cookie)).text();
     expect(after).toContain("Claude Code launched on #12");
-    expect(after).toContain("Claude launched by @admin-one");
+    expect(after).toContain("launched by @admin-one");
+    expect(after).toMatch(/Claude is working: <a [^>]*class="pill warn small" href="https:\/\/github.com\/run\/1"[^>]*>Claude working<\/a>/);
+    expect(after).toMatch(/href="https:\/\/github.com\/acme\/widget\/actions\/workflows\/claude.yml">Every Claude run on GitHub<\/a>/);
     // Launched: no longer the next one.
     expect(after).toContain("No story ready for Claude");
 

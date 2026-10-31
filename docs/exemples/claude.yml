@@ -8,6 +8,8 @@
 # - FABRIQUE_TOKEN (le même que la promotion, avec en plus Pull requests et Issues read and write) : la branche et la
 #   PR qu'il crée déclenchent la CI, ce que le GITHUB_TOKEN ne ferait pas.
 name: Claude
+# Le numéro de l'issue dans le nom du run : La Fabrique y retrouve le run de chaque story.
+run-name: "Claude #${{ inputs.issue }}"
 
 on:
   workflow_dispatch:
@@ -74,6 +76,8 @@ jobs:
           github_token: ${{ secrets.FABRIQUE_TOKEN }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Lancé par l'App GitHub de La Fabrique : l'action refuse les robots qu'elle ne connaît pas.
+          allowed_bots: la-fabrique-extraordinaire
           claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
           prompt: |
             Tu travailles sur la demande #${{ inputs.issue }} de ce dépôt (${{ github.repository }}), lancée${{ inputs.par && format(' par @{0}', inputs.par) || '' }} depuis La Fabrique.

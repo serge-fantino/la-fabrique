@@ -8,6 +8,8 @@
 # - FABRIQUE_TOKEN (fine-grained, this repository: Contents, Pull requests and Issues, read and write): the branch and
 #   the pull request it creates start the CI, which the GITHUB_TOKEN would not.
 name: Claude
+# The issue number in the run's name: La Fabrique finds the run of each story by it.
+run-name: "Claude #${{ inputs.issue }}"
 
 on:
   workflow_dispatch:
@@ -70,6 +72,8 @@ jobs:
           github_token: ${{ secrets.FABRIQUE_TOKEN }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Started by La Fabrique's GitHub App: the action refuses bots unless named.
+          allowed_bots: la-fabrique-extraordinaire
           claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
           prompt: |
             You work on story #${{ inputs.issue }} of this repository (${{ github.repository }}), launched${{ inputs.par && format(' by @{0}', inputs.par) || '' }} from La Fabrique.

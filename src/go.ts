@@ -1,6 +1,6 @@
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
-import { githubPost, installationToken } from "./github-app";
+import { dispatchRefusal, githubPost, installationToken } from "./github-app";
 import { isEpic } from "./lifecycle";
 import { productionChanged, type ProductionStatus } from "./production";
 import { productionBranch, type Project } from "./projects";
@@ -58,7 +58,7 @@ export async function giveGo(
   if (!response.ok) {
     return {
       ok: false,
-      message: `GitHub refused to start ${file} (HTTP ${response.status}). The workflow must be on ${ref} and accept workflow_dispatch.`,
+      message: dispatchRefusal(file, ref, response.status, "accept workflow_dispatch"),
       status: 502,
     };
   }
