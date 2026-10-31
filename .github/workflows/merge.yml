@@ -107,6 +107,20 @@ jobs:
           PR: ${{ inputs.pr }}
           PAR: ${{ inputs.par }}
         run: |
+          head=$(git rev-parse HEAD)
           git push origin "HEAD:$BRANCH"
-          gh pr merge "$PR" --squash --match-head-commit "$(git rev-parse HEAD)" --subject "$TITLE (#$PR)"
+          # Right after a push, GitHub is still working out whether the pull request can be merged, and refuses
+          # ("Base branch was modified"): wait until it has seen the new head and says MERGEABLE, then merge,
+          # trying again a few times.
+          for attempt in 1 2 3 4 5 6; do
+            state=$(gh pr view "$PR" --json headRefOid,mergeable --jq '.headRefOid + " " + .mergeable')
+            if [ "$state" = "$head MERGEABLE" ] && gh pr merge "$PR" --squash --match-head-commit "$head" --subject "$TITLE (#$PR)"; then
+              merged=yes
+              break
+            fi
+            [ "$state" = "$head CONFLICTING" ] && { echo "::error::Pull request #$PR conflicts with main again: run Merge once more."; exit 1; }
+            echo "GitHub is not ready to merge #$PR yet ($state): trying again in 10 seconds."
+            sleep 10
+          done
+          [ "${merged:-}" = yes ] || { echo "::error::GitHub did not merge #$PR; the branch is pushed, numbered and checked: run Merge again."; exit 1; }
           gh pr comment "$PR" --body "Merged into main${VERSIONS:+ as release $VERSIONS}${PAR:+, at the request of @$PAR}, from La Fabrique."
