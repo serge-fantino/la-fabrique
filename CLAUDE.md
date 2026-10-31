@@ -12,7 +12,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 2. **Chaque projet se décrit lui-même** dans un fichier `.fabrique.json` à la racine de son dépôt, versionné avec son code (format : `docs/fabrique-json.md`). Rien de propre à un projet dans le code de La Fabrique.
 3. **Les actions sensibles restent dans le projet.** Promouvoir, déployer, migrer, lancer Claude : ce sont des workflows GitHub du projet, avec ses propres secrets. La Fabrique les déclenche par l'API GitHub et n'a **jamais** de jeton de déploiement (Cloudflare, clés d'API d'un projet).
 4. **Traçabilité de bout en bout.** Fiche → demande → issue → branche → commits → déploiement sur int → validation → version en production → migrations : chaque étape est reliée et datée. Ce que GitHub ne garde pas (qui a validé quoi, qui a donné le go) est dans le journal de La Fabrique, jamais effacé ; les fiches gardent toutes leurs versions.
-5. **Personne d'autre que le super admin ne met en production.** Les rôles sont donnés dans La Fabrique, par identifiant GitHub et par projet (F4.9, #84 : aujourd'hui encore un rôle par compte pour tous les projets) ; le super admin l'est pour tous.
+5. **Seuls le Product Engineer et le super admin mettent en production** (le « go » ; pas le tech lead ni le testeur, #101). Les rôles sont donnés dans La Fabrique, par identifiant GitHub et par projet (F4.9, #84 : aujourd'hui encore un rôle par compte pour tous les projets) ; le super admin l'est pour tous.
 
 ## Rôles
 
@@ -22,7 +22,7 @@ Premier projet piloté : L'épicerie extraordinaire (`serge-fantino/epicerie-ext
 - **Testeur** : voit int et les demandes à valider, coche les critères d'acceptation, signale un défaut (issue reliée).
 - Sans rôle : signaler un défaut depuis l'app d'un projet dont le compte GitHub voit le dépôt (étiquette *to triage*, 20 par jour) ; rien d'autre (connexion à La Fabrique refusée poliment).
 
-Chaque rôle a les droits de ceux d'avant (`src/rights.ts`) : signaler un défaut (tout compte qui voit le projet) < testeur (int, critères, validation) < Product Engineer (demandes, priorités) < tech lead (Claude, Setup) < super admin (go, rôles, projets, apps).
+Chaque rôle a les droits de ceux d'avant (`src/rights.ts`) : signaler un défaut (tout compte qui voit le projet) < testeur (int, critères, validation) < Product Engineer (demandes, priorités) < tech lead (Claude, Setup) < super admin (rôles, projets, apps). Exception, une matrice et non l'échelle : le « go » (action `promote`) est au Product Engineer et au super admin, pas au tech lead.
 
 **Perspectives** (F4.1, #75) : le rôle dit ce qu'on peut faire, la perspective ce qu'on voit (tableau de bord, onglets d'un projet). Elles sont standard (les mêmes pour tous les projets) et portent le nom d'une activité, pas d'un rôle : Product et Administration d'abord, puis Testing, Engineering, Architecture, Operations ; « All » garde la vue complète. Les perspectives d'une personne sur un projet suivent son rôle sur ce projet, sur la même échelle que les droits ; elle passe de l'une à l'autre dans l'en-tête. Une perspective masque, elle n'interdit rien.
 
