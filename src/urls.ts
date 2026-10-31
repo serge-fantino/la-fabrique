@@ -1,3 +1,11 @@
+// La Fabrique's own release notes.
+export const WHATS_NEW_PATH = "/whats-new";
+
+// A release's place on that page.
+export function releaseAnchor(version: string): string {
+  return `v${version.replace(/[^\w-]/g, "-")}`;
+}
+
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }

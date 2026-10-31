@@ -30,6 +30,8 @@ import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import releaseNotes from "../docs/release-notes.json";
+import { WHATS_NEW_PATH } from "./urls";
+import { ownReleases, selfRepo, whatsNewPage } from "./whats-new";
 import { setCommit } from "./build";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
@@ -390,6 +392,12 @@ const app = {
         if (method !== "GET") return methodNotAllowed();
         await slowPage();
         return redirect(`${SETTINGS_PATH}?notice=tried`);
+
+      case WHATS_NEW_PATH: {
+        if (!viewer) return redirect("/");
+        if (method !== "GET") return methodNotAllowed();
+        return html(whatsNewPage(viewer, ownReleases(), await selfRepo(env.DB, new URL(request.url).origin)));
+      }
 
       case "/people": {
         if (!viewer) return redirect("/");
