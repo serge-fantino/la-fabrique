@@ -2,8 +2,10 @@ import { configuredSuperAdmins, listAccounts } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { refreshUserToken } from "./github";
-import { githubJson, githubPost, installationToken } from "./github-app";
-import type { Project } from "./projects";
+import { dispatchRefusal, githubJson, githubPost, installationToken } from "./github-app";
+import { productionBranch, type Project } from "./projects";
+import { can } from "./rights";
+import type { Role } from "./accounts";
 import { userToken } from "./session";
 
 // The pull requests of the sprint's stories (la-fabrique#113): what each
@@ -95,4 +97,32 @@ export async function requestReview(
   }
   await activityStatement(env.DB, { actor: login, action: "review_requested", repo: project.repo, issueNumber: pull, details: { reviewer } }).run();
   return { ok: true };
+}
+
+// Merging from La Fabrique: the project's own workflow (`workflows.fusionner`),
+// which numbers and dates the release notes at the merge, checks again and
+// merges. Into the production branch, it is a go: the super admin only;
+// into another branch (integration), a tech lead.
+export function mergeWorkflow(project: Project): string | null {
+  const file = project.check?.config?.workflows?.["fusionner"];
+  return typeof file === "string" ? file : null;
+}
+
+export function canMerge(role: Role, project: Project, base: string | null): boolean {
+  return can(role, base !== null && base !== (productionBranch(project) ?? "main") ? "launch_claude" : "go");
+}
+
+export async function mergePull(env: Env, project: Project, login: string, pull: number): Promise<{ ok: true } | { ok: false; message: string; status: number }> {
+  const file = mergeWorkflow(project);
+  if (!file) return { ok: false, message: "This project declares no merge workflow (workflows.fusionner).", status: 422 };
+  try {
+    const token = await installationToken(env, project.installationId);
+    const ref = productionBranch(project) ?? "main";
+    const response = await githubPost(token, `/repos/${project.repo}/actions/workflows/${encodeURIComponent(file)}/dispatches`, { ref, inputs: { pr: String(pull), par: login } });
+    if (!response.ok) return { ok: false, message: dispatchRefusal(file, ref, response.status, "take the pull request number as input"), status: 502 };
+    await activityStatement(env.DB, { actor: login, action: "pull_merge_launched", repo: project.repo, issueNumber: pull, details: { workflow: file } }).run();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error), status: 502 };
+  }
 }

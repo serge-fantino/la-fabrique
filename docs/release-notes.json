@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.71",
+    "date": "2026-10-31",
+    "heure": "18:01",
+    "titre": "Merge from the sprint, release notes numbered at the merge",
+    "changements": [
+      "A project can declare its merge workflow (workflows.fusionner): Merge on a pull request of the sprint starts it; into the production branch it is a go, for the super admin only, into another branch a tech lead can.",
+      "La Fabrique's own merge workflow numbers and dates the pull request's release-notes entries at the merge (after main's newest, at the time of the merge), checks again, then squash-merges: two pull requests written at the same time no longer conflict on the next version number."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.70",
     "date": "2026-10-31",
     "heure": "17:56",

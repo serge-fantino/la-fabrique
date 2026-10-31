@@ -303,3 +303,45 @@ describe("A pull request brought up to date with Claude", () => {
     expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "update", story: "12", pull: "30" }, pe.cookie)).status).toBe(403);
   });
 });
+
+describe("Merging a pull request from the sprint", () => {
+  it("offers Merge to the super admin when the project declares its merge workflow, and starts it", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", fusionner: "merge.yml" }, claude: { plafond: 1 } });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]), REPO)
+      .run();
+    const detail = JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "clean", base: { ref: "main" } });
+    const sprintReads = () => {
+      github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+      github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+      github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    };
+    // A tech lead does not merge into production.
+    await grantRole("lead", "tech_lead");
+    const lead = await signIn("lead");
+    sprintReads();
+    expect(await (await get(`/projects/${REPO}/sprint`, lead.cookie)).text()).not.toContain("Merge pull request #30");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: lead.csrf, action: "merge", pull: "30" }, lead.cookie)).status).toBe(403);
+
+    const { cookie, csrf } = await signIn("admin-one");
+    // Claude's runs were read a moment ago (kept 30 seconds).
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    expect(await (await get(`/projects/${REPO}/sprint`, cookie)).text()).toContain('aria-label="Merge pull request #30">Merge</button>');
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    let dispatched: unknown = null;
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/merge.yml/dispatches` })
+      .reply(204, (options) => {
+        dispatched = JSON.parse(String(options.body));
+        return "";
+      });
+    const response = await post(`/projects/${REPO}/sprint`, { csrf, action: "merge", pull: "30" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=merging&pull=30`);
+    expect(dispatched).toEqual({ ref: "main", inputs: { pr: "30", par: "admin-one" } });
+    expect((await logActions()).map((entry) => entry.action)).toContain("pull_merge_launched");
+  });
+});

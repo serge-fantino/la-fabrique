@@ -1,0 +1,112 @@
+# Merges a pull request into main, which is La Fabrique's production (la-fabrique#113): started by the super admin
+# from La Fabrique ("Merge" on a pull request of the sprint), or by hand (Actions > Merge > Run workflow).
+# The release notes are numbered and dated here, not while the pull request is written: main is merged into the pull
+# request's branch, docs/release-notes.json is rebuilt from main's with the pull request's own entries on top, numbered
+# after main's newest and dated now (Paris; scripts/release-at-merge.ts). Any other conflict stops the merge: bring the
+# pull request up to date first ("Update with Claude"). The checks run again, the branch is pushed, then the pull
+# request is squash-merged; the push to main deploys as usual.
+# Repository secret: FABRIQUE_TOKEN (fine-grained, this repository: Contents, Pull requests and Issues, read and write):
+# the merge it makes on main starts the deployment, which the GITHUB_TOKEN would not.
+name: Merge
+run-name: "Merge #${{ inputs.pr }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number"
+        required: true
+      par:
+        description: "Who merges (GitHub login, set by La Fabrique)"
+        required: false
+
+concurrency:
+  group: merge-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      NOTES: docs/release-notes.json
+    steps:
+      - name: Inputs
+        env:
+          FABRIQUE_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+        run: |
+          [ -n "$FABRIQUE_TOKEN" ] || { echo "::error::Secret FABRIQUE_TOKEN missing (see this workflow's header)."; exit 1; }
+          case "$PR" in ''|*[!0-9]*) echo "::error::Not a pull request number: $PR"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FABRIQUE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Commit identity
+        run: |
+          git config user.name "La Fabrique"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Main merged into the pull request, release notes numbered
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+        run: |
+          info=$(gh pr view "$PR" --json headRefName,baseRefName,state,isDraft,title)
+          [ "$(jq -r .state <<<"$info")" = "OPEN" ] || { echo "::error::Pull request #$PR is not open."; exit 1; }
+          [ "$(jq -r .baseRefName <<<"$info")" = "main" ] || { echo "::error::Pull request #$PR does not target main."; exit 1; }
+          [ "$(jq -r .isDraft <<<"$info")" = "false" ] || { echo "::error::Pull request #$PR is a draft."; exit 1; }
+          branch=$(jq -r .headRefName <<<"$info")
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "TITLE=$(jq -r .title <<<"$info")" >> "$GITHUB_ENV"
+          git fetch origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
+          tmp=$(mktemp -d)
+          git show "$(git merge-base HEAD origin/main):$NOTES" > "$tmp/base.json"
+          cp "$NOTES" "$tmp/branch.json"
+          git show "origin/main:$NOTES" > "$tmp/main.json"
+          git merge --no-commit --no-ff origin/main >/dev/null 2>&1 || true
+          versions=$(node --experimental-strip-types scripts/release-at-merge.ts "$tmp/base.json" "$tmp/branch.json" "$tmp/main.json" "$NOTES")
+          git add "$NOTES"
+          left=$(git diff --name-only --diff-filter=U)
+          if [ -n "$left" ]; then
+            echo "::error::Conflicts with main besides the release notes: $left. Bring the pull request up to date first (Update with Claude)."
+            exit 1
+          fi
+          echo "VERSIONS=$versions" >> "$GITHUB_ENV"
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git commit -q -m "Merge main${versions:+; release $versions at merge}"
+          elif ! git diff --cached --quiet; then
+            git commit -q -m "Release $versions at merge"
+          fi
+
+      - name: Dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Push, then squash-merge
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+          PAR: ${{ inputs.par }}
+        run: |
+          git push origin "HEAD:$BRANCH"
+          gh pr merge "$PR" --squash --match-head-commit "$(git rev-parse HEAD)" --subject "$TITLE (#$PR)"
+          gh pr comment "$PR" --body "Merged into main${VERSIONS:+ as release $VERSIONS}${PAR:+, at the request of @$PAR}, from La Fabrique."
