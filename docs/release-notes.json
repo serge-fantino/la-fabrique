@@ -2,7 +2,7 @@
   {
     "version": "0.62",
     "date": "2026-10-31",
-    "heure": "13:37",
+    "heure": "13:44",
     "titre": "Getting the sprint's stories ready, and priorities from the card",
     "changements": [
       "A story made from a card no longer needs an epic to be ready: the card groups it, as an epic would.",
