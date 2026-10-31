@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.59",
+    "date": "2026-10-31",
+    "heure": "11:12",
+    "titre": "The sprint",
+    "changements": [
+      "A Sprint tab: the release we work on, its cards, and under each card its stories with their stage; how many are in production; the stories its release notes declare that come from no card.",
+      "Start the sprint on a planned release: it becomes in progress (Sprint on the board). One sprint at a time; Stop the sprint plans it again. It ends by itself when the project's release notes date the release.",
+      "Without a sprint started, the Sprint tab shows the release in progress on the project's integration branch."
+    ],
+    "stories": [109],
+    "liens": null
+  },
+  {
     "version": "0.58",
     "date": "2026-10-31",
     "heure": "11:00",

@@ -15,7 +15,7 @@ export const PERSPECTIVE_LABELS: Record<Perspective, string> = {
 
 // The project tabs of each perspective, in their order (null: every tab).
 export const PERSPECTIVE_TABS: Record<Perspective, string[] | null> = {
-  product: ["overview", "board", "stories", "backlog", "to_test", "defects", "roadmap", "releases", "requests"],
+  product: ["overview", "board", "sprint", "stories", "backlog", "to_test", "defects", "roadmap", "releases", "requests"],
   administration: ["overview", "production", "to_test", "defects", "in_dev", "delivery", "activity", "releases", "log", "setup"],
   all: null,
 };

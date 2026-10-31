@@ -9,6 +9,7 @@ const projectPath = projectUrl;
 export type ProjectTab =
   | "overview"
   | "board"
+  | "sprint"
   | "stories"
   | "backlog"
   | "in_dev"
@@ -26,6 +27,7 @@ export type ProjectTab =
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "overview", label: "Overview", path: "" },
   { id: "board", label: "Board", path: "/board" },
+  { id: "sprint", label: "Sprint", path: "/sprint" },
   { id: "stories", label: "Stories", path: "/stories" },
   { id: "backlog", label: "Backlog", path: "/backlog" },
   { id: "in_dev", label: "In development", path: "/in-development" },

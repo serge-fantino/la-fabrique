@@ -2770,3 +2770,24 @@ form[aria-busy="true"] button[type="submit"] {
   color: var(--encre);
   text-decoration: none;
 }
+
+/* The sprint (la-fabrique#109): the release worked on, then the planned ones. */
+.sprint-head h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+}
+
+.sprint-planned {
+  list-style: none;
+  padding: 0;
+}
+
+.sprint-planned li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  min-height: 44px;
+}

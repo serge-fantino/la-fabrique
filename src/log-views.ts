@@ -67,6 +67,12 @@ export function describe(entry: LogEntry, repo: string): string {
     }
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "sprint_started":
+      return `started the sprint ${text(d["release"])}`;
+    case "sprint_stopped":
+      return `stopped the sprint ${text(d["release"])}`;
+    case "sprint_shipped":
+      return `saw the sprint ${text(d["release"])} shipped (dated in the release notes)`;
     case "card_imported": {
       const stories = Array.isArray(d["stories"]) ? (d["stories"] as unknown[]).map((n) => `#${text(n)}`).join(", ") : "";
       return `imported card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${stories ? `, with ${stories}` : ""}`;

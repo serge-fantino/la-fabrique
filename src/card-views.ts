@@ -245,7 +245,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   };
   const releaseNote = (axis: Axis, value: string) => {
     const release = axis === "release" ? data.releases.get(value) : undefined;
-    return release ? ` <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span>` : "";
+    return release ? ` <span class="pill ${RELEASE_TONES[release.state]} small">${release.sprint ? "Sprint" : RELEASE_STATE_LABELS[release.state]}</span>` : "";
   };
   const titleOf = (axis: Axis, value: string) => {
     const release = axis === "release" ? data.releases.get(value) : undefined;
