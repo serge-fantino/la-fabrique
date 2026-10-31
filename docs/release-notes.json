@@ -1,13 +1,50 @@
 [
   {
-    "version": "0.72",
+    "version": "0.75",
     "date": "2026-10-31",
-    "heure": "22:12",
+    "heure": "23:58",
     "titre": "Product Engineers can give the go to production",
     "changements": [
       "Product Engineers can now give the go that pushes the version on integration to production, like the super admin; tech leads and testers cannot (the page hides it and the request is refused). Merging a pull request into the production branch follows the same rule."
     ],
     "stories": [101],
+    "liens": null
+  },
+  {
+    "version": "0.74",
+    "date": "2026-10-31",
+    "heure": "23:52",
+    "titre": "A card's progress, from its stories",
+    "changements": [
+      "Besides its status (where the spec stands: Draft to Validated), a card has a progress, worked out from its stories and the sprint, never typed: Stories to prepare (2/3 ready), Ready for dev, In sprint, In development (1/3 developed), To test (2/3 validated), In production. The nice to have count only when all of a card's stories are.",
+      "The progress shows on the board's cards, the card's page (since when, and the stages it went through) and the sprint; the board can be laid out by Progress (Lane or Group by), and a card is not moved across it by hand.",
+      "Each change of progress is written in the log, dated."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "0.73",
+    "date": "2026-10-31",
+    "heure": "23:52",
+    "titre": "To validate, on the dashboard and in the sprint; the merge workflow in Setup",
+    "changements": [
+      "Without an integration branch, the dashboard shows how many stories are To validate, linked to To test.",
+      "In the sprint, a story To validate points to To test, where its criteria are checked.",
+      "Setup says whether the project declares its merge workflow (workflows.fusionner), and how to write one."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "0.72",
+    "date": "2026-10-31",
+    "heure": "23:52",
+    "titre": "Stories validated on int are closed once in production",
+    "changements": [
+      "When the project's promotion workflow ends well, La Fabrique closes the stories of that go that were validated on int, with a word on each (in the project's language), and writes it in the log; a story sent anyway, without its validation, stays open and To validate. The sprint then sees them shipped and closes by itself."
+    ],
+    "stories": [113],
     "liens": null
   },
   {
