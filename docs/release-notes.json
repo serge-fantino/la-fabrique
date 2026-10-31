@@ -2,7 +2,7 @@
   {
     "version": "0.71",
     "date": "2026-10-31",
-    "heure": "17:59",
+    "heure": "18:01",
     "titre": "Merge from the sprint, release notes numbered at the merge",
     "changements": [
       "A project can declare its merge workflow (workflows.fusionner): Merge on a pull request of the sprint starts it; into the production branch it is a go, for the super admin only, into another branch a tech lead can.",
