@@ -69,7 +69,9 @@ export async function boardReleases(env: Env, project: Project, planned: string[
   ]);
   const found = new Map<string, BoardRelease>();
   for (const release of releases) {
-    found.set(release.version, { version: release.version, title: release.title, state: release.time ? "shipped" : "in_progress" });
+    // Entries newer than the newest one with a time are not out yet; older
+    // ones without a time came before times were written down.
+    found.set(release.version, { version: release.version, title: release.title, state: release.upcoming ? "in_progress" : "shipped" });
   }
   for (const waiting of production?.data.waiting ?? []) {
     if (!found.has(waiting.version)) found.set(waiting.version, { version: waiting.version, title: waiting.title, state: "in_progress" });
