@@ -5,9 +5,9 @@ export const LOG_GROUPS: { id: string; label: string; actions: string[] }[] = [
   { id: "requests", label: "Requests", actions: ["request_created"] },
   { id: "validation", label: "Validation on int", actions: ["criterion_checked", "criterion_unchecked", "story_validated", "defect_reported"] },
   { id: "backlog", label: "Priorities", actions: ["priority_set"] },
-  { id: "production", label: "Go to production", actions: ["go_given", "next_release_proposed"] },
+  { id: "production", label: "Go to production", actions: ["go_given", "next_release_proposed", "stories_shipped"] },
   { id: "claude", label: "Claude", actions: ["claude_launched", "claude_update_launched", "claude_run_finished", "claude_pr_opened", "claude_pr_updated", "review_requested", "pull_merge_launched"] },
-  { id: "cards", label: "Cards", actions: ["card_created", "card_edited", "card_moved", "card_archived", "card_restored", "card_value_added", "card_spec_written", "card_version_restored", "card_story_created", "card_split_proposed", "card_stories_reviewed", "card_imported", "card_priority_set"] },
+  { id: "cards", label: "Cards", actions: ["card_created", "card_edited", "card_moved", "card_archived", "card_restored", "card_value_added", "card_spec_written", "card_version_restored", "card_story_created", "card_split_proposed", "card_stories_reviewed", "card_imported", "card_priority_set", "card_progress_changed"] },
   { id: "sprint", label: "Sprint", actions: ["sprint_started", "sprint_stopped", "sprint_shipped", "sprint_card_moved", "sprint_story_moved", "story_nice_set", "story_marked_ready"] },
   { id: "setup", label: "Project setup", actions: ["project_added", "config_change_proposed"] },
 ];

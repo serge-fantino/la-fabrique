@@ -1,4 +1,4 @@
-import { env, fetchMock } from "cloudflare:test";
+import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { activityStatement } from "../src/activity-log";
 import type { ProductionStatus } from "../src/production";
@@ -84,13 +84,29 @@ describe("The go", () => {
     expect(page).toContain("1 not validated on int: why give the go anyway?");
   });
 
-  it("is for the super admin only", async () => {
+  it("is refused to tech leads and testers, who do not see it", async () => {
     await seed();
-    await grantRole("lead", "tech_lead");
-    const { cookie, csrf } = await signIn("lead");
+    for (const [login, role] of [["lead", "tech_lead"], ["qa2", "tester"]] as const) {
+      await grantRole(login, role);
+      const { cookie, csrf } = await signIn(login);
+      const page = await (await get(`/projects/${REPO}/production`, cookie)).text();
+      expect(page).not.toContain("Give the go");
+      expect((await post(`/projects/${REPO}/production/go`, { csrf }, cookie)).status).toBe(403);
+    }
+  });
+
+  it("is open to a Product Engineer, who sees it and is not refused", async () => {
+    await seed();
+    await grantRole("pe", "product_engineer");
+    const github = fetchMock.get("https://api.github.com");
+    github
+      .intercept({ method: "POST", path: "/app/installations/99/access_tokens" })
+      .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS);
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/promouvoir.yml/dispatches` }).reply(204, "");
+    const { cookie, csrf } = await signIn("pe");
     const page = await (await get(`/projects/${REPO}/production`, cookie)).text();
-    expect(page).not.toContain("Give the go");
-    expect((await post(`/projects/${REPO}/production/go`, { csrf }, cookie)).status).toBe(403);
+    expect(page).toContain("Give the go");
+    expect((await post(`/projects/${REPO}/production/go`, { csrf }, cookie)).status).toBe(303);
   });
 
   it("dispatches the project's promotion workflow on the production branch and logs the go", async () => {
@@ -145,3 +161,52 @@ describe("The go", () => {
     expect(await response.text()).toContain("Not ready for production: CI failed on integration.");
   });
 });
+
+describe("After the promotion", () => {
+  it("closes the stories of the go that were validated on int, once, and leaves the others open", async () => {
+    await seed(STATUS, [31]);
+    await activityStatement(env.DB, { actor: "admin-one", action: "go_given", repo: REPO, details: { version: "1.169", stories: [31, 32], not_validated: [32], reason: "urgent" } }).run();
+    const github = () => fetchMock.get("https://api.github.com");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    const issue = { number: 31, title: "Plan the week", state: "open", html_url: `https://github.com/${REPO}/issues/31`, user: { login: "pe" }, labels: [], created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", closed_at: null };
+    github().intercept({ path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify(issue), JSON_HEADERS);
+    let comment = "";
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues/31/comments` })
+      .reply(201, (options) => {
+        comment = JSON.parse(String(options.body)).body;
+        return "{}";
+      });
+    let patch: unknown = null;
+    github()
+      .intercept({ method: "PATCH", path: `/repos/${REPO}/issues/31` })
+      .reply(200, (options) => {
+        patch = JSON.parse(String(options.body));
+        return JSON.stringify({ ...issue, state: "closed" });
+      });
+    const run = { path: ".github/workflows/promouvoir.yml", display_title: "Promotion", status: "completed", conclusion: "success", html_url: "https://github.com/run/9" };
+    const send = (payload: unknown) => webhook("workflow_run", payload);
+    expect((await send({ action: "completed", repository: { full_name: REPO }, workflow_run: run })).status).toBe(200);
+    expect(patch).toEqual({ state: "closed", state_reason: "completed" });
+    expect(comment).toBe("En production en version 1.169, après sa validation sur int : la demande est terminée (La Fabrique extraordinaire).");
+    const shipped = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'stories_shipped'").first<{ details: string }>();
+    expect(JSON.parse(shipped?.details ?? "{}")).toEqual({ version: "1.169", closed: [31], not_validated: [32], run: "https://github.com/run/9" });
+    const snapshot = await env.DB.prepare("SELECT data FROM snapshots WHERE repo = ? AND kind = 'stories'").bind(REPO).first<{ data: string }>();
+    expect((JSON.parse(snapshot?.data ?? "[]") as { number: number; state: string }[]).find((story) => story.number === 31)?.state).toBe("closed");
+    // Once per go; a failed run closes nothing.
+    expect((await send({ action: "completed", repository: { full_name: REPO }, workflow_run: run })).status).toBe(200);
+    expect((await send({ action: "completed", repository: { full_name: REPO }, workflow_run: { ...run, conclusion: "failure" } })).status).toBe(200);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM activity_log WHERE action = 'stories_shipped'").first<{ n: number }>())?.n).toBe(1);
+  });
+});
+
+async function webhook(event: string, payload: unknown): Promise<Response> {
+  const body = JSON.stringify(payload);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("test-webhook-secret"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)));
+  return SELF.fetch("https://la-fabrique.test/api/github/webhook", {
+    method: "POST",
+    headers: { "x-github-event": event, "x-hub-signature-256": `sha256=${[...mac].map((b) => b.toString(16).padStart(2, "0")).join("")}` },
+    body,
+  });
+}

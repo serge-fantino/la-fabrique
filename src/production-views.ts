@@ -189,7 +189,7 @@ function nextReleaseChoice(version: string | null): string {
 }
 
 // The go: what production will get, who validated it, and the button for
-// the super admin; the last go for everyone.
+// a Product Engineer or super admin; the last go for everyone.
 function goSection(viewer: Viewer, project: Project, status: ProductionStatus, go: GoPanel): string {
   const promotion = status.workflows.find((workflow) => workflow.key === "promouvoir");
   const last = go.last

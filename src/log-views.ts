@@ -1,4 +1,5 @@
 import { LOG_GROUPS, type LogEntry, type LogFilters } from "./log";
+import { isProgressStage, PROGRESS_LABELS } from "./progress-stages";
 import { projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { projectUrl } from "./urls";
@@ -47,6 +48,12 @@ export function describe(entry: LogEntry, repo: string): string {
       }${d["reason"] ? `, anyway: “${text(d["reason"])}”` : ""}`;
     case "next_release_proposed":
       return `proposed the next release <span class="mono">${text(d["next"])}</span> (${text(d["kind"])}, after <span class="mono">${text(d["from"])}</span>) with an empty release note: <a href="https://github.com/${escapeHtml(repo)}/pull/${entry.issue ?? ""}">PR #${entry.issue ?? ""}</a>`;
+    case "stories_shipped": {
+      const list = (key: string) => (Array.isArray(d[key]) ? (d[key] as unknown[]).map((n) => issue(n)).filter(Boolean).join(", ") : "");
+      const closed = list("closed");
+      const left = list("not_validated");
+      return `saw the promotion${d["version"] ? ` of <span class="mono">${text(d["version"])}</span>` : ""} done: ${closed ? `closed ${closed}, validated and in production` : "no validated story to close"}${left ? `; ${left} not validated, left open` : ""}`;
+    }
     case "claude_launched":
       return `launched Claude on ${story}`;
     case "card_created":
@@ -73,6 +80,11 @@ export function describe(entry: LogEntry, repo: string): string {
     }
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "card_progress_changed": {
+      const label = (value: unknown) => (isProgressStage(value) ? PROGRESS_LABELS[value] : "no story");
+      const count = Number(d["total"]) ? ` (${text(d["done"])}/${text(d["total"])})` : "";
+      return `saw card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} go from ${label(d["from"])} to ${label(d["to"])}${count}, from its stories`;
+    }
     case "card_priority_set":
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
     case "story_marked_ready":
