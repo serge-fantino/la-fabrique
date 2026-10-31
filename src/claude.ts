@@ -5,6 +5,7 @@ import type { Env } from "./env";
 import { dispatchRefusal, githubJson, githubPost, installationToken } from "./github-app";
 import { productionBranch, type Project } from "./projects";
 import { applyIssueEvent, type RestIssue } from "./stories";
+import { isFresh, readSnapshot, writeSnapshot } from "./snapshots";
 import { wordingFor } from "./wording";
 
 export const DEFAULT_CAP = 2;
@@ -75,6 +76,7 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
       issueNumber: number,
       details: { workflow: file, running: running + 1, cap },
     }).run();
+    await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = ?").bind(repo, CLAUDE_RUNS).run();
     return { ok: true, running: running + 1 };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error), status: 502 };
@@ -90,4 +92,58 @@ export async function claudeLaunches(db: D1Database, repo: string): Promise<Map<
     .bind(repo)
     .all<{ occurred_at: string; actor: string; issue_number: number }>();
   return new Map(results.map((row) => [row.issue_number, { by: row.actor, at: row.occurred_at }]));
+}
+
+// The runs of the project's Claude workflow (la-fabrique#113), newest
+// first: their story (from the run's name, "Claude #12"), state and link.
+// Read from GitHub at most every 30 seconds.
+export interface ClaudeRun {
+  issue: number | null;
+  status: string;
+  conclusion: string | null;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const CLAUDE_RUNS = "claude_runs";
+const RUNS_MAX_AGE_MS = 30_000;
+
+interface RestClaudeRun {
+  display_title: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function claudeRuns(env: Env, project: Project): Promise<ClaudeRun[]> {
+  const file = claudeWorkflow(project);
+  if (!file) return [];
+  const snapshot = await readSnapshot<ClaudeRun[]>(env.DB, project.repo, CLAUDE_RUNS);
+  if (snapshot && isFresh(snapshot, RUNS_MAX_AGE_MS)) return snapshot.data;
+  try {
+    const token = await installationToken(env, project.installationId);
+    const found = await githubJson<{ workflow_runs: RestClaudeRun[] }>(
+      token,
+      `/repos/${project.repo}/actions/workflows/${encodeURIComponent(file)}/runs?per_page=30`,
+    );
+    const runs = found.workflow_runs.map((run) => ({
+      issue: Number(/#(\d+)/.exec(run.display_title)?.[1] ?? NaN) || null,
+      status: run.status,
+      conclusion: run.conclusion,
+      url: run.html_url,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+    }));
+    await writeSnapshot(env.DB, project.repo, CLAUDE_RUNS, runs);
+    return runs;
+  } catch {
+    return snapshot?.data ?? [];
+  }
+}
+
+export function isRunning(run: ClaudeRun): boolean {
+  return run.status !== "completed";
 }

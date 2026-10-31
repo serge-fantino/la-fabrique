@@ -3,8 +3,10 @@
     "version": "0.65",
     "date": "2026-10-31",
     "heure": "14:47",
-    "titre": "Why GitHub refuses to start a workflow",
+    "titre": "Follow Claude's runs from the sprint",
     "changements": [
+      "The sprint shows Claude's runs: those in progress at the top, and on each story the state of its last run (queued, working, done, failed, cancelled), linked to the run on GitHub; Every Claude run on GitHub, and Refresh. A story whose run is in progress is not launched twice.",
+      "La Fabrique's Claude workflow accepts being started by La Fabrique's GitHub App (it stopped at once before), and names each run after its story (Claude #12); the example workflow too.",
       "When GitHub refuses to start a project's workflow (Launch Claude, the go), La Fabrique says why: HTTP 403, the App may not run the repository's workflows (Actions in read and write, accepted on the installation); HTTP 404, the workflow is not on the branch GitHub starts it from."
     ],
     "stories": [113],
