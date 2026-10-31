@@ -37,6 +37,8 @@ const WORDS = {
     toTriage: (login: string) => `@${login} n'a pas de rôle dans La Fabrique : à trier.`,
     fromCard: (ref: string, url: string, version: number, part?: { index: number; total: number }) =>
       `Fiche d'origine : [${ref}, spec en version ${version}](${url}) dans La Fabrique extraordinaire${part ? ` (story ${part.index} sur ${part.total})` : ""}.`,
+    storyReview: (ref: string, url: string, version: number, login: string) =>
+      `Après un changement de la fiche [${ref}, spec en version ${version}](${url}) : revue de @${login} avec Claude, via La Fabrique extraordinaire.`,
   },
   en: {
     requestSignature: (login: string) => `Request from @${login} via La Fabrique extraordinaire`,
@@ -72,6 +74,8 @@ const WORDS = {
     toTriage: (login: string) => `@${login} has no role in La Fabrique: to triage.`,
     fromCard: (ref: string, url: string, version: number, part?: { index: number; total: number }) =>
       `From card [${ref}, spec version ${version}](${url}) in La Fabrique extraordinaire${part ? ` (story ${part.index} of ${part.total})` : ""}.`,
+    storyReview: (ref: string, url: string, version: number, login: string) =>
+      `After a change of card [${ref}, spec version ${version}](${url}): reviewed by @${login} with Claude, via La Fabrique extraordinaire.`,
   },
 };
 

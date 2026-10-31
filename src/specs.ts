@@ -1,7 +1,9 @@
 import { cardRef } from "./card-views";
-import { DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit } from "./cards";
+import { cardStories, type CardStory } from "./card-stories";
+import { cardLinks, DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type StoryReview } from "./cards";
 import { readMarkdown } from "./docs";
 import type { Env } from "./env";
+import { STAGES } from "./lifecycle";
 import { askJson, type CallOutcome, type Progress } from "./llm";
 import type { Project } from "./projects";
 import type { Rubrique } from "./requests";
@@ -245,17 +247,38 @@ export function closeQuestions(spec: CardSpec): CardSpec {
 
 // ---- Split into stories ------------------------------------------------------
 
+// A story already made, as Claude reads it.
+function storyForClaude(story: CardStory): string {
+  const stage = story.closed && story.stage !== "done" ? "closed" : (STAGES.find((candidate) => candidate.id === story.stage)?.label ?? "unknown stage");
+  const criteria = story.criteria.length ? `\n${story.criteria.map((criterion) => `  - [${criterion.done ? "x" : " "}] ${criterion.text}`).join("\n")}` : "";
+  return `#${story.number} “${story.title}” (${stage})${criteria}`;
+}
+
 interface SplitAnswer {
   stories: { title: string; sections: Record<string, string> }[];
+  existing?: { number: number; verdict: string; comment: string }[];
   note: string;
 }
 
-function splitSchema(rubriques: Rubrique[]): Record<string, unknown> {
+function splitSchema(rubriques: Rubrique[], review: boolean): Record<string, unknown> {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["stories", "note"],
+    required: ["stories", "note", ...(review ? ["existing"] : [])],
     properties: {
+      ...(review
+        ? {
+            existing: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["number", "verdict", "comment"],
+                properties: { number: { type: "integer" }, verdict: { type: "string", enum: ["fits", "change"] }, comment: { type: "string" } },
+              },
+            },
+          }
+        : {}),
       stories: {
         type: "array",
         items: {
@@ -295,9 +318,27 @@ export async function splitSpec(
   const spec = card.data.spec;
   if (!spec) return { ok: false, message: "There is no spec to split yet.", retryable: false };
   const rubriques = specRubriques(project);
-  const [document, read] = await Promise.all([projectDocument(env, project), cardContext(env, project, card)]);
+  const numbers = (await cardLinks(env.DB, card.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
+  const [document, read, made] = await Promise.all([projectDocument(env, project), cardContext(env, project, card), cardStories(env, project, numbers)]);
+  const existing = [...made.values()];
   watch.read?.({ document: document ? `${document.path} (${Math.round(document.text.length / 1000)}k characters)` : null, cards: read.cards, stories: read.stories });
-  const ask = `${read.text}
+  const ask = existing.length
+    ? `${read.text}
+The specification:
+<spec>
+${currentSpec(spec, rubriques)}
+</spec>
+
+The stories already made from this card, on GitHub; the specification may have changed since:
+<stories>
+${existing.map(storyForClaude).join("\n\n")}
+</stories>
+${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+Review these stories against the specification.
+- "existing": one entry per story above. "fits" when it still matches the specification, with an empty comment. "change" otherwise, with a comment for the team, written in the language of the specification: what to add, change or remove in this story, short and concrete. A story in production or closed does not change any more: say instead what a new story has to do, and propose that story.
+- "stories": only the new stories for what the existing ones do not cover; none is a fine answer. Each can be built, tested on int and put in production on its own. "title": short, what the person can do once the story is there. "sections": the story's own specification, in the same sections, with its own acceptance criteria.
+- "note": one sentence on what changed and what to do first.`
+    : `${read.text}
 The specification to split:
 <spec>
 ${currentSpec(spec, rubriques)}
@@ -310,7 +351,7 @@ Split this specification into stories. Each story can be built, tested on int an
   const outcome: CallOutcome<SplitAnswer> = await askJson<SplitAnswer>(
     env,
     { login, repo: project.repo, cardId: card.id, purpose: "spec_split" },
-    { system: systemPrompt(project, rubriques, document), user: ask, schema: splitSchema(rubriques), ...(watch.progress ? { progress: watch.progress } : {}) },
+    { system: systemPrompt(project, rubriques, document), user: ask, schema: splitSchema(rubriques, existing.length > 0), ...(watch.progress ? { progress: watch.progress } : {}) },
   );
   if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
   const stories = (Array.isArray(outcome.value.stories) ? outcome.value.stories : [])
@@ -320,6 +361,20 @@ Split this specification into stories. Each story can be built, tested on int an
       answers: Object.fromEntries(rubriques.map((rubrique) => [rubrique.cle, String(story.sections?.[rubrique.cle] ?? "").trim()])),
     }))
     .filter((story) => story.title);
+  const said = Array.isArray(outcome.value.existing) ? outcome.value.existing : [];
+  const review: StoryReview[] = existing.map((story) => {
+    const entry = said.find((candidate) => Number(candidate.number) === story.number);
+    const comment = String(entry?.comment ?? "").trim().slice(0, 4000);
+    return { number: story.number, title: story.title, verdict: entry?.verdict === "change" && comment ? "change" : "fits", comment };
+  });
+  if (existing.length) {
+    return {
+      ok: true,
+      split: { stories, review, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: spec.at, at: new Date().toISOString() },
+      callId: outcome.callId,
+      costMicros: outcome.costMicros,
+    };
+  }
   if (!stories.length) return { ok: false, message: "Claude proposed no story. Try again, or make one story from the whole spec.", retryable: false };
   return {
     ok: true,

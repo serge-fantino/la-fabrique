@@ -22,6 +22,7 @@ import {
   type CardRevision,
   type CardSpec,
   type CardSplit,
+  type StoryReview,
   type CardStatus,
   type CardTags,
   type FreeDimension,
@@ -509,12 +510,26 @@ function storiesSummary(states: Map<number, StoryState>): string {
 // What Claude proposes, waiting to be reviewed.
 function proposalHtml(url: string, split: CardSplit, spec: CardSpec | undefined): string {
   const count = split.stories.length;
+  if (split.review) {
+    const changes = split.review.filter((story) => story.verdict === "change").length;
+    return `<div class="split-proposal">
+      <p><strong>Claude reviewed the ${split.review.length} stor${split.review.length === 1 ? "y" : "ies"}</strong>${split.note ? `: ${escapeHtml(split.note)}` : "."}</p>
+      ${spec && spec.at !== split.specAt ? `<p class="notice error">The spec changed since this review: discard it and ask Claude again.</p>` : ""}
+      <ul class="split-review">${split.review.map((story) => `<li><span class="mono">#${story.number}</span> ${escapeHtml(story.title)} ${verdictPill(story.verdict)}</li>`).join("")}</ul>
+      ${count ? `<p>And ${count} new stor${count === 1 ? "y" : "ies"}:</p><ol>${split.stories.map((story) => `<li>${escapeHtml(story.title)}</li>`).join("")}</ol>` : `<p>No new story.</p>`}
+      <a class="button" href="${escapeHtml(url)}/stories">${changes || count ? "Review and apply" : "Review and confirm"}</a>
+    </div>`;
+  }
   return `<div class="split-proposal">
       <p><strong>Claude proposes ${count} stor${count === 1 ? "y" : "ies"}</strong>${split.note ? `: ${escapeHtml(split.note)}` : "."}</p>
       ${spec && spec.at !== split.specAt ? `<p class="notice error">The spec changed since this split: review it, or ask Claude for a new split after discarding it.</p>` : ""}
       <ol>${split.stories.map((story) => `<li>${escapeHtml(story.title)}</li>`).join("")}</ol>
       <a class="button" href="${escapeHtml(url)}/stories">Review and create the stories</a>
     </div>`;
+}
+
+function verdictPill(verdict: StoryReview["verdict"]): string {
+  return verdict === "change" ? `<span class="pill warn">To change</span>` : `<span class="pill ok">Still fits</span>`;
 }
 
 // The status, changed in place; it also follows Claude's work by itself.
@@ -616,14 +631,22 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
             </div>`,
           )
         : "";
+    // Once the card has stories, Claude reviews them against the spec.
+    const made = stories.length;
     const split =
       usable && spec && !data.split
         ? panel(
             "spec_split",
-            "Split into stories with Claude",
+            made ? "Review the stories with Claude" : "Split into stories with Claude",
             true,
             false,
-            `<p class="help">Claude proposes stories that can each be built, tested on int and shipped alone, each with its own criteria. You review and edit them before anything goes to GitHub.</p>
+            made
+              ? `<p class="help">Claude checks the card's ${made} stor${made === 1 ? "y" : "ies"} against the spec: those that still fit, those to change (a comment on their issue), and the new stories missing. You review it all before anything goes to GitHub.</p>
+            <div class="field">
+              <label for="split">Anything about the review? <span class="muted">(optional)</span></label>
+              <textarea id="split" name="instruction" rows="2" maxlength="4000" placeholder="The offline case moved to a story of its own."></textarea>
+            </div>`
+              : `<p class="help">Claude proposes stories that can each be built, tested on int and shipped alone, each with its own criteria. You review and edit them before anything goes to GitHub.</p>
             <div class="field">
               <label for="split">Anything about the split? <span class="muted">(optional)</span></label>
               <textarea id="split" name="instruction" rows="2" maxlength="4000" placeholder="At most three stories; the offline case on its own."></textarea>
@@ -644,14 +667,22 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
             </div>`,
           )
         : "";
-    const story = spec && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
+    const story = spec && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
     work = `${data.split ? proposalHtml(url, data.split, spec) : ""}
       <div class="spec-actions">
         ${draft}${split}${story}${change}
         <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
-      ${split ? `<p class="help">A small feature makes one story; a bigger one, several that ship one by one: Claude proposes them, you review them before GitHub.</p>` : ""}
-      ${spec && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
+      ${
+        split
+          ? `<p class="help">${
+              made
+                ? "The feature changed since its stories were made? Claude checks them against the spec."
+                : "A small feature makes one story; a bigger one, several that ship one by one: Claude proposes them, you review them before GitHub."
+            }</p>`
+          : ""
+      }
+      ${spec && !made && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
       ${usable ? "" : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`}`;
   }
 
@@ -849,6 +880,9 @@ export function splitPage(
     label: string | null;
     kept: Set<number>;
     bodies: string[];
+    // After a review: the stories to comment on, and each comment as sent.
+    commented: Set<number>;
+    comments: Map<number, string>;
     outdated: boolean;
     errors: Record<number, string>;
     error?: string | undefined;
@@ -885,17 +919,44 @@ export function splitPage(
         </fieldset>`;
     })
     .join("");
+  const review = split.review;
+  const reviewed = (review ?? [])
+    .map((story) =>
+      story.verdict === "change"
+        ? `<fieldset class="split-story">
+          <legend class="visually-hidden">#${story.number}</legend>
+          <p><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${story.number}">#${story.number}</a> ${escapeHtml(story.title)} ${verdictPill(story.verdict)}</p>
+          <label class="check split-keep"><input type="checkbox" name="comment_${story.number}" value="1"${data.commented.has(story.number) ? " checked" : ""} /> Comment on #${story.number}</label>
+          <div class="field">
+            <label for="comment_text_${story.number}">What to change</label>
+            <textarea id="comment_text_${story.number}" name="comment_text_${story.number}" rows="4" maxlength="4000">${escapeHtml(story.comment)}</textarea>
+          </div>
+          <details>
+            <summary>What GitHub will receive</summary>
+            <article class="markdown story-preview">${renderCardText(data.comments.get(story.number) ?? "", project.repo)}</article>
+          </details>
+        </fieldset>`
+        : `<p class="split-fits"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${story.number}">#${story.number}</a> ${escapeHtml(story.title)} ${verdictPill(story.verdict)}</p>`,
+    )
+    .join("");
+  const where = `in <code>${escapeHtml(project.repo)}</code>, under your GitHub name${data.label ? `, labelled <code>${escapeHtml(data.label)}</code>` : ""}, with a link to this card and the version of its spec`;
+  const intro = review
+    ? `<p>Claude reviewed the card's ${review.length} stor${review.length === 1 ? "y" : "ies"} against the spec${split.note ? `: ${escapeHtml(split.note)}` : "."} Check what to send: a comment on each story to change, and the new stories. Each new story becomes an issue ${where}.</p>`
+    : `<p>Claude proposes ${split.stories.length} stor${split.stories.length === 1 ? "y" : "ies"}${split.note ? `: ${escapeHtml(split.note)}` : "."} Review them, edit what you want, uncheck those you do not want. Each one becomes an issue ${where}.</p>`;
+  const nothing = review && !split.stories.length && !review.some((story) => story.verdict === "change");
+  const submit = review ? (nothing ? "Confirm: the stories still fit" : "Send the checked to GitHub") : "Create the checked stories on GitHub";
   return layout(
     title(project, `Stories from ${cardRef(card.id)}`),
     `${projectHeader(project, "board", `Stories from ${cardRef(card.id)}`)}
       <p class="crumbs"><a href="${escapeHtml(projectUrl(project.repo))}/board">Board</a> <span aria-hidden="true">›</span> <a class="mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}</p>
       ${notice(data.error, "error")}
-      ${data.outdated ? `<p class="notice error">The spec changed since Claude proposed this split.</p>` : ""}
-      <p>Claude proposes ${split.stories.length} stor${split.stories.length === 1 ? "y" : "ies"}${split.note ? `: ${escapeHtml(split.note)}` : "."} Review them, edit what you want, uncheck those you do not want. Each one becomes an issue in <code>${escapeHtml(project.repo)}</code>, under your GitHub name${data.label ? `, labelled <code>${escapeHtml(data.label)}</code>` : ""}, with a link to this card and the version of its spec.</p>
-      <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Creating…">${csrfField(viewer)}
+      ${data.outdated ? `<p class="notice error">The spec changed since Claude proposed this.</p>` : ""}
+      ${intro}
+      <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}
+        ${review ? `<h2>The stories already made</h2>${reviewed}${split.stories.length ? `<h2>New stories</h2>` : ""}` : ""}
         ${stories}
         <div class="card-actions">
-          <button type="submit" class="button" name="action" value="create">Create the checked stories on GitHub</button>
+          <button type="submit" class="button" name="action" value="create">${submit}</button>
           <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>
           <button type="submit" class="button quiet" name="action" value="discard" formnovalidate>Discard the proposal</button>
         </div>

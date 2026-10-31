@@ -1,6 +1,5 @@
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
-import { cycleRules, stagesOf, storiesOnInt } from "./lifecycle";
-import { loadStories } from "./stories";
+import { cardStories } from "./card-stories";
 import {
   addValue,
   archiveCard,
@@ -25,6 +24,7 @@ import {
   saveSpec,
   saveSplit,
   advanceStatus,
+  reopenStatus,
   setStatus,
   updateCard,
   type CardSplit,
@@ -33,11 +33,12 @@ import {
   type Dimension,
   type FreeDimension,
 } from "./cards";
+import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
 import { allowance, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
-import { createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
+import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
 import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
 import { enqueue, isActive, jobEvents, latestJob, workingCards, type JobKind } from "./jobs";
 import { liveFor } from "./live";
@@ -192,6 +193,7 @@ const CARD_NOTICES: Record<string, string> = {
   enough: "Questions closed: Claude will not ask more unless you ask it to.",
   split_discarded: "Proposal discarded.",
   stories: "Stories created on GitHub, each linked to this card.",
+  reviewed: "Stories reviewed: the comments are on GitHub, the new stories linked to this card.",
   status: "Status changed.",
 };
 
@@ -216,17 +218,11 @@ async function renderCard(
   ]);
   const events = job ? await jobEvents(env.DB, job.id) : [];
   // The card's stories as GitHub has them (the stories' snapshot).
-  const storyStates = new Map<number, StoryState>();
-  const storyNumbers = links.filter((link) => link.kind === "story").map((link) => Number(link.ref));
-  if (storyNumbers.length) {
-    const [{ stories }, onInt] = await Promise.all([loadStories(env, project), storiesOnInt(env, project)]);
-    const stages = stagesOf(stories, cycleRules(project.check?.config), onInt);
-    for (const story of stories) {
-      if (storyNumbers.includes(story.number)) {
-        storyStates.set(story.number, { title: story.title, stage: stages.get(story.number) ?? null, closed: story.state === "closed" });
-      }
-    }
-  }
+  const storyStates: Map<number, StoryState> = await cardStories(
+    env,
+    project,
+    links.filter((link) => link.kind === "story").map((link) => Number(link.ref)),
+  );
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
@@ -284,6 +280,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const revision = (await cardRevisions(env.DB, card.id)).find((candidate) => candidate.rev === wanted);
     if (!revision || revision.rev === card.rev) return redirect(url);
     await restoreRevision(env.DB, card, revision, viewer.login);
+    await reopenStatus(env.DB, project.repo, card.id, viewer.login, "an older version came back");
     return redirect(`${url}?notice=version_restored`);
   }
   if (action === "spec_draft" || action === "spec_revise" || action === "spec_answer") {
@@ -347,7 +344,11 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (Number(form.get("rev")) !== card.rev) {
       return renderCard(request, env, viewer, project, card, { failure: "The card changed while you were editing its spec: your text was not saved. Open the spec again.", status: 409 });
     }
-    await saveSpec(env.DB, card, viewer.login, readSpecForm(form, specRubriques(project), card.data.spec));
+    const spec = readSpecForm(form, specRubriques(project), card.data.spec);
+    await saveSpec(env.DB, card, viewer.login, spec);
+    if (JSON.stringify(spec.answers) !== JSON.stringify(card.data.spec?.answers ?? {})) {
+      await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the spec changed");
+    }
     return redirect(`${url}?notice=spec_saved#spec`);
   }
   const cards = await listCards(env.DB, project.repo);
@@ -362,6 +363,10 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const current = (await findCard(env.DB, project.repo, id)) ?? card;
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card, input, known, conflict: current }), { status: 409, cookies });
+  }
+  // The feature changed, its status left as it was: to validate again.
+  if (outcome === "saved" && (input.title !== card.title || input.body !== card.body) && input.tags.status === card.status) {
+    await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the card changed");
   }
   return redirect(`${url}?notice=${outcome}`);
 }
@@ -422,7 +427,7 @@ export async function downloadCards(env: Env, project: Project): Promise<Respons
 
 // The stories Claude proposes, edited in the form: kept or not, title,
 // sections.
-function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]): { split: CardSplit; kept: number[] } {
+function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]): { split: CardSplit; kept: number[]; commented: number[] } {
   const kept: number[] = [];
   const stories = split.stories.map((story, index) => {
     if (form.get(`keep_${index}`) === "1") kept.push(index);
@@ -432,11 +437,19 @@ function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]):
     );
     return { title, answers };
   });
-  return { split: { ...split, stories }, kept };
+  // A review: the comments for the stories to change, as edited.
+  const commented: number[] = [];
+  const review = split.review?.map((story) => {
+    if (story.verdict !== "change") return story;
+    if (form.get(`comment_${story.number}`) === "1") commented.push(story.number);
+    return { ...story, comment: String(form.get(`comment_text_${story.number}`) ?? story.comment).replace(/\r\n/g, "\n").trim().slice(0, 4000) };
+  });
+  return { split: { ...split, stories, ...(review ? { review } : {}) }, kept, commented };
 }
 
-// Review what Claude proposes, edit it, then create the stories on GitHub;
-// nothing goes there before.
+// Review what Claude proposes, edit it, then create the stories on GitHub
+// (and, after a review, comment on the stories to change); nothing goes
+// there before.
 export async function splitRoute(request: Request, env: Env, viewer: Viewer, project: Project, id: number, form: FormData | null): Promise<Response> {
   if (!canWriteCards(viewer)) return forbidden(viewer);
   const card = await findCard(env.DB, project.repo, id);
@@ -447,17 +460,16 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const rubriques = specRubriques(project);
   const words = wordingFor(project);
   const label = project.check?.config?.demandes?.etiquettes?.["demande"] ?? null;
-  const bodyOf = (story: CardSplit["stories"][number], index: number, total: number, rev: number) =>
-    issueBody(
-      { title: story.title, answers: story.answers },
-      rubriques,
-      viewer.login,
-      words,
-      words.fromCard(cardRef(card.id), new URL(cardPermalink(card.id, rev), request.url).toString(), rev, total > 1 ? { index, total } : undefined),
-    );
-  const page = async (shown: CardSplit, data: { kept?: number[]; errors?: Record<number, string>; error?: string; status?: number } = {}) => {
+  // After a review, new stories are numbered after those already made.
+  const made = split.review?.length ?? 0;
+  const permalink = (rev: number) => new URL(cardPermalink(card.id, rev), request.url).toString();
+  const originOf = (position: number, kept: number, rev: number) =>
+    words.fromCard(cardRef(card.id), permalink(rev), rev, made + kept > 1 ? { index: made + position, total: made + kept } : undefined);
+  const commentOf = (comment: string, rev: number) => `${comment}\n\n${words.storyReview(cardRef(card.id), permalink(rev), rev, viewer.login)}`;
+  const page = async (shown: CardSplit, data: { kept?: number[]; commented?: number[]; errors?: Record<number, string>; error?: string; status?: number } = {}) => {
     const { view, cookies } = await projectView(request, env, project, viewer);
     const kept = data.kept ?? shown.stories.map((_story, index) => index);
+    const commented = data.commented ?? (shown.review ?? []).filter((story) => story.verdict === "change").map((story) => story.number);
     return html(
       splitPage(viewer, view, {
         card,
@@ -465,7 +477,11 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
         rubriques,
         label,
         kept: new Set(kept),
-        bodies: shown.stories.map((story, index) => bodyOf(story, kept.indexOf(index) + 1, kept.length, card.rev)),
+        bodies: shown.stories.map((story, index) =>
+          issueBody({ title: story.title, answers: story.answers }, rubriques, viewer.login, words, originOf(kept.indexOf(index) + 1, kept.length, card.rev)),
+        ),
+        commented: new Set(commented),
+        comments: new Map((shown.review ?? []).map((story) => [story.number, commentOf(story.comment, card.rev)])),
         outdated: card.data.spec?.at !== shown.specAt,
         errors: data.errors ?? {},
         error: data.error,
@@ -477,7 +493,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     const params = new URL(request.url).searchParams;
     const created = Number(params.get("created")) || 0;
     if (params.get("notice") === "partial") {
-      return page(split, { error: `${created} stor${created === 1 ? "y" : "ies"} created, then: ${(params.get("reason") ?? "GitHub refused").slice(0, 200)} The others are still here.` });
+      return page(split, { error: `${created} done on GitHub, then: ${(params.get("reason") ?? "GitHub refused").slice(0, 200)} The rest is still here.` });
     }
     return page(split);
   }
@@ -494,7 +510,8 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   }
   if (action !== "create") return redirect(`${url}/stories`);
 
-  // Every kept story needs a title and the project's required sections.
+  // Every kept story needs a title and the project's required sections;
+  // every comment sent, a text.
   const errors: Record<number, string> = {};
   for (const index of edited.kept) {
     const story = edited.split.stories[index];
@@ -502,41 +519,56 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     const missing = [...(story.title ? [] : ["Title"]), ...missingSections({ answers: story.answers, questions: [], source: "person", at: "" }, rubriques)];
     if (missing.length) errors[index] = `Fill in: ${missing.join(", ")}.`;
   }
-  if (!edited.kept.length) return page(edited.split, { kept: [], error: "Keep at least one story, or discard the proposal.", status: 422 });
-  if (Object.keys(errors).length) return page(edited.split, { kept: edited.kept, errors, status: 422 });
+  const review = edited.split.review;
+  const show = { kept: edited.kept, commented: edited.commented };
+  if (!review && !edited.kept.length) return page(edited.split, { ...show, error: "Keep at least one story, or discard the proposal.", status: 422 });
+  if (Object.keys(errors).length) return page(edited.split, { ...show, errors, status: 422 });
+  const silent = (review ?? []).filter((story) => edited.commented.includes(story.number) && !story.comment).map((story) => `#${story.number}`);
+  if (silent.length) return page(edited.split, { ...show, error: `Write the comment for ${silent.join(", ")}, or uncheck it.`, status: 422 });
 
   // The edits are kept first: a failure halfway loses nothing.
   await saveSplit(env.DB, card, viewer.login, edited.split);
   const saved = (await findCard(env.DB, project.repo, card.id)) ?? card;
+  const commented: number[] = [];
   const created: number[] = [];
+  const stop = async (outcome: { reason: "signed_out" | "refused"; status?: number }, what: string) => {
+    // What was not done stays proposed.
+    const left: CardSplit = {
+      ...edited.split,
+      stories: edited.split.stories.filter((_story, at) => !created.includes(at)),
+      ...(review ? { review: review.filter((story) => !commented.includes(story.number)) } : {}),
+    };
+    const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
+    await saveSplit(env.DB, current, viewer.login, left);
+    const reason = outcome.reason === "signed_out" ? "GitHub no longer accepts your sign-in. Sign out and sign in again." : `GitHub refused ${what} (HTTP ${outcome.status ?? "?"}).`;
+    return redirect(`${url}/stories?notice=partial&created=${commented.length + created.length}&reason=${encodeURIComponent(reason)}`);
+  };
+  for (const story of review ?? []) {
+    if (!edited.commented.includes(story.number)) continue;
+    const outcome = await commentIssue(request, env, project, story.number, commentOf(story.comment, saved.rev));
+    if (!outcome.ok) return stop(outcome, `the comment on #${story.number}`);
+    commented.push(story.number);
+  }
   for (const [position, index] of edited.kept.entries()) {
     const story = edited.split.stories[index];
     if (!story) continue;
-    const origin = words.fromCard(
-      cardRef(card.id),
-      new URL(cardPermalink(card.id, saved.rev), request.url).toString(),
-      saved.rev,
-      edited.kept.length > 1 ? { index: position + 1, total: edited.kept.length } : undefined,
-    );
-    const outcome = await createRequest(request, env, project, viewer.login, { title: story.title, answers: story.answers }, rubriques, origin);
-    if (!outcome.ok) {
-      // What was not created stays proposed.
-      const left = { ...edited.split, stories: edited.split.stories.filter((_story, at) => !created.includes(at)) };
-      const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
-      await saveSplit(env.DB, current, viewer.login, left);
-      const reason =
-        outcome.reason === "signed_out"
-          ? "GitHub no longer accepts your sign-in. Sign out and sign in again."
-          : `GitHub refused to create the issue (HTTP ${outcome.status ?? "?"}).`;
-      return redirect(`${url}/stories?notice=partial&created=${created.length}&reason=${encodeURIComponent(reason)}`);
-    }
+    const outcome = await createRequest(request, env, project, viewer.login, { title: story.title, answers: story.answers }, rubriques, originOf(position + 1, edited.kept.length, saved.rev));
+    if (!outcome.ok) return stop(outcome, "to create the issue");
     await linkStory(env.DB, saved, viewer.login, outcome.number, outcome.url);
     created.push(index);
   }
   const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
   await saveSplit(env.DB, current, viewer.login, null);
-  await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "stories made");
-  return redirect(`${url}?notice=stories&created=${created.length}#stories`);
+  if (review) {
+    await activityStatement(env.DB, {
+      actor: viewer.login,
+      action: "card_stories_reviewed",
+      repo: project.repo,
+      details: { card: card.id, title: card.title, rev: saved.rev, commented, created: created.length },
+    }).run();
+  }
+  await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", review ? "stories reviewed" : "stories made");
+  return redirect(`${url}?notice=${review ? "reviewed" : "stories"}&created=${created.length}#stories`);
 }
 
 // One entry point for the routes above; the caller has checked the

@@ -1,4 +1,4 @@
-import { advanceStatus, findCard, saveSpec, saveSplit } from "./cards";
+import { advanceStatus, findCard, reopenStatus, saveSpec, saveSplit } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
 import { liveFor, type LiveEvent } from "./live";
@@ -48,7 +48,7 @@ const LABELS: Record<JobKind, string> = {
   spec_draft: "Claude is writing the spec",
   spec_revise: "Claude is revising the spec",
   spec_answer: "Claude is reading your answers",
-  spec_split: "Claude is splitting the spec into stories",
+  spec_split: "Claude is working on the stories",
 };
 
 export function jobLabel(job: Pick<Job, "kind" | "status" | "error">): string {
@@ -269,6 +269,15 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
     const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
     await saveSplit(env.DB, current, job.login, outcome.split, outcome.callId);
     const count = outcome.split.stories.length;
+    const review = outcome.split.review;
+    if (review) {
+      const changes = review.filter((story) => story.verdict === "change").length;
+      return finish(
+        outcome.callId,
+        `${review.length - changes} of ${review.length} stor${review.length === 1 ? "y" : "ies"} still fit${changes ? `, ${changes} to change` : ""}; ${count || "no"} new stor${count === 1 ? "y" : "ies"} proposed, to review before anything goes to GitHub.`,
+        outcome.costMicros,
+      );
+    }
     return finish(outcome.callId, `${count} stor${count === 1 ? "y" : "ies"} proposed, to review before they go to GitHub.`, outcome.costMicros);
   }
 
@@ -283,6 +292,7 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   if (!outcome.ok) return failed(outcome);
   const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
   await saveSpec(env.DB, current, job.login, outcome.spec, outcome.callId);
+  await reopenStatus(env.DB, job.repo, job.cardId, job.login, "the spec changed");
   if (outcome.spec.enough) await advanceStatus(env.DB, job.repo, job.cardId, job.login, "to_validate", "Claude knows enough");
   const asks = outcome.spec.questions.length;
   return finish(

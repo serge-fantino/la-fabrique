@@ -46,6 +46,21 @@ export type CreateOutcome =
   | { ok: true; number: number; url: string }
   | { ok: false; reason: "signed_out" | "refused"; status?: number };
 
+// A comment on an issue, in the person's name.
+export async function commentIssue(
+  request: Request,
+  env: Env,
+  project: Project,
+  number: number,
+  body: string,
+): Promise<{ ok: true } | { ok: false; reason: "signed_out" | "refused"; status?: number }> {
+  const token = await userToken(request, env.DB, (refresh) => refreshUserToken(env.GITHUB_APP_CLIENT_ID ?? "", env.GITHUB_APP_CLIENT_SECRET ?? "", refresh));
+  if (!token) return { ok: false, reason: "signed_out" };
+  const response = await githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, { body });
+  if (response.status === 401) return { ok: false, reason: "signed_out" };
+  return response.ok ? { ok: true } : { ok: false, reason: "refused", status: response.status };
+}
+
 export async function createRequest(
   request: Request,
   env: Env,

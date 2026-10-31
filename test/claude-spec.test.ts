@@ -579,7 +579,7 @@ describe("Split into stories", () => {
     const split = JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").split;
     expect(split.stories.map((story: { title: string }) => story.title)).toEqual(["Choisir une autre semaine"]);
     const page = await (await get(response.headers.get("location") ?? "", cookie)).text();
-    expect(page).toContain("1 story created, then: GitHub refused to create the issue (HTTP 403). The others are still here.");
+    expect(page).toContain("1 done on GitHub, then: GitHub refused to create the issue (HTTP 403). The rest is still here.");
   });
 
   it("discards the proposal", async () => {
@@ -591,6 +591,107 @@ describe("Split into stories", () => {
     const row = page.slice(page.indexOf('<div class="spec-actions">'));
     expect(row).toMatch(/<summary class="button claude">Split into stories with Claude<\/summary>[\s\S]*Make one story on GitHub[\s\S]*<summary class="button quiet claude">Ask Claude for a change/);
     expect(row).toContain('<button type="submit" class="button claude" name="action" value="spec_split">Ask Claude</button>');
+  });
+});
+
+describe("Once a card has stories", () => {
+  // A card with a spec, validated, its story #7 already made.
+  async function validatedWithStory(): Promise<{ cookie: string; csrf: string; id: number }> {
+    const session = await writerWithCard();
+    const fields = Object.fromEntries(Object.entries(SECTIONS).map(([key, value]) => [`s_${key}`, value]));
+    await post(`/projects/${REPO}/cards/${session.id}`, { csrf: session.csrf, action: "spec_save", rev: "1", ...fields }, session.cookie);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, 'story', '7')").bind(session.id),
+      env.DB.prepare("UPDATE cards SET status = 'validated' WHERE id = ?").bind(session.id),
+    ]);
+    return session;
+  }
+
+  it("goes back to To validate when its feature changes, not when only its tags do", async () => {
+    const { cookie, csrf, id } = await validatedWithStory();
+    const rev = async () => (await env.DB.prepare("SELECT rev FROM cards WHERE id = ?").bind(id).first<{ rev: number }>())?.rev ?? 0;
+    const form = { csrf, title: "Quick reorder", body: "Reorder last week's basket. {segment: pro}", kind: "feature", status: "validated" };
+    await post(`/projects/${REPO}/cards/${id}`, { ...form, domain: "Basket", rev: String(await rev()) }, cookie);
+    expect(await statusOf(id)).toBe("validated");
+    await post(`/projects/${REPO}/cards/${id}`, { ...form, domain: "Basket", body: "Reorder any past basket.", rev: String(await rev()) }, cookie);
+    expect(await statusOf(id)).toBe("to_validate");
+
+    await env.DB.prepare("UPDATE cards SET status = 'validated' WHERE id = ?").bind(id).run();
+    const fields = Object.fromEntries(Object.entries(SECTIONS).map(([key, value]) => [`s_${key}`, value]));
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_save", rev: String(await rev()), ...fields }, cookie);
+    expect(await statusOf(id)).toBe("validated");
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_save", rev: String(await rev()), ...fields, s_besoin: "Reprendre n'importe quel panier." }, cookie);
+    expect(await statusOf(id)).toBe("to_validate");
+    const reason = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'card_moved' ORDER BY id DESC LIMIT 1").first<{ details: string }>();
+    expect(JSON.parse(reason?.details ?? "{}").reason).toBe("the spec changed");
+  });
+
+  it("has Claude review them: a comment on a story to change, a new story, then validated again", async () => {
+    const { cookie, csrf, id } = await validatedWithStory();
+    const card = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(card).toContain('<summary class="button claude">Review the stories with Claude</summary>');
+    expect(card).not.toContain("Make one story on GitHub");
+
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_split" }, cookie);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, {
+      existing: [{ number: 7, verdict: "change", comment: "Ajouter le cas hors ligne." }],
+      stories: [TWO_STORIES.stories[1]],
+      note: "Le choix de la semaine manque.",
+    });
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
+    const user = (sent.body?.["messages"] as { content: string }[])[0]?.content ?? "";
+    expect(user).toContain("#7 “Existing basket story” (Backlog)");
+    expect(user).toContain("Review these stories against the specification.");
+    const schema = (sent.body?.["output_config"] as { format: { schema: { required: string[] } } }).format.schema;
+    expect(schema.required).toContain("existing");
+    const log = (await env.DB.prepare("SELECT text FROM claude_job_events ORDER BY id").all<{ text: string }>()).results.map((row) => row.text);
+    expect(log.at(-1)).toBe("Done: 0 of 1 story still fit, 1 to change; 1 new story proposed, to review before anything goes to GitHub. Cost $0.05.");
+
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain("<strong>Claude reviewed the 1 story</strong>: Le choix de la semaine manque.");
+    expect(page).toContain('Existing basket story <span class="pill warn">To change</span>');
+    const review = await (await get(`/projects/${REPO}/cards/${id}/stories`, cookie)).text();
+    expect(review).toContain('name="comment_7" value="1" checked');
+    expect(review).toContain("Après un changement de la fiche");
+    expect(review).toContain("(story 2 sur 2)");
+
+    const comments: string[] = [];
+    fetchMock
+      .get("https://api.github.com")
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues/7/comments` })
+      .reply((options) => {
+        comments.push(String(JSON.parse(String(options.body)).body));
+        return { statusCode: 201, data: "{}", responseOptions: { headers: JSON_HEADERS } };
+      });
+    const created: Record<string, unknown>[] = [];
+    mockIssues(created, [302]);
+    const response = await post(
+      `/projects/${REPO}/cards/${id}/stories`,
+      { csrf, action: "create", comment_7: "1", comment_text_7: "Ajouter le cas hors ligne, et la reprise.", keep_0: "1" },
+      cookie,
+    );
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=reviewed&created=1#stories`);
+    expect(comments[0]).toMatch(/^Ajouter le cas hors ligne, et la reprise\.\n\nAprès un changement de la fiche \[C\d+, spec en version \d+\]\(.+\/c\/\d+\?rev=\d+\) : revue de @pe avec Claude/);
+    expect(String(created[0]?.["body"])).toContain("(story 2 sur 2)");
+    expect(await statusOf(id)).toBe("validated");
+    const links = (await env.DB.prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = 'story' ORDER BY ref").bind(id).all()).results;
+    expect(links).toEqual([{ ref: "302" }, { ref: "7" }]);
+    const logged = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'card_stories_reviewed'").first<{ details: string }>();
+    expect(JSON.parse(logged?.details ?? "{}")).toMatchObject({ card: id, commented: [7], created: 1 });
+  });
+
+  it("confirms when the stories still fit", async () => {
+    const { cookie, csrf, id } = await validatedWithStory();
+    await env.DB.prepare("UPDATE cards SET status = 'to_validate' WHERE id = ?").bind(id).run();
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_split" }, cookie);
+    claudeStream({}, { existing: [{ number: 7, verdict: "fits", comment: "" }], stories: [], note: "Rien ne change." });
+    await runQueue();
+    const review = await (await get(`/projects/${REPO}/cards/${id}/stories`, cookie)).text();
+    expect(review).toContain("Confirm: the stories still fit");
+    const response = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "create" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=reviewed&created=0#stories`);
+    expect(await statusOf(id)).toBe("validated");
   });
 });
 

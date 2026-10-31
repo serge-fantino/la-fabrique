@@ -1,0 +1,26 @@
+import type { Env } from "./env";
+import { cycleRules, stagesOf, storiesOnInt, type Stage } from "./lifecycle";
+import type { Project } from "./projects";
+import { loadStories, type Criterion } from "./stories";
+
+// A card's stories as GitHub has them (the stories' snapshot), with their
+// stage: for the card's page, and for Claude when it reviews them.
+export interface CardStory {
+  number: number;
+  title: string;
+  stage: Stage | null;
+  closed: boolean;
+  criteria: Criterion[];
+}
+
+export async function cardStories(env: Env, project: Project, numbers: number[]): Promise<Map<number, CardStory>> {
+  const found = new Map<number, CardStory>();
+  if (!numbers.length) return found;
+  const [{ stories }, onInt] = await Promise.all([loadStories(env, project), storiesOnInt(env, project)]);
+  const stages = stagesOf(stories, cycleRules(project.check?.config), onInt);
+  for (const story of stories) {
+    if (!numbers.includes(story.number)) continue;
+    found.set(story.number, { number: story.number, title: story.title, stage: stages.get(story.number) ?? null, closed: story.state === "closed", criteria: story.criteria ?? [] });
+  }
+  return found;
+}

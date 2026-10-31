@@ -61,6 +61,10 @@ export function describe(entry: LogEntry, repo: string): string {
       return `restored version ${text(d["version"])} of card ${card(d["card"])}`;
     case "card_split_proposed":
       return `had Claude propose ${text(d["stories"])} stories for card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
+    case "card_stories_reviewed": {
+      const commented = Array.isArray(d["commented"]) ? (d["commented"] as unknown[]).map((n) => `#${text(n)}`).join(", ") : "";
+      return `reviewed the stories of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} with Claude${commented ? `, commented on ${commented}` : ""}${Number(d["created"]) ? `, ${text(d["created"])} new` : ""}`;
+    }
     case "card_story_created":
       return `made story ${story} from card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_value_added":
