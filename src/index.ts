@@ -29,10 +29,9 @@ const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
-import releaseNotes from "../docs/release-notes.json";
 import { WHATS_NEW_PATH } from "./urls";
 import { ownReleases, selfRepo, whatsNewPage } from "./whats-new";
-import { setCommit } from "./build";
+import { onlineVersion, setCommit } from "./build";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
 import promotionExample from "../docs/exemples/promouvoir.yml";
@@ -101,7 +100,7 @@ const app = {
       case "/favicon.ico":
         return svg(LOGO_SVG);
       case "/api/version":
-        return json({ numero: releaseNotes[0]?.version ?? null, commit: env.COMMIT_SHA });
+        return json({ numero: onlineVersion(), commit: env.COMMIT_SHA });
       case "/auth/login":
         return method === "GET" ? startLogin(request, env) : methodNotAllowed();
       case "/auth/callback":
@@ -354,7 +353,7 @@ const app = {
         const params = new URL(request.url).searchParams;
         return html(
           settingsPage(viewer, {
-            version: releaseNotes[0]?.version ?? null,
+            version: onlineVersion(),
             commit: env.COMMIT_SHA,
             notice: params.get("notice"),
             claude: {

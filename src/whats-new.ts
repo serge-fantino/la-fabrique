@@ -40,10 +40,20 @@ function storyLinks(stories: number[] | null, repo: string | null): string {
 }
 
 function entry(release: Release, repo: string | null): string {
-  const when = release.upcoming
+  const when = release.version === "next"
+    ? `<span class="pill">Online</span> <span class="mono">${escapeHtml(release.date)}</span>`
+    : release.upcoming
     ? `<span class="pill">Not released yet</span>`
     : `<span class="mono">${escapeHtml(release.date)}${release.time ? ` ${escapeHtml(release.time)}` : ""}</span>${release.time ? ` <span class="muted">(Paris)</span>` : ""}`;
   const changes = release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : "";
+  if (release.version === "next") {
+    return `<article class="whats-new-entry">
+      <h2>${escapeHtml(release.title ?? "Next release")}</h2>
+      <p class="whats-new-when">${when}</p>
+      ${changes}
+      ${storyLinks(release.stories, repo)}
+    </article>`;
+  }
   return `<article class="whats-new-entry" id="${releaseAnchor(release.version)}">
       <h2><a class="mono" href="#${releaseAnchor(release.version)}">${escapeHtml(release.version)}</a>${release.title ? ` ${escapeHtml(release.title)}` : ""}</h2>
       <p class="whats-new-when">${when}</p>
@@ -53,8 +63,12 @@ function entry(release: Release, repo: string | null): string {
 }
 
 export function whatsNewPage(viewer: Viewer, releases: Release[], repo: string | null): string {
+  // Merged and online, not released yet: the `next` entries, above the last release.
+  const online = releases.filter((release) => release.version === "next");
+  const released = releases.filter((release) => release.version !== "next");
   const body = `<h1>What's new</h1>
     <p class="lede">What changed in La Fabrique, version by version, newest first.</p>
-    ${releases.length ? releases.map((release) => entry(release, repo)).join("") : `<p class="muted">No release notes.</p>`}`;
+    ${online.length ? `<section id="online"><h2 class="whats-new-group">Online, not released yet</h2>${online.map((release) => entry(release, repo)).join("")}</section>` : ""}
+    ${released.length ? released.map((release) => entry(release, repo)).join("") : online.length ? "" : `<p class="muted">No release notes.</p>`}`;
   return layout("What's new · La Fabrique", body, viewer);
 }

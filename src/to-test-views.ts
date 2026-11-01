@@ -173,7 +173,7 @@ export function toTestContent(project: Project, data: ToTestData): string {
   if (!data.status) {
     const pending = (data.toValidate ?? []).filter((story) => !isEpic(story));
     const toValidate = pending.length
-      ? `<p class="lede">No integration branch: the stories whose work is merged are checked in production. Validated, a story is done and its issue closed.</p>
+      ? `<p class="lede">No integration branch: the stories whose work is merged are online and checked there. Validated, a story stays open until the release that ships it.</p>
         <h2>Stories to validate <span class="muted mono">${pending.length}</span></h2>
         ${byEpic(project.repo, pending, all, actions)}`
       : "";

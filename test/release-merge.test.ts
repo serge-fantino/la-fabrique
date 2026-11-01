@@ -11,7 +11,7 @@ describe("Release notes numbered at the merge", () => {
     // Both took 0.66 while they were written; main merged its own first.
     const branch = file(entry("0.66", "The go", { stories: [102] }), entry("0.65", "Runs"));
     const main = file(entry("0.67", "What's new"), entry("0.66", "Live sprint"), entry("0.65", "Runs"));
-    const merged = mergeReleaseNotes(base, branch, main, NOW);
+    const merged = mergeReleaseNotes(base, branch, main, NOW, { keepNext: false });
     expect(merged.versions).toEqual(["0.68"]);
     const result = JSON.parse(merged.text) as Record<string, unknown>[];
     expect(result.map((e) => e["version"])).toEqual(["0.68", "0.67", "0.66", "0.65"]);
@@ -25,18 +25,30 @@ describe("Release notes numbered at the merge", () => {
     const base = file(entry("v1.169", "A"));
     const branch = file(entry("v1.171", "C"), entry("v1.170", "B"), entry("v1.169", "A, edited on the branch"));
     const main = file(entry("v1.170", "Other"), entry("v1.169", "A"));
-    const merged = mergeReleaseNotes(base, branch, main, NOW);
+    const merged = mergeReleaseNotes(base, branch, main, NOW, { keepNext: false });
     expect(merged.versions).toEqual(["v1.172", "v1.171"]);
     expect((JSON.parse(merged.text) as { titre: string }[]).map((e) => e.titre)).toEqual(["C", "B", "Other", "A"]);
-    expect(mergeReleaseNotes(base, base, main, NOW)).toEqual({ text: main, versions: [] });
+    expect(mergeReleaseNotes(base, base, main, NOW, { keepNext: false })).toEqual({ text: main, versions: [] });
   });
 
   it("numbers the entries a pull request wrote as next, without a time, and puts the time after the date", () => {
     const base = file(entry("0.75", "Go"));
     const draft = { version: "next", date: "2026-11-01", titre: "One status", changements: ["One status."], stories: [113], liens: null };
-    const merged = mergeReleaseNotes(base, file(draft, draft, entry("0.75", "Go")), file(entry("0.75", "Go")), NOW);
+    const merged = mergeReleaseNotes(base, file(draft, draft, entry("0.75", "Go")), file(entry("0.75", "Go")), NOW, { keepNext: false });
     expect(merged.versions).toEqual(["0.77", "0.76"]);
     expect(merged.text.startsWith('[\n  {\n    "version": "0.77",\n    "date": "2026-10-31",\n    "heure": "18:05",\n    "titre": "One status",')).toBe(true);
+  });
+
+  it("keeps the entries next on top of main's, without a number", () => {
+    const old = { version: "next", date: "2026-10-31", titre: "Already online", changements: ["Online."], stories: [1], liens: null };
+    const draft = { version: "next", date: "2026-11-01", titre: "New", changements: ["New."], stories: [139], liens: null };
+    const base = file(old, entry("0.78", "Go"));
+    const merged = mergeReleaseNotes(base, file(draft, old, entry("0.78", "Go")), file(old, entry("0.78", "Go")), NOW);
+    expect(merged.versions).toEqual([]);
+    const result = JSON.parse(merged.text) as Record<string, unknown>[];
+    expect(result.map((e) => e["titre"])).toEqual(["New", "Already online", "Go"]);
+    expect(result[0]).toEqual(draft);
+    expect(result[0]).not.toHaveProperty("heure");
   });
 
   it("bumps the last number of a version", () => {

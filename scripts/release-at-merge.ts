@@ -1,7 +1,7 @@
 // Used by the merge workflow (.github/workflows/merge.yml):
 //   node --experimental-strip-types scripts/release-at-merge.ts <merge-base file> <branch file> <main file> <out file>
 // Writes main's release notes with the pull request's own entries on top,
-// numbered after main's newest and dated now (Paris); prints their versions.
+// kept as `next` (no number: the release at the close of the sprint gives it); prints the versions given (none).
 import { readFileSync, writeFileSync } from "node:fs";
 import { mergeReleaseNotes } from "../src/release-merge.ts";
 
