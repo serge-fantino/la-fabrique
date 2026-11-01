@@ -1,5 +1,6 @@
 import { promotionRunEvent } from "./go";
 import { releaseRunEvent } from "./sprint-release";
+import { sprintRunFor } from "./sprint-run";
 import { mergeRunEvent } from "./sprint-pulls";
 import { claudeRunEvent, type RestWorkflowRun } from "./claude";
 import { sprintLiveFor } from "./live";
@@ -67,6 +68,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     // A pull request moved: the open sprint pages show it.
     if (event === "pull_request") {
       await sprintLiveFor(env, project.repo)?.notify({ kind: "pull_request", issue: null, status: payload.action ?? "", conclusion: null, url: "", at: new Date().toISOString() });
+      if (payload.action === "closed") await sprintRunFor(env, project.repo)?.poke().catch(() => undefined);
     }
     await inDevChanged(env, project.repo);
     if (event === "create" || event === "delete") await branchesChanged(env, project.repo);
@@ -84,6 +86,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     await productionChanged(env, project.repo);
     await deliveryChanged(env, project.repo);
     await inDevChanged(env, project.repo);
+    // The sprint running by itself moves on (la-fabrique#160).
+    if (payload.action === "completed") await sprintRunFor(env, project.repo)?.poke().catch(() => undefined);
     return json({ refresh: "production" });
   }
   if (event !== "push") return json({ ignored: event }, { status: 202 });

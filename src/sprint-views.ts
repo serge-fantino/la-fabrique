@@ -70,6 +70,8 @@ export interface SprintData {
   };
   notice?: string | undefined;
   failure?: string | undefined;
+  // The sprint running by itself: its state, or how to start it.
+  run?: string;
 }
 
 // A run's state: queued, working (since when), done, failed; its link.
@@ -367,6 +369,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       </section>
       <section class="sprint-work" aria-labelledby="sprint-work">
         <h2 id="sprint-work">Work in progress</h2>
+        ${data.run ?? ""}
         ${runsLine}
         ${claudeNext}
         ${openPulls(data.sprintCards)}

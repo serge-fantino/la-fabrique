@@ -16,6 +16,8 @@ import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWo
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
 import { heldStories } from "./card-lock";
+import { loadPlan as loadRunPlan, newRun, runRefusal, sprintRunFor } from "./sprint-run";
+import { runPreviewPage, runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
 import { cycleRules, projectRules } from "./lifecycle";
@@ -71,7 +73,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -561,6 +563,26 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=merging&pull=${pull}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // The sprint running by itself (la-fabrique#160): a Product Engineer or
+    // the super admin, as it merges.
+    if (action.startsWith("run_")) {
+      if (!can(viewer.role, "promote")) return forbidden(viewer);
+      const run = sprintRunFor(env, project.repo);
+      if (!run || !running) return redirect(base);
+      if (action === "run_start") {
+        const refusal = runRefusal(project);
+        if (refusal) return showSprint(request, env, viewer, project, refusal, 422);
+        const { plan } = await loadRunPlan(env, project);
+        const state = newRun(project.repo, viewer.login, plan, new Date().toISOString());
+        if (!state.cards.length) return showSprint(request, env, viewer, project, "Nothing to run: every story of the sprint is merged.", 422);
+        await run.start(state);
+        return redirect(`${base}?notice=run_started`);
+      }
+      const what = action === "run_pause" ? "pause" : action === "run_resume" ? "resume" : action === "run_stop" ? "stop" : action === "run_resume_card" ? "resume_card" : null;
+      if (!what) return redirect(base);
+      await run.control(viewer.login, what, Number(form.get("card")) || undefined);
+      return redirect(`${base}#sprint-work`);
+    }
     if (action === "start") {
       const outcome = await startSprint(env, project, viewer.login);
       return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
@@ -695,8 +717,10 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const next =
     sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number) && !held.has(number)) ?? null;
   const launched = Number(params.get("story"));
+  const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project)) : "",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,
@@ -731,7 +755,9 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
         runsUrl: claudeWorkflow(project) ? `https://github.com/${project.repo}/actions/workflows/${encodeURIComponent(claudeWorkflow(project) ?? "")}` : null,
       },
       notice:
-        params.get("notice") === "launched" && Number.isInteger(launched)
+        params.get("notice") === "run_started"
+          ? "The sprint is running by itself: each card's stories one after another, up to testing. Pause or stop it at any time."
+          : params.get("notice") === "launched" && Number.isInteger(launched)
           ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.`
           : params.get("notice") === "releasing"
           ? `The release ${params.get("version") ?? ""} has started: the project's workflow opens a pull request on the production branch and merges it. The sprint closes when it is out.`
@@ -939,6 +965,13 @@ export async function cardRoute(
     if (method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("A WebSocket is expected.", { status: 426 });
     const live = sprintLiveFor(env, project.repo);
     return live ? live.fetch(request) : new Response("Not found", { status: 404 });
+  }
+  // The sprint running by itself: what it will do, before it starts.
+  if (path === "sprint/run") {
+    if (method !== "GET") return notAllowed();
+    if (!can(viewer.role, "promote")) return forbidden(viewer);
+    const [{ view, cookies }, { plan }] = await Promise.all([projectView(request, env, project, viewer), loadRunPlan(env, project)]);
+    return html(runPreviewPage(viewer, view, plan, runRefusal(project)), { cookies });
   }
   // A story's detail, from the sprint: its steps, pull requests, runs, history.
   const storyPath = /^sprint\/stories\/(\d{1,9})$/.exec(path);

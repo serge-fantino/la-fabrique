@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The sprint runs by itself",
+    "changements": [
+      "\"Run the sprint\" (Product Engineer, super admin) first shows what will run, then runs it up to testing: each card's stories one after another (Claude, then the merge of its pull request), the cards side by side, never more Claude runs than the project allows, one merge at a time. GitHub's events move it on; a check every few minutes catches up a lost one.",
+      "A card that meets a problem stops and says why, with a link, while the others go on: a story not ready, Claude's run failed or ended without a pull request, a merge refused (a conflict first gets one update by Claude), too many runs on a story, a run past 70 minutes. Resume the card once fixed; pause, resume or stop the whole run at any time.",
+      "The sprint's Work in progress shows each card's step live; every step is in the log. Nothing is validated, released or closed by the run."
+    ],
+    "stories": [160, 161],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "One story at a time per card",
     "changements": [
       "In the sprint, a card's stories are launched with Claude one at a time: while one is in progress (Claude working on it, or its pull request open and not merged), the card's other stories wait, and say which story they wait for.",

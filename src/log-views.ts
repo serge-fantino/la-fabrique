@@ -136,6 +136,30 @@ export function describe(entry: LogEntry, repo: string): string {
       const stories = Array.isArray(d["stories"]) ? (d["stories"] as unknown[]).map((n) => `#${text(n)}`).join(", ") : "";
       return `imported card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${stories ? `, with ${stories}` : ""}`;
     }
+    case "sprint_run_started":
+      return "started the sprint running by itself";
+    case "sprint_run_paused":
+      return "paused the sprint's run";
+    case "sprint_run_resumed":
+      return "resumed the sprint's run";
+    case "sprint_run_stopped":
+      return "stopped the sprint's run";
+    case "sprint_run_card_resumed":
+      return `resumed card ${card(d["card"])} in the sprint's run`;
+    case "sprint_run_story_started":
+      return `had the sprint's run launch Claude on ${story} (card ${card(d["card"])}, run by @${text(d["run_by"])})`;
+    case "sprint_run_story_updating":
+      return `had the sprint's run ask Claude to update pull request ${pull(d["pull"])} of ${story} (in conflict)`;
+    case "sprint_run_story_merged":
+      return `saw ${story} merged in the sprint's run (card ${card(d["card"])})`;
+    case "sprint_run_card_done":
+      return `saw card ${card(d["card"])} done in the sprint's run: its stories are merged`;
+    case "sprint_run_card_stopped":
+      return `stopped card ${card(d["card"])} in the sprint's run: ${text(d["reason"])}${typeof d["link"] === "string" ? runLink(d["link"]) : ""}`;
+    case "sprint_run_done":
+      return "saw the sprint's run over: every card's stories merged";
+    case "sprint_run_waiting":
+      return "saw the sprint's run wait for a person: a card stopped";
     case "mcp_write":
       return `did <span class="mono">${text(d["tool"])}</span> through ${text(d["app"]) || "Claude"} (MCP)`;
     case "card_value_added":
