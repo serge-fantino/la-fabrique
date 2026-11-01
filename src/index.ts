@@ -456,6 +456,38 @@ function providerFor(origin: string): OAuthProvider<Env> {
   return provider;
 }
 
+// An MCP client may name the MCP server's own address as the resource
+// (RFC 8707: `resource=https://…/mcp`); the tokens are bound to the
+// Worker's origin, which covers it. Read as the origin.
+async function mcpResourceAsOrigin(request: Request, origin: string): Promise<Request> {
+  const mcp = `${origin}${MCP_PATH}`;
+  const same = (value: string) => value.replace(/\/+$/, "") === mcp;
+  const url = new URL(request.url);
+  let changed = false;
+  const resources = url.searchParams.getAll("resource");
+  if (resources.some(same)) {
+    url.searchParams.delete("resource");
+    for (const value of resources) url.searchParams.append("resource", same(value) ? origin : value);
+    changed = true;
+  }
+  let body: string | null = null;
+  if (request.method === "POST" && (request.headers.get("content-type") ?? "").includes("application/x-www-form-urlencoded")) {
+    body = await request.clone().text();
+    const params = new URLSearchParams(body);
+    const inBody = params.getAll("resource");
+    if (inBody.some(same)) {
+      params.delete("resource");
+      for (const value of inBody) params.append("resource", same(value) ? origin : value);
+      body = params.toString();
+      changed = true;
+    }
+  }
+  if (!changed) return request;
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  return new Request(url.href, { method: request.method, headers, ...(request.method === "POST" ? { body: body ?? (await request.text()) } : {}) });
+}
+
 function withSecurityHeaders(response: Response): Response {
   if (response.headers.has("content-security-policy") || response.status === 101) return response;
   const copy = new Response(response.body, response);
@@ -478,6 +510,7 @@ export default {
     const { pathname, origin } = new URL(request.url);
     const provider = providerFor(origin);
     if (pathname === REVOKE_PATH) return withSecurityHeaders(await revoke(request, provider, oauthEnv, ctx));
+    if (pathname === AUTHORIZE_PATH || pathname === TOKEN_PATH) request = await mcpResourceAsOrigin(request, origin);
     const response = await provider.fetch(request, oauthEnv, ctx);
     if (pathname === DISCOVERY_PATH && request.method === "GET") return discovery(response, request);
     return withSecurityHeaders(response);
