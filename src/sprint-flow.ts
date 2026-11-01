@@ -75,14 +75,16 @@ async function endWith(env: Env, project: Project, sprint: Sprint, login: string
 
 // Close the sprint, by hand: the cards done take the version that shipped
 // them; the others stay in the Sprint lane for the next sprint.
-export async function closeSprint(env: Env, project: Project, sprint: Sprint, login: string): Promise<string | null> {
+// `released`: the version a go just put out (a project with integration):
+// every finished card takes it.
+export async function closeSprint(env: Env, project: Project, sprint: Sprint, login: string, released?: string): Promise<string | null> {
   const [cards, links, releases] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), boardReleases(env, project, [])]);
   const mine = cards.filter((card) => card.release === SPRINT_LANE && !card.archivedAt);
   const stories = await cardStories(env, project, [...new Set(mine.flatMap((card) => links.order.get(card.id) ?? []))]);
   let newest: string | null = null;
   for (const card of mine) {
     const numbers = links.order.get(card.id) ?? [];
-    const version = cardDone(links, stories, card.id) ? shippedIn(releases, numbers) : null;
+    const version = cardDone(links, stories, card.id) ? (released ?? shippedIn(releases, numbers)) : null;
     if (!version) continue;
     if (!newest || compareVersions(version, newest) < 0) newest = version;
     await moveCards(env.DB, [card], version, login, `shipped in ${version}`);

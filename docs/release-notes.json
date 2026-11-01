@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Give the go from the sprint; the sprint closes once it is out",
+    "changements": [
+      "On a project with an integration branch, the sprint offers the go itself, as Production does: what production will receive, the stories validated or not, the next release to open (minor or major).",
+      "A go given from the sprint closes it once the promotion is out: the validated stories are closed, each finished card takes the version just released, and a card not finished stays for the next sprint."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint leads to the go",
     "changements": [
       "On a project with an integration branch, the sprint says how its release is made: test the stories on int, give the go in Production (linked), then close the sprint so that each finished card takes its version.",

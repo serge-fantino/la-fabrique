@@ -190,7 +190,9 @@ function nextReleaseChoice(version: string | null): string {
 
 // The go: what production will get, who validated it, and the button for
 // a Product Engineer or super admin; the last go for everyone.
-function goSection(viewer: Viewer, project: Project, status: ProductionStatus, go: GoPanel): string {
+// From the sprint (`sprint`): the same go, which also closes the sprint once
+// the promotion is done.
+export function goSection(viewer: Viewer, project: Project, status: ProductionStatus, go: GoPanel, sprint = false): string {
   const promotion = status.workflows.find((workflow) => workflow.key === "promouvoir");
   const last = go.last
     ? `<p class="small">Last go by @${escapeHtml(go.last.by)} on <span class="mono">${formatDate(go.last.at)}</span>${
@@ -222,9 +224,11 @@ function goSection(viewer: Viewer, project: Project, status: ProductionStatus, g
   return `<section class="go">
       ${messages}
       ${last}
-      <form method="post" action="${escapeHtml(projectUrl(project.repo))}/production/go" class="go-form">
+      <form method="post" action="${escapeHtml(projectUrl(project.repo))}/production/go" class="go-form" data-busy="Giving the go…">
         ${csrfField(viewer)}
+        ${sprint ? `<input type="hidden" name="sprint" value="1" />` : ""}
         <h2>Give the go${summary.version ? ` for <span class="mono">${escapeHtml(summary.version)}</span>` : ""}</h2>
+        ${sprint ? `<p class="muted">Promotes integration to production with the project's workflow; once it is out, the validated stories are closed, the sprint closes and each finished card takes the version. A card not finished stays for the next sprint.</p>` : ""}
         ${summary.stories.length ? `<ul class="go-stories">${summary.stories.map(storyLine).join("")}</ul>` : `<p class="muted">No story is referred to by the work waiting.</p>`}
         ${
           summary.notValidated.length

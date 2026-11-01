@@ -429,7 +429,7 @@ describe("The sprint of a project with an integration branch", () => {
     github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
     github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
     const page = await (await get(`/projects/${REPO}/sprint?ref=integration`, (await signIn("admin-one")).cookie)).text();
-    expect(page).toMatch(/the release is the go: test the stories on int, then give the go in <a [^>]*href="\/projects\/acme\/widget\/production">Production<\/a>; once it is out, close the sprint/);
+    expect(page).toMatch(/the release is the go: test the stories on int, then give the go, here or in <a [^>]*href="\/projects\/acme\/widget\/production">Production<\/a>; once it is out, the sprint closes/);
     expect(page).not.toContain("ref-banner");
   });
 });

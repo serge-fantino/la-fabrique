@@ -5,9 +5,14 @@ import { isEpic } from "./lifecycle";
 import { productionChanged, type ProductionStatus } from "./production";
 import { productionBranch, type Project } from "./projects";
 import { applyIssueEvent, type RestIssue, type Story } from "./stories";
+import { parseReleases } from "./roadmap";
 import { storyChecks, type StoryChecks } from "./validation";
 import type { RestWorkflowRun } from "./claude";
 import { wordingFor } from "./wording";
+import { SPRINT_LANE } from "./card-releases";
+import { closeSprint } from "./sprint-flow";
+import { activeSprint } from "./sprints";
+import { githubContentsPath } from "./urls";
 
 // What the go would ship: the stories on int, and which are not validated.
 export function goSummary(
@@ -38,6 +43,8 @@ export async function giveGo(
   summary: ReturnType<typeof goSummary> | null,
   reason: string,
   next?: { version: string; kind: string },
+  // Given from the sprint: the sprint closes once the promotion is done.
+  options: { closeSprint?: boolean } = {},
 ): Promise<GoOutcome> {
   const file = project.check?.config?.workflows?.["promouvoir"];
   if (typeof file !== "string") return { ok: false, message: "This project declares no promotion workflow (workflows.promouvoir).", status: 422 };
@@ -77,6 +84,7 @@ export async function giveGo(
       not_validated: summary.notValidated.map((story) => story.number),
       ...(next ? { next: next.version, next_kind: next.kind } : {}),
       ...(reason ? { reason } : {}),
+      ...(options.closeSprint ? { close_sprint: true } : {}),
     },
   }).run();
   await productionChanged(env, project.repo);
@@ -144,5 +152,23 @@ export async function promotionRunEvent(env: Env, project: Project, action: stri
     repo: project.repo,
     details: { version, closed, not_validated: stories.filter((number) => !validated.includes(number)), run: run.html_url ?? null },
   }).run();
+  // Given from the sprint: the version just dated on integration is out; the
+  // sprint closes, each finished card takes it, the others stay for the next.
+  if (details["close_sprint"]) {
+    const released = await releasedVersion(project, token);
+    const sprint = await activeSprint(env.DB, project.repo);
+    if (sprint && sprint.release === SPRINT_LANE) await closeSprint(env, project, sprint, "github", released ?? version ?? undefined);
+  }
   return closed;
+}
+
+// The version the promotion just put out: the newest dated entry of the
+// release notes on the integration branch (the go dates it there first).
+async function releasedVersion(project: Project, token: string): Promise<string | null> {
+  const file = project.check?.config?.version?.fichier;
+  const integration = project.check?.config?.branches?.integration;
+  if (!file || !integration) return null;
+  const response = await githubFetch(token, githubContentsPath(project.repo, file, integration), "application/vnd.github.raw+json");
+  if (!response.ok) return null;
+  return parseReleases(await response.text()).find((release) => release.time)?.version ?? null;
 }
