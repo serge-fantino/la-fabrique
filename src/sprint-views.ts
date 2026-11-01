@@ -137,18 +137,22 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           : pull.state === "open"
             ? ` <span class="muted small">no review asked</span>`
             : "";
+        // Who can be asked: La Fabrique's tech leads and super admins, not
+        // the author (GitHub refuses it) nor one already asked.
+        const candidates = data.reviewers.filter((login) => login.toLowerCase() !== detail?.author?.toLowerCase() && !detail?.reviewers.includes(login));
         const ask =
-          controls && pull.state === "open" && data.reviewers.length
-            ? `<form method="post" action="${escapeHtml(action)}" class="inline sprint-review">${csrfField(viewer)}
+          controls && pull.state === "open"
+            ? candidates.length
+              ? `<form method="post" action="${escapeHtml(action)}" class="inline sprint-review">${csrfField(viewer)}
                 <input type="hidden" name="action" value="review" />
                 <input type="hidden" name="pull" value="${pull.number}" />
                 <label class="visually-hidden" for="reviewer-${pull.number}">Reviewer of pull request #${pull.number}</label>
-                <select id="reviewer-${pull.number}" name="reviewer">${data.reviewers
-                  .filter((login) => login !== detail?.author && !detail?.reviewers.includes(login))
-                  .map((login) => `<option value="${escapeHtml(login)}">@${escapeHtml(login)}</option>`)
-                  .join("")}</select>
+                <select id="reviewer-${pull.number}" name="reviewer">${candidates.map((login) => `<option value="${escapeHtml(login)}">@${escapeHtml(login)}</option>`).join("")}</select>
                 <button type="submit" class="button quiet small">Ask for a review</button>
               </form>`
+              : detail?.reviewers.length
+                ? ""
+                : ` <span class="muted small" title="The reviewers are La Fabrique's tech leads and super admins; GitHub does not let the author of a pull request review it.">no one else to ask${detail?.author ? ` (opened as @${escapeHtml(detail.author)})` : ""}</span>`
             : "";
         // Behind or in conflict with its base: Claude can bring it up to date.
         const stale = pull.state === "open" && (detail?.mergeable === "dirty" || detail?.mergeable === "behind");
@@ -165,7 +169,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         const merge =
           mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
             ? button({ action: "merge", pull: pull.number }, `Merge pull request #${pull.number}`, "Merge", "small")
-            : "";
+            : mergeable && controls && data.merge && !data.merge.workflow && data.merge.can(detail.base)
+              ? ` <span class="muted small">no merge workflow declared (<a href="${escapeHtml(base)}/setup">workflows.fusionner</a>): <a href="${escapeHtml(pull.url)}">merge it on GitHub</a></span>`
+              : "";
         const attempt = pull.state === "open" ? data.merges?.get(pull.number) : undefined;
         const refused =
           attempt && attempt.conclusion !== "success"
@@ -375,7 +381,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       ${integration}`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -398,7 +404,7 @@ export function releaseWarningPage(viewer: Viewer, project: Project, plan: Relea
       </form>`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -451,6 +457,6 @@ export function releasePage(
       }`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }

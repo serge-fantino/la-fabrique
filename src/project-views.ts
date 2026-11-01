@@ -103,12 +103,15 @@ function projectMenu(view: ProjectView, name: string): string {
     </details>`;
 }
 
-export function projectContext(project: Project): string {
+// `branch`: the reference-branch menu; not on the pages that do not read a
+// branch (the board and the cards, kept in La Fabrique; the sprint, which
+// reads the stories and what production is waiting for).
+export function projectContext(project: Project, branch = true): string {
   const view = asView(project);
   const name = project.check?.config?.nom || project.repo;
   return `${view ? projectMenu(view, name) : `<a class="project-name" href="${escapeHtml(projectUrl(project.repo))}">${escapeHtml(name)}</a>`}
       <span class="mono muted repo-name">${escapeHtml(project.repo)}</span>
-      ${view ? branchMenu(view) : ""}`;
+      ${view && branch ? branchMenu(view) : ""}`;
 }
 
 export function projectHeader(project: Project, active: ProjectTab, heading?: string): string {
