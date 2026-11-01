@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.2.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.3.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.1.0";
+  var VERSION = "1.3.0";
   var QUEUE_KEY = "fabrique-report-queue";
   var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
   var PREFIX = "fab-rep";
@@ -16,6 +16,18 @@
   var WORDS = {
     en: {
       report: "Report a defect",
+      test: "Test",
+      toTest: "Stories to test",
+      noStories: "Nothing to test on this environment.",
+      testFailed: "The stories to test could not be read.",
+      previous: "Previous",
+      next: "Next",
+      storyOf: "Story {n} of {total}",
+      forCard: "Card",
+      criteria: "Acceptance criteria",
+      noCriteria: "This story lists no criteria.",
+      notValidated: "Not validated yet",
+      validatedBy: "Validated by",
       pick: "Touch or click the part of the page that is wrong.",
       chosen: "This part?",
       wider: "Wider",
@@ -58,6 +70,18 @@
     },
     fr: {
       report: "Signaler un défaut",
+      test: "Tester",
+      toTest: "Stories à tester",
+      noStories: "Rien à tester sur cet environnement.",
+      testFailed: "Les stories à tester n'ont pas pu être lues.",
+      previous: "Précédente",
+      next: "Suivante",
+      storyOf: "Story {n} sur {total}",
+      forCard: "Fiche",
+      criteria: "Critères d'acceptation",
+      noCriteria: "Cette story n'a pas de critères.",
+      notValidated: "Pas encore validée",
+      validatedBy: "Validée par",
       pick: "Touchez ou cliquez la partie de la page qui ne va pas.",
       chosen: "Cette partie ?",
       wider: "Plus large",
@@ -443,6 +467,111 @@
         resolve(null);
       };
       reader.readAsDataURL(file);
+    });
+  }
+
+  // --- The stories to test ----------------------------------------------------
+  // The relay answers GET {endpoint}?to-test=1 with La Fabrique's
+  // GET /api/projects/{project}/to-test; read only.
+  function loadStoriesToTest() {
+    var address = options.endpoint + (options.endpoint.indexOf("?") >= 0 ? "&" : "?") + "to-test=1";
+    return fetch(address, { credentials: "same-origin", headers: headers({ accept: "application/json" }) })
+      .then(function (response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function (data) {
+        return data && Array.isArray(data.stories) ? data.stories : null;
+      })
+      .catch(function () {
+        return null;
+      });
+  }
+
+  var testing = false;
+  // A panel with the stories one at a time, each with its criteria.
+  function testPanel() {
+    if (testing || !options.endpoint) return Promise.resolve(null);
+    testing = true;
+    var t = words();
+    return new Promise(function (resolve) {
+      var index = 0;
+      var stories = [];
+      var body = el("div", { className: cls("test-body"), "aria-live": "polite", text: "…" });
+      var previous = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.previous });
+      var next = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.next });
+      var close = el("button", { type: "button", className: cls("button"), text: t.close });
+      var sheet = el("div", { className: cls("sheet") + " " + cls("test") }, [
+        el("h2", { className: cls("heading"), text: t.toTest }),
+        body,
+        el("div", { className: cls("actions") }, [previous, next, close]),
+      ]);
+      var dialog = el("div", { className: PREFIX + " " + cls("dialog"), role: "dialog", "aria-modal": "true", "aria-label": t.toTest }, [sheet]);
+      document.body.appendChild(dialog);
+      close.focus();
+
+      function show() {
+        body.textContent = "";
+        previous.disabled = index === 0;
+        next.disabled = index >= stories.length - 1;
+        previous.hidden = next.hidden = stories.length < 2;
+        var story = stories[index];
+        if (!story) return;
+        var criteria = story.criteria || [];
+        body.appendChild(el("p", { className: cls("note"), text: t.storyOf.replace("{n}", index + 1).replace("{total}", stories.length) }));
+        body.appendChild(el("h3", { className: cls("story-title") }, [el("span", { className: cls("tag"), text: "#" + story.number }), " " + story.title]));
+        if (story.card) body.appendChild(el("p", { className: cls("note"), text: t.forCard + " C" + story.card.id + " · " + story.card.title }));
+        body.appendChild(
+          el("p", { className: cls("note") }, [
+            story.validated ? t.validatedBy + " @" + story.validated.by + (story.validated.version ? " · " + story.validated.version : "") : t.notValidated,
+          ]),
+        );
+        body.appendChild(el("h4", { className: cls("criteria-title"), text: t.criteria }));
+        body.appendChild(
+          criteria.length
+            ? el(
+                "ul",
+                { className: cls("criteria") },
+                criteria.map(function (criterion) {
+                  return el("li", { className: criterion.done ? cls("done-criterion") : "" }, [(criterion.done ? "☑ " : "☐ ") + criterion.text]);
+                }),
+              )
+            : el("p", { className: cls("note"), text: t.noCriteria }),
+        );
+      }
+      previous.addEventListener("click", function () {
+        index = Math.max(0, index - 1);
+        show();
+      });
+      next.addEventListener("click", function () {
+        index = Math.min(stories.length - 1, index + 1);
+        show();
+      });
+      function finish() {
+        document.removeEventListener("keydown", onKey, true);
+        dialog.remove();
+        testing = false;
+        resolve(stories);
+      }
+      function onKey(event) {
+        if (event.key === "Escape") finish();
+      }
+      document.addEventListener("keydown", onKey, true);
+      close.addEventListener("click", finish);
+      loadStoriesToTest().then(function (found) {
+        if (!dialog.isConnected) return;
+        if (!found) {
+          body.textContent = t.testFailed;
+          previous.hidden = next.hidden = true;
+          return;
+        }
+        stories = found;
+        if (!stories.length) {
+          body.textContent = t.noStories;
+          previous.hidden = next.hidden = true;
+          return;
+        }
+        show();
+      });
     });
   }
 
@@ -885,7 +1014,7 @@
 
   // What the relay says: linked or not, allowed to report or not.
   function status() {
-    if (!options.endpoint) return Promise.resolve({ linked: false, can_report: false });
+    if (!options.endpoint) return Promise.resolve({ linked: false, can_report: false, can_test: false });
     return fetch(options.endpoint, { credentials: "same-origin", headers: headers({ accept: "application/json" }) })
       .then(function (response) {
         return response.ok ? response.json() : { linked: false, can_report: false };
@@ -932,11 +1061,21 @@
     document.body.appendChild(button);
   }
 
+  function showTestButton() {
+    if (document.querySelector("." + cls("test-launch"))) return;
+    var button = el("button", { type: "button", className: PREFIX + " " + cls("launch") + " " + cls("test-launch"), text: words().test });
+    button.addEventListener("click", function () {
+      testPanel();
+    });
+    document.body.appendChild(button);
+  }
+
   var api = {
     version: VERSION,
     configure: configure,
     status: status,
     start: start,
+    test: testPanel,
     flush: flush,
     errors: function () {
       return errors.slice();
@@ -962,6 +1101,7 @@
     if (options.button)
       status().then(function (data) {
         if (data.can_report) showButton();
+        if (data.can_test) showTestButton();
       });
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);

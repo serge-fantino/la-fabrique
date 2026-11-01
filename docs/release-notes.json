@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The stories to test, in the project's app on int",
+    "changements": [
+      "A project's app can ask for the new scope stories:test next to defects:report; the consent page says what it allows and Connected apps shows it.",
+      "GET /api/projects/{project}/to-test answers the stories on int to test (card, acceptance criteria ticked or not, who validated), for a tester and above; never in production.",
+      "Report kit 1.3.0: a Test button next to Report a defect, and a read-only panel listing the stories to test one at a time with their criteria. The relay must add GET ?to-test=1 and can_test (docs/report-kit.md)."
+    ],
+    "stories": [165],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Reorder the sprint by drag and drop",
     "changements": [
       "In the sprint, features and their stories are reordered by dragging their handle (mouse or touch), or with the up and down arrow keys on it; the new order is saved at once and logged.",

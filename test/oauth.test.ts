@@ -18,7 +18,7 @@ describe("Discovery", () => {
     expect(metadata["authorization_endpoint"]).toBe(`${BASE}/oauth/authorize`);
     expect(metadata["token_endpoint"]).toBe(`${BASE}/oauth/token`);
     expect(metadata["revocation_endpoint"]).toBe(`${BASE}/oauth/revoke`);
-    expect(metadata["scopes_supported"]).toEqual(["defects:report", "fabrique"]);
+    expect(metadata["scopes_supported"]).toEqual(["defects:report", "stories:test", "fabrique"]);
     expect(metadata["code_challenge_methods_supported"]).toEqual(["S256"]);
     // Claude registers itself; a project's app is still registered from Setup.
     expect(metadata["registration_endpoint"]).toBe(`${BASE}/oauth/register`);
@@ -146,7 +146,7 @@ describe("Tokens and /api/me", () => {
       name: "Mona Tester",
       avatar_url: "https://avatars.example.com/u/7",
       project: { id: "widget", role: null },
-      can: { report_defect: true },
+      can: { report_defect: true, test_stories: false },
     });
     expect(await logActions()).toContainEqual(expect.objectContaining({ actor: "mona", action: "app_connected" }));
   });

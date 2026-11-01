@@ -16,7 +16,7 @@ import { createProject, recheckProject, showActivity, showBranches, showDelivery
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
-import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, REGISTER_PATH, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
+import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, TEST_SCOPE, REFRESH_TOKEN_TTL, REGISTER_PATH, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
 import { d1KeyValue } from "./oauth-store";
 import { ICON_PNGS } from "./icons";
 import { MCP_PATH, MCP_SCOPE } from "./mcp";
@@ -448,7 +448,7 @@ function providerFor(origin: string): OAuthProvider<Env> {
       // Claude registers itself (RFC 7591), as MCP clients do; it can only
       // ask for the `fabrique` scope (src/oauth.ts, authorizeMcp).
       clientRegistrationEndpoint: REGISTER_PATH,
-      scopesSupported: [DEFECTS_SCOPE, MCP_SCOPE],
+      scopesSupported: [DEFECTS_SCOPE, TEST_SCOPE, MCP_SCOPE],
       resourceMetadata: { resource: origin, resource_name: "La Fabrique extraordinaire" },
       accessTokenTTL: ACCESS_TOKEN_TTL,
       refreshTokenTTL: REFRESH_TOKEN_TTL,

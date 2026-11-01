@@ -72,7 +72,22 @@ Two routes at the address you chose, for a signed-in person of your app, outside
 { "linked": true, "can_report": true, "login": "octocat", "link_url": "/auth/fabrique/link" }
 ```
 
-`can_report` is `can.report_defect` of La Fabrique's `GET /api/me`. Not linked: `{ "linked": false, "can_report": false, "link_url": "…" }`.
+`can_report` is `can.report_defect` of La Fabrique's `GET /api/me`. Not linked: `{ "linked": false, "can_report": false, "can_test": false, "link_url": "…" }`.
+
+**Testing (kit 1.3.0).** To let a tester read the stories to test without leaving the app, the relay:
+
+1. asks for the scope `stories:test` next to `defects:report` when it sends the person to `/oauth/authorize` (the consent page says what it allows; *Connected apps* shows it). A link made before keeps only `defects:report`: the person links again;
+2. answers `"can_test": true` in its `GET` when `can.test_stories` of `GET /api/me` is true (the scope was allowed, the person's role may validate, and the project has an environment open to the kit); the kit then shows **Test** next to **Report a defect**;
+3. answers **`GET ?to-test=1`** with La Fabrique's `GET {FABRIQUE_URL}/api/projects/{project}/to-test` (with the person's token), outside production only:
+
+```json
+{ "stories": [
+  { "number": 146, "title": "…", "url": "…", "card": { "id": 17, "title": "…" },
+    "criteria": [{ "text": "…", "done": true }, { "text": "…", "done": false }],
+    "validated": { "by": "tess", "at": "2026-10-31T09:00:00.000Z", "version": "1.170" } } ] }
+```
+
+The stories are those on int that wait to be tested (epics and defects left out); `card` and `validated` are `null` when there is none. `403` when the person may not validate (`not_allowed`), the app was not allowed the scope (`insufficient_scope`) or the environment is closed (`testing_disabled`). The panel is read only: it shows the stories one at a time with their criteria; ticking and validating stay in La Fabrique. Without this route, the panel says the stories could not be read.
 
 **`GET ?targets=1`**: what a report can be about, passed through from La Fabrique's `GET {FABRIQUE_URL}/api/projects/{project}/targets` (with the person's token).
 

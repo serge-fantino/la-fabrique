@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.2.0 — styles. Change the custom properties to match your app. */
+/*! FabriqueReport 1.3.0 — styles. Change the custom properties to match your app. */
 .fab-rep {
   --fab-rep-ink: #18211b;
   --fab-rep-paper: #ffffff;
@@ -359,4 +359,36 @@
 .fab-rep-choice[hidden],
 .fab-rep-link[hidden] {
   display: none;
+}
+
+.fab-rep-test-launch {
+  right: auto;
+  left: 16px;
+}
+
+.fab-rep-test .fab-rep-story-title {
+  margin: 4px 0 8px;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.fab-rep-criteria-title {
+  margin: 14px 0 6px;
+  font-size: 14px;
+}
+
+.fab-rep-criteria {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.fab-rep-criteria li {
+  padding: 6px 0;
+  border-top: 1px solid var(--fab-rep-line);
+  line-height: 1.4;
+}
+
+.fab-rep-done-criterion {
+  color: var(--fab-rep-muted);
 }
