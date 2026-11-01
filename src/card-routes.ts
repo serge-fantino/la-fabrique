@@ -10,7 +10,7 @@ import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
-import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice, setSprintVersion } from "./sprints";
+import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
 import { closeSprint, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
@@ -641,6 +641,20 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
     // The order in the sprint, and nice to have (la-fabrique#111).
     const card = Number(form.get("card"));
     const story = Number(form.get("story"));
+    // A whole order from a drag and drop (la-fabrique#181): answered in JSON
+    // to the page's script, else back to the sprint.
+    if (action === "card_order" || action === "story_order") {
+      const wanted = String(form.get("order") ?? "")
+        .split(",")
+        .map(Number)
+        .filter((n) => Number.isInteger(n) && n > 0)
+        .slice(0, 200);
+      let changed = false;
+      if (action === "card_order" && running) changed = await orderCardsInRelease(env.DB, project.repo, running.release, wanted, viewer.login);
+      if (action === "story_order" && Number.isInteger(card) && (await findCard(env.DB, project.repo, card))) changed = await orderStoriesInCard(env.DB, project.repo, card, wanted, viewer.login);
+      if ((request.headers.get("accept") ?? "").includes("application/json")) return json({ ok: true, changed });
+      return redirect(base);
+    }
     if (action === "card_up" || action === "card_down") {
       const found = Number.isInteger(card) ? await findCard(env.DB, project.repo, card) : null;
       if (found?.release) await moveCardInRelease(env.DB, project.repo, found.release, card, action === "card_up" ? "up" : "down", viewer.login);

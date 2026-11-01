@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
@@ -117,6 +117,40 @@ describe("Next release and the sprint", () => {
     expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).toContain('<h2>Sprint <span class="mono">1.0</span> <span class="pill warn">In progress</span></h2>');
     const logged = (await logActions()).filter((entry) => entry.action === "sprint_versioned").map((entry) => JSON.parse(entry.details ?? "{}"));
     expect(logged).toEqual([{ from: "0.60", to: "1.0", name: null }]);
+  });
+
+  it("takes a whole new order from a drag and drop, for the cards and for a card's stories", async () => {
+    const { week, empty } = await seed();
+    const session = await writer();
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
+    const page = async () => (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    const at = (text: string, needle: string) => text.indexOf(needle);
+    let text = await page();
+    // The handles and the lists the page's script reorders.
+    expect(text).toContain('data-sortable="card_order"');
+    expect(text).toContain(`data-sortable="story_order" data-sort-url="/projects/${REPO}/sprint"`);
+    expect(text).toContain('aria-label="Move #21: drag it, or use the up and down arrow keys"');
+    const send = (fields: Record<string, string>) =>
+      SELF.fetch(`https://la-fabrique.test/projects/${REPO}/sprint`, {
+        method: "POST",
+        headers: { cookie: session.cookie, accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ csrf: session.csrf, ...fields }),
+        redirect: "manual",
+      });
+    const stories = await send({ action: "story_order", card: String(week), order: "22,21" });
+    expect(await stories.json()).toEqual({ ok: true, changed: true });
+    const cards = await send({ action: "card_order", order: `${empty},${week}` });
+    expect(await cards.json()).toEqual({ ok: true, changed: true });
+    // The same order again changes nothing, and writes nothing.
+    expect(await (await send({ action: "story_order", card: String(week), order: "22,21" })).json()).toEqual({ ok: true, changed: false });
+    text = await page();
+    expect(at(text, "Print the week")).toBeLessThan(at(text, "Choose the week"));
+    expect(at(text, "No story yet")).toBeLessThan(at(text, "Week menu"));
+    const moves = (await logActions()).filter((entry) => entry.action === "sprint_story_moved" || entry.action === "sprint_card_moved");
+    expect(moves.map((entry) => [entry.action, JSON.parse(entry.details ?? "{}").order])).toEqual([
+      ["sprint_story_moved", [22, 21]],
+      ["sprint_card_moved", [empty, week]],
+    ]);
   });
 
   it("refuses to start with nothing in Next release", async () => {

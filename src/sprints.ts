@@ -135,6 +135,51 @@ export async function moveStoryInCard(db: D1Database, repo: string, card: number
   return true;
 }
 
+// A whole new order, from a drag and drop (la-fabrique#181): the cards of a
+// release, or a card's stories. Only the items already there are taken, the
+// others keep their place after them; nothing changes, nothing is written.
+function reordered<T>(current: T[], wanted: T[]): T[] | null {
+  const kept = wanted.filter((item, index) => current.includes(item) && wanted.indexOf(item) === index);
+  const order = [...kept, ...current.filter((item) => !kept.includes(item))];
+  return order.every((item, index) => item === current[index]) ? null : order;
+}
+
+export async function orderCardsInRelease(db: D1Database, repo: string, release: string, wanted: number[], login: string): Promise<boolean> {
+  const { results } = await db
+    .prepare("SELECT id, position FROM cards WHERE repo = ? AND release = ? AND archived_at IS NULL ORDER BY position, id")
+    .bind(repo, release)
+    .all<{ id: number; position: number }>();
+  const order = reordered(
+    results.map((row) => row.id),
+    wanted,
+  );
+  if (!order) return false;
+  const places = results.map((row) => row.position).sort((a, b) => a - b);
+  for (let index = 1; index < places.length; index++) if ((places[index] ?? 0) <= (places[index - 1] ?? 0)) places[index] = (places[index - 1] ?? 0) + 1;
+  await db.batch([
+    ...order.map((id, index) => db.prepare("UPDATE cards SET position = ? WHERE id = ?").bind(places[index] ?? index, id)),
+    activityStatement(db, { actor: login, action: "sprint_card_moved", repo, details: { release, order } }),
+  ]);
+  return true;
+}
+
+export async function orderStoriesInCard(db: D1Database, repo: string, card: number, wanted: number[], login: string): Promise<boolean> {
+  const { results } = await db
+    .prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = 'story' ORDER BY position IS NULL, position, CAST(ref AS INTEGER)")
+    .bind(card)
+    .all<{ ref: string }>();
+  const order = reordered(
+    results.map((row) => Number(row.ref)),
+    wanted,
+  );
+  if (!order) return false;
+  await db.batch([
+    ...order.map((number, index) => db.prepare("UPDATE card_links SET position = ? WHERE card_id = ? AND kind = 'story' AND ref = ?").bind(index + 1, card, String(number))),
+    activityStatement(db, { actor: login, action: "sprint_story_moved", repo, details: { card, order } }),
+  ]);
+  return true;
+}
+
 // Nice to have: done if there is time; it does not hold the release.
 export async function setNice(db: D1Database, repo: string, card: number, story: number, nice: boolean, login: string): Promise<boolean> {
   const result = await db
