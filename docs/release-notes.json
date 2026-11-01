@@ -12,6 +12,18 @@
     "liens": null
   },
   {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "Merging puts work online without making a version",
+    "changements": [
+      "On a project without an integration branch, merging deploys the change and no longer gives it a version number: its release-notes entry stays next until the release.",
+      "The (i) and /api/version show the last release plus what is online since (0.78 + 3 changes); What's new lists these entries under Online, not released yet, above the last release.",
+      "Validating a merged story on such a project no longer closes its issue: it stays To test, online and not released."
+    ],
+    "stories": [139],
+    "liens": null
+  },
+  {
     "version": "0.78",
     "date": "2026-11-01",
     "heure": "00:26",
