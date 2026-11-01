@@ -12,7 +12,7 @@ import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
 import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./sprint-release";
 import { storyStatus } from "./stories-views";
-import type { Progress } from "./progress-stages";
+import { shippedNote, type Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -285,6 +285,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           mine.length,
           data.progress?.get(card.id),
         )}${priority}${order}</div>
+          ${shippedNote(data.progress?.get(card.id)?.shipped, "sprint-shipped small")}
           ${foldedDone(card.id, foldDone)}
           ${
             mine.length

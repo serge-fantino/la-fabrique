@@ -33,7 +33,7 @@ import {
 import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
-import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, type Progress } from "./progress-stages";
+import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { renderMarkdown } from "./markdown";
@@ -109,6 +109,7 @@ export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = 
       <h3 class="fiche-title"><a href="${escapeHtml(url)}">${escapeHtml(card.title)}</a></h3>
       ${text ? `<p class="fiche-text">${escapeHtml(text)}</p>` : ""}
       ${free.length ? `<p class="fiche-tags">${free.join(" ")}</p>` : ""}
+      ${shippedNote(progress?.shipped, "fiche-shipped small")}
     </article>`;
 }
 
@@ -576,6 +577,7 @@ function progressSummary(progress: Progress | null | undefined, history: { to: s
     .map((step) => `<li><span class="mono">${escapeHtml(step.at.slice(0, 16).replace("T", " "))}</span> ${isProgressStage(step.to) ? PROGRESS_LABELS[step.to] : "No story"}</li>`)
     .join("");
   return `<p class="card-progress">From its stories: ${progressPill(progress, since)}${since ? ` <span class="muted small">since ${escapeHtml(since.slice(0, 10))}</span>` : ""}</p>
+    ${shippedNote(progress.shipped)}
     ${history.length > 1 ? `<details class="card-progress-history"><summary>How it went</summary><ol>${steps}</ol></details>` : ""}`;
 }
 

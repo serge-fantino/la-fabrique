@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A feature in production says which versions ship it",
+    "changements": [
+      "Once one of its stories is out, a feature says which versions shipped it (those whose release notes declare its stories, oldest first), on its page, on the board and in the sprint.",
+      "Next to them: Complete, Complete with the nice to have left, or the number of stories still to ship."
+    ],
+    "stories": [189],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Run the sprint from its card, lane by lane",
     "changements": [
       "The Running by itself card of the sprint shows what the run will do, without a page of its own: the features in lanes (as many as Claude runs may go at once), each with its stories waiting, in order, and where it would stop; the features with nothing to run are listed apart, with why.",

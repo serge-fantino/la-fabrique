@@ -3376,3 +3376,10 @@ pre.gherkin {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.85rem;
 }
+
+/* What shipped a feature (la-fabrique#189). */
+.card-shipped,
+.sprint-shipped,
+.fiche-shipped {
+  margin: 0.25rem 0 0;
+}
