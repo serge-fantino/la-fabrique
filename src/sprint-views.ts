@@ -21,6 +21,7 @@ export interface SprintData {
   last: Sprint | null;
   sprintCards: Card[];
   nextCards: Card[];
+  keptCards: Card[];
   // Without a sprint: the release in progress on the integration branch.
   integration: BoardRelease | null;
   integrationCards: Card[];
@@ -198,9 +199,21 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       </tr>`;
   };
 
+  // A card kept from a closed sprint: its stories already in production are
+  // done, folded under it, not work to do.
+  const shown = (_mine: number[], number: number, foldDone: boolean) => !(foldDone && isDone(number));
+  const foldedDone = (card: number, foldDone: boolean) => {
+    const done = foldDone ? storiesOf(card).filter(isDone) : [];
+    return done.length
+      ? `<details class="sprint-done"><summary class="muted small">${done.length} stor${done.length === 1 ? "y" : "ies"} already in production</summary><ul>${done
+          .map((number) => `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> ${escapeHtml(data.stories.get(number)?.title ?? "")}</li>`)
+          .join("")}</ul></details>`
+      : "";
+  };
+
   // Cards with their stories; with controls, in an order one can change.
   // Claude is launched from the sprint only.
-  const cardsSection = (cards: Card[], controls: boolean, claude = false) => {
+  const cardsSection = (cards: Card[], controls: boolean, claude = false, foldDone = false) => {
     const launchable = claude && Boolean(data.claude.workflow);
     return cards
       .map((card, index) => {
@@ -225,10 +238,11 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           mine.length,
           data.progress?.get(card.id),
         )}${priority}${order}</div>
+          ${foldedDone(card.id, foldDone)}
           ${
             mine.length
               ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.priorities.length ? "<th>Priority</th>" : ""}${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine
-                  .map((number, at) => storyRow(number, card.id, at, mine.length, controls, launchable))
+                  .map((number, at) => (shown(mine, number, foldDone) ? storyRow(number, card.id, at, mine.length, controls, launchable) : ""))
                   .join("")}</tbody></table>`
               : `<p class="muted">No story yet: <a href="${escapeHtml(base)}/cards/${card.id}#spec">make them from the card</a>.</p>`
           }
@@ -284,28 +298,32 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <p class="muted">Started by <span class="mono">@${escapeHtml(sprint.startedBy)}</span> on <span class="mono">${formatDate(sprint.startedAt)}</span>. ${
           data.legacy
             ? `It ends when the release notes date ${escapeHtml(sprint.release)}.`
-            : "It closes by itself once every needed story is in production: each card then takes the version that shipped it, and what is not done goes back to Next release."
+            : "It stays open until someone closes it: each finished card then takes the version that shipped it, and a card not finished stays in the sprint for the next one."
         }</p>
         ${
           data.canOrder
-            ? `<div class="card-actions">${data.legacy ? "" : button({ action: "close" }, "Close the sprint now", "Close the sprint")}${button({ action: "stop" }, "Stop the sprint", "Stop the sprint")}</div>`
+            ? `<div class="card-actions">${data.legacy ? "" : button({ action: "close" }, "Close the sprint", "Close the sprint")}</div>`
             : ""
         }
         ${summary(data.sprintCards)}
         ${runsLine}
         ${claudeNext}
       </section>
-      ${cardsSection(data.sprintCards, data.canOrder, true) || `<p class="muted">No card in the sprint.</p>`}`
+      ${cardsSection(data.sprintCards, data.canOrder, true, true) || `<p class="muted">No card in the sprint.</p>`}`
     : `<section class="sprint-head">
         <h2>No sprint in progress</h2>
         <p>${lastLine} ${
-          data.nextCards.length
-            ? `The next sprint takes the ${data.nextCards.length} card${data.nextCards.length === 1 ? "" : "s"} of Next release, below.`
+          data.nextCards.length || data.keptCards.length
+            ? `The next sprint takes the ${data.keptCards.length ? `${data.keptCards.length} unfinished card${data.keptCards.length === 1 ? "" : "s"} of the last one and the ` : ""}${data.nextCards.length} card${data.nextCards.length === 1 ? "" : "s"} of Next release, below.`
             : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
         }</p>
-        ${data.canOrder && data.nextCards.length ? button({ action: "start" }, "Start the sprint", "Start the sprint", "") : ""}
+        ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? button({ action: "start" }, "Start the sprint", "Start the sprint", "") : ""}
       </section>`;
 
+  const kept = data.keptCards.length
+    ? `<h2 id="kept">Kept in the sprint <span class="muted mono">${data.keptCards.length}</span></h2>
+      <p class="muted">Not finished when the last sprint closed: they stay with their feature, their stories already in production folded.</p>${cardsSection(data.keptCards, data.canOrder, false, true)}`
+    : "";
   const next = `<h2 id="next">Next release <span class="muted mono">${data.nextCards.length}</span></h2>
       ${
         data.nextCards.length
@@ -327,6 +345,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
       ${current}
+      ${kept}
       ${next}
       ${integration}`,
     viewer,

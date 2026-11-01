@@ -55,7 +55,11 @@ describe("Next release and the sprint", () => {
     expect(board).not.toContain("Plan a release");
   });
 
-  it("starts with the cards of Next release, which move to the Sprint lane; one at a time; stops back to Next release", async () => {
+  async function activeSprintCount(): Promise<number> {
+    return (await env.DB.prepare("SELECT COUNT(*) AS n FROM sprints WHERE ended_at IS NULL").first<{ n: number }>())?.n ?? 0;
+  }
+
+  it("starts with the cards of Next release, which move to the Sprint lane; one at a time; cannot be stopped", async () => {
     const { week, empty } = await seed();
     const session = await writer();
     const before = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
@@ -76,9 +80,12 @@ describe("Next release and the sprint", () => {
     await env.DB.prepare("UPDATE cards SET release = 'Next release' WHERE title = 'Other release'").run();
     expect((await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint?failure=running`);
 
+    // No "Stop the sprint": the button is gone and a direct request changes nothing.
+    expect(page).not.toContain("Stop the sprint");
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "stop" }, session.cookie);
-    expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["Next release", "Next release"]);
-    expect((await logActions()).map((entry) => entry.action).filter((action) => action.startsWith("sprint_"))).toEqual(["sprint_started", "sprint_stopped"]);
+    expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["Sprint", "Sprint"]);
+    expect(await activeSprintCount()).toBe(1);
+    expect((await logActions()).map((entry) => entry.action).filter((action) => action.startsWith("sprint_"))).toEqual(["sprint_started"]);
   });
 
   it("refuses to start with nothing in Next release", async () => {
@@ -116,13 +123,13 @@ describe("Next release and the sprint", () => {
     expect((await logActions()).map((entry) => entry.action)).toEqual(expect.arrayContaining(["sprint_card_moved", "sprint_story_moved", "story_nice_set"]));
   });
 
-  it("closes by itself once the needed stories are out: the card takes the version that shipped it", async () => {
+  it("does not close by itself; closed by hand, the unfinished card stays in the Sprint lane with its released stories folded", async () => {
     const { week, empty } = await seed();
     await env.DB.prepare("UPDATE cards SET release = NULL WHERE id = ?").bind(empty).run();
     const session = await writer();
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "nice", card: String(week), story: "22", nice: "1" }, session.cookie);
-    // #21 ships in 0.58, an unrelated 0.59 ships after; #22 (nice to have) is not done.
+    // Everything needed is out: #21 shipped in 0.58.
     await env.DB.batch([
       env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'releases'").bind(
         JSON.stringify({ commitSha: "abc", releases: [release("0.59", "12:00"), release("0.58", "11:00", [21]), release("0.56", "10:00")] }),
@@ -134,13 +141,36 @@ describe("Next release and the sprint", () => {
       ),
     ]);
     const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
-    expect(page).toContain("No sprint in progress");
-    expect(page).toContain('shipped in <span class="mono">0.58</span>');
-    expect(await releaseOf(week)).toBe("0.58");
-    expect((await logActions()).map((entry) => entry.action)).toContain("sprint_shipped");
+    expect(page).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
+    expect(page).toContain("Close the sprint");
+    expect(await releaseOf(week)).toBe("Sprint");
+    await get(`/projects/${REPO}/board`, session.cookie);
+    expect(await activeSprintCount()).toBe(1);
   });
 
-  it("closes by hand: what is done takes its version, the rest goes back to Next release", async () => {
+  it("keeps an unfinished card in the Sprint lane after the close, released stories folded, and the next sprint takes it", async () => {
+    const { week } = await seed([release("0.58", "11:00", [21]), release("0.56", "10:00")]);
+    const session = await writer();
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(21, "Choose the week", "closed"), story(22, "Print the week")]), REPO)
+      .run();
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "close" }, session.cookie);
+    expect(await releaseOf(week)).toBe("Sprint");
+    const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    expect(page).toContain("No sprint in progress");
+    expect(page).toContain("Kept in the sprint");
+    expect(page).toContain("1 story already in production");
+    expect(page).toContain("Print the week");
+    expect(await (await get(`/projects/${REPO}/board?by=release`, session.cookie)).text()).toContain("Week menu");
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
+    const next = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    expect(next).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
+    expect(next).toContain("1 story already in production");
+    expect(next).toContain("Print the week");
+  });
+
+  it("closes by hand: what is done takes its version, the rest stays in the Sprint lane", async () => {
     const { week, empty } = await seed([release("0.58", "11:00", [21, 22]), release("0.56", "10:00")]);
     const session = await writer();
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
@@ -150,7 +180,17 @@ describe("Next release and the sprint", () => {
     // The card without a story keeps the sprint open; it is closed by hand.
     expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "close" }, session.cookie);
-    expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["0.58", "Next release"]);
+    expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["0.58", "Sprint"]);
+  });
+
+  it("refuses a tester to close the sprint", async () => {
+    await seed();
+    const session = await writer();
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
+    await grantRole("tess", "tester");
+    const tester = await signIn("tess");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: tester.csrf, action: "close" }, tester.cookie)).status).toBe(403);
+    expect(await activeSprintCount()).toBe(1);
   });
 
   it("shows the release in progress on integration when no sprint runs, read-only for a tester", async () => {
