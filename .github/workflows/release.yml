@@ -1,0 +1,122 @@
+# Makes the release when the sprint closes (la-fabrique#137): started by a Product Engineer or the super admin from La
+# Fabrique ("Close the sprint"), or by hand (Actions > Release > Run workflow).
+# La Fabrique has no integration branch: a merge puts its work online without a version (its release-notes entry stays
+# "next"); this workflow gives the version. The "next" entries that declare one of the stories done become a single entry
+# (the version, the date and time in Paris, the title, every change, the stories done); an entry with a story not done yet
+# goes out marked partial, with a caveat naming it; the other "next" entries stay on top (scripts/publish-release.ts).
+# The checks run, then a pull request on main is opened and squash-merged: the merge deploys. Once it succeeds, La Fabrique
+# closes the sprint, gives the version to the cards done and closes their validated stories.
+# Repository secret: FABRIQUE_TOKEN (fine-grained, this repository: Contents, Pull requests and Issues, read and write):
+# its merge on main starts the deployment, which the GITHUB_TOKEN would not.
+name: Release
+run-name: "Release ${{ inputs.version }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version (minor or major, chosen when closing the sprint)"
+        required: true
+      titre:
+        description: "The release's title"
+        required: true
+      stories:
+        description: "The stories done, released now (issue numbers, comma-separated)"
+        required: true
+      par:
+        description: "Who closed the sprint (GitHub login, set by La Fabrique)"
+        required: false
+
+# One change of main at a time, with the merge workflow.
+concurrency:
+  group: merge-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      NOTES: docs/release-notes.json
+    steps:
+      - name: Inputs
+        env:
+          FABRIQUE_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          STORIES: ${{ inputs.stories }}
+        run: |
+          [ -n "$FABRIQUE_TOKEN" ] || { echo "::error title=Release refused::Secret FABRIQUE_TOKEN missing (see this workflow's header)."; exit 1; }
+          case "$VERSION" in ''|*[!0-9A-Za-z.-]*) echo "::error title=Release refused::Not a version: $VERSION"; exit 1 ;; esac
+          case "$STORIES" in ''|*[!0-9,\ #]*) echo "::error title=Release refused::Not a list of issue numbers: $STORIES"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FABRIQUE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Commit identity
+        run: |
+          git config user.name "La Fabrique"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: One release-note entry for the release
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          TITRE: ${{ inputs.titre }}
+          STORIES: ${{ inputs.stories }}
+        run: |
+          # The titles of the stories the "next" entries declare, for the caveat of a partial entry.
+          titles=$(mktemp)
+          echo '{}' > "$titles"
+          for number in $(jq -r '[.[] | select(.version == "next") | (.stories // [])[]] | unique | .[]' "$NOTES"); do
+            title=$(gh issue view "$number" --json title --jq .title 2>/dev/null || true)
+            [ -n "$title" ] && jq --arg n "$number" --arg t "$title" '. + {($n): $t}' "$titles" > "$titles.new" && mv "$titles.new" "$titles"
+          done
+          node --experimental-strip-types scripts/publish-release.ts "$NOTES" "$VERSION" "$TITRE" "$STORIES" "$titles" \
+            || { echo "::error title=Release refused::The release notes could not be written for $VERSION: see the step's log."; exit 1; }
+          git checkout -b "release/$VERSION"
+          git commit -qam "Release $VERSION: $TITRE"
+
+      - name: Dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Pull request on main, then squash-merge
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          TITRE: ${{ inputs.titre }}
+          STORIES: ${{ inputs.stories }}
+          PAR: ${{ inputs.par }}
+        run: |
+          head=$(git rev-parse HEAD)
+          git push origin "HEAD:refs/heads/release/$VERSION"
+          refs=$(echo "$STORIES" | tr ',' '\n' | sed 's/[^0-9]//g' | grep . | sed 's/^/#/' | paste -sd ' ' -)
+          gh pr create --base main --head "release/$VERSION" --title "Release $VERSION: $TITRE" \
+            --body "Release $VERSION, made when the sprint closed${PAR:+ by @$PAR} from La Fabrique. Stories released: $refs."
+          for attempt in 1 2 3 4 5 6; do
+            state=$(gh pr view "release/$VERSION" --json headRefOid,mergeable --jq '.headRefOid + " " + .mergeable')
+            if [ "$state" = "$head MERGEABLE" ] && gh pr merge "release/$VERSION" --squash --delete-branch --match-head-commit "$head" --subject "Release $VERSION: $TITRE"; then
+              merged=yes
+              break
+            fi
+            echo "GitHub is not ready to merge the release yet ($state): trying again in 10 seconds."
+            sleep 10
+          done
+          [ "${merged:-}" = yes ] || { echo "::error title=Release refused::GitHub did not merge the release pull request in time: it is open and checked, merge it by hand; the sprint stays open in La Fabrique until a release run succeeds."; exit 1; }

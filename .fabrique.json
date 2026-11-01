@@ -13,7 +13,8 @@
     "migrations_production": "deploy.yml",
     "promouvoir": null,
     "claude": "claude.yml",
-    "fusionner": "merge.yml"
+    "fusionner": "merge.yml",
+    "publier": "release.yml"
   },
   "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
   "documentation": [
