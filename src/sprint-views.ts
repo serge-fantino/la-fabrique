@@ -127,8 +127,8 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     return `<br /><span class="muted small">Not ready: ${escapeHtml(story.missing.join(", "))} (<a href="${escapeHtml(base)}/setup#lifecycle">Definition of Ready</a>)</span>${fixes ? ` <span class="sprint-fixes">${fixes}</span>` : ""}`;
   };
   // A story's pull requests: open first; what each waits for; a review to ask.
-  const pullsOf = (number: number, controls: boolean) => {
-    const pulls = [...(data.stories.get(number)?.pulls ?? [])].sort((a, b) => (a.state === "open" ? -1 : 0) - (b.state === "open" ? -1 : 0) || b.number - a.number);
+  const pullsOf = (number: number, controls: boolean, openOnly = false) => {
+    const pulls = [...(data.stories.get(number)?.pulls ?? [])].filter((pull) => !openOnly || pull.state === "open").sort((a, b) => (a.state === "open" ? -1 : 0) - (b.state === "open" ? -1 : 0) || b.number - a.number);
     return pulls
       .map((pull) => {
         const detail = data.pulls.get(pull.number);
@@ -199,8 +199,8 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       : "";
     return `<tr id="story-${card}-${number}"${nice ? ' class="nice"' : ""}>
         <td class="mono number"><a href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a></td>
-        <td>${story ? escapeHtml(story.title) : `<span class="muted">not read yet</span>`}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}${
-          story?.pulls.length ? `<br />${pullsOf(number, controls)}` : ""
+        <td><a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a>${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}${
+          story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""
         }</td>
         <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${
           story ? testingNote(story) : ""
@@ -304,6 +304,17 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           )}<p class="muted small">At most ${data.claude.cap} Claude run${data.claude.cap === 1 ? "" : "s"} at once on this project.</p></div>`
         : `<p class="muted">No story ready for Claude: a story is ready once it meets the project's <a href="${escapeHtml(base)}/setup#lifecycle">Definition of Ready</a>; each story below says what it lacks.</p>`;
 
+  // The pull requests open on the sprint's stories, with what each waits
+  // for and what can be done (merge, update with Claude, review).
+  const openPulls = (cards: Card[]) => {
+    const numbers = [...new Set(cards.flatMap((card) => storiesOf(card.id)))].filter((number) => data.stories.get(number)?.pulls.some((pull) => pull.state === "open"));
+    return numbers.length
+      ? `<ul class="sprint-open-pulls">${numbers
+          .map((number) => `<li><a class="mono" href="${escapeHtml(action)}/stories/${number}">#${number}</a> ${escapeHtml(data.stories.get(number)?.title ?? "")}<br />${pullsOf(number, data.canOrder, true)}</li>`)
+          .join("")}</ul>`
+      : `<p class="muted">No pull request open on the sprint's stories.</p>`;
+  };
+
   const lastLine = data.last
     ? data.last.endReason === "stopped"
       ? `The last sprint was stopped on <span class="mono">${formatDate(data.last.endedAt ?? "")}</span>.`
@@ -323,7 +334,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         } The sprint is still open: close it again once fixed.</p>`;
 
   const current = sprint
-    ? `<section class="sprint-head">
+    ? `<section class="sprint-head" aria-label="The sprint">
         <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : "Sprint"} <span class="pill warn">${RELEASE_STATE_LABELS.in_progress}</span></h2>
         <p class="muted">Started by <span class="mono">@${escapeHtml(sprint.startedBy)}</span> on <span class="mono">${formatDate(sprint.startedAt)}</span>. ${
           data.legacy
@@ -346,10 +357,17 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : `<p class="muted">With an integration branch, the release is the go: test the stories on int, then give the go, here or in <a href="${escapeHtml(base)}/production">Production</a>${data.canClose ? "" : " (Product Engineer or super admin)"}; once it is out, the sprint closes and each finished card takes its version.</p>${data.go ?? ""}`
         }
         ${summary(data.sprintCards)}
+      </section>
+      <section class="sprint-work" aria-labelledby="sprint-work">
+        <h2 id="sprint-work">Work in progress</h2>
         ${runsLine}
         ${claudeNext}
+        ${openPulls(data.sprintCards)}
       </section>
-      ${cardsSection(data.sprintCards, data.canOrder, true, true) || `<p class="muted">No card in the sprint.</p>`}`
+      <section class="sprint-stories" aria-labelledby="sprint-stories">
+        <h2 id="sprint-stories">Features and stories</h2>
+        ${cardsSection(data.sprintCards, data.canOrder, true, true) || `<p class="muted">No card in the sprint.</p>`}
+      </section>`
     : `<section class="sprint-head">
         <h2>No sprint in progress</h2>
         <p>${lastLine} ${

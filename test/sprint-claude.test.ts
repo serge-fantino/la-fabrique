@@ -224,6 +224,13 @@ describe("The pull requests of the sprint's stories", () => {
     // Who can be asked: the tech leads and super admins, not one already asked.
     expect(page).toContain('<option value="lead">@lead</option>');
     expect(page).not.toContain('<option value="admin-two">');
+    // Three parts: the sprint, the work in progress (the open pull request), the features and stories.
+    const at = (text: string) => page.indexOf(text);
+    expect(at('id="sprint-work">Work in progress</h2>')).toBeGreaterThan(0);
+    expect(at('id="sprint-stories">Features and stories</h2>')).toBeGreaterThan(at("Work in progress</h2>"));
+    expect(at("PR #30 open")).toBeGreaterThan(at("Work in progress</h2>"));
+    expect(at("PR #30 open")).toBeLessThan(at("Features and stories</h2>"));
+    expect(page).toContain(`<a href="/projects/${REPO}/sprint/stories/12">Ready one</a> <span class="muted small">PR open</span>`);
 
     let asked: unknown = null;
     github()
@@ -431,5 +438,48 @@ describe("The sprint of a project with an integration branch", () => {
     const page = await (await get(`/projects/${REPO}/sprint?ref=integration`, (await signIn("admin-one")).cookie)).text();
     expect(page).toMatch(/the release is the go: test the stories on int, then give the go, here or in <a [^>]*href="\/projects\/acme\/widget\/production">Production<\/a>; once it is out, the sprint closes/);
     expect(page).not.toContain("ref-banner");
+  });
+});
+
+describe("A story's page, from the sprint", () => {
+  it("shows its steps, its criteria, its pull request, Claude's runs and its history", async () => {
+    await seed();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(
+        JSON.stringify([
+          story(1, "Epic", { parent: null, subTotal: 3 }),
+          story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }], criteria: [{ text: "Works", done: true }, { text: "Fast", done: false }] }),
+        ]),
+        REPO,
+      ),
+      env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('lead', 'claude_launched', ?, 12, '{}')").bind(REPO),
+      env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('lead', 'review_requested', ?, 30, ?)").bind(REPO, JSON.stringify({ pull: 30, reviewer: "admin-two" })),
+    ]);
+    await grantRole("pe", "product_engineer");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github()
+      .intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` })
+      .reply(200, JSON.stringify({ workflow_runs: [{ id: 5, name: "Claude #12", display_title: "Claude #12", status: "completed", conclusion: "success", html_url: "https://github.com/acme/widget/actions/runs/5", created_at: "2026-10-30T10:00:00Z", updated_at: "2026-10-30T10:20:00Z" }] }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30` })
+      .reply(200, JSON.stringify({ number: 30, title: "Story #12", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, draft: false, user: { login: "claude[bot]" }, requested_reviewers: [{ login: "admin-two" }], base: { ref: "main" } }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint/stories/12`, (await signIn("pe")).cookie)).text();
+    expect(page).toContain(`<a href="/projects/${REPO}/sprint">Sprint</a>`);
+    expect(page).toContain("<h1>#12 Ready one</h1>");
+    expect(page).toMatch(/href="https:\/\/github.com\/acme\/widget\/issues\/12">Issue #12 on GitHub<\/a>/);
+    // Ready and Claude done; the pull request is where it stands.
+    expect(page).toMatch(/<li class="story-step done">[^]*?<strong>Ready for dev<\/strong>/);
+    expect(page).toMatch(/<li class="story-step done">[^]*?<strong>Claude at work<\/strong> <span class="muted small">Launched by @lead/);
+    expect(page).toMatch(/<li class="story-step current">[^]*?<strong>Pull request<\/strong> <span class="muted small">Open, waiting for its merge/);
+    expect(page).toMatch(/<li class="story-step waiting">[^]*?<strong>In production<\/strong>/);
+    expect(page).toContain('Acceptance criteria <span class="muted mono">1/2</span>');
+    expect(page).toMatch(/href="https:\/\/github.com\/acme\/widget\/pull\/30">PR #30<\/a> Story #12/);
+    expect(page).toContain("review asked from @admin-two");
+    expect(page).toContain('href="https://github.com/acme/widget/actions/runs/5">success</a>');
+    expect(page.match(/<h1/g)).toHaveLength(1);
+    expect(page).toContain("History");
+    expect(page).toMatch(/@lead<\/td>/);
+    // Not a number: not found.
+    expect((await get(`/projects/${REPO}/sprint/stories/x`, (await signIn("pe")).cookie)).status).toBe(404);
   });
 });

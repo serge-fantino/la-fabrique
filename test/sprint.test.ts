@@ -115,7 +115,7 @@ describe("Next release and the sprint", () => {
 
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "nice", card: String(week), story: "22", nice: "1" }, session.cookie);
     text = await page();
-    expect(text).toContain('Print the week <span class="pill kind small">Nice to have</span>');
+    expect(text).toContain('/sprint/stories/22">Print the week</a> <span class="pill kind small">Nice to have</span>');
     expect(text).toContain("<strong>1 story left</strong>");
     const backlog = await (await get(`/projects/${REPO}/backlog?group=card`, session.cookie)).text();
     expect(at(backlog, "Print the week")).toBeLessThan(at(backlog, "Choose the week"));
