@@ -40,7 +40,7 @@ describe("setupChecklist", () => {
     expect(found["promotion"]).toBe("optional");
     expect(found["claude_workflow"]).toBe("optional");
     expect(found["merge_workflow"]).toBe("optional");
-    const optional = new Set(["cycle", "promotion", "merge_workflow", "claude_workflow"]);
+    const optional = new Set(["cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow"]);
     expect(Object.entries(found).filter(([key]) => !optional.has(key)).every(([, state]) => state === "done")).toBe(true);
   });
 
@@ -53,7 +53,7 @@ describe("setupChecklist", () => {
     });
     const found = states(items);
     expect(found["integration"]).toBe("optional");
-    const optional = new Set(["integration", "promotion", "claude_workflow"]);
+    const optional = new Set(["integration", "promotion", "release_workflow", "claude_workflow"]);
     expect(Object.entries(found).filter(([key]) => !optional.has(key)).every(([, state]) => state === "done")).toBe(true);
   });
 
@@ -77,6 +77,7 @@ describe("setupChecklist", () => {
       cycle: "optional",
       promotion: "optional",
       merge_workflow: "optional",
+      release_workflow: "optional",
       claude_workflow: "optional",
       // Started, so no longer optional.
       integration: "missing",

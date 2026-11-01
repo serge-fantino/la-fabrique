@@ -118,6 +118,16 @@ export function describe(entry: LogEntry, repo: string): string {
       return `moved ${story} ${d["direction"] === "up" ? "up" : "down"} in card ${card(d["card"])}`;
     case "story_nice_set":
       return `marked ${story} ${d["nice"] ? "nice to have" : "needed"} in card ${card(d["card"])}`;
+    case "sprint_close_requested":
+      return `closed the sprint: release ${text(d["version"])} “${text(d["title"])}”`;
+    case "release_started":
+      return `started the release ${text(d["version"])} (${text(d["workflow"])})`;
+    case "release_published":
+      return `saw the release ${text(d["version"])} out${runLink(d["run"])}`;
+    case "card_versioned":
+      return `gave version ${text(d["version"])} to card ${card(d["card"])}`;
+    case "story_closed":
+      return `closed ${story} in version ${text(d["version"])}`;
     case "sprint_shipped":
       return `saw the sprint ${text(d["release"])} shipped (dated in the release notes)`;
     case "card_imported": {

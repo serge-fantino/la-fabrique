@@ -2,11 +2,13 @@ import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, ca
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
-import { sprintPage } from "./sprint-views";
+import { releasePage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, startSprint } from "./sprint-flow";
+import { hasIntegration, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
+import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude, updateWithClaude } from "./claude";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
@@ -506,6 +508,7 @@ const SPRINT_NOTICES: Record<string, string> = {
   review: "Review asked on GitHub.",
 };
 
+
 // The sprint (la-fabrique#109): it takes the cards of Next release, has no
 // version while it runs, and closes once its needed stories are out.
 export async function sprintRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
@@ -555,9 +558,33 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const outcome = await startSprint(env, project, viewer.login);
       return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
     }
-    if (action === "close") {
-      if (running && running.release === SPRINT_LANE) await closeSprint(env, project, running, viewer.login);
-      return redirect(`${base}?notice=closed`);
+    if (action === "close" || action === "release") {
+      if (!running || running.release !== SPRINT_LANE) return redirect(base);
+      // With an integration branch, the release is made by the promotion.
+      if (hasIntegration(project)) {
+        if (action === "close") await closeSprint(env, project, running, viewer.login);
+        return redirect(`${base}?notice=closed`);
+      }
+      // The release is the project's act, and the go: Product Engineer or super admin.
+      if (!can(viewer.role, "promote")) return forbidden(viewer);
+      if (!publishWorkflow(project)) {
+        return showSprint(request, env, viewer, project, "This project declares no release workflow (workflows.publier): declare it in .fabrique.json — Setup says how.", 422);
+      }
+      const [links, notes, boardReleaseList] = await Promise.all([storyCards(env.DB, project.repo), loadReleases(env, project), knownValues(env, project, await listCards(env.DB, project.repo))]);
+      const plan = await loadPlan(env, project, links, notes.releases, [...boardReleaseList.releases.values()]);
+      const kind: ReleaseKind = form.get("kind") === "major" ? "major" : "minor";
+      const title = String(form.get("title") ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+      const preview = async (error?: string, status = 200) => {
+        const { view, cookies } = await projectView(request, env, project, viewer);
+        return html(releasePage(viewer, view, plan, { kind, title: action === "close" || !title ? plan.title : title, ...(error ? { error } : {}) }), { cookies, status });
+      };
+      if (action === "close") return preview();
+      const version = proposeVersion(plan.newest, kind);
+      if (!version) return preview("The newest release has no number to continue from.", 422);
+      if (!title) return preview("The release needs a title.", 422);
+      const outcome = await startRelease(env, project, viewer.login, plan, version, title);
+      if (!outcome.ok) return preview(outcome.message, outcome.status);
+      return redirect(`${base}?notice=releasing&version=${encodeURIComponent(version)}`);
     }
     // The order in the sprint, and nice to have (la-fabrique#111).
     const card = Number(form.get("card"));
@@ -666,6 +693,9 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       stories,
       links,
       canOrder: canWriteCards(viewer),
+      canClose: hasIntegration(project) ? canWriteCards(viewer) : can(viewer.role, "promote"),
+      releaseWorkflow: publishWorkflow(project),
+      noIntegration: !hasIntegration(project),
       pulls,
       reviewers: people,
       progress,
@@ -685,6 +715,8 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       notice:
         params.get("notice") === "launched" && Number.isInteger(launched)
           ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.`
+          : params.get("notice") === "releasing"
+          ? `The release ${params.get("version") ?? ""} has started: the project's workflow opens a pull request on the production branch and merges it. The sprint closes when it is out.`
           : params.get("notice") === "merging" && Number.isInteger(Number(params.get("pull")))
             ? `Pull request #${Number(params.get("pull"))} is being merged by the project's workflow: it numbers and dates the release notes, checks again, then merges.`
             : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))

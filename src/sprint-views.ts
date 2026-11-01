@@ -8,6 +8,7 @@ import type { Card } from "./cards";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
+import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./sprint-release";
 import { stagePill } from "./stories-views";
 import type { Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
@@ -29,6 +30,11 @@ export interface SprintData {
   links: StoryCards;
   // Start, close, order, mark nice to have (Product Engineer and above).
   canOrder: boolean;
+  // Close the sprint: the release's go on a project without integration (Product Engineer, super admin).
+  canClose: boolean;
+  // That project's release workflow (workflows.publier), when it declares one.
+  releaseWorkflow: string | null;
+  noIntegration: boolean;
   // The sprint stories' pull requests, as GitHub has them, and who can be
   // asked to review one.
   pulls: Map<number, PullDetail>;
@@ -302,7 +308,11 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         }</p>
         ${
           data.canOrder
-            ? `<div class="card-actions">${data.legacy ? "" : button({ action: "close" }, "Close the sprint", "Close the sprint")}</div>`
+            ? `<div class="card-actions">${data.legacy || !data.canClose ? "" : button({ action: "close" }, "Close the sprint", "Close the sprint")}</div>${
+                data.canClose && data.noIntegration && !data.releaseWorkflow
+                  ? `<p class="muted">Closing the sprint makes the release through the project's workflow, which this project has not declared (<code>workflows.publier</code>): <a href="${escapeHtml(base)}/setup">Setup</a> says how.</p>`
+                  : ""
+              }`
             : ""
         }
         ${summary(data.sprintCards)}
@@ -348,6 +358,59 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       ${kept}
       ${next}
       ${integration}`,
+    viewer,
+    [],
+    projectContext(project),
+  );
+}
+
+// The close of the sprint on a project without integration (la-fabrique#137):
+// what the release takes and what stays, then minor or major and the title.
+export function releasePage(
+  viewer: Viewer,
+  project: Project,
+  plan: ReleasePlan,
+  options: { kind: ReleaseKind; title: string; error?: string },
+): string {
+  const base = projectUrl(project.repo);
+  const taken = plan.cards.filter((planned) => planned.done);
+  const kept = plan.cards.filter((planned) => !planned.done);
+  const storyLine = (story: { number: number; title: string; done: boolean; reason: string | null }) =>
+    `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${story.number}">#${story.number}</a> ${escapeHtml(story.title)} ${
+      story.done ? `<span class="pill good small">validated</span>` : `<span class="muted small">not done: ${escapeHtml(story.reason ?? "")}</span>`
+    }</li>`;
+  const cardBlock = (planned: PlannedCard) =>
+    `<li><strong>${escapeHtml(planned.card.title)}</strong>${planned.reason ? ` <span class="muted small">stays: ${escapeHtml(planned.reason)}</span>` : ""}<ul>${planned.stories.map(storyLine).join("")}</ul></li>`;
+  const entryLine = (entry: PlannedEntry) =>
+    `<li>${escapeHtml(entry.title ?? "(untitled)")} <span class="muted small">${entry.stories.map((n) => `#${n}`).join(", ") || "no story"}${entry.reason ? ` · stays <code>next</code>: ${escapeHtml(entry.reason)}` : ""}</span></li>`;
+  const radio = (kind: ReleaseKind, version: string | null) =>
+    version
+      ? `<label class="choice"><input type="radio" name="kind" value="${kind}"${options.kind === kind ? " checked" : ""} /> ${kind === "minor" ? "Minor" : "Major"}: <span class="mono">${escapeHtml(version)}</span></label>`
+      : "";
+  const entries = plan.entries;
+  return layout(
+    `Close the sprint · ${project.check?.config?.nom || project.repo} · La Fabrique extraordinaire`,
+    `${projectHeader(project, "sprint")}
+      ${notice(options.error, "error")}
+      <h2>Close the sprint</h2>
+      <p class="muted">Newest release: <span class="mono">${escapeHtml(plan.newest ?? "none")}</span>. The project's release workflow numbers and writes the release; La Fabrique writes nothing on the branch.</p>
+      <h3>The release takes</h3>
+      ${taken.length ? `<ul>${taken.map(cardBlock).join("")}</ul>` : `<p class="muted">No card is done: nothing to release.</p>`}
+      ${entries.some((entry) => entry.taken) ? `<p>Release-note entries it takes:</p><ul>${entries.filter((entry) => entry.taken).map(entryLine).join("")}</ul>` : ""}
+      <h3>What stays</h3>
+      ${kept.length ? `<ul>${kept.map(cardBlock).join("")}</ul>` : `<p class="muted">No card stays.</p>`}
+      ${entries.some((entry) => !entry.taken) ? `<p>Release-note entries that stay:</p><ul>${entries.filter((entry) => !entry.taken).map(entryLine).join("")}</ul>` : ""}
+      ${
+        taken.length
+          ? `<form method="post" action="${escapeHtml(base)}/sprint" class="request-form" data-busy="…">${csrfField(viewer)}
+        <input type="hidden" name="action" value="release" />
+        <fieldset><legend>Version</legend>${radio("minor", plan.minor)}${radio("major", plan.major)}</fieldset>
+        <label>Release title <input type="text" name="title" value="${escapeHtml(options.title)}" maxlength="200" required /></label>
+        <button type="submit" class="button">Start the release</button>
+        <a class="button quiet" href="${escapeHtml(base)}/sprint">Cancel</a>
+      </form>`
+          : `<p><a class="button quiet" href="${escapeHtml(base)}/sprint">Back to the sprint</a></p>`
+      }`,
     viewer,
     [],
     projectContext(project),

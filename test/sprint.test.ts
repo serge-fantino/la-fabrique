@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
 const REPO = "acme/widget";
-const CONFIG = { nom: "Widget", version: { fichier: "notes.json", forme: "0.N" } };
+const CONFIG = { nom: "Widget", branches: { integration: "integration" }, version: { fichier: "notes.json", forme: "0.N" } };
 const story = (number: number, title: string, state = "open") => ({
   number, title, state, labels: [], url: "", author: null, parent: null,
   subTotal: 0, subCompleted: 0, createdAt: "", updatedAt: "", closedAt: null, pullRequests: [], branches: [], criteria: [],

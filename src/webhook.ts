@@ -1,4 +1,5 @@
 import { promotionRunEvent } from "./go";
+import { releaseRunEvent } from "./sprint-release";
 import { mergeRunEvent } from "./sprint-pulls";
 import { claudeRunEvent, type RestWorkflowRun } from "./claude";
 import { sprintLiveFor } from "./live";
@@ -76,6 +77,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     if (payload.workflow_run) await claudeRunEvent(env, project, payload.action ?? "", payload.workflow_run);
     // The promotion done: the stories validated on int are shipped.
     if (payload.workflow_run) await promotionRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => []);
+    // The release of the sprint done: cards versioned, stories closed.
+    if (payload.workflow_run) await releaseRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
     // A merge run: merged, or refused and why.
     if (payload.workflow_run) await mergeRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
     await productionChanged(env, project.repo);
