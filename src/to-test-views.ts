@@ -1,3 +1,5 @@
+import type { Recorded } from "./gherkin";
+import { scenarioBlock } from "./gherkin-views";
 import { defectUrl, projectUrl } from "./urls";
 import { isEpic } from "./lifecycle";
 import type { NextRelease, ProductionStatus } from "./production";
@@ -20,6 +22,7 @@ export interface CardActions {
   canValidate: boolean;
   checks: Map<number, StoryChecks>;
   all: Map<number, Story>;
+  scenarios?: Map<number, Recorded[]>;
 }
 
 function criteriaList(story: Story, actions: CardActions): string {
@@ -93,6 +96,7 @@ function storyCard(story: Story, actions: CardActions): string {
       <h4><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)}</h4>
       ${criteriaList(story, actions)}
       ${validation(story, actions)}
+      ${scenarioBlock(actions.viewer, actions.base, story.number, story.title, actions.scenarios?.get(story.number) ?? [], actions.canValidate, "to-test")}
     </article>`;
 }
 

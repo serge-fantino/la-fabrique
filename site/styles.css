@@ -3318,3 +3318,16 @@ main:has(.sprint-layout) {
 .sprint-card-head {
   align-items: center;
 }
+
+.scenario { margin-top: 12px; }
+.scenario h4 { margin: 0 0 6px; }
+pre.gherkin {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #d9dbd0;
+  border-radius: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.85rem;
+}

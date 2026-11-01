@@ -1026,7 +1026,15 @@ export async function cardRoute(
   if (storyPath) {
     if (method !== "GET") return notAllowed();
     const [{ view, cookies }, detail] = await Promise.all([projectView(request, env, project, viewer), loadStoryDetail(env, project, Number(storyPath[1]))]);
-    return html(storyDetailPage(viewer, view, detail), { cookies });
+    const params = new URL(request.url).searchParams;
+    const pull = Number(params.get("feature"));
+    return html(
+      storyDetailPage(viewer, view, detail, {
+        ...(Number.isInteger(pull) && pull > 0 ? { pull } : {}),
+        ...(params.get("feature_failed") ? { failed: params.get("feature_failed") ?? "" } : {}),
+      }),
+      { cookies },
+    );
   }
   if (path === "sprint") {
     if (method === "GET") return sprintRoute(request, env, viewer, project, null);

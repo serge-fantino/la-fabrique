@@ -52,6 +52,7 @@ import { canPrioritize, setPriority } from "./backlog";
 import { backlogPage } from "./backlog-views";
 import { inDevReady, loadInDev } from "./in-dev";
 import { inDevContent, inDevLoading, inDevPage } from "./in-dev-views";
+import { proposeFeature, recordedByStory } from "./gherkin";
 import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
 import { cycleRules, isStage, projectRules, stageOf, stagesOf, storiesOnInt } from "./lifecycle";
 import { setupChecklist } from "./setup";
@@ -529,6 +530,7 @@ export async function showToTest(
       base: projectUrl(project.repo),
       canValidate: canValidate(viewer.role),
       checks: await storyChecks(env.DB, project.repo),
+      scenarios: await recordedByStory(env.DB, project.repo),
     },
   });
   return html(part ? content : toTestPage(viewer, view, content), { cookies, status: failed?.status ?? 200 });
@@ -542,7 +544,7 @@ export async function toTestAction(
   env: Env,
   viewer: Viewer,
   repo: string,
-  action: "criterion" | "validate" | "defect",
+  action: "criterion" | "validate" | "defect" | "feature",
 ): Promise<Response> {
   if (!canValidate(viewer.role)) {
     return html(messagePage("Not allowed", "Your role does not let you validate on int.", viewer), { status: 403 });
@@ -551,6 +553,13 @@ export async function toTestAction(
   if (!project) return notFound(viewer);
   const issue = Number(form.get("issue"));
   if (!Number.isInteger(issue) || issue <= 0) return redirect(`/projects/${project.repo}/to-test`);
+  if (action === "feature") {
+    const story = (await loadStories(env, project)).stories.find((candidate) => candidate.number === issue);
+    const outcome = await proposeFeature(request, env, project, viewer.login, issue, story?.title ?? `Story #${issue}`);
+    const page = `${projectUrl(project.repo)}/sprint/stories/${issue}`;
+    if (outcome.ok) return redirect(`${page}?feature=${outcome.number}#feature-${issue}-story`);
+    return redirect(`${page}?feature_failed=${outcome.reason}#feature-${issue}-story`);
+  }
   let outcome;
   if (action === "criterion") {
     const index = Number(form.get("index"));
