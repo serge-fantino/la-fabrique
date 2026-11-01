@@ -89,10 +89,24 @@
   });
 
   // A criterion ticked in To test: at once on the page, sent in the
-  // background; GitHub's answer confirms it, or the tick goes back with why.
+  // background, one after another (each tick rewrites the issue's text: two
+  // at once would undo each other); GitHub's answer confirms it, or the tick
+  // goes back with why. Validate waits until every tick is saved.
+  let ticks = Promise.resolve();
+  let pendingTicks = 0;
+  const refreshValidate = (story) => {
+    const validate = story && story.querySelector("[data-validate]");
+    if (!validate) return;
+    const all = [...story.querySelectorAll("button.criterion")].every((criterion) => criterion.getAttribute("aria-pressed") === "true");
+    const ready = all && pendingTicks === 0;
+    validate.disabled = !ready;
+    validate.classList.toggle("quiet", !ready);
+    if (pendingTicks > 0 && all) validate.setAttribute("title", "Saving the ticks…");
+    else validate.removeAttribute("title");
+  };
   document.addEventListener(
     "submit",
-    async (event) => {
+    (event) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-criterion")) return;
       event.preventDefault();
@@ -109,37 +123,37 @@
         if (box) box.textContent = on ? "✓" : "";
         if (item) item.classList.toggle("done", on);
         if (done instanceof HTMLInputElement) done.value = on ? "0" : "1";
-        const validate = story && story.querySelector("[data-validate]");
-        if (validate) {
-          const all = [...story.querySelectorAll("button.criterion")].every((criterion) => criterion.getAttribute("aria-pressed") === "true");
-          validate.disabled = !all;
-          validate.classList.toggle("quiet", !all);
-        }
+        refreshValidate(story);
       };
       const wanted = data.get("done") === "1";
       const old = story && story.querySelector("[data-criterion-error]");
       if (old) old.remove();
-      show(wanted);
       form.dataset.pending = "1";
       form.setAttribute("aria-busy", "true");
-      try {
-        const response = await fetch(form.action, { method: "POST", body: data, headers: { accept: "application/json" } });
-        const answer = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(answer.error || "The tick was not saved.");
-      } catch (error) {
-        show(!wanted);
-        if (story) {
-          const note = document.createElement("p");
-          note.className = "notice error";
-          note.setAttribute("role", "alert");
-          note.setAttribute("data-criterion-error", "");
-          note.textContent = error instanceof Error && error.message ? error.message : "The tick was not saved: reload the page.";
-          (form.closest("ul") || story).before(note);
+      pendingTicks++;
+      show(wanted);
+      ticks = ticks.then(async () => {
+        try {
+          const response = await fetch(form.action, { method: "POST", body: data, headers: { accept: "application/json" } });
+          const answer = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(answer.error || "The tick was not saved.");
+        } catch (error) {
+          show(!wanted);
+          if (story) {
+            const note = document.createElement("p");
+            note.className = "notice error";
+            note.setAttribute("role", "alert");
+            note.setAttribute("data-criterion-error", "");
+            note.textContent = error instanceof Error && error.message ? error.message : "The tick was not saved: reload the page.";
+            (form.closest("ul") || story).before(note);
+          }
+        } finally {
+          pendingTicks--;
+          delete form.dataset.pending;
+          form.removeAttribute("aria-busy");
+          refreshValidate(story);
         }
-      } finally {
-        delete form.dataset.pending;
-        form.removeAttribute("aria-busy");
-      }
+      });
     },
     true,
   );

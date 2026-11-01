@@ -237,6 +237,32 @@ describe("Validating on int", () => {
     expect(page).toContain("data-validate>");
   });
 
+  it("writes a tick again when another one, written at the same moment, undid it", async () => {
+    await seed(CONFIG_FR);
+    appToken(4);
+    // Someone ticked the first criterion at the same moment, from the text
+    // before ours: our tick is gone when read back, and written again on top.
+    const theirs = ISSUE.body.replace("Sept jours s'affichent", "- [x] Sept jours s'affichent");
+    const both = theirs.replace("Un repas se déplace", "- [x] Un repas se déplace");
+    github().intercept({ path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify(ISSUE), JSON_HEADERS);
+    const sent: string[] = [];
+    github()
+      .intercept({ method: "PATCH", path: `/repos/${REPO}/issues/31` })
+      .reply(200, (options) => {
+        const body = (JSON.parse(String(options.body)) as { body: string }).body;
+        sent.push(body);
+        return JSON.stringify({ ...ISSUE, body });
+      })
+      .times(2);
+    github().intercept({ path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify({ ...ISSUE, body: theirs }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify({ ...ISSUE, body: both }), JSON_HEADERS);
+    const { cookie, csrf } = await signIn("admin-one");
+    const response = await post(`/projects/${REPO}/to-test/criterion`, { csrf, issue: "31", index: "1", text: "Un repas se déplace", done: "1" }, cookie);
+    expect(response.status).toBe(303);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toBe(both);
+  });
+
   it("refuses when the issue changed meanwhile", async () => {
     await seed(CONFIG_FR);
     appToken();

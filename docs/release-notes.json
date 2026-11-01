@@ -1,5 +1,16 @@
 [
   {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "Ticking criteria quickly keeps every tick",
+    "changements": [
+      "In To test, criteria ticked quickly one after another are all kept: they are saved one at a time, in order, and Validate waits until every tick is saved.",
+      "A tick undone by another written at the same moment (another tab, another person) is written again on the issue's current text."
+    ],
+    "stories": [58],
+    "liens": null
+  },
+  {
     "version": "0.81",
     "date": "2026-11-01",
     "heure": "22:42",
