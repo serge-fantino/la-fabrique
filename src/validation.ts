@@ -65,15 +65,25 @@ export async function tickCriterion(
   done: boolean,
 ): Promise<ValidationOutcome> {
   try {
-    const issue = await readIssue(env, project, number);
-    if (!issue) return { ok: false, message: `Issue #${number} could not be read.`, status: 502 };
-    const body = setCriterion(issue.body ?? "", index, text, done);
-    if (body === null) return CHANGED;
-    const response = await write(request, env, project, (token) =>
-      githubPatch(token, `/repos/${project.repo}/issues/${number}`, { body }),
-    );
-    if (!response.ok) return { ok: false, message: `GitHub refused the change (HTTP ${response.status}).`, status: 502 };
-    await applyIssueEvent(env, project.repo, "edited", (await response.json()) as RestIssue);
+    // Each tick rewrites the issue's text: another one written at the same
+    // moment (another tab, another person) may undo it. Read back, and
+    // written again on the text as it is now, a few times at most.
+    let saved = false;
+    for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+      const issue = await readIssue(env, project, number);
+      if (!issue) return { ok: false, message: `Issue #${number} could not be read.`, status: 502 };
+      if (attempt > 0 && acceptanceCriteria(issue.body)[index]?.done === done) break;
+      const body = setCriterion(issue.body ?? "", index, text, done);
+      if (body === null) return CHANGED;
+      const response = await write(request, env, project, (token) =>
+        githubPatch(token, `/repos/${project.repo}/issues/${number}`, { body }),
+      );
+      if (!response.ok) return { ok: false, message: `GitHub refused the change (HTTP ${response.status}).`, status: 502 };
+      await applyIssueEvent(env, project.repo, "edited", (await response.json()) as RestIssue);
+      // Not read back (GitHub busy): what GitHub just answered stands.
+      const after = await readIssue(env, project, number).catch(() => null);
+      saved = !after || acceptanceCriteria(after.body)[index]?.done === done;
+    }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error), status: 502 };
   }
