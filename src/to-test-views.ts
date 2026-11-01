@@ -31,7 +31,7 @@ function criteriaList(story: Story, actions: CardActions): string {
         criterion.done ? ` <span class="visually-hidden">(checked)</span>` : ""
       }</span>`;
       if (!actions.canValidate) return `<li class="${criterion.done ? "done" : ""}">${content}</li>`;
-      return `<li class="${criterion.done ? "done" : ""}"><form method="post" action="${escapeHtml(actions.base)}/to-test/criterion">
+      return `<li class="${criterion.done ? "done" : ""}"><form method="post" action="${escapeHtml(actions.base)}/to-test/criterion" data-criterion>
           ${csrfField(actions.viewer)}
           <input type="hidden" name="issue" value="${story.number}" />
           <input type="hidden" name="index" value="${index}" />
@@ -66,7 +66,7 @@ function validation(story: Story, actions: CardActions): string {
       <form method="post" action="${escapeHtml(actions.base)}/to-test/validate">
         ${csrfField(actions.viewer)}
         <input type="hidden" name="issue" value="${story.number}" />
-        <button type="submit" class="button${ready ? "" : " quiet"}"${ready ? "" : " disabled"}>${check?.validated ? "Validate again" : "Validate"}</button>
+        <button type="submit" class="button${ready ? "" : " quiet"}"${ready ? "" : " disabled"} data-validate>${check?.validated ? "Validate again" : "Validate"}</button>
       </form>
       ${ready ? "" : `<span class="muted small">Check every criterion to validate.</span>`}
       <details class="defect-form">

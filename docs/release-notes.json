@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Testing, followed in the sprint and on the card; ticking a criterion at once",
+    "changements": [
+      "A story on int (or merged, without integration) says where its testing stands, in the sprint and on its card: Validated, by whom and when, or how many of its criteria are checked, with a link to test it.",
+      "In To test, ticking a criterion shows at once and is saved in the background, without reloading the page; Validate unlocks as soon as every criterion is ticked. If GitHub refuses, the tick goes back and the page says why."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Clearer pull requests in the sprint; no branch menu where it does nothing",
     "changements": [
       "Ask for a review no longer shows an empty list: when there is no one else to ask (the author of a pull request cannot review it, and the reviewers are La Fabrique's tech leads and super admins), the sprint says so.",

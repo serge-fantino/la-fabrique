@@ -9,7 +9,7 @@ import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
 import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./sprint-release";
-import { stagePill } from "./stories-views";
+import { stagePill, testingNote } from "./stories-views";
 import type { Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
@@ -201,7 +201,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           story?.pulls.length ? `<br />${pullsOf(number, controls)}` : ""
         }</td>
         <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${
-          story?.stage === "to_validate" ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Validate in To test</a>` : ""
+          story ? testingNote(story) : ""
+        }${
+          (story?.stage === "to_validate" || story?.stage === "on_int") && !story.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
         }${readiness(number, controls)}</td>
         ${
           data.priorities.length
