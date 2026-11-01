@@ -1,3 +1,4 @@
+import { loadStoryDetail, storyDetailPage } from "./story-detail";
 import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
 import { goSection } from "./production-views";
@@ -69,7 +70,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -932,6 +933,13 @@ export async function cardRoute(
     if (method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("A WebSocket is expected.", { status: 426 });
     const live = sprintLiveFor(env, project.repo);
     return live ? live.fetch(request) : new Response("Not found", { status: 404 });
+  }
+  // A story's detail, from the sprint: its steps, pull requests, runs, history.
+  const storyPath = /^sprint\/stories\/(\d{1,9})$/.exec(path);
+  if (storyPath) {
+    if (method !== "GET") return notAllowed();
+    const [{ view, cookies }, detail] = await Promise.all([projectView(request, env, project, viewer), loadStoryDetail(env, project, Number(storyPath[1]))]);
+    return html(storyDetailPage(viewer, view, detail), { cookies });
   }
   if (path === "sprint") {
     if (method === "GET") return sprintRoute(request, env, viewer, project, null);

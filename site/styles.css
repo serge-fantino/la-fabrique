@@ -2973,3 +2973,66 @@ tr.nice td {
   align-items: center;
   gap: 0.35rem;
 }
+
+/* The sprint in three parts, and a story's steps (la-fabrique#113). */
+.sprint-work,
+.sprint-stories {
+  margin-top: 2rem;
+}
+
+.sprint-open-pulls {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sprint-open-pulls li {
+  background: #fff;
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+}
+
+.story-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.story-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+}
+
+.story-step-mark {
+  font-family: "IBM Plex Mono", monospace;
+  width: 1.25rem;
+  text-align: center;
+}
+
+.story-step.done .story-step-mark {
+  color: #1e5a43;
+}
+
+.story-step.current {
+  background: #fff;
+}
+
+.story-step.current .story-step-mark {
+  color: #c23d17;
+}
+
+.story-step.waiting {
+  color: #4a5650;
+}
+
+.story-pulls {
+  padding-left: 1.25rem;
+}

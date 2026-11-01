@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The sprint in three parts, and a page for each story",
+    "changements": [
+      "The sprint page is split in three: the sprint itself (where it stands, the go, closing it), the work in progress (Claude's runs, the next story to launch, the pull requests open on its stories with merge, update and review), and the features and their stories (stage, testing, priority).",
+      "Each story of the sprint opens its own page: its steps from ready to production (done, current, to come), its acceptance criteria, its pull requests, Claude's runs and its history from the log."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Give the go from the sprint; the sprint closes once it is out",
     "changements": [
       "On a project with an integration branch, the sprint offers the go itself, as Production does: what production will receive, the stories validated or not, the next release to open (minor or major).",
