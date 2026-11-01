@@ -11,16 +11,17 @@ beforeAll(() => {
 afterEach(() => fetchMock.assertNoPendingInterceptors());
 
 describe("Discovery", () => {
-  it("names the contract's endpoints and its single scope", async () => {
+  it("names the contract's endpoints, the projects' apps' scope and the assistants'", async () => {
     const response = await get("/.well-known/oauth-authorization-server");
     expect(response.status).toBe(200);
     const metadata = (await response.json()) as Record<string, unknown>;
     expect(metadata["authorization_endpoint"]).toBe(`${BASE}/oauth/authorize`);
     expect(metadata["token_endpoint"]).toBe(`${BASE}/oauth/token`);
     expect(metadata["revocation_endpoint"]).toBe(`${BASE}/oauth/revoke`);
-    expect(metadata["scopes_supported"]).toEqual(["defects:report"]);
+    expect(metadata["scopes_supported"]).toEqual(["defects:report", "fabrique"]);
     expect(metadata["code_challenge_methods_supported"]).toEqual(["S256"]);
-    expect(metadata["registration_endpoint"]).toBeUndefined();
+    // Claude registers itself; a project's app is still registered from Setup.
+    expect(metadata["registration_endpoint"]).toBe(`${BASE}/oauth/register`);
   });
 });
 

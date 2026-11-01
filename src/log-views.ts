@@ -136,6 +136,8 @@ export function describe(entry: LogEntry, repo: string): string {
       const stories = Array.isArray(d["stories"]) ? (d["stories"] as unknown[]).map((n) => `#${text(n)}`).join(", ") : "";
       return `imported card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${stories ? `, with ${stories}` : ""}`;
     }
+    case "mcp_write":
+      return `did <span class="mono">${text(d["tool"])}</span> through ${text(d["app"]) || "Claude"} (MCP)`;
     case "card_value_added":
       return `added ${text(d["dimension"])} “${text(d["value"])}” to the board`;
     default:

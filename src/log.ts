@@ -10,6 +10,7 @@ export const LOG_GROUPS: { id: string; label: string; actions: string[] }[] = [
   { id: "cards", label: "Cards", actions: ["card_created", "card_edited", "card_moved", "card_archived", "card_restored", "card_value_added", "card_spec_written", "card_version_restored", "card_story_created", "card_split_proposed", "card_stories_reviewed", "card_imported", "card_priority_set", "card_progress_changed"] },
   { id: "sprint", label: "Sprint", actions: ["sprint_started", "sprint_stopped", "sprint_shipped", "sprint_close_requested", "release_started", "release_published", "release_failed", "card_versioned", "story_closed", "sprint_card_moved", "sprint_story_moved", "story_nice_set", "story_marked_ready"] },
   { id: "setup", label: "Project setup", actions: ["project_added", "config_change_proposed"] },
+  { id: "assistant", label: "Through Claude (MCP)", actions: ["mcp_write"] },
 ];
 
 export const PAGE_SIZE = 100;

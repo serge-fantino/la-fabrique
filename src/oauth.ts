@@ -8,6 +8,7 @@ import { fetchUser, refreshUserToken } from "./github";
 import { githubFetch } from "./github-app";
 import { cspWithFormTarget } from "./headers";
 import { html, json, redirect } from "./http";
+import { MCP_PATH, MCP_SCOPE, mcpServer } from "./mcp";
 import { findProject, type Project } from "./projects";
 import { can } from "./rights";
 import { readSession, userToken, type Session } from "./session";
@@ -19,6 +20,7 @@ export const DEFECTS_SCOPE = "defects:report";
 export const AUTHORIZE_PATH = "/oauth/authorize";
 export const TOKEN_PATH = "/oauth/token";
 export const REVOKE_PATH = "/oauth/revoke";
+export const REGISTER_PATH = "/oauth/register";
 export const DISCOVERY_PATH = "/.well-known/oauth-authorization-server";
 export const ACCESS_TOKEN_TTL = 60 * 60;
 export const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60;
@@ -31,6 +33,9 @@ export interface GrantProps {
   repo: string;
   // The app's name when it was connected, for the reports' signature.
   app?: string;
+  // Claude (or another MCP client), connected to work in La Fabrique in
+  // the person's name (src/mcp.ts): no project, the `fabrique` scope.
+  mcp?: boolean;
 }
 
 export function oauthHelpers(env: Env): OAuthHelpers {
@@ -114,6 +119,33 @@ function consentPage(
   );
 }
 
+// Claude (an MCP client registered by itself) works in La Fabrique in the
+// person's name: what it can do is what the person's role can.
+function mcpConsentPage(session: Session, role: Role, appName: string, action: string, redirectOrigin: string): Response {
+  return html(
+    layout(
+      `Connect ${appName} · La Fabrique extraordinaire`,
+      `<section class="consent">
+        <p class="eyebrow">Connect an assistant</p>
+        <h1>${escapeHtml(appName)}</h1>
+        <p class="lead"><strong>${escapeHtml(appName)}</strong> will be able to work in La Fabrique in your name: read the projects' boards, cards, stories and sprints, and write what your role allows.</p>
+        <ul class="consent-list">
+          <li>As a ${escapeHtml(ROLE_LABELS[role])}: create and change cards and their specs, make stories on GitHub, start and close sprints${can(role, "launch_claude") ? ", launch Claude Code and merge pull requests" : ""}.</li>
+          <li>Never the go to production: that stays yours, on the sprint page.</li>
+          <li>Everything it writes is in La Fabrique's log under <span class="mono">@${escapeHtml(session.login)}</span>, marked as made through ${escapeHtml(appName)}. It never gets a GitHub token.</li>
+          <li>Its address back is <code>${escapeHtml(redirectOrigin)}</code>. You can disconnect it at any time from <a href="/apps">Connected apps</a>.</li>
+        </ul>
+        <form method="post" action="${escapeHtml(action)}" class="actions">
+          <input type="hidden" name="csrf" value="${escapeHtml(session.csrfToken)}" />
+          <button type="submit" name="decision" value="allow" class="button">Allow</button>
+          <button type="submit" name="decision" value="deny" class="button quiet">Deny</button>
+        </form>
+      </section>`,
+    ),
+    { headers: { "content-security-policy": cspWithFormTarget(redirectOrigin) } },
+  );
+}
+
 function errorRedirect(authRequest: AuthRequest, error: string, description: string): Response {
   const target = new URL(authRequest.redirectUri);
   target.searchParams.set("error", error);
@@ -141,6 +173,9 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
   }
   const client = await helpers.lookupClient(authRequest.clientId);
   const repo = await appRepo(env.DB, authRequest.clientId);
+  // A client no project registered: an MCP client (Claude), registered by
+  // itself, for the `fabrique` scope only.
+  if (client && !repo) return authorizeMcp(request, env, helpers, authRequest, client.clientName ?? "Claude");
   const project = repo ? await findProject(env.DB, repo) : null;
   if (!client || !project) {
     return errorPage("This app is not connected to a project", "Ask the owner of La Fabrique to register it again.", 400);
@@ -210,6 +245,49 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
   return new Response(null, { status: 302, headers: { location: redirectTo, "cache-control": "no-store" } });
 }
 
+async function authorizeMcp(request: Request, env: Env, helpers: OAuthHelpers, authRequest: AuthRequest, appName: string): Promise<Response> {
+  const url = new URL(request.url);
+  const requested = authRequest.scope.length ? authRequest.scope : [MCP_SCOPE];
+  if (requested.some((scope) => scope !== MCP_SCOPE)) return errorRedirect(authRequest, "invalid_scope", `Only ${MCP_SCOPE} can be granted to an assistant.`);
+  const session = await readSession(request, env.DB);
+  if (!session) {
+    if (request.method !== "GET") return errorPage("Signed out", "Your session ended: connect the assistant again.", 403);
+    return redirect(`/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
+  }
+  const role = await effectiveRole(env, session.login);
+  if (!role) return errorPage("No role in La Fabrique", `@${session.login} has no role in La Fabrique: an assistant can only work for someone who has one.`, 403);
+  const redirectOrigin = new URL(authRequest.redirectUri).origin;
+  if (request.method === "GET") return mcpConsentPage(session, role, appName, url.pathname + url.search, redirectOrigin);
+
+  const origin = request.headers.get("origin");
+  let form: FormData | null = null;
+  if (!origin || origin === url.origin) {
+    try {
+      form = await request.formData();
+    } catch {
+      form = null;
+    }
+  }
+  const csrf = form?.get("csrf");
+  if (!form || typeof csrf !== "string" || !safeEqual(csrf, session.csrfToken)) {
+    return errorPage("Not allowed", "This form expired: connect the assistant again.", 403);
+  }
+  if (form.get("decision") !== "allow") return errorRedirect(authRequest, "access_denied", "The person declined.");
+  const token = await personToken(request, env);
+  const user = token ? await fetchUser(token) : null;
+  const props: GrantProps = { login: session.login, name: user?.name ?? null, avatarUrl: user?.avatarUrl ?? null, repo: "", app: appName, mcp: true };
+  const { redirectTo } = await helpers.completeAuthorization({
+    request: authRequest,
+    userId: session.login,
+    metadata: { mcp: true },
+    scope: [MCP_SCOPE],
+    props,
+    revokeExistingGrants: true,
+  });
+  await activityStatement(env.DB, { actor: session.login, action: "assistant_connected", details: { client_id: authRequest.clientId, app: appName } }).run();
+  return new Response(null, { status: 302, headers: { location: redirectTo, "cache-control": "no-store" } });
+}
+
 // The token endpoint answers revocations (a body with `token` and no
 // `grant_type`); the contract gives them their own address.
 export async function revoke(request: Request, provider: { fetch: (request: Request, env: Env, ctx: ExecutionContext) => Promise<Response> }, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -235,6 +313,10 @@ export async function discovery(response: Response, request: Request): Promise<R
 // The API a connected app calls with its access token.
 export async function api(request: Request, env: Env, props: GrantProps): Promise<Response> {
   const { pathname } = new URL(request.url);
+  // An assistant's token reaches the MCP server only; a project app's, the
+  // project's API only.
+  if (pathname === MCP_PATH) return props.mcp ? mcpServer(request, env, props) : json({ error: "insufficient_scope" }, { status: 403 });
+  if (props.mcp) return json({ error: "insufficient_scope" }, { status: 403 });
   if (pathname === "/api/me") {
     if (request.method !== "GET") return json({ error: "method_not_allowed" }, { status: 405 });
     const project = await findProject(env.DB, props.repo);

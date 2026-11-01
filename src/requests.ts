@@ -74,7 +74,22 @@ export async function createRequest(
   const clientSecret = env.GITHUB_APP_CLIENT_SECRET ?? "";
   const token = await userToken(request, env.DB, (refresh) => refreshUserToken(clientId, clientSecret, refresh));
   if (!token) return { ok: false, reason: "signed_out" };
+  return createIssue(env, project, token, login, draft, rubriques, origin);
+}
 
+// The issue, with a token: the person's (from a page), or the App's (from
+// Claude through the MCP server, src/mcp.ts), the body signed with the
+// person's login either way. `via`: written in the log.
+export async function createIssue(
+  env: Env,
+  project: Project,
+  token: string,
+  login: string,
+  draft: RequestDraft,
+  rubriques: Rubrique[],
+  origin?: string,
+  via?: string,
+): Promise<CreateOutcome> {
   const label = project.check?.config?.demandes?.etiquettes?.["demande"];
   const response = await githubPost(token, `/repos/${project.repo}/issues`, {
     title: draft.title,
@@ -99,7 +114,7 @@ export async function createRequest(
     action: "request_created",
     repo: project.repo,
     issueNumber: issue.number,
-    details: { title: draft.title, url: issue.html_url },
+    details: { title: draft.title, url: issue.html_url, ...(via ? { via } : {}) },
   }).run();
   await applyIssueEvent(env, project.repo, "opened", issue);
   return { ok: true, number: issue.number, url: issue.html_url };
