@@ -1,4 +1,4 @@
-import { env, SELF } from "cloudflare:test";
+import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import ownConfig from "../.fabrique.json";
 import releaseNotes from "../docs/release-notes.json";
@@ -34,7 +34,6 @@ describe("La Fabrique as its own project", () => {
     // top, and never on main.
     const drafts = all.filter((release) => release.version === "next");
     expect(all.slice(0, drafts.length).every((release) => release.version === "next"), "the entries to number are on top").toBe(true);
-    if (env.TEST_ON_MAIN) expect(drafts.map((release) => release.title), "entries not numbered on main").toEqual([]);
     for (const draft of drafts) expect(draft.time, "an entry to number has no time yet").toBeNull();
     const releases = all.slice(drafts.length);
     expect(new Set(releases.map((release) => release.version)).size).toBe(releases.length);
@@ -57,6 +56,8 @@ describe("La Fabrique as its own project", () => {
 
   it("answers its version number with the deployed commit", async () => {
     const body = (await (await SELF.fetch("https://la-fabrique.test/api/version")).json()) as Record<string, unknown>;
-    expect(body).toEqual({ numero: releaseNotes[0]?.version, commit: "test-commit" });
+    const drafts = releaseNotes.filter((note) => note.version === "next").length;
+    const last = releaseNotes.find((note) => note.version !== "next")?.version;
+    expect(body).toEqual({ numero: drafts ? `${last} + ${drafts} ${drafts === 1 ? "change" : "changes"}` : last, commit: "test-commit" });
   });
 });

@@ -122,7 +122,7 @@ function versionInfo(viewer?: Viewer): string {
         ${info.date ? `<span>Released <span class="mono">${escapeHtml(info.date)}${info.time ? ` ${escapeHtml(info.time)}` : ""}</span> (Paris)</span>` : ""}
         <span>Commit <code>${escapeHtml(short)}</code></span>
         <span class="version-actions">
-          ${viewer ? `<a class="button quiet small" href="${WHATS_NEW_PATH}${info.version ? `#${releaseAnchor(info.version)}` : ""}">What's new</a>` : ""}
+          ${viewer ? `<a class="button quiet small" href="${WHATS_NEW_PATH}${info.version ? `#${releaseAnchor(info.version.split(" ")[0] ?? info.version)}` : ""}">What's new</a>` : ""}
           <a class="button quiet small" href="" data-update data-commit="${escapeHtml(info.commit)}"><span aria-hidden="true">🔄</span> Update</a>
         </span>
       </span>
