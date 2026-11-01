@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Tick, validate and report from the app",
+    "changements": [
+      "Tick a story's criteria, validate it or report a defect from the app on int: the kit's panel (1.4.0) shows checkboxes, a Validate button and Report a defect on this story.",
+      "POST /api/projects/{project}/to-test/{story}/criteria and /validate (scope stories:test) write in the issue and the log as To test does; validating is refused until every criterion is ticked.",
+      "The relay must add POST ?to-test={story}/criteria and /validate (docs/report-kit.md)."
+    ],
+    "stories": [166],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The stories to test, in the project's app on int",
     "changements": [
       "A project's app can ask for the new scope stories:test next to defects:report; the consent page says what it allows and Connected apps shows it.",

@@ -41,7 +41,7 @@ async function write(
   return send(await installationToken(env, project.installationId));
 }
 
-async function readIssue(env: Env, project: Project, number: number): Promise<RestIssue | null> {
+export async function readIssue(env: Env, project: Project, number: number): Promise<RestIssue | null> {
   const token = await installationToken(env, project.installationId);
   const response = await githubFetch(token, `/repos/${project.repo}/issues/${number}`);
   return response.ok ? ((await response.json()) as RestIssue) : null;

@@ -8,7 +8,7 @@ import { fetchUser, refreshUserToken } from "./github";
 import { githubFetch } from "./github-app";
 import { cspWithFormTarget } from "./headers";
 import { html, json, redirect } from "./http";
-import { storiesToTestForApp, TO_TEST_ROUTE } from "./to-test-api";
+import { actOnStoryForApp, storiesToTestForApp, TO_TEST_ROUTE, TO_TEST_STORY_ROUTE } from "./to-test-api";
 import { MCP_PATH, MCP_SCOPE, mcpServer } from "./mcp";
 import { findProject, type Project } from "./projects";
 import { can } from "./rights";
@@ -367,6 +367,11 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
   if (toTest) {
     if (request.method !== "GET") return json({ error: "method_not_allowed" }, { status: 405 });
     return storiesToTestForApp(request, env, props, toTest[1] ?? "");
+  }
+  const act = TO_TEST_STORY_ROUTE.exec(pathname);
+  if (act) {
+    if (request.method !== "POST") return json({ error: "method_not_allowed" }, { status: 405 });
+    return actOnStoryForApp(request, env, props, act[1] ?? "", Number(act[2]), act[3] ?? "");
   }
   return json({ error: "not_found" }, { status: 404 });
 }
