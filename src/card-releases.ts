@@ -22,6 +22,9 @@ export interface BoardRelease {
   // In progress on the project's integration branch, waiting for the go:
   // the branch, to say "On int · integration".
   integration?: string;
+  // The Sprint lane: the release(s) on int it is building, shown in its
+  // head ("Sprint · In progress · 1.170 (int)") rather than as a lane.
+  onInt?: string[];
 }
 
 // Two lanes with no version: what the next sprint will take, and the
@@ -169,6 +172,19 @@ export async function knownValues(
     !used.has(release.version) &&
     all.some((other) => other.state !== "planned" && !isFixedLane(other.version) && compareVersions(release.version, other.version) >= 0);
   const gone = new Set(all.filter(stale).map((release) => release.version));
+  // While a sprint runs, the release on int is the one it builds: one lane,
+  // the Sprint's, says both ("Sprint · In progress · 1.170 (int)"), so a
+  // card shows once. A card that carries the version keeps its lane.
+  const sprintLane = all.find((release) => release.version === SPRINT_LANE);
+  if (sprintLane) {
+    const onInt = all.filter((release) => release.integration && !used.has(release.version));
+    if (onInt.length) {
+      onInt.forEach((release) => gone.add(release.version));
+      sprintLane.onInt = onInt.map((release) => release.version);
+      const branch = onInt[0]?.integration;
+      if (branch) sprintLane.integration = branch;
+    }
+  }
   const releases = all.filter((release) => !gone.has(release.version));
   known.release = known.release.filter((value) => !gone.has(value));
   const others = known.release.filter((value) => !releases.some((release) => release.version === value));

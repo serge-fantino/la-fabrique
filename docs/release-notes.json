@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "One lane for the sprint and the release on int",
+    "changements": [
+      "While a sprint runs, the release on int is no longer a lane of its own on the board: the Sprint lane says it, \"Sprint · In progress · 1.170 (int)\", so a card shows in one place."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A card counts all its stories; the release on int on the board",
     "changements": [
       "A card's count takes all its stories, nice to have included: \"To test 3/3 validated\". Its stage still follows the stories needed, so a nice to have never holds it back; the pill's title says how many are nice to have.",
