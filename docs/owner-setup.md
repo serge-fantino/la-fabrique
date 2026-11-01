@@ -258,3 +258,33 @@ variables → Actions):
 
 At most `claude.plafond` runs at once (2 by default). Only tech leads and the
 super admin launch Claude; each launch is logged and said on the issue.
+
+## 11. Connecting Claude to La Fabrique (MCP)
+
+La Fabrique is also an MCP server, at `https://<the Worker's address>/mcp`:
+Claude (claude.ai, Claude Desktop, Claude Code) reads and writes the projects'
+upstream in your name: boards, cards and their specs, stories made from a card,
+the sprint; a tech lead can also launch Claude Code on a story and merge a pull
+request. The go to production is never done through it: it stays on the sprint
+page.
+
+Nothing to set up on the Worker: Claude registers itself (OAuth dynamic client
+registration, `/oauth/register`), then you sign in with GitHub and allow it.
+
+- **claude.ai** (and Claude Desktop): Settings → Connectors → *Add custom
+  connector*, name *La Fabrique*, address `https://<the Worker>/mcp`; then
+  *Connect*. The connector is then available in your conversations and in
+  Claude Code sessions on the web.
+- **Claude Code** on your computer:
+
+  ```bash
+  claude mcp add --transport http la-fabrique https://<the Worker>/mcp
+  ```
+
+  then `/mcp` in Claude Code to sign in.
+
+Only an account with a role in La Fabrique can allow it; what Claude may do is
+what that role may do, read again at each call (a role taken back stops it at
+once). Each write is in the project's log under your login, followed by a line
+*did … through Claude (MCP)*. Stories are created by La Fabrique's GitHub App,
+signed with your login. Disconnect it from Settings → *Connected apps*.

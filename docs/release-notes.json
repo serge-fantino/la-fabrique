@@ -1,5 +1,17 @@
 [
   {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "Claude works in La Fabrique: the MCP server",
+    "changements": [
+      "La Fabrique is an MCP server (/mcp): connected from claude.ai or Claude Code, Claude reads the projects' boards, cards, stories and sprints, and writes in your name what your role allows: cards and their specs, stories made from a card on GitHub, starting and closing the sprint; for a tech lead, launching Claude Code on a story and merging a pull request.",
+      "The go to production is never given through it: it stays on the sprint page.",
+      "Claude registers itself and asks you to allow it; only an account with a role can. Each write is in the project's log under your login, marked as made through Claude, and you disconnect it from Connected apps."
+    ],
+    "stories": [155],
+    "liens": null
+  },
+  {
     "version": "0.80",
     "date": "2026-11-01",
     "heure": "15:05",

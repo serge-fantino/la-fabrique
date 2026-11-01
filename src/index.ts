@@ -16,8 +16,9 @@ import { createProject, recheckProject, showActivity, showBranches, showDelivery
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
-import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
+import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, REGISTER_PATH, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
 import { d1KeyValue } from "./oauth-store";
+import { MCP_PATH, MCP_SCOPE } from "./mcp";
 import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
 import { CARD_ROUTE, cardRoute } from "./card-routes";
 import { cardUrl } from "./card-views";
@@ -426,7 +427,7 @@ function providerFor(origin: string): OAuthProvider<Env> {
   let provider = providers.get(origin);
   if (!provider) {
     provider = new OAuthProvider<Env>({
-      apiRoute: ["/api/me", "/api/projects/"],
+      apiRoute: ["/api/me", "/api/projects/", MCP_PATH],
       apiHandler: {
         fetch(request: Request, env: Env, ctx: ExecutionContext & { props?: unknown }) {
           return api(request, env, ctx.props as GrantProps);
@@ -435,11 +436,15 @@ function providerFor(origin: string): OAuthProvider<Env> {
       defaultHandler: app,
       authorizeEndpoint: AUTHORIZE_PATH,
       tokenEndpoint: TOKEN_PATH,
-      scopesSupported: [DEFECTS_SCOPE],
+      // Claude registers itself (RFC 7591), as MCP clients do; it can only
+      // ask for the `fabrique` scope (src/oauth.ts, authorizeMcp).
+      clientRegistrationEndpoint: REGISTER_PATH,
+      scopesSupported: [DEFECTS_SCOPE, MCP_SCOPE],
       resourceMetadata: { resource: origin, resource_name: "La Fabrique extraordinaire" },
       accessTokenTTL: ACCESS_TOKEN_TTL,
       refreshTokenTTL: REFRESH_TOKEN_TTL,
-      disallowPublicClientRegistration: true,
+      // Claude Code registers as a public client (PKCE, no secret).
+      disallowPublicClientRegistration: false,
       // A refusal (expired code, wrong secret, revoked token) leaves a line
       // in the Worker's logs, without any token or secret.
       onError({ code, description, status, request }) {
