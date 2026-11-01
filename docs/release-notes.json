@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A pull request that names several stories links them all",
+    "changements": [
+      "A pull request whose text names a list of stories (\"Refs #160, #161\", \"Closes #3 and #4\") is now linked to each of them, not only the first: each story shows it and moves on when it is merged."
+    ],
+    "stories": [161],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint runs by itself",
     "changements": [
       "\"Run the sprint\" (Product Engineer, super admin) first shows what will run, then runs it up to testing: each card's stories one after another (Claude, then the merge of its pull request), the cards side by side, never more Claude runs than the project allows, one merge at a time. GitHub's events move it on; a check every few minutes catches up a lost one.",
