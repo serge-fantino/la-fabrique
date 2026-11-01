@@ -108,11 +108,11 @@ export interface Tokens {
 
 // The whole flow for an account without a role, which only has to see the
 // repository on GitHub.
-export async function connect(login = "mona", config: Record<string, unknown> = CONFIG): Promise<{ app: { clientId: string; clientSecret: string }; tokens: Tokens; cookie: string; csrf: string }> {
+export async function connect(login = "mona", config: Record<string, unknown> = CONFIG, scope = "defects:report"): Promise<{ app: { clientId: string; clientSecret: string }; tokens: Tokens; cookie: string; csrf: string }> {
   await addProject(config);
   const app = await registerApp();
   const { cookie, csrf } = await signIn(login);
-  const path = await authorizePath(app.clientId);
+  const path = await authorizePath(app.clientId, scope);
 
   mockRepoAccess();
   const consent = await get(path, cookie);

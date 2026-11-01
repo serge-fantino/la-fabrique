@@ -7,7 +7,7 @@ import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { html, redirect } from "./http";
 import { KIT_GUIDE_PATH, KIT_VERSION } from "./kit";
 import { compareVersions, type ProjectKit } from "./kit-update";
-import { AUTHORIZE_PATH, DEFECTS_SCOPE, DISCOVERY_PATH, oauthHelpers, projectId, projectName, REVOKE_PATH, TOKEN_PATH } from "./oauth";
+import { AUTHORIZE_PATH, DEFECTS_SCOPE, DISCOVERY_PATH, oauthHelpers, projectId, projectName, REVOKE_PATH, TEST_SCOPE, TOKEN_PATH } from "./oauth";
 import { projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { can } from "./rights";
@@ -133,7 +133,7 @@ function projectSide(link: AppLink, clientId: string | null): string {
         )}</code>, and two secrets, <code>${SECRET_NAMES.id}</code>${clientId ? ` = <code>${escapeHtml(clientId)}</code>` : ""} and <code>${SECRET_NAMES.secret}</code> (shown once, when registered or renewed):
           ${codeBlock(commands)}
           <p class="muted small"><code>--env</code> takes the name of the Worker's environment in its wrangler configuration; here, the environment's name in <code>.fabrique.json</code>.</p></li>
-        <li>The app sends the person to <code>${AUTHORIZE_PATH}</code> (scope <code>${DEFECTS_SCOPE}</code>, PKCE S256), exchanges the code at <code>${TOKEN_PATH}</code> (<code>client_secret_post</code>), then calls <code>GET /api/me</code> and <code>POST /api/projects/{project}/defects</code> with the token; <code>${REVOKE_PATH}</code> disconnects. Everything is in <code>${DISCOVERY_PATH}</code>.</li>
+        <li>The app sends the person to <code>${AUTHORIZE_PATH}</code> (scope <code>${DEFECTS_SCOPE}</code>, plus <code>${TEST_SCOPE}</code> to show the stories to test; PKCE S256), exchanges the code at <code>${TOKEN_PATH}</code> (<code>client_secret_post</code>), then calls <code>GET /api/me</code>, <code>POST /api/projects/{project}/defects</code> and, with <code>${TEST_SCOPE}</code>, <code>GET /api/projects/{project}/to-test</code> with the token; <code>${REVOKE_PATH}</code> disconnects. Everything is in <code>${DISCOVERY_PATH}</code>.</li>
         <li>The <strong>Report a defect</strong> button: copy the report kit ${KIT_VERSION} (<a href="/kit/fabrique-report.js">fabrique-report.js</a>, <a href="/kit/fabrique-report.css">fabrique-report.css</a>, <a href="/kit/fabrique-report-early.js">fabrique-report-early.js</a>) into the app, and add its relay, two routes on the app's server that forward the reports with the person's token. <a href="${KIT_GUIDE_PATH}">How, step by step</a>.</li>
       </ol>`;
 }

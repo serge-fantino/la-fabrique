@@ -8,6 +8,7 @@ import { fetchUser, refreshUserToken } from "./github";
 import { githubFetch } from "./github-app";
 import { cspWithFormTarget } from "./headers";
 import { html, json, redirect } from "./http";
+import { storiesToTestForApp, TO_TEST_ROUTE } from "./to-test-api";
 import { MCP_PATH, MCP_SCOPE, mcpServer } from "./mcp";
 import { findProject, type Project } from "./projects";
 import { can } from "./rights";
@@ -17,6 +18,9 @@ import { escapeHtml, layout } from "./views";
 // The single scope a project's app asks for (contract with the épicerie,
 // la-fabrique#65).
 export const DEFECTS_SCOPE = "defects:report";
+// Asked next to it by an app that shows the stories to test (la-fabrique#165).
+export const TEST_SCOPE = "stories:test";
+export const PROJECT_SCOPES = [DEFECTS_SCOPE, TEST_SCOPE];
 export const AUTHORIZE_PATH = "/oauth/authorize";
 export const TOKEN_PATH = "/oauth/token";
 export const REVOKE_PATH = "/oauth/revoke";
@@ -36,6 +40,9 @@ export interface GrantProps {
   // Claude (or another MCP client), connected to work in La Fabrique in
   // the person's name (src/mcp.ts): no project, the `fabrique` scope.
   mcp?: boolean;
+  // What the person allowed a project's app (missing on older grants:
+  // defects only).
+  scopes?: string[];
 }
 
 export function oauthHelpers(env: Env): OAuthHelpers {
@@ -91,6 +98,7 @@ function consentPage(
   project: Project,
   action: string,
   redirectOrigin: string,
+  scopes: string[] = [DEFECTS_SCOPE],
 ): Response {
   const projectLabel = projectName(project);
   return html(
@@ -99,9 +107,16 @@ function consentPage(
       `<section class="consent">
         <p class="eyebrow">Connect an app</p>
         <h1>${escapeHtml(appName)}</h1>
-        <p class="lead"><strong>${escapeHtml(appName)}</strong> will be able to report defects in your name on <strong>${escapeHtml(projectLabel)}</strong>.</p>
+        <p class="lead"><strong>${escapeHtml(appName)}</strong> will be able to report defects in your name on <strong>${escapeHtml(projectLabel)}</strong>${
+          scopes.includes(TEST_SCOPE) ? " and show you the stories to test" : ""
+        }.</p>
         <ul class="consent-list">
-          <li>Each report becomes an issue of <a href="https://github.com/${escapeHtml(project.repo)}">${escapeHtml(project.repo)}</a>, signed with your GitHub login.</li>
+          <li>Each report becomes an issue of <a href="https://github.com/${escapeHtml(project.repo)}">${escapeHtml(project.repo)}</a>, signed with your GitHub login.</li>${
+            scopes.includes(TEST_SCOPE)
+              ? `
+          <li>It can read the stories of ${escapeHtml(projectLabel)} that wait to be tested on int, with their acceptance criteria and who validated them (<code>${TEST_SCOPE}</code>), if your role lets you validate. Read only: it cannot tick a criterion or validate.</li>`
+              : ""
+          }
           <li>It never gets a GitHub token, and cannot read or change anything else.</li>
           <li>You can disconnect it at any time from <a href="/apps">Connected apps</a>.</li>
         </ul>
@@ -181,9 +196,11 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
     return errorPage("This app is not connected to a project", "Ask the owner of La Fabrique to register it again.", 400);
   }
   const requested = authRequest.scope.length ? authRequest.scope : [DEFECTS_SCOPE];
-  if (requested.some((scope) => scope !== DEFECTS_SCOPE)) {
-    return errorRedirect(authRequest, "invalid_scope", `Only ${DEFECTS_SCOPE} can be granted.`);
+  if (requested.some((scope) => !PROJECT_SCOPES.includes(scope))) {
+    return errorRedirect(authRequest, "invalid_scope", `Only ${PROJECT_SCOPES.join(" and ")} can be granted.`);
   }
+  // Reporting is what an app is connected for: it always comes with it.
+  const granted = [...new Set([DEFECTS_SCOPE, ...requested])];
 
   const session = await readSession(request, env.DB);
   if (!session) {
@@ -201,7 +218,7 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
   const appName = client.clientName ?? "This app";
 
   if (request.method === "GET") {
-    return consentPage(session, role, appName, project, url.pathname + url.search, new URL(authRequest.redirectUri).origin);
+    return consentPage(session, role, appName, project, url.pathname + url.search, new URL(authRequest.redirectUri).origin, granted);
   }
 
   const origin = request.headers.get("origin");
@@ -227,12 +244,13 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
     avatarUrl: user?.avatarUrl ?? null,
     repo: project.repo,
     app: appName,
+    scopes: granted,
   };
   const { redirectTo } = await helpers.completeAuthorization({
     request: authRequest,
     userId: session.login,
     metadata: { repo: project.repo },
-    scope: requested,
+    scope: granted,
     props,
     revokeExistingGrants: true,
   });
@@ -329,6 +347,7 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
         project: { id: projectId(props.repo), role },
         can: {
           report_defect: project !== null && can(role, "report_defect") && Object.keys(await reportingEnvironments(env, project)).length > 0,
+          test_stories: project !== null && (props.scopes ?? []).includes(TEST_SCOPE) && can(role, "validate") && Object.keys(await reportingEnvironments(env, project)).length > 0,
         },
       },
       { headers: { "cache-control": "no-store" } },
@@ -343,6 +362,11 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
   if (targets) {
     if (request.method !== "GET") return json({ error: "method_not_allowed" }, { status: 405 });
     return defectTargetsForApp(env, props, targets[1] ?? "");
+  }
+  const toTest = TO_TEST_ROUTE.exec(pathname);
+  if (toTest) {
+    if (request.method !== "GET") return json({ error: "method_not_allowed" }, { status: 405 });
+    return storiesToTestForApp(request, env, props, toTest[1] ?? "");
   }
   return json({ error: "not_found" }, { status: 404 });
 }
