@@ -121,5 +121,13 @@ describe("The board's releases", () => {
     expect(page.match(/aria-label="v1\.11"/g)).toHaveLength(1);
     expect(page).not.toContain('aria-label="1.10"');
     expect(page).not.toContain('<span class="pill kind small">Planned</span>');
+
+    // A sprint runs: one lane, the Sprint's, says the release it builds on int.
+    await env.DB.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, 'Sprint', 'pe')").bind(REPO).run();
+    const sprint = await (await get(`/projects/${REPO}/board?by=release`, (await signIn("pe")).cookie)).text();
+    expect(sprint).toContain(
+      'title="The sprint in progress; v1.11 on the integration branch, waiting for the go">Sprint <span class="pill warn small">In progress</span> <span class="mono small">v1.11 (int)</span>',
+    );
+    expect(sprint).not.toContain('aria-label="v1.11"');
   });
 });

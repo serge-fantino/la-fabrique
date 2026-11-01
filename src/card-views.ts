@@ -261,12 +261,19 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
     const release = axis === "release" ? data.releases.get(value) : undefined;
     // Next release needs no pill; the Sprint lane says it is in progress.
     if (!release || release.version === NEXT_RELEASE) return "";
+    if (release.onInt?.length) {
+      return ` <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span> <span class="mono small">${release.onInt.map((version) => escapeHtml(version)).join(", ")} (int)</span>`;
+    }
     const label = release.sprint && release.version !== SPRINT_LANE ? "Sprint" : release.integration ? "On int" : RELEASE_STATE_LABELS[release.state];
     return ` <span class="pill ${RELEASE_TONES[release.state]} small">${label}</span>${release.integration ? ` <code class="small">${escapeHtml(release.integration)}</code>` : ""}`;
   };
   const titleOf = (axis: Axis, value: string) => {
     const release = axis === "release" ? data.releases.get(value) : undefined;
-    const title = release?.integration ? `On the ${release.integration} branch, waiting for the go${release.title ? `: ${release.title}` : ""}` : release?.title;
+    const title = release?.onInt?.length
+      ? `${release.title ?? "The sprint in progress"}; ${release.onInt.join(", ")} on the ${release.integration ?? "integration"} branch, waiting for the go`
+      : release?.integration
+        ? `On the ${release.integration} branch, waiting for the go${release.title ? `: ${release.title}` : ""}`
+        : release?.title;
     return title ? ` title="${escapeHtml(title)}"` : "";
   };
   const columns = lanes(board.by);
