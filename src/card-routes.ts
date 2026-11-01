@@ -1,3 +1,7 @@
+import { goSummary, lastGo } from "./go";
+import { loadProduction } from "./production";
+import { goSection } from "./production-views";
+import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
@@ -506,6 +510,7 @@ const SPRINT_NOTICES: Record<string, string> = {
   priority: "Priority set on GitHub.",
   ready: "Marked ready for Claude on GitHub.",
   review: "Review asked on GitHub.",
+  "go-given": "Go given: the project's workflow is promoting integration to production. Once it is out, the validated stories are closed, the sprint closes and each finished card takes the version.",
 };
 
 
@@ -699,6 +704,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       canOrder: canWriteCards(viewer),
       canClose: hasIntegration(project) ? canWriteCards(viewer) : can(viewer.role, "promote"),
       releaseWorkflow: publishWorkflow(project),
+      go: hasIntegration(project) ? await sprintGo(env, project, viewer) : null,
       release: await lastReleaseAttempt(env.DB, project.repo),
       noIntegration: !hasIntegration(project),
       pulls,
@@ -965,4 +971,18 @@ export async function cardRoute(
     if (method === "POST") return withForm((data) => changeCard(request, data, env, viewer, project, id));
   }
   return notAllowed();
+}
+
+// The go, from the sprint of a project with an integration branch: what
+// production would receive, as the Production tab shows it.
+async function sprintGo(env: Env, project: Project, viewer: Viewer): Promise<string | null> {
+  const [production, checks, last] = await Promise.all([loadProduction(env, project), storyChecks(env.DB, project.repo), lastGo(env.DB, project.repo)]);
+  if (!production.status) return null;
+  return goSection(viewer, project, production.status, {
+    canGo: can(viewer.role, "promote"),
+    declared: typeof project.check?.config?.workflows?.["promouvoir"] === "string",
+    last,
+    checks,
+    summary: goSummary(production.status, production.stories, checks),
+  }, true);
 }

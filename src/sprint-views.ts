@@ -34,6 +34,8 @@ export interface SprintData {
   canClose: boolean;
   // That project's release workflow (workflows.publier), when it declares one.
   releaseWorkflow: string | null;
+  // With an integration branch: the go, as Production shows it.
+  go?: string | null;
   // The last release started from the sprint, and where it stands.
   release?: { version: string | null; state: "running" | "published" | "failed"; reason: string | null; run: string | null; at: string; by: string } | null;
   noIntegration: boolean;
@@ -341,7 +343,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         ${
           data.noIntegration
             ? ""
-            : `<p class="muted">With an integration branch, the release is the go: test the stories on int, then give the go in <a href="${escapeHtml(base)}/production">Production</a>${data.canClose ? "" : " (Product Engineer or super admin)"}; once it is out, close the sprint and each finished card takes its version.</p>`
+            : `<p class="muted">With an integration branch, the release is the go: test the stories on int, then give the go, here or in <a href="${escapeHtml(base)}/production">Production</a>${data.canClose ? "" : " (Product Engineer or super admin)"}; once it is out, the sprint closes and each finished card takes its version.</p>${data.go ?? ""}`
         }
         ${summary(data.sprintCards)}
         ${runsLine}

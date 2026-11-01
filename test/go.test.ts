@@ -210,3 +210,40 @@ async function webhook(event: string, payload: unknown): Promise<Response> {
     body,
   });
 }
+
+describe("The go from the sprint", () => {
+  it("is offered in the sprint; once the promotion is out, the validated stories are closed, the sprint closes and the card takes the version", async () => {
+    await seed();
+    const card = (await env.DB.prepare("INSERT INTO cards (repo, kind, status, title, body, release, position, author) VALUES (?, 'feature', 'validated', 'Weekly menu', '', 'Sprint', 1, 'pe') RETURNING id").bind(REPO).first<{ id: number }>())?.id ?? 0;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', '31', 1)").bind(card),
+      env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', '32', 2)").bind(card),
+      env.DB.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, 'Sprint', 'pe')").bind(REPO),
+    ]);
+    const { cookie, csrf } = await signIn("admin-one");
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(page).toContain('<input type="hidden" name="sprint" value="1" />');
+    expect(page).toContain('Give the go for <span class="mono">1.169</span>');
+
+    const github = () => fetchMock.get("https://api.github.com");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/promouvoir.yml/dispatches` }).reply(204, "");
+    const given = await post(`/projects/${REPO}/production/go`, { csrf, sprint: "1", next: "minor" }, cookie);
+    expect(given.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=go-given`);
+    const go = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'go_given'").first<{ details: string }>();
+    expect(JSON.parse(go?.details ?? "{}")).toMatchObject({ version: "1.169", close_sprint: true });
+
+    // The promotion is out: both validated stories are closed, then the sprint.
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    for (const number of [31, 32]) {
+      const issue = { number, title: `Story ${number}`, state: "open", html_url: `https://github.com/${REPO}/issues/${number}`, user: { login: "pe" }, labels: [], created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", closed_at: null };
+      github().intercept({ path: `/repos/${REPO}/issues/${number}` }).reply(200, JSON.stringify(issue), JSON_HEADERS);
+      github().intercept({ method: "POST", path: `/repos/${REPO}/issues/${number}/comments` }).reply(201, "{}", JSON_HEADERS);
+      github().intercept({ method: "PATCH", path: `/repos/${REPO}/issues/${number}` }).reply(200, JSON.stringify({ ...issue, state: "closed" }), JSON_HEADERS);
+    }
+    const run = { path: ".github/workflows/promouvoir.yml", display_title: "Promotion", status: "completed", conclusion: "success", html_url: "https://github.com/run/10" };
+    expect((await webhook("workflow_run", { action: "completed", repository: { full_name: REPO }, workflow_run: run })).status).toBe(200);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM sprints WHERE ended_at IS NULL").first<{ n: number }>())?.n).toBe(0);
+    expect((await env.DB.prepare("SELECT release FROM cards WHERE id = ?").bind(card).first<{ release: string }>())?.release).toBe("1.169");
+  });
+});

@@ -227,7 +227,16 @@ export async function goToProduction(request: Request, form: FormData, env: Env,
   const kind = readKind(form.get("next"));
   const from = summary?.version ?? null;
   const next = from ? nextVersion(from, kind) : null;
-  const outcome = await giveGo(env, project, viewer.login, production.status, summary, reason, next ? { version: next, kind } : undefined);
+  // Given from the sprint: the sprint closes once the promotion is done, and
+  // the answer goes back to the sprint.
+  const fromSprint = form.get("sprint") === "1";
+  const outcome = await giveGo(env, project, viewer.login, production.status, summary, reason, next ? { version: next, kind } : undefined, { closeSprint: fromSprint });
+  if (outcome.ok && fromSprint) {
+    if (from && next && project.check?.config?.version?.fichier && project.check.config.branches?.integration) {
+      await proposeNextRelease(request, env, project, viewer.login, from, next, kind);
+    }
+    return redirect(`/projects/${project.repo}/sprint?notice=go-given`);
+  }
   if (outcome.ok) {
     // The go is given either way; a refused pull request is said, not hidden.
     if (from && next && project.check?.config?.version?.fichier && project.check.config.branches?.integration) {
