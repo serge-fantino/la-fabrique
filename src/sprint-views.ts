@@ -90,6 +90,9 @@ function runPill(run: ClaudeRun): string {
   return `<a class="pill ${tone} small" href="${escapeHtml(run.url)}" title="Started ${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC">${label}</a>`;
 }
 
+// The value of "Nice to have" in a story's priority list.
+const NICE = "nice";
+
 export function sprintPage(viewer: Viewer, project: Project, data: SprintData): string {
   const base = projectUrl(project.repo);
   const action = `${base}/sprint`;
@@ -110,19 +113,21 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const launched = data.claude.launches.get(number);
     const run = data.claude.runs.find((candidate) => candidate.issue === number);
     const last = `${run ? runPill(run) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
-    if (!data.claude.canLaunch || !data.claude.workflow || !isReadyStage(story) || (run && isRunning(run))) return last;
+    // Claude is launched in order from the implementation card (la-fabrique#180):
+    // here, where the story stands for it.
     const busy = data.claude.held.get(number);
-    if (busy) {
+    if (busy && isReadyStage(story) && !(run && isRunning(run))) {
       return `<span class="muted small" title="${escapeHtml(waitReason(number, busy))}">Waits for <span class="mono">#${busy.story}</span></span>${last}`;
     }
-    return `${button({ action: "launch", story: number }, `Launch Claude on #${number}`, launched ? "Launch again" : "Launch Claude", "quiet small claude")}${last}`;
+    return last;
   };
   // A priority chosen from a list, sent at once (the button without script).
-  const prioritySelect = (fields: Record<string, string | number>, current: string | null, label: string) =>
+  // A story's list also offers Nice to have (la-fabrique#180).
+  const prioritySelect = (fields: Record<string, string | number>, current: string | null, label: string, withNice = false) =>
     `<form method="post" action="${escapeHtml(action)}" class="priority-form inline">${csrfField(viewer)}${Object.entries(fields)
       .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
-      .join("")}<select name="priority" aria-label="${escapeHtml(label)}" data-autosubmit>${[...data.priorities, ""]
-      .map((value) => `<option value="${escapeHtml(value)}"${(current ?? "") === value ? " selected" : ""}>${value ? escapeHtml(value) : "No priority"}</option>`)
+      .join("")}<select name="priority" aria-label="${escapeHtml(label)}" data-autosubmit>${[...data.priorities, ...(withNice ? [NICE] : []), ""]
+      .map((value) => `<option value="${escapeHtml(value)}"${(current ?? "") === value ? " selected" : ""}>${value === NICE ? "Nice to have" : value ? escapeHtml(value) : "No priority"}</option>`)
       .join("")}</select><button type="submit" class="button quiet small" data-autosubmit-button>Set</button></form>`;
   // Why a story is not ready, and what fixes it here.
   const readiness = (number: number, controls: boolean) => {
@@ -200,33 +205,36 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       })
       .join("");
   };
+  // A story is a row (la-fabrique#180): its number and title on top, where
+  // it stands below, its priority and order at the end.
   const storyRow = (number: number, card: number, index: number, count: number, controls: boolean, launchable: boolean) => {
     const story = data.stories.get(number);
     const others = (data.links.byStory.get(number) ?? []).filter((id) => id !== card);
     const nice = isNice(data.links, card, number);
-    const cell = controls
-      ? `<td class="sprint-controls">${index > 0 ? button({ action: "story_up", card, story: number }, `Move #${number} up`, "↑") : ""}${
+    const order = controls
+      ? `<span class="sprint-controls">${index > 0 ? button({ action: "story_up", card, story: number }, `Move #${number} up`, "↑") : ""}${
           index < count - 1 ? button({ action: "story_down", card, story: number }, `Move #${number} down`, "↓") : ""
-        }${button({ action: "nice", card, story: number, nice: nice ? "0" : "1" }, nice ? `#${number} is needed` : `#${number} is nice to have`, nice ? "Needed" : "Nice to have")}</td>`
+        }</span>`
       : "";
-    return `<tr id="story-${card}-${number}"${nice ? ' class="nice"' : ""}>
-        <td class="mono number"><a href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a></td>
-        <td><a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a>${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""}${
-          story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""
-        }</td>
-        <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${
-          story ? testingNote(story) : ""
-        }${
-          isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
-        }${readiness(number, controls)}</td>
-        ${
-          data.priorities.length
-            ? `<td>${controls ? prioritySelect({ action: "story_priority", card, story: number }, story?.priority ?? null, `Priority of #${number}`) : story?.priority ? `<span class="pill">${escapeHtml(story.priority)}</span>` : ""}</td>`
-            : ""
-        }
-        ${launchable ? `<td class="sprint-claude">${claudeCell(number)}</td>` : ""}
-        ${cell}
-      </tr>`;
+    const priority = data.priorities.length
+      ? controls
+        ? prioritySelect({ action: "story_priority", card, story: number }, nice ? NICE : (story?.priority ?? null), `Priority of #${number}`, true)
+        : story?.priority
+          ? `<span class="pill">${escapeHtml(story.priority)}</span>`
+          : ""
+      : "";
+    const claude = launchable ? claudeCell(number) : "";
+    return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}">
+        <div class="sprint-story-main">
+          <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
+          <p class="sprint-story-status">${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${story ? testingNote(story) : ""}${
+            isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
+          }${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
+            others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""
+          }${readiness(number, controls)}</p>
+        </div>
+        ${priority || order ? `<div class="sprint-story-actions">${priority}${order}</div>` : ""}
+      </li>`;
   };
 
   // A card kept from a closed sprint: its stories already in production are
@@ -271,9 +279,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           ${foldedDone(card.id, foldDone)}
           ${
             mine.length
-              ? `<table><thead><tr><th>#</th><th>Story</th><th>Stage</th>${data.priorities.length ? "<th>Priority</th>" : ""}${launchable && controls ? '<th class="claude-col">Claude</th>' : ""}${controls ? '<th><span class="visually-hidden">Order</span></th>' : ""}</tr></thead><tbody>${mine
+              ? `<ol class="sprint-stories-list">${mine
                   .map((number, at) => (shown(mine, number, foldDone) ? storyRow(number, card.id, at, mine.length, controls, launchable) : ""))
-                  .join("")}</tbody></table>`
+                  .join("")}</ol>`
               : `<p class="muted">No story yet: <a href="${escapeHtml(base)}/cards/${card.id}#spec">make them from the card</a>.</p>`
           }
         </section>`;

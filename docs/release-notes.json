@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A story of the sprint is a row; nice to have is a priority",
+    "changements": [
+      "In the sprint, a story is a row: its number and title on top, where it stands below (stage, testing, nice to have, pull request, Claude), its priority and order at the end; no more table of columns.",
+      "A story's priority list offers Nice to have: choosing it marks the story so (one level below its card's priority on GitHub), choosing a priority makes it needed again.",
+      "No more Launch Claude button per story: Claude is launched in order from the Implementation card (Launch the next story, Running by itself); a story waiting for another of its card still says so."
+    ],
+    "stories": [180],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint page in cards, wide and responsive",
     "changements": [
       "The sprint page is in cards: the sprint's status (version, state, closing, go) and its implementation (running by itself, Claude's runs, the next story, open pull requests) stand beside the features and their stories on a wide screen, and stack on a phone with nothing scrolling sideways.",
