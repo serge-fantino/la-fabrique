@@ -401,3 +401,24 @@ describe("A merge refused", () => {
     expect(log).toContain("refused: Conflicts with main in: CLAUDE.md src/rights.ts.");
   });
 });
+
+describe("A pull request opened by the only reviewer, on a project without a merge workflow", () => {
+  it("says there is no one else to ask, and where to merge it; no branch menu on the sprint", async () => {
+    await seed();
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]), REPO)
+      .run();
+    const { cookie } = await signIn("admin-one");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30` })
+      .reply(200, JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, user: { login: "Admin-One" }, requested_reviewers: [], mergeable_state: "clean", base: { ref: "main" } }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    // admin-two is a super admin too (SUPER_ADMINS): the only one left to ask.
+    expect(page).toContain('<option value="admin-two">@admin-two</option>');
+    expect(page).not.toContain('<option value="Admin-One">');
+    expect(page).toMatch(/no merge workflow declared \(<a [^>]*href="\/projects\/acme\/widget\/setup">workflows\.fusionner<\/a>\): <a [^>]*href="https:\/\/github.com\/acme\/widget\/pull\/30">merge it on GitHub<\/a>/);
+    expect(page).not.toContain("data-branch-menu");
+  });
+});

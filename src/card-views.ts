@@ -347,7 +347,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         <a href="${escapeHtml(base)}/cards/export">Export every card (JSON)</a>${canWrite ? ` · <a href="${escapeHtml(base)}/cards/import">Import cards (JSON)</a>` : ""}</p>`,
     viewer,
     [BOARD_SCRIPT],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -829,7 +829,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
       <ul class="card-history">${history}</ul>`,
     viewer,
     data.created ? [DRAFT_SCRIPT] : [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -899,7 +899,7 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
       </form>`,
     viewer,
     card ? [] : [DRAFT_SCRIPT],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -932,7 +932,7 @@ export function importPage(viewer: Viewer, project: Project, data: { error?: str
       </form>`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -964,7 +964,7 @@ export function specFormPage(viewer: Viewer, project: Project, data: { card: Car
       </form>`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -995,7 +995,7 @@ export function storyPage(
       </form>`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }
 
@@ -1094,6 +1094,6 @@ export function splitPage(
       </form>`,
     viewer,
     [],
-    projectContext(project),
+    projectContext(project, false),
   );
 }

@@ -1,5 +1,17 @@
 [
   {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "Clearer pull requests in the sprint; no branch menu where it does nothing",
+    "changements": [
+      "Ask for a review no longer shows an empty list: when there is no one else to ask (the author of a pull request cannot review it, and the reviewers are La Fabrique's tech leads and super admins), the sprint says so.",
+      "On a project without a merge workflow, the sprint says where to merge a pull request (on GitHub) and what to declare in Setup (workflows.fusionner).",
+      "The reference-branch menu is gone from the board, the cards and the sprint, which do not read a branch."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
     "version": "0.79",
     "date": "2026-11-01",
     "heure": "09:35",
