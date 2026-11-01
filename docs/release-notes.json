@@ -1,5 +1,17 @@
 [
   {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "A sprint ends only when someone closes it",
+    "changements": [
+      "A sprint no longer closes by itself when its needed stories are in production: a Product Engineer or super admin closes it with Close the sprint.",
+      "Stop the sprint is gone.",
+      "A card that is not finished stays in the Sprint lane for the next sprint, with its stories already in production folded under it as done."
+    ],
+    "stories": [136],
+    "liens": null
+  },
+  {
     "version": "0.78",
     "date": "2026-11-01",
     "heure": "00:26",
