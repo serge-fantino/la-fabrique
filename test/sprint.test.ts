@@ -144,14 +144,19 @@ describe("Next release and the sprint", () => {
     text = await page();
     expect(at(text, "Print the week")).toBeLessThan(at(text, "Choose the week"));
 
-    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "nice", card: String(week), story: "22", nice: "1" }, session.cookie);
+    // Nice to have is one of a story's priorities (la-fabrique#180).
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "story_priority", card: String(week), story: "22", priority: "nice" }, session.cookie);
     text = await page();
-    expect(text).toContain('/sprint/stories/22">Print the week</a> <span class="pill kind small">Nice to have</span>');
+    expect(text).toContain(`id="story-${week}-22" class="sprint-story nice"`);
+    expect(text).toMatch(/\/sprint\/stories\/22">Print the week<\/a><\/p>\s*<p class="sprint-story-status">.*<span class="pill kind small">Nice to have<\/span>/);
     expect(text).toContain("<strong>1 story left</strong>");
     const backlog = await (await get(`/projects/${REPO}/backlog?group=card`, session.cookie)).text();
     expect(at(backlog, "Print the week")).toBeLessThan(at(backlog, "Choose the week"));
     expect(backlog).toContain('Print the week</a> <span class="pill kind small">Nice to have</span>');
     expect((await logActions()).map((entry) => entry.action)).toEqual(expect.arrayContaining(["sprint_card_moved", "sprint_story_moved", "story_nice_set"]));
+    // Another priority makes it needed again.
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "story_priority", card: String(week), story: "22", priority: "" }, session.cookie);
+    expect(await page()).toContain("<strong>2 stories left</strong>");
   });
 
   it("does not close by itself; closed by hand, the unfinished card stays in the Sprint lane with its released stories folded", async () => {

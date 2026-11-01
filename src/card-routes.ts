@@ -6,7 +6,7 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
-import { storyCards } from "./card-groups";
+import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
@@ -674,6 +674,18 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
     }
     if (action === "story_priority") {
       if (!Number.isInteger(story) || story <= 0) return redirect(base);
+      // Nice to have is one of a story's priorities (la-fabrique#180): one
+      // level below its card's on GitHub; another priority makes it needed.
+      const found = Number.isInteger(card) ? await findCard(env.DB, project.repo, card) : null;
+      if (priority === "nice") {
+        if (!found) return redirect(base);
+        await setNice(env.DB, project.repo, card, story, true, viewer.login);
+        const to = found.priority ? storyPriority(await projectRules(env.DB, project), found.priority, true) : null;
+        const outcome = to ? await setPriority(env, project, viewer.login, story, to) : null;
+        if (outcome && !outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+        return redirect(`${base}?notice=priority#story-${card}-${story}`);
+      }
+      if (found && isNice(await storyCards(env.DB, project.repo), card, story)) await setNice(env.DB, project.repo, card, story, false, viewer.login);
       const outcome = await setPriority(env, project, viewer.login, story, priority);
       if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
       return redirect(`${base}?notice=priority#story-${card}-${story}`);

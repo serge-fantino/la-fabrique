@@ -3224,3 +3224,56 @@ main:has(.sprint-layout) {
     border-radius: 18px;
   }
 }
+
+/* A story of the sprint, as a row (la-fabrique#180): its number and title
+   on top, where it stands below, its priority and order at the end. */
+.sprint-stories-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.sprint-story {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.sprint-story-main {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.sprint-story-title {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.sprint-story-title .mono {
+  font-weight: 400;
+  margin-right: 0.25rem;
+}
+
+.sprint-story-status {
+  margin: 0.35rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.sprint-story-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sprint-story.nice .sprint-story-title a:not(.mono) {
+  font-weight: 400;
+}

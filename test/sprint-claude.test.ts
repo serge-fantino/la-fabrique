@@ -52,7 +52,8 @@ describe("Claude Code from the sprint", () => {
     const page = await (await get(`/projects/${REPO}/sprint`, (await signIn("lead")).cookie)).text();
     expect(page).toMatch(/Next for Claude: <a [^>]*issues\/12">#12<\/a> Ready one/);
     expect(page).toContain('aria-label="Launch Claude on #12">Launch the next story</button>');
-    expect(page).toContain('aria-label="Launch Claude on #12">Launch Claude</button>');
+    // Claude is launched in order from the implementation card: no button per story (la-fabrique#180).
+    expect(page.match(/aria-label="Launch Claude on #12"/g)).toHaveLength(1);
     expect(page).not.toContain("Launch Claude on #13");
     expect(page).toContain("At most 1 Claude run at once");
 
@@ -290,7 +291,7 @@ describe("The pull requests of the sprint's stories", () => {
     expect(at('id="sprint-stories">Features and stories</h2>')).toBeGreaterThan(at("Implementation</h2>"));
     expect(at("PR #30 open")).toBeGreaterThan(at("Implementation</h2>"));
     expect(at("PR #30 open")).toBeLessThan(at("Features and stories</h2>"));
-    expect(page).toContain(`<a href="/projects/${REPO}/sprint/stories/12">Ready one</a> <span class="muted small">PR open</span>`);
+    expect(page).toMatch(new RegExp(`<a href="/projects/${REPO}/sprint/stories/12">Ready one</a></p>\\s*<p class="sprint-story-status">.*<span class="muted small">PR open</span>`));
 
     let asked: unknown = null;
     github()
