@@ -282,9 +282,13 @@ describe("The pull requests of the sprint's stories", () => {
     expect(page).not.toContain('<option value="admin-two">');
     // Three parts: the sprint, the work in progress (the open pull request), the features and stories.
     const at = (text: string) => page.indexOf(text);
-    expect(at('id="sprint-work">Work in progress</h2>')).toBeGreaterThan(0);
-    expect(at('id="sprint-stories">Features and stories</h2>')).toBeGreaterThan(at("Work in progress</h2>"));
-    expect(at("PR #30 open")).toBeGreaterThan(at("Work in progress</h2>"));
+    expect(at('id="sprint-work">Implementation</h2>')).toBeGreaterThan(0);
+    // Two cards beside the features (la-fabrique#179): the sprint's status, the implementation.
+    expect(page).toMatch(/<div class="sprint-layout">\s*<div class="sprint-side">\s*<section class="sprint-head sprint-panel"/);
+    expect(page).toContain('<section class="sprint-work sprint-panel"');
+    expect(page).toContain('<section class="sprint-stories sprint-main"');
+    expect(at('id="sprint-stories">Features and stories</h2>')).toBeGreaterThan(at("Implementation</h2>"));
+    expect(at("PR #30 open")).toBeGreaterThan(at("Implementation</h2>"));
     expect(at("PR #30 open")).toBeLessThan(at("Features and stories</h2>"));
     expect(page).toContain(`<a href="/projects/${REPO}/sprint/stories/12">Ready one</a> <span class="muted small">PR open</span>`);
 
