@@ -64,6 +64,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     await applyIssueEvent(env, project.repo, payload.action ?? "", payload.issue);
     // Closed by a merge, not validated: open again (la-fabrique#186).
     const reopened = payload.action === "closed" ? await reopenIfClosedByMerge(env, project, payload.issue).catch(() => null) : null;
+    // The open sprint pages show it (la-fabrique#187).
+    await sprintLiveFor(env, project.repo)?.notify({ kind: "story", issue: payload.issue.number, status: payload.action ?? "", conclusion: null, url: "", at: new Date().toISOString() }).catch(() => undefined);
     return json({ updated: payload.issue.number, ...(reopened ? { reopened: true } : {}) });
   }
   if (STORY_EVENTS.has(event)) {

@@ -21,10 +21,10 @@ export interface CardStory {
   validated?: { by: string; at: string } | null;
 }
 
-export async function cardStories(env: Env, project: Project, numbers: number[]): Promise<Map<number, CardStory>> {
+export async function cardStories(env: Env, project: Project, numbers: number[], maxAgeMs?: number): Promise<Map<number, CardStory>> {
   const found = new Map<number, CardStory>();
   if (!numbers.length) return found;
-  const [{ stories }, onInt, checks] = await Promise.all([loadStories(env, project), storiesOnInt(env, project), storyChecks(env.DB, project.repo)]);
+  const [{ stories }, onInt, checks] = await Promise.all([loadStories(env, project, maxAgeMs), storiesOnInt(env, project), storyChecks(env.DB, project.repo)]);
   const rules = await projectRules(env.DB, project);
   const stages = stagesOf(stories, rules, onInt);
   for (const story of stories) {

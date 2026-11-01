@@ -6,6 +6,7 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
@@ -744,7 +745,9 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const integrationCards = integration ? inLane(integration.version) : [];
   const numbers = [...new Set([...sprintCards, ...keptCards, ...nextCards, ...integrationCards].flatMap((card) => links.order.get(card.id) ?? []))];
   const failure = params.get("failure");
-  const stories = await cardStories(env, project, numbers);
+  // While a sprint runs, the stories are read again after a minute at most
+  // (la-fabrique#187).
+  const stories = await cardStories(env, project, numbers, sprint ? FOLLOW_MAX_AGE_MS : undefined);
   // The open pull requests of the sprint's stories, as GitHub has them.
   const inSprint = sprintCards.flatMap((card) => links.order.get(card.id) ?? []);
   const openPulls = inSprint.flatMap((number) => (stories.get(number)?.pulls ?? []).filter((pull) => pull.state === "open").map((pull) => pull.number));
@@ -766,6 +769,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   return html(
     sprintPage(viewer, view, {
       run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project)) : "",
+      runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,

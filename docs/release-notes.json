@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The sprint page follows each step without a reload",
+    "changements": [
+      "While something is in progress in the sprint (Claude working, a pull request open, the sprint running by itself, the release), the page reads itself again every minute, and at once when GitHub reports a run, a pull request or a story that moved.",
+      "It waits for a calm moment: never while you type, drag a story, send a form or have a form open; a page in the background catches up when you come back.",
+      "During a sprint, the stories are read from GitHub again after a minute at most, so a pull request's link to its story, late on GitHub's side, shows up without a manual refresh."
+    ],
+    "stories": [187],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "One status per story; a story stays open until validated",
     "changements": [
       "A validated story shows one status, Validated by whom, instead of To validate (or On int) next to Validated: on the card, the sprint and the story's page.",

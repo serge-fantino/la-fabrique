@@ -379,9 +379,9 @@
           return;
         }
         // What happened before the page was shown is already on it.
-        if (!event || (event.kind !== "claude_run" && event.kind !== "pull_request") || event.replay) return;
+        if (!event || (event.kind !== "claude_run" && event.kind !== "pull_request" && event.kind !== "story") || event.replay) return;
         stop();
-        location.reload();
+        reloadWhenCalm();
       });
       socket.addEventListener("close", () => {
         if (stopped || !line.isConnected) return;
@@ -397,6 +397,61 @@
     sprintLive = { stop };
   }
 
+  // The page is calm: nobody typing, dragging, sending a form, or with a
+  // form opened in a details (la-fabrique#187). Then it may read itself
+  // again without losing anything.
+  const isCalm = () => {
+    if (dragging || document.visibilityState !== "visible") return false;
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) return false;
+    if (active instanceof HTMLInputElement && !["button", "submit", "checkbox", "radio"].includes(active.type)) return false;
+    if (document.querySelector("form[data-sent], form[aria-busy='true']")) return false;
+    for (const details of document.querySelectorAll("details[open]")) {
+      if (details.querySelector("form") && !details.hasAttribute("data-menu")) return false;
+    }
+    return true;
+  };
+  let calmWait = null;
+  function reloadWhenCalm() {
+    if (calmWait) return;
+    const attempt = () => {
+      if (isCalm()) {
+        calmWait = null;
+        location.reload();
+        return;
+      }
+      calmWait = setTimeout(attempt, 2000);
+    };
+    attempt();
+  }
+
+  // While something is in progress, the sprint page reads itself again
+  // every minute (data-follow, in seconds), between two events: a webhook
+  // lost, or GitHub's links late, are caught up all the same.
+  let follow = null;
+  function setUpFollow() {
+    if (follow) clearInterval(follow);
+    follow = null;
+    if (calmWait) clearTimeout(calmWait);
+    calmWait = null;
+    const holder = document.querySelector("[data-follow]");
+    if (!holder) return;
+    const every = Math.max(20, Number(holder.getAttribute("data-follow")) || 60) * 1000;
+    const shown = Date.now();
+    follow = setInterval(() => {
+      if (!holder.isConnected) {
+        clearInterval(follow);
+        follow = null;
+        return;
+      }
+      if (Date.now() - shown >= every && isCalm()) {
+        clearInterval(follow);
+        follow = null;
+        location.reload();
+      }
+    }, 5000);
+  }
+
   // What each page needs once it is shown.
   function setUp() {
     document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
@@ -405,6 +460,7 @@
     setUpRefresh();
     setUpBranchMenu();
     setUpSprintLive();
+    setUpFollow();
     setUpAboutPicker();
     setUpLive();
   }
