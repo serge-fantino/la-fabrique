@@ -345,7 +345,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     `<li class="story-step ${state === "failed" ? "current" : state}"><span class="story-step-mark" aria-hidden="true">${state === "done" ? "✓" : state === "failed" ? "✕" : state === "current" ? "●" : "○"}</span> ${text}</li>`;
   const releaseLine = !attempt || attempt.state === "published"
     ? ""
-    : `<div class="sprint-card sprint-closing${attempt.state === "failed" ? " failed" : ""}" role="status">
+    : `<div class="sprint-form-card sprint-closing${attempt.state === "failed" ? " failed" : ""}" role="status">
         <h3>${attempt.state === "running" ? "Closing" : "The release failed"}: release <span class="mono">${escapeHtml(attempt.version ?? "")}</span></h3>
         <ol class="story-steps">
           ${step("done", `Started by <span class="mono">@${escapeHtml(attempt.by)}</span> on <span class="mono">${formatDate(attempt.at)}</span>`)}
@@ -364,7 +364,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const choices = [versions?.minor ? { value: versions.minor, label: `${versions.minor} <span class="muted small">next minor</span>` } : null, versions?.major ? { value: versions.major, label: `${versions.major} <span class="muted small">next major</span>` } : null].filter(
       (choice): choice is { value: string; label: string } => choice !== null,
     );
-    return `<form method="post" action="${escapeHtml(action)}" class="sprint-card sprint-start-card" data-busy="Starting…">${csrfField(viewer)}
+    return `<form method="post" action="${escapeHtml(action)}" class="sprint-form-card sprint-start-card" data-busy="Starting…">${csrfField(viewer)}
         <input type="hidden" name="action" value="start" />
         <h3>Start the next sprint</h3>
         <fieldset class="sprint-versions"><legend>The version it will release${versions?.newest ? ` <span class="muted small">(newest: <span class="mono">${escapeHtml(versions.newest)}</span>)</span>` : ""}</legend>
@@ -377,7 +377,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
 
   const current = sprint
-    ? `<section class="sprint-head" aria-label="The sprint">
+    ? `<div class="sprint-layout">
+      <div class="sprint-side">
+      <section class="sprint-head sprint-panel" aria-label="The sprint">
         <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : `Sprint${sprint.version ? ` <span class="mono">${escapeHtml(sprint.version)}</span>` : ""}${sprint.name ? ` <span class="sprint-name">${escapeHtml(sprint.name)}</span>` : ""}`} <span class="pill warn">${closing ? "Closing" : RELEASE_STATE_LABELS.in_progress}</span></h2>
         ${
           data.canOrder && !data.legacy && !closing
@@ -412,17 +414,20 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         }
         ${summary(data.sprintCards)}
       </section>
-      <section class="sprint-work" aria-labelledby="sprint-work">
-        <h2 id="sprint-work">Work in progress</h2>
+      <section class="sprint-work sprint-panel" aria-labelledby="sprint-work">
+        <h2 id="sprint-work">Implementation</h2>
         ${closing ? "" : (data.run ?? "")}
         ${runsLine}
         ${claudeNext}
+        <h3>Pull requests open</h3>
         ${openPulls(data.sprintCards)}
       </section>
-      <section class="sprint-stories" aria-labelledby="sprint-stories">
+      </div>
+      <section class="sprint-stories sprint-main" aria-labelledby="sprint-stories">
         <h2 id="sprint-stories">Features and stories</h2>
         ${cardsSection(data.sprintCards, data.canOrder, true, true) || `<p class="muted">No card in the sprint.</p>`}
-      </section>`
+      </section>
+    </div>`
     : `<section class="sprint-head">
         <h2>No sprint in progress</h2>
         <p>${lastLine} ${
@@ -526,7 +531,7 @@ export function releasePage(
       ${entries.some((entry) => !entry.taken) ? `<p>Release-note entries that stay:</p><ul>${entries.filter((entry) => !entry.taken).map(entryLine).join("")}</ul>` : ""}
       ${
         taken.length || entries.some((entry) => entry.taken)
-          ? `<form method="post" action="${escapeHtml(base)}/sprint" class="sprint-card sprint-close-card" data-busy="Closing…">${csrfField(viewer)}
+          ? `<form method="post" action="${escapeHtml(base)}/sprint" class="sprint-form-card sprint-close-card" data-busy="Closing…">${csrfField(viewer)}
         <input type="hidden" name="action" value="release" />
         <h3>${options.version ? `Release <span class="mono">${escapeHtml(options.version)}</span>` : "The release"}</h3>
         ${options.version ? `<p class="muted small">The sprint's version. To release another one, change it on the sprint first.</p>` : `<fieldset class="sprint-versions"><legend>Its version</legend>${radio("minor", plan.minor)}${radio("major", plan.major)}</fieldset>`}

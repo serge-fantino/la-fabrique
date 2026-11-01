@@ -3068,7 +3068,7 @@ tr.nice td {
 }
 
 /* Starting and closing a sprint, as cards (la-fabrique#174). */
-.sprint-card {
+.sprint-form-card {
   background: #fff;
   border-radius: 18px;
   padding: 1.25rem 1.5rem;
@@ -3078,7 +3078,7 @@ tr.nice td {
   max-width: 40rem;
 }
 
-.sprint-card h3 {
+.sprint-form-card h3 {
   margin: 0;
 }
 
@@ -3145,4 +3145,82 @@ tr.nice td {
 .sprint-run h3,
 .sprint-run-start h3 {
   margin: 0 0 0.5rem;
+}
+
+/* The sprint page in cards: its status and its implementation beside the
+   features on a wide screen, stacked on a phone (la-fabrique#179). */
+main:has(.sprint-layout) {
+  max-width: 1480px;
+}
+
+.sprint-layout {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.sprint-side {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.sprint-main {
+  min-width: 0;
+}
+
+.sprint-panel {
+  background: #fff;
+  border-radius: 22px;
+  padding: 1.25rem 1.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sprint-panel h2 {
+  margin-top: 0;
+}
+
+.sprint-panel h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+/* Cards inside a panel take the page's background, not another white. */
+.sprint-panel .sprint-run,
+.sprint-panel .sprint-run-start,
+.sprint-panel .sprint-form-card,
+.sprint-panel .sprint-open-pulls li {
+  background: #f3f4ee;
+}
+
+.sprint-panel .sprint-form-card {
+  max-width: none;
+}
+
+/* A feature of the sprint: a card, the width of the main part. */
+.sprint-main .sprint-card {
+  background: #fff;
+  border-radius: 22px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.sprint-main > h2 {
+  margin-top: 0;
+}
+
+@media (min-width: 1100px) {
+  .sprint-layout {
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  }
+
+}
+
+@media (max-width: 640px) {
+  .sprint-panel {
+    padding: 1rem;
+    border-radius: 18px;
+  }
 }
