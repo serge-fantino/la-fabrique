@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A recorded test becomes a Gherkin scenario",
+    "changements": [
+      "A story's page and To test show each recorded criterion as a Gherkin scenario (Given the first page, When the steps, Then the criterion), with Copy.",
+      "\"Propose to the project\" opens a pull request in your name adding features/story-<n>.feature on the integration branch (production without one); never written directly on a branch, logged as feature_proposed."
+    ],
+    "stories": [168],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Record what the tester does for a criterion",
     "changements": [
       "Report kit 1.5.0: Record on a criterion keeps the pages visited, buttons and links pressed and fields filled (by name, never what is typed) until Stop; the steps can be edited or dropped before they are sent with the tick.",

@@ -1,3 +1,5 @@
+import { recordedCriteria, type Recorded } from "./gherkin";
+import { scenarioBlock } from "./gherkin-views";
 import { cardRef, cardUrl } from "./card-views";
 import { storyCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
@@ -6,10 +8,11 @@ import type { Env } from "./env";
 import { isDeveloped, isToTest } from "./lifecycle";
 import type { LogEntry } from "./log";
 import { describe } from "./log-views";
-import { projectContext, projectHeader } from "./project-views";
+import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { lastMergeAttempts, pullDetails, type MergeAttempt, type PullDetail } from "./sprint-pulls";
 import { loadStories, type Story } from "./stories";
+import { canValidate } from "./validation";
 import { stagePill, testingNote } from "./stories-views";
 import { projectUrl } from "./urls";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
@@ -28,6 +31,7 @@ export interface StoryDetail {
   runs: ClaudeRun[];
   launched: { by: string; at: string } | null;
   history: LogEntry[];
+  scenarios: Recorded[];
 }
 
 export async function loadStoryDetail(env: Env, project: Project, number: number): Promise<StoryDetail> {
@@ -70,6 +74,7 @@ export async function loadStoryDetail(env: Env, project: Project, number: number
     runs: runs.filter((run) => run.issue === number),
     launched: launches.get(number) ?? null,
     history,
+    scenarios: await recordedCriteria(env.DB, project.repo, number),
   };
 }
 
@@ -107,7 +112,13 @@ function steps(detail: StoryDetail, project: Project): { label: string; state: S
   });
 }
 
-export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryDetail): string {
+const FEATURE_FAILURES: Record<string, string> = {
+  signed_out: "GitHub no longer accepts your sign-in. Sign out and sign in again.",
+  refused: "GitHub refused the change. The GitHub App needs Contents and Pull requests write permission on this repository, and you need write access to it.",
+  nothing: "No criterion was recorded for this story yet.",
+};
+
+export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryDetail, feature: { pull?: number; failed?: string } = {}): string {
   const base = projectUrl(project.repo);
   const github = `https://github.com/${escapeHtml(project.repo)}`;
   const state = detail.state;
@@ -159,6 +170,14 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
             ? `<ul class="criteria">${criteria.map((criterion) => `<li class="${criterion.done ? "done" : ""}"><span class="box" aria-hidden="true">${criterion.done ? "✓" : ""}</span> ${escapeHtml(criterion.text)}</li>`).join("")}</ul>`
             : `<p class="muted">No acceptance criteria written.</p>`
         }
+        ${
+          feature.pull
+            ? `<p class="notice ok" role="status">Proposed to the project: <a href="https://github.com/${escapeHtml(project.repo)}/pull/${feature.pull}">pull request #${feature.pull}</a>.</p>`
+            : feature.failed
+              ? notice(FEATURE_FAILURES[feature.failed] ?? "The scenario could not be proposed.", "error")
+              : ""
+        }
+        ${scenarioBlock(viewer, base, detail.number, title, detail.scenarios, canValidate(viewer.role), "story")}
         ${isToTest(state) ? `<p><a class="button quiet" href="${escapeHtml(base)}/to-test#story-${detail.number}">Test it in To test</a></p>` : ""}
         <h2>Pull requests</h2>
         ${pulls}

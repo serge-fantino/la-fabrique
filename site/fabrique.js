@@ -305,6 +305,27 @@
     }
   });
 
+  // Copy: the text of the element a [data-copy] button points to.
+  document.addEventListener("click", async (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-copy]") : null;
+    if (!button) return;
+    const source = document.querySelector(button.getAttribute("data-copy"));
+    if (!source) return;
+    const label = button.textContent;
+    try {
+      await navigator.clipboard.writeText(source.textContent);
+      button.textContent = "Copied";
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(source);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      button.textContent = "Select and copy";
+    }
+    setTimeout(() => (button.textContent = label), 2000);
+  });
+
   // A menu in the header closes when one clicks elsewhere.
   document.addEventListener("click", (event) => {
     for (const menu of document.querySelectorAll("details[data-menu][open]")) {

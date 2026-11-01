@@ -26,7 +26,7 @@ import { cardUrl } from "./card-views";
 import { findCardById } from "./cards";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
@@ -237,7 +237,7 @@ const app = {
       if (projectRoute[2]?.startsWith("/to-test/")) {
         if (method !== "POST") return methodNotAllowed();
         const form = await protectedForm(request, viewer);
-        const action = projectRoute[2].slice("/to-test/".length) as "criterion" | "validate" | "defect";
+        const action = projectRoute[2].slice("/to-test/".length) as "criterion" | "validate" | "defect" | "feature";
         return form ? toTestAction(request, form, env, viewer, repo, action) : forbidden(viewer);
       }
       if (projectRoute[2] === "/to-test") {

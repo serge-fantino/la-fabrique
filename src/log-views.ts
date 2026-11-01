@@ -30,6 +30,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return `unchecked a criterion of ${story}: “${text(d["text"])}”`;
     case "story_test_recorded":
       return `recorded ${Array.isArray(d["steps"]) ? d["steps"].length : 0} steps while checking a criterion of ${story}: “${text(d["text"])}”${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
+    case "feature_proposed":
+      return `proposed ${Number(d["scenarios"]) || 0} recorded scenario${Number(d["scenarios"]) === 1 ? "" : "s"} of ${story} to the project: <a href="https://github.com/${escapeHtml(repo)}/pull/${Number(d["pull"]) || 0}">PR #${Number(d["pull"]) || 0}</a>`;
     case "story_validated":
       return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "defect_reported":
