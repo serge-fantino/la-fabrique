@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "La Fabrique can close its sprint: its release workflow",
+    "changements": [
+      "La Fabrique declares its release workflow (workflows.publier): Close the sprint now makes its release instead of saying none is declared. The workflow turns the release-note entries of the stories done into one entry (the version chosen, the date and time, the title, every change, the stories), marks an entry with a story not done yet as partial and names it, keeps the other entries for a later release, checks, then merges a pull request on main, which deploys."
+    ],
+    "stories": [137],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Closing the sprint warns about what is not done and ships partial changes with a caveat",
     "changements": [
       "Before the close, a warning lists the merged stories not done and the partial release-note entries, says their changes stay online but are kept for a later release, and lets you postpone or go on.",
