@@ -17,8 +17,8 @@ import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWo
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
 import { heldStories } from "./card-lock";
-import { loadPlan as loadRunPlan, newRun, runRefusal, sprintRunFor } from "./sprint-run";
-import { runPreviewPage, runSection } from "./sprint-run-views";
+import { loadPlan as loadRunPlan, newRun, planRun, runRefusal, sprintRunFor } from "./sprint-run";
+import { runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
 import { cycleRules, isReadyStage, projectRules } from "./lifecycle";
@@ -768,7 +768,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
-      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project)) : "",
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
@@ -1018,12 +1018,10 @@ export async function cardRoute(
     const live = sprintLiveFor(env, project.repo);
     return live ? live.fetch(request) : new Response("Not found", { status: 404 });
   }
-  // The sprint running by itself: what it will do, before it starts.
+  // What the run will do is in its card on the sprint page (la-fabrique#188).
   if (path === "sprint/run") {
     if (method !== "GET") return notAllowed();
-    if (!can(viewer.role, "promote")) return forbidden(viewer);
-    const [{ view, cookies }, { plan }] = await Promise.all([projectView(request, env, project, viewer), loadRunPlan(env, project)]);
-    return html(runPreviewPage(viewer, view, plan, runRefusal(project)), { cookies });
+    return redirect(`${projectUrl(project.repo)}/sprint#sprint-run`);
   }
   // A story's detail, from the sprint: its steps, pull requests, runs, history.
   const storyPath = /^sprint\/stories\/(\d{1,9})$/.exec(path);

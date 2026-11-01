@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Run the sprint from its card, lane by lane",
+    "changements": [
+      "The Running by itself card of the sprint shows what the run will do, without a page of its own: the features in lanes (as many as Claude runs may go at once), each with its stories waiting, in order, and where it would stop; the features with nothing to run are listed apart, with why.",
+      "One button confirms; the order is the sprint's, set below. After a run, the same card shows what a new run would do.",
+      "The old Run the sprint page leads to that card."
+    ],
+    "stories": [188],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint page follows each step without a reload",
     "changements": [
       "While something is in progress in the sprint (Claude working, a pull request open, the sprint running by itself, the release), the page reads itself again every minute, and at once when GitHub reports a run, a pull request or a story that moved.",
