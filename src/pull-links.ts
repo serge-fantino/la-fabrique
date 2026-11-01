@@ -61,9 +61,12 @@ export function branchIssue(name: string): number | null {
 }
 
 // "Closes #12", "Fixes #12", "Refs #12", "Story #12": a story named on
-// purpose, not any "#12" of the text.
+// purpose, not any "#12" of the text. A list counts whole: "Refs #160,
+// #161", "Closes #3 and #4".
 export function namedStories(text: string): number[] {
-  return [...text.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|stor(?:y|ies))\s*:?\s+#(\d+)\b/gi)].map((match) => Number(match[1]));
+  return [...text.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|stor(?:y|ies))\s*:?\s+(#\d+(?:\s*(?:,|&|\band\b)\s*#\d+)*)\b/gi)].flatMap((match) =>
+    [...(match[1] ?? "").matchAll(/#(\d+)/g)].map((number) => Number(number[1])),
+  );
 }
 
 export interface PullStories {

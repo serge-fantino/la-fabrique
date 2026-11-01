@@ -20,6 +20,9 @@ describe("Which story a pull request belongs to", () => {
     expect(pullStories(pull(43, "Tidy up", "Story #12. Like in #7.", "tidy"), NO_LINKS)).toEqual({ stories: [12], guessed: true });
     expect(pullStories(pull(44, "Tidy up", "As discussed in #7", "tidy"), NO_LINKS)).toEqual({ stories: [], guessed: false });
     expect(namedStories("Closes #1, fixes #2, Resolved #3, refs #4, Story: #5, stories #6, see #7")).toEqual([1, 2, 3, 4, 5, 6]);
+    // A list counts whole; a number after the list does not.
+    expect(namedStories("Refs #160, #161 (card C16, stories 2 and 3 of 3), see #108")).toEqual([160, 161]);
+    expect(namedStories("Closes #3 and #4 & #5")).toEqual([3, 4, 5]);
   });
 });
 
