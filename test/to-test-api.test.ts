@@ -266,4 +266,39 @@ describe("Tick, validate from the app (la-fabrique#166)", () => {
     const list = (await (await call(tokens.access_token)).json()) as { stories: { number: number; validated: { by: string } | null }[] };
     expect(list.stories.find((s) => s.number === 146)?.validated?.by).toBe("mona");
   });
+
+  it("keeps the recorded steps with the criterion, the story, the version and the tester, without any value", async () => {
+    const { tokens } = await connect("mona", CONFIG, SCOPES);
+    await grantRole("mona", "tester");
+    await seed();
+    mockIssue(146, "## Acceptance criteria\n\n- [x] It saves\n- [ ] It shows\n", { token: 4, get: 3, patch: 1 });
+    const steps = [
+      { kind: "page", page: "https://app.example/orders?token=secret#x" },
+      { kind: "fill", name: "Password", page: "/login", value: "hunter2" },
+      { kind: "click", name: "Save", page: "/orders" },
+      { kind: "bogus", name: "x" },
+    ];
+    const response = await act(tokens.access_token, 146, "criteria", { index: 1, done: true, steps });
+    expect(response.status).toBe(200);
+    expect(await logged()).toContain("mona:story_test_recorded");
+    const row = await env.DB.prepare("SELECT issue_number, details FROM activity_log WHERE action = 'story_test_recorded'").first<{ issue_number: number; details: string }>();
+    expect(row?.issue_number).toBe(146);
+    expect(row?.details).not.toContain("hunter2");
+    expect(row?.details).not.toContain("secret");
+    const details = JSON.parse(row?.details ?? "{}") as { index: number; text: string; steps: { kind: string; name: string; page: string }[] };
+    expect(details.index).toBe(1);
+    expect(details.text).toBe("It shows");
+    expect(details.steps).toEqual([
+      { kind: "page", name: "", page: "/orders" },
+      { kind: "fill", name: "Password", page: "/login" },
+      { kind: "click", name: "Save", page: "/orders" },
+    ]);
+  });
+
+  it("refuses steps that are not a list", async () => {
+    const { tokens } = await connect("mona", CONFIG, SCOPES);
+    await grantRole("mona", "tester");
+    await seed();
+    expect((await act(tokens.access_token, 146, "criteria", { index: 0, done: true, steps: "click" })).status).toBe(400);
+  });
 });

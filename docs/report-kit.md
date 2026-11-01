@@ -93,6 +93,10 @@ The stories are those on int that wait to be tested (epics and defects left out)
    - `POST ?to-test={story}/validate` → `POST {FABRIQUE_URL}/api/projects/{project}/to-test/{story}/validate`: validates the story as *To test* does, `422` (`not_ready`) while a criterion is not ticked.
    Both need the scope `stories:test`, a role that may validate, an environment open to testing, and a story that is one of those to test (`404` otherwise); a refusal is `{ "error": "…", "message": "…" }`, which the panel shows. The defect reported from the panel is the existing `POST` of the relay with `story` set to the story.
 
+5. **Recording (kit 1.5.0, la-fabrique#167).** Next to each criterion, **Record** hides the panel and keeps the steps until **Stop**: the pages visited (path only), the buttons and links pressed and the fields filled, by their accessible name. The panel then shows the steps, which the tester can edit or drop, and **Tick with these steps** sends them: `POST ?to-test={story}/criteria` with `{ "index": 1, "done": true, "steps": [ { "kind": "click", "name": "Save", "page": "/orders" } ] }` (`kind`: `page`, `click`, `fill`, `select` or `check`). The relay passes the body as it comes; La Fabrique keeps the steps in its log with the criterion, the story, the version on int and the tester (`story_test_recorded`).
+
+   **What is never recorded.** No value typed or chosen, in any field (a password, an e-mail, a name: only the field's name is kept), no screenshot, no page query or fragment. La Fabrique drops anything else it is sent. What it keeps is personal only through the tester's login: page addresses, action and field names, the version.
+
 **`GET ?targets=1`**: what a report can be about, passed through from La Fabrique's `GET {FABRIQUE_URL}/api/projects/{project}/targets` (with the person's token).
 
 ```json

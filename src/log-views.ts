@@ -28,6 +28,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return `checked a criterion of ${story}: “${text(d["text"])}”`;
     case "criterion_unchecked":
       return `unchecked a criterion of ${story}: “${text(d["text"])}”`;
+    case "story_test_recorded":
+      return `recorded ${Array.isArray(d["steps"]) ? d["steps"].length : 0} steps while checking a criterion of ${story}: “${text(d["text"])}”${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "story_validated":
       return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "defect_reported":

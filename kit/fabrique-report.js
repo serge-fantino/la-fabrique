@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.4.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.5.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.4.0";
+  var VERSION = "1.5.0";
   var QUEUE_KEY = "fabrique-report-queue";
   var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
   var PREFIX = "fab-rep";
@@ -34,6 +34,21 @@
       tickFailed: "The criterion could not be saved.",
       validateFailed: "The story could not be validated.",
       reportOnStory: "Report a defect on this story",
+      record: "Record",
+      recording: "Recording",
+      stepsCount: "{n} steps",
+      stop: "Stop",
+      recordedSteps: "Recorded steps",
+      recordedNote: "Page addresses, buttons, links and field names only: never what you type. Edit or drop steps, then tick.",
+      noSteps: "Nothing was recorded.",
+      dropStep: "Drop",
+      tickWithSteps: "Tick with these steps",
+      discardSteps: "Discard",
+      stepPage: "Page",
+      stepClick: "Press",
+      stepFill: "Fill",
+      stepSelect: "Choose in",
+      stepCheck: "Switch",
       pick: "Touch or click the part of the page that is wrong.",
       chosen: "This part?",
       wider: "Wider",
@@ -94,6 +109,21 @@
       tickFailed: "Le critère n'a pas pu être enregistré.",
       validateFailed: "La story n'a pas pu être validée.",
       reportOnStory: "Signaler un défaut sur cette story",
+      record: "Enregistrer",
+      recording: "Enregistrement",
+      stepsCount: "{n} étapes",
+      stop: "Stop",
+      recordedSteps: "Étapes enregistrées",
+      recordedNote: "Adresses des pages, boutons, liens et noms de champs seulement : jamais ce que vous tapez. Modifiez ou retirez des étapes, puis cochez.",
+      noSteps: "Rien n'a été enregistré.",
+      dropStep: "Retirer",
+      tickWithSteps: "Cocher avec ces étapes",
+      discardSteps: "Écarter",
+      stepPage: "Page",
+      stepClick: "Appuyer sur",
+      stepFill: "Remplir",
+      stepSelect: "Choisir dans",
+      stepCheck: "Basculer",
       pick: "Touchez ou cliquez la partie de la page qui ne va pas.",
       chosen: "Cette partie ?",
       wider: "Plus large",
@@ -528,6 +558,87 @@
   // The story the defect form is about, set by the panel.
   var defectStory = null;
 
+  // --- Recording what the tester does (la-fabrique#167) -----------------------
+  // Pages visited, buttons and links pressed, fields filled, by their accessible
+  // name. Never a value typed (whatever the field), never a screenshot.
+  function accessibleName(node) {
+    function clean(text) {
+      return (text || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    }
+    var label = node.getAttribute("aria-label");
+    if (clean(label)) return clean(label);
+    var by = node.getAttribute("aria-labelledby");
+    if (by) {
+      var joined = by
+        .split(/\s+/)
+        .map(function (id) {
+          var target = document.getElementById(id);
+          return target ? target.textContent : "";
+        })
+        .join(" ");
+      if (clean(joined)) return clean(joined);
+    }
+    if (node.labels && node.labels.length) {
+      var fromLabel = clean(node.labels[0].textContent);
+      if (fromLabel) return fromLabel;
+    }
+    var tag = node.tagName.toLowerCase();
+    if (tag === "input" && /^(submit|button|reset)$/i.test(node.type) && clean(node.value)) return clean(node.value);
+    if (tag !== "input" && tag !== "textarea" && tag !== "select" && clean(node.textContent)) return clean(node.textContent);
+    return clean(node.getAttribute("alt") || node.getAttribute("title") || node.getAttribute("placeholder") || node.getAttribute("name") || node.id || node.type || tag);
+  }
+
+  function createRecorder(onStep) {
+    var steps = [];
+    var page = "";
+    var timer = null;
+    function add(kind, name) {
+      var last = steps[steps.length - 1];
+      if (last && last.kind === kind && last.name === name && last.page === location.pathname && kind !== "click") return;
+      steps.push({ kind: kind, name: name, page: location.pathname });
+      onStep(steps.length);
+    }
+    function checkPage() {
+      if (location.pathname !== page) {
+        page = location.pathname;
+        add("page", "");
+      }
+    }
+    function onClick(event) {
+      var node = event.target && event.target.closest ? event.target.closest("a, button, summary, [role='button'], [role='link'], input[type='submit'], input[type='button']") : null;
+      if (!node || isOurs(node)) return;
+      add("click", accessibleName(node));
+    }
+    function onChange(event) {
+      var node = event.target;
+      if (!node || !node.tagName || isOurs(node)) return;
+      var tag = node.tagName.toLowerCase();
+      if (tag !== "input" && tag !== "textarea" && tag !== "select") return;
+      // The name of the field is all that is kept: never its value.
+      var kind = tag === "select" ? "select" : /^(checkbox|radio)$/i.test(node.type) ? "check" : "fill";
+      add(kind, accessibleName(node));
+    }
+    return {
+      start: function () {
+        steps = [];
+        page = "";
+        checkPage();
+        document.addEventListener("click", onClick, true);
+        document.addEventListener("change", onChange, true);
+        timer = setInterval(checkPage, 400);
+      },
+      stop: function () {
+        checkPage();
+        document.removeEventListener("click", onClick, true);
+        document.removeEventListener("change", onChange, true);
+        clearInterval(timer);
+        return steps.map(function (step) {
+          return { kind: step.kind, name: step.name, page: step.page };
+        });
+      },
+    };
+  }
+
   var testing = false;
   // A panel with the stories one at a time, each with its criteria.
   function testPanel() {
@@ -549,6 +660,84 @@
       var dialog = el("div", { className: PREFIX + " " + cls("dialog"), role: "dialog", "aria-modal": "true", "aria-label": t.toTest }, [sheet]);
       document.body.appendChild(dialog);
       close.focus();
+
+      // Steps recorded and not yet sent, by story and criterion.
+      var recorded = {};
+      function recordCriterion(story, at) {
+        var bar = null;
+        var count = el("span", { text: t.stepsCount.replace("{n}", 0) });
+        var recorder = createRecorder(function (n) {
+          count.textContent = t.stepsCount.replace("{n}", n);
+        });
+        var stop = el("button", { type: "button", className: cls("button"), text: t.stop });
+        bar = el("div", { className: PREFIX + " " + cls("recorder"), role: "status" }, [el("strong", { text: "● " + t.recording + " " }), count, " ", stop]);
+        dialog.style.display = "none";
+        document.body.appendChild(bar);
+        recorder.start();
+        stop.focus();
+        stop.addEventListener("click", function () {
+          var steps = recorder.stop();
+          bar.remove();
+          recorded[story.number + "/" + at] = steps;
+          dialog.style.display = "";
+          show();
+        });
+      }
+      function stepLabel(step) {
+        return { page: t.stepPage, click: t.stepClick, fill: t.stepFill, select: t.stepSelect, check: t.stepCheck }[step.kind] || step.kind;
+      }
+      // The steps, to read, edit or drop before they are sent with the tick.
+      function stepsEditor(story, at, criterion, steps) {
+        var key = story.number + "/" + at;
+        var message = el("p", { className: cls("note"), role: "status" });
+        var list = el(
+          "ol",
+          { className: cls("steps") },
+          steps.map(function (step, i) {
+            var field = el("input", { type: "text", className: cls("step-input"), maxlength: "200", "aria-label": stepLabel(step) });
+            field.value = step.kind === "page" ? step.page : step.name;
+            field.addEventListener("input", function () {
+              if (step.kind === "page") step.page = field.value;
+              else step.name = field.value;
+            });
+            var drop = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.dropStep });
+            drop.addEventListener("click", function () {
+              steps.splice(i, 1);
+              show();
+            });
+            return el("li", {}, [el("span", { className: cls("tag"), text: stepLabel(step) }), step.kind === "page" ? "" : el("small", { className: cls("note"), text: step.page }), field, drop]);
+          }),
+        );
+        var send = el("button", { type: "button", className: cls("button"), text: t.tickWithSteps });
+        var discard = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.discardSteps });
+        discard.addEventListener("click", function () {
+          delete recorded[key];
+          show();
+        });
+        send.addEventListener("click", function () {
+          send.disabled = true;
+          var kept = steps.filter(function (step) {
+            return step.kind === "page" ? step.page.trim() : step.name.trim();
+          });
+          actOnStory(story.number, "criteria", { index: at, done: true, steps: kept }).then(function (outcome) {
+            if (outcome.ok) {
+              criterion.done = true;
+              delete recorded[key];
+              show();
+              return;
+            }
+            send.disabled = false;
+            message.textContent = outcome.message || t.tickFailed;
+          });
+        });
+        return el("div", { className: cls("recorded") }, [
+          el("h5", { className: cls("criteria-title"), text: t.recordedSteps }),
+          el("p", { className: cls("note"), text: steps.length ? t.recordedNote : t.noSteps }),
+          list,
+          message,
+          el("div", { className: cls("actions") }, [steps.length ? send : "", discard]),
+        ]);
+      }
 
       function show() {
         body.textContent = "";
@@ -599,7 +788,12 @@
                       refresh();
                     });
                   });
-                  return el("li", {}, [el("label", {}, [box, " " + criterion.text])]);
+                  var record = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("record"), text: t.record });
+                  record.addEventListener("click", function () {
+                    recordCriterion(story, at);
+                  });
+                  var pending = recorded[story.number + "/" + at];
+                  return el("li", {}, [el("label", {}, [box, " " + criterion.text]), pending ? stepsEditor(story, at, criterion, pending) : record]);
                 }),
               )
             : el("p", { className: cls("note"), text: t.noCriteria }),
