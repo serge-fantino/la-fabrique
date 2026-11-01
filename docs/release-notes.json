@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Closing the sprint is a step you can follow",
+    "changements": [
+      "Once its release is started, the sprint says Closing: a card follows the release step by step (started by whom, the project's workflow with its link, then out); the close button and the version change wait meanwhile.",
+      "A release that fails says why on the same card, and the sprint is open again to close once fixed.",
+      "The sprint's automatic run is in its own card, \"Running by itself\", shown only while the sprint runs: not while it closes, nor once it is closed."
+    ],
+    "stories": [175],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A sprint gets its version when it starts",
     "changements": [
       "Starting a sprint is a card: the version it will release (the next minor or major proposed, or one you type, 1.0 included) and a name if you want; the sprint page and the board then say \"Sprint 0.82\".",

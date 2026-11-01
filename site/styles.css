@@ -3136,3 +3136,13 @@ tr.nice td {
   gap: 0.75rem;
   align-items: end;
 }
+
+/* The sprint closing, followed (la-fabrique#175). */
+.sprint-closing.failed h3 {
+  color: #8a2a0f;
+}
+
+.sprint-run h3,
+.sprint-run-start h3 {
+  margin: 0 0 0.5rem;
+}

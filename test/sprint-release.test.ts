@@ -205,7 +205,12 @@ describe("the release, followed from the sprint", () => {
     fetchMock.get("https://api.github.com").intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/publier.yml/dispatches` }).reply(204, "");
     await post(`/projects/${REPO}/sprint`, { csrf, action: "release", kind: "minor", title: "Weekly menus" }, cookie);
     const running = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
-    expect(running).toContain('<strong>Release <span class="mono">0.79</span> in progress</strong>');
+    // Closing: said in the sprint's head, followed step by step; no close
+    // button meanwhile (la-fabrique#175).
+    expect(running).toMatch(/<span class="pill warn">Closing<\/span><\/h2>/);
+    expect(running).toContain('<h3>Closing: release <span class="mono">0.79</span></h3>');
+    expect(running).not.toContain('aria-label="Close the sprint"');
+    expect(running).not.toContain("<h3>Running by itself</h3>");
     expect(running).toMatch(/href="https:\/\/github.com\/acme\/widget\/actions\/workflows\/publier.yml">Follow it on GitHub<\/a>/);
 
     const github = fetchMock.get("https://api.github.com");
@@ -219,8 +224,12 @@ describe("the release, followed from the sprint", () => {
     const project = (await findProject(env.DB, REPO))!;
     expect(await releaseRunEvent(env, project, "completed", { id: 88, conclusion: "failure", path: ".github/workflows/publier.yml", html_url: "https://github.com/run/88" } as never)).toBe(true);
     const failed = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
-    expect(failed).toContain('<strong>Release <span class="mono">0.79</span> failed</strong>: Version 0.79 is already in the release notes.');
-    expect(failed).toContain("The sprint is still open: close it again once fixed.");
+    expect(failed).toContain('<h3>The release failed: release <span class="mono">0.79</span></h3>');
+    expect(failed).toContain("Version 0.79 is already in the release notes.");
+    expect(failed).toContain("The sprint is open again: close it once fixed");
+    expect(failed).toMatch(/<span class="pill warn">In progress<\/span><\/h2>/);
+    expect(failed).toContain('aria-label="Close the sprint"');
+    expect(failed).toContain("<h3>Running by itself</h3>");
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM sprints WHERE ended_at IS NULL").first<{ n: number }>())?.n).toBe(1);
     expect((await logActions()).map((entry) => entry.action)).toContain("release_failed");
     // Once per release.
