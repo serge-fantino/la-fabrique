@@ -10,8 +10,8 @@ import { storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
-import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
-import { closeSprint, startSprint } from "./sprint-flow";
+import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice, setSprintVersion } from "./sprints";
+import { closeSprint, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
@@ -584,8 +584,22 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       return redirect(`${base}#sprint-work`);
     }
     if (action === "start") {
-      const outcome = await startSprint(env, project, viewer.login);
-      return redirect(`${base}?${outcome.ok ? "notice=started" : `failure=${running ? "running" : "empty"}`}`);
+      const choice = String(form.get("version") ?? "");
+      const version = choice === "other" ? String(form.get("version_other") ?? "").trim() : choice;
+      const outcome = await startSprint(env, project, viewer.login, { version: version || null, name: String(form.get("name") ?? "") || null });
+      if (outcome.ok) return redirect(`${base}?notice=started`);
+      if (outcome.reason !== "version") return redirect(`${base}?failure=${outcome.reason}`);
+      return showSprint(request, env, viewer, project, outcome.message, 422);
+    }
+    // The sprint's version and name, changed while it runs (la-fabrique#174).
+    if (action === "sprint_version") {
+      if (!running) return redirect(base);
+      const version = String(form.get("version") ?? "").trim();
+      const { releases } = await sprintVersions(env, project);
+      const problem = sprintVersionProblem(project, version, releases);
+      if (problem) return showSprint(request, env, viewer, project, problem, 422);
+      await setSprintVersion(env.DB, running, version, String(form.get("name") ?? "").replace(/\s+/g, " ").trim().slice(0, 80) || null, viewer.login);
+      return redirect(`${base}?notice=versioned`);
     }
     if (action === "close" || action === "release") {
       if (!running || running.release !== SPRINT_LANE) return redirect(base);
@@ -605,15 +619,20 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const title = String(form.get("title") ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
       const preview = async (error?: string, status = 200) => {
         const { view, cookies } = await projectView(request, env, project, viewer);
-        return html(releasePage(viewer, view, plan, { kind, title: action === "close" || !title ? plan.title : title, ...(error ? { error } : {}) }), { cookies, status });
+        return html(releasePage(viewer, view, plan, { kind, title: action === "close" || !title ? plan.title : title, version: running.version, ...(error ? { error } : {}) }), { cookies, status });
       };
       if (action === "close" && form.get("confirm") !== "1" && (plan.notDone.length || plan.entries.some((entry) => entry.partial))) {
         const { view, cookies } = await projectView(request, env, project, viewer);
         return html(releaseWarningPage(viewer, view, plan), { cookies });
       }
       if (action === "close") return preview();
-      const version = proposeVersion(plan.newest, kind);
+      // The sprint's own version when it has one (la-fabrique#174).
+      const version = running.version ?? proposeVersion(plan.newest, kind);
       if (!version) return preview("The newest release has no number to continue from.", 422);
+      if (running.version) {
+        const problem = sprintVersionProblem(project, running.version, (await sprintVersions(env, project)).releases);
+        if (problem) return preview(`${problem} Change the sprint's version, then close it.`, 422);
+      }
       if (!title) return preview("The release needs a title.", 422);
       const outcome = await startRelease(env, project, viewer.login, plan, version, title);
       if (!outcome.ok) return preview(outcome.message, outcome.status);
@@ -754,8 +773,11 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
         runs,
         runsUrl: claudeWorkflow(project) ? `https://github.com/${project.repo}/actions/workflows/${encodeURIComponent(claudeWorkflow(project) ?? "")}` : null,
       },
+      ...(sprint ? {} : { versions: await sprintVersions(env, project) }),
       notice:
-        params.get("notice") === "run_started"
+        params.get("notice") === "versioned"
+          ? "The sprint's version is saved: it is the release the sprint makes when it closes."
+          : params.get("notice") === "run_started"
           ? "The sprint is running by itself: each card's stories one after another, up to testing. Pause or stop it at any time."
           : params.get("notice") === "launched" && Number.isInteger(launched)
           ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.`

@@ -316,7 +316,7 @@ const TOOLS: Tool[] = [
       const left = cards.flatMap((card) => (links.order.get(card.id) ?? []).filter((number) => !isNice(links, card.id, number) && !stories.get(number)?.closed));
       return {
         project: project.repo,
-        running: sprint ? { started_at: sprint.startedAt, started_by: sprint.startedBy } : null,
+        running: sprint ? { started_at: sprint.startedAt, started_by: sprint.startedBy, version: sprint.version, name: sprint.name } : null,
         lane,
         note: sprint ? null : "No sprint running: these are the cards of Next release, which sprint_start takes.",
         cards: cards.map((card) => ({
@@ -611,13 +611,17 @@ const TOOLS: Tool[] = [
   {
     name: "sprint_start",
     title: "Start the sprint",
-    description: "Start the project's sprint: the cards of Next release go into the Sprint lane. One sprint at a time.",
-    inputSchema: { type: "object", properties: { ...PROJECT }, required: ["project"] },
+    description: "Start the project's sprint: the cards of Next release go into the Sprint lane. One sprint at a time. Its version is the release it will make when it closes: give one (0.82, 1.0), or the next minor after the newest release is taken.",
+    inputSchema: {
+      type: "object",
+      properties: { ...PROJECT, version: { type: "string", description: "The version the sprint will release" }, name: { type: "string", description: "A name, if wanted" } },
+      required: ["project"],
+    },
     needs: "request",
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const outcome = await startSprint(ctx.env, project, ctx.login);
+      const outcome = await startSprint(ctx.env, project, ctx.login, { version: text(args, "version", 30) ?? null, name: text(args, "name", 80) ?? null });
       return outcome.ok ? { started: true, cards: outcome.cards, url: absolute(ctx, `${projectUrl(project.repo)}/sprint`) } : fail(outcome.message);
     },
   },

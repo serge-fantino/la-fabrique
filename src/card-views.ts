@@ -261,9 +261,11 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
     const release = axis === "release" ? data.releases.get(value) : undefined;
     // Next release needs no pill; the Sprint lane says it is in progress.
     if (!release || release.version === NEXT_RELEASE) return "";
+    const planned = release.sprintVersion ? ` <span class="mono small">${escapeHtml(release.sprintVersion)}</span>` : "";
     if (release.onInt?.length) {
-      return ` <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span> <span class="mono small">${release.onInt.map((version) => escapeHtml(version)).join(", ")} (int)</span>`;
+      return `${planned} <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span> <span class="mono small">${release.onInt.map((version) => escapeHtml(version)).join(", ")} (int)</span>`;
     }
+    if (planned) return `${planned} <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span>`;
     const label = release.sprint && release.version !== SPRINT_LANE ? "Sprint" : release.integration ? "On int" : RELEASE_STATE_LABELS[release.state];
     return ` <span class="pill ${RELEASE_TONES[release.state]} small">${label}</span>${release.integration ? ` <code class="small">${escapeHtml(release.integration)}</code>` : ""}`;
   };

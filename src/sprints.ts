@@ -12,6 +12,10 @@ export interface Sprint {
   endedAt: string | null;
   endedBy: string | null;
   endReason: "stopped" | "shipped" | "closed" | null;
+  // The release it will make, chosen when it starts (la-fabrique#174), and
+  // its name; null for a sprint started before.
+  version: string | null;
+  name: string | null;
 }
 
 interface SprintRow {
@@ -23,6 +27,8 @@ interface SprintRow {
   ended_at: string | null;
   ended_by: string | null;
   end_reason: string | null;
+  version?: string | null;
+  name?: string | null;
 }
 
 function toSprint(row: SprintRow): Sprint {
@@ -35,6 +41,8 @@ function toSprint(row: SprintRow): Sprint {
     endedAt: row.ended_at,
     endedBy: row.ended_by,
     endReason: row.end_reason === "stopped" || row.end_reason === "shipped" || row.end_reason === "closed" ? row.end_reason : null,
+    version: row.version ?? null,
+    name: row.name ?? null,
   };
 }
 
@@ -56,6 +64,21 @@ export async function endSprint(db: D1Database, sprint: Sprint, login: string, r
       .bind(login, reason, sprint.id),
     activityStatement(db, { actor: login, action: reason === "shipped" ? "sprint_shipped" : "sprint_stopped", repo: sprint.repo, details: { release: sprint.release } }),
   ]);
+}
+
+// The sprint's version and name, changed while it runs.
+export async function setSprintVersion(db: D1Database, sprint: Sprint, version: string, name: string | null, login: string): Promise<boolean> {
+  if (sprint.version === version && (sprint.name ?? null) === name) return false;
+  await db.batch([
+    db.prepare("UPDATE sprints SET version = ?, name = ? WHERE id = ?").bind(version, name, sprint.id),
+    activityStatement(db, { actor: login, action: "sprint_versioned", repo: sprint.repo, details: { from: sprint.version, to: version, name } }),
+  ]);
+  return true;
+}
+
+// How a sprint is called: "Sprint 0.82 · Menus", "Sprint 0.82", or "Sprint".
+export function sprintLabel(sprint: Pick<Sprint, "version" | "name"> | null): string {
+  return ["Sprint", sprint?.version ?? "", sprint?.name ? `· ${sprint.name}` : ""].filter(Boolean).join(" ");
 }
 
 // ---- The order in the sprint (la-fabrique#111) ----------------------------

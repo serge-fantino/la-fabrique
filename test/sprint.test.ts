@@ -43,6 +43,9 @@ async function writer(): Promise<{ cookie: string; csrf: string }> {
 
 const releaseOf = async (id: number) => (await env.DB.prepare("SELECT release FROM cards WHERE id = ?").bind(id).first<{ release: string | null }>())?.release;
 
+// The running sprint's heading: "Sprint", its version when it has one.
+const SPRINT_HEADING = /<h2>Sprint(?: <span class="mono">[^<]+<\/span>)? <span class="pill warn">In progress<\/span><\/h2>/;
+
 describe("Next release and the sprint", () => {
   it("shows Next release first on the board, always, with no release planned by number", async () => {
     await seed();
@@ -71,12 +74,14 @@ describe("Next release and the sprint", () => {
     expect((await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=started`);
     expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["Sprint", "Sprint"]);
     const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
-    expect(page).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
+    expect(page).toMatch(SPRINT_HEADING);
     expect(page).toContain("<strong>2 stories left</strong> · 2 cards, 2 stories, 0 in production.");
     expect(page).toContain("Choose the week");
     expect(page).not.toContain("Other release");
     expect(page).not.toContain('<h2 id="next">');
-    expect(await (await get(`/projects/${REPO}/board?by=release`, session.cookie)).text()).toContain('Sprint <span class="pill warn small">In progress</span>');
+    // Started without a choice: the next minor version, everywhere.
+    expect(page).toContain('<h2>Sprint <span class="mono">0.57</span> <span class="pill warn">In progress</span></h2>');
+    expect(await (await get(`/projects/${REPO}/board?by=release`, session.cookie)).text()).toContain('Sprint <span class="mono small">0.57</span> <span class="pill warn small">In progress</span>');
 
     // One at a time.
     await env.DB.prepare("UPDATE cards SET release = 'Next release' WHERE title = 'Other release'").run();
@@ -88,6 +93,30 @@ describe("Next release and the sprint", () => {
     expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["Sprint", "Sprint"]);
     expect(await activeSprintCount()).toBe(1);
     expect((await logActions()).map((entry) => entry.action).filter((action) => action.startsWith("sprint_"))).toEqual(["sprint_started"]);
+  });
+
+  it("gets its version when it starts: proposed, typed or refused, and changed while it runs", async () => {
+    await seed();
+    const session = await writer();
+    const before = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    expect(before).toContain("<h3>Start the next sprint</h3>");
+    expect(before).toMatch(/value="0\.57" checked \/> <span class="mono">0\.57 <span class="muted small">next minor/);
+    expect(before).toMatch(/value="1\.0" \/> <span class="mono">1\.0 <span class="muted small">next major/);
+    // A version not ahead of the newest release is refused, and nothing starts.
+    const refused = await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start", version: "other", version_other: "0.50" }, session.cookie);
+    expect(refused.status).toBe(422);
+    expect(await refused.text()).toContain("0.50 is not ahead of 0.56");
+    expect(await activeSprintCount()).toBe(0);
+    // Typed, with a name.
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start", version: "other", version_other: "0.60", name: "Menus" }, session.cookie);
+    const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    expect(page).toContain('<h2>Sprint <span class="mono">0.60</span> <span class="sprint-name">Menus</span> <span class="pill warn">In progress</span></h2>');
+    // Changed while it runs, and logged.
+    const changed = await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "sprint_version", version: "1.0", name: "" }, session.cookie);
+    expect(changed.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=versioned`);
+    expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).toContain('<h2>Sprint <span class="mono">1.0</span> <span class="pill warn">In progress</span></h2>');
+    const logged = (await logActions()).filter((entry) => entry.action === "sprint_versioned").map((entry) => JSON.parse(entry.details ?? "{}"));
+    expect(logged).toEqual([{ from: "0.60", to: "1.0", name: null }]);
   });
 
   it("refuses to start with nothing in Next release", async () => {
@@ -143,7 +172,7 @@ describe("Next release and the sprint", () => {
       ),
     ]);
     const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
-    expect(page).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
+    expect(page).toMatch(SPRINT_HEADING);
     expect(page).toContain("Close the sprint");
     expect(await releaseOf(week)).toBe("Sprint");
     await get(`/projects/${REPO}/board`, session.cookie);
@@ -167,7 +196,7 @@ describe("Next release and the sprint", () => {
     expect(await (await get(`/projects/${REPO}/board?by=release`, session.cookie)).text()).toContain("Week menu");
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
     const next = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
-    expect(next).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
+    expect(next).toMatch(SPRINT_HEADING);
     expect(next).toContain("1 story already in production");
     expect(next).toContain("Print the week");
   });
@@ -180,7 +209,7 @@ describe("Next release and the sprint", () => {
       .bind(JSON.stringify([story(21, "Choose the week", "closed"), story(22, "Print the week", "closed")]), REPO)
       .run();
     // The card without a story keeps the sprint open; it is closed by hand.
-    expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).toContain('<h2>Sprint <span class="pill warn">In progress</span></h2>');
+    expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).toMatch(SPRINT_HEADING);
     await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "close" }, session.cookie);
     expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["0.58", "Sprint"]);
   });

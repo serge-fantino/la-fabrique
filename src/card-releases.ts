@@ -25,6 +25,8 @@ export interface BoardRelease {
   // The Sprint lane: the release(s) on int it is building, shown in its
   // head ("Sprint · In progress · 1.170 (int)") rather than as a lane.
   onInt?: string[];
+  // The Sprint lane: the version the sprint will release (la-fabrique#174).
+  sprintVersion?: string;
 }
 
 // Two lanes with no version: what the next sprint will take, and the
@@ -150,7 +152,9 @@ export async function boardReleases(env: Env, project: Project, planned: string[
   }
   const fixed: BoardRelease[] = [
     { version: NEXT_RELEASE, title: "What the next sprint takes", state: "planned" },
-    ...(sprint?.release === SPRINT_LANE ? [{ version: SPRINT_LANE, title: "The sprint in progress", state: "in_progress" as const, sprint: true }] : []),
+    ...(sprint?.release === SPRINT_LANE
+      ? [{ version: SPRINT_LANE, title: sprint.version ? `The sprint in progress, to release ${sprint.version}` : "The sprint in progress", state: "in_progress" as const, sprint: true, ...(sprint.version ? { sprintVersion: sprint.version } : {}) }]
+      : []),
   ];
   for (const lane of fixed) found.delete(lane.version);
   return [...fixed, ...[...found.values()].sort((a, b) => compareVersions(a.version, b.version))];
