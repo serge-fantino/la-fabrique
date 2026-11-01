@@ -176,6 +176,38 @@ describe("Close the sprint makes the release", () => {
   });
 });
 
+describe("the release, followed from the sprint", () => {
+  it("shows the release in progress with a link to its runs, then why it failed; the sprint stays open", async () => {
+    await seed();
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    TOKEN();
+    fetchMock.get("https://api.github.com").intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/publier.yml/dispatches` }).reply(204, "");
+    await post(`/projects/${REPO}/sprint`, { csrf, action: "release", kind: "minor", title: "Weekly menus" }, cookie);
+    const running = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(running).toContain('<strong>Release <span class="mono">0.79</span> in progress</strong>');
+    expect(running).toMatch(/href="https:\/\/github.com\/acme\/widget\/actions\/workflows\/publier.yml">Follow it on GitHub<\/a>/);
+
+    const github = fetchMock.get("https://api.github.com");
+    TOKEN();
+    github.intercept({ path: `/repos/${REPO}/actions/runs/88/jobs` }).reply(200, JSON.stringify({ jobs: [{ id: 601, conclusion: "failure" }] }), JSON_HEADERS);
+    github
+      .intercept({ path: `/repos/${REPO}/check-runs/601/annotations` })
+      .reply(200, JSON.stringify([{ annotation_level: "failure", title: "Release refused", message: "Version 0.79 is already in the release notes." }]), JSON_HEADERS);
+    const { releaseRunEvent } = await import("../src/sprint-release");
+    const { findProject } = await import("../src/projects");
+    const project = (await findProject(env.DB, REPO))!;
+    expect(await releaseRunEvent(env, project, "completed", { id: 88, conclusion: "failure", path: ".github/workflows/publier.yml", html_url: "https://github.com/run/88" } as never)).toBe(true);
+    const failed = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(failed).toContain('<strong>Release <span class="mono">0.79</span> failed</strong>: Version 0.79 is already in the release notes.');
+    expect(failed).toContain("The sprint is still open: close it again once fixed.");
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM sprints WHERE ended_at IS NULL").first<{ n: number }>())?.n).toBe(1);
+    expect((await logActions()).map((entry) => entry.action)).toContain("release_failed");
+    // Once per release.
+    expect(await releaseRunEvent(env, project, "completed", { id: 88, conclusion: "failure", path: ".github/workflows/publier.yml" } as never)).toBe(false);
+  });
+});
+
 describe("a partial change is warned about before the close", () => {
   async function seedPartial(): Promise<void> {
     await seed();

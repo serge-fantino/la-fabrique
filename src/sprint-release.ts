@@ -12,6 +12,8 @@ import { wordingFor } from "./wording";
 import { applyIssueEvent, type RestIssue } from "./stories";
 import type { RestWorkflowRun } from "./claude";
 import { activeSprint, type Sprint } from "./sprints";
+import { sprintLiveFor } from "./live";
+import { runFailure } from "./sprint-pulls";
 
 // Closing the sprint on a project without an integration branch makes the
 // release (la-fabrique#137): one version, one release note, written by the
@@ -220,16 +222,25 @@ export async function startRelease(
 // word, all in the log. Once per release started.
 export async function releaseRunEvent(env: Env, project: Project, action: string, run: RestWorkflowRun): Promise<boolean> {
   const file = publishWorkflow(project);
-  if (!file || action !== "completed" || run.conclusion !== "success" || !run.path?.endsWith(`/${file}`)) return false;
+  if (!file || !run.path?.endsWith(`/${file}`)) return false;
+  // The sprint page follows the run: started, in progress, ended.
+  await sprintLiveFor(env, project.repo)?.notify({ kind: "pull_request", issue: null, status: `release ${action}`, conclusion: run.conclusion ?? null, url: run.html_url ?? "", at: new Date().toISOString() });
+  if (action !== "completed") return false;
   const started = await env.DB.prepare("SELECT id, details FROM activity_log WHERE repo = ? AND action = 'release_started' ORDER BY id DESC LIMIT 1")
     .bind(project.repo)
     .first<{ id: number; details: string | null }>();
   if (!started) return false;
-  const out = await env.DB.prepare("SELECT 1 AS found FROM activity_log WHERE repo = ? AND action = 'release_published' AND id > ?").bind(project.repo, started.id).first();
+  const out = await env.DB.prepare("SELECT 1 AS found FROM activity_log WHERE repo = ? AND action IN ('release_published', 'release_failed') AND id > ?").bind(project.repo, started.id).first();
   if (out) return false;
   const details = started.details ? (JSON.parse(started.details) as Record<string, unknown>) : {};
   const version = typeof details["version"] === "string" ? details["version"] : null;
   if (!version) return false;
+  // Refused or failed: why, from the run; the sprint stays open.
+  if (run.conclusion !== "success") {
+    const reason = run.id ? await runFailure(env, project, run.id, "Release refused") : null;
+    await activityStatement(env.DB, { actor: "github", action: "release_failed", repo: project.repo, details: { version, reason, conclusion: run.conclusion ?? null, run: run.html_url ?? null } }).run();
+    return true;
+  }
   const numbers = (value: unknown) => (Array.isArray(value) ? value.filter((n): n is number => typeof n === "number") : []);
   const cardIds = numbers(details["cards"]);
   const stories = numbers(details["stories"]);
@@ -263,4 +274,36 @@ async function closeAfterRelease(env: Env, project: Project, sprint: Sprint | nu
     .bind(version, sprint.id)
     .run();
   await activityStatement(env.DB, { actor: "github", action: "sprint_shipped", repo: project.repo, details: { release: version, reason: "closed" } }).run();
+}
+
+export interface ReleaseAttempt {
+  version: string | null;
+  state: "running" | "published" | "failed";
+  reason: string | null;
+  run: string | null;
+  at: string;
+  by: string;
+}
+
+// The last release started from the sprint, and where it stands, from the log.
+export async function lastReleaseAttempt(db: D1Database, repo: string): Promise<ReleaseAttempt | null> {
+  const started = await db
+    .prepare("SELECT id, occurred_at, actor, details FROM activity_log WHERE repo = ? AND action = 'release_started' ORDER BY id DESC LIMIT 1")
+    .bind(repo)
+    .first<{ id: number; occurred_at: string; actor: string; details: string | null }>();
+  if (!started) return null;
+  const details = started.details ? (JSON.parse(started.details) as Record<string, unknown>) : {};
+  const after = await db
+    .prepare("SELECT action, details FROM activity_log WHERE repo = ? AND action IN ('release_published', 'release_failed') AND id > ? ORDER BY id LIMIT 1")
+    .bind(repo, started.id)
+    .first<{ action: string; details: string | null }>();
+  const end = after?.details ? (JSON.parse(after.details) as Record<string, unknown>) : {};
+  return {
+    version: typeof details["version"] === "string" ? details["version"] : null,
+    state: !after ? "running" : after.action === "release_published" ? "published" : "failed",
+    reason: typeof end["reason"] === "string" ? end["reason"] : null,
+    run: typeof end["run"] === "string" ? end["run"] : null,
+    at: started.occurred_at,
+    by: started.actor,
+  };
 }

@@ -6,7 +6,10 @@ describe("Settings", () => {
   it("shows the online version and what this device should run", async () => {
     const page = await (await get("/settings", (await signIn("admin-one")).cookie)).text();
     expect(page).toContain('<a href="/settings">Settings</a>');
-    expect(page).toContain(`<span class="mono">${releaseNotes.find((note) => note.version !== "next")?.version} + ${releaseNotes.filter((note) => note.version === "next").length} change${releaseNotes.filter((note) => note.version === "next").length === 1 ? "" : "s"}</span>`);
+    // The last release, and what is online since (nothing right after a release).
+    const last = releaseNotes.find((note) => note.version !== "next")?.version;
+    const drafts = releaseNotes.filter((note) => note.version === "next").length;
+    expect(page).toContain(`<span class="mono">${drafts ? `${last} + ${drafts} change${drafts === 1 ? "" : "s"}` : last}</span>`);
     expect(page).toMatch(/data-expected-script="\/fabrique\.js\?v=[0-9a-f]{8}"/);
     expect(page).toContain('<form method="post" action="/settings/refresh" data-refresh>');
   });
