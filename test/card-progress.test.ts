@@ -46,8 +46,12 @@ describe("A card's progress, from its stories", () => {
     expect(at({ 1: "closed", 2: "closed", 3: "closed" }, { ...CARD, status: "dropped" })).toBeNull();
   });
 
-  it("counts the stories needed, not the nice to have; none without a story", () => {
-    expect(progressOf(CARD, links([1, 2], [2]), stories({ 1: "closed", 2: "backlog" }), NONE, null)).toMatchObject({ stage: "in_production", done: 1, total: 1 });
+  it("moves on with the stories needed, and counts every story, nice to have included; none without a story", () => {
+    // The nice to have does not hold the card back, but it is counted.
+    expect(progressOf(CARD, links([1, 2], [2]), stories({ 1: "closed", 2: "backlog" }), NONE, null)).toMatchObject({ stage: "in_production", done: 1, total: 2 });
+    const checks = new Map<number, StoryChecks>([[1, { validated: { by: "qa", at: "", version: null }, defects: [] }], [2, { validated: { by: "qa", at: "", version: null }, defects: [] }], [3, { validated: { by: "qa", at: "", version: null }, defects: [] }]]);
+    const three = progressOf(CARD, links([1, 2, 3], [2]), stories({ 1: "on_int", 2: "on_int", 3: "on_int" }), checks, null);
+    expect(three).toMatchObject({ stage: "to_test", done: 3, total: 3, counts: { nice: 1 } });
     expect(progressOf(CARD, links([1], [1]), stories({ 1: "in_dev" }), NONE, null)).toMatchObject({ stage: "in_dev", done: 0, total: 1 });
     expect(progressOf(CARD, links([]), stories({}), NONE, null)).toBeNull();
   });

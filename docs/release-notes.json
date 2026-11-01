@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A card counts all its stories; the release on int on the board",
+    "changements": [
+      "A card's count takes all its stories, nice to have included: \"To test 3/3 validated\". Its stage still follows the stories needed, so a nice to have never holds it back; the pill's title says how many are nice to have.",
+      "On the board by release, the release on int is marked On int, with its branch, instead of In progress; a release planned by number that is now on int or out no longer shows as an empty lane of its own."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint in three parts, and a page for each story",
     "changements": [
       "The sprint page is split in three: the sprint itself (where it stands, the go, closing it), the work in progress (Claude's runs, the next story to launch, the pull requests open on its stories with merge, update and review), and the features and their stories (stage, testing, priority).",
