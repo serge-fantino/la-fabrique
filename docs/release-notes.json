@@ -1,74 +1,21 @@
 [
   {
-    "version": "next",
+    "version": "0.80",
     "date": "2026-11-01",
-    "titre": "One lane for the sprint and the release on int",
+    "heure": "15:05",
+    "titre": "The sprint, from its work in progress to the go",
     "changements": [
-      "While a sprint runs, the release on int is no longer a lane of its own on the board: the Sprint lane says it, \"Sprint · In progress · 1.170 (int)\", so a card shows in one place."
-    ],
-    "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A card counts all its stories; the release on int on the board",
-    "changements": [
+      "While a sprint runs, the release on int is no longer a lane of its own on the board: the Sprint lane says it, \"Sprint · In progress · 1.170 (int)\", so a card shows in one place.",
       "A card's count takes all its stories, nice to have included: \"To test 3/3 validated\". Its stage still follows the stories needed, so a nice to have never holds it back; the pill's title says how many are nice to have.",
-      "On the board by release, the release on int is marked On int, with its branch, instead of In progress; a release planned by number that is now on int or out no longer shows as an empty lane of its own."
-    ],
-    "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint in three parts, and a page for each story",
-    "changements": [
+      "On the board by release, the release on int is marked On int, with its branch, instead of In progress; a release planned by number that is now on int or out no longer shows as an empty lane of its own.",
       "The sprint page is split in three: the sprint itself (where it stands, the go, closing it), the work in progress (Claude's runs, the next story to launch, the pull requests open on its stories with merge, update and review), and the features and their stories (stage, testing, priority).",
-      "Each story of the sprint opens its own page: its steps from ready to production (done, current, to come), its acceptance criteria, its pull requests, Claude's runs and its history from the log."
-    ],
-    "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Give the go from the sprint; the sprint closes once it is out",
-    "changements": [
+      "Each story of the sprint opens its own page: its steps from ready to production (done, current, to come), its acceptance criteria, its pull requests, Claude's runs and its history from the log.",
       "On a project with an integration branch, the sprint offers the go itself, as Production does: what production will receive, the stories validated or not, the next release to open (minor or major).",
-      "A go given from the sprint closes it once the promotion is out: the validated stories are closed, each finished card takes the version just released, and a card not finished stays for the next sprint."
-    ],
-    "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint leads to the go",
-    "changements": [
+      "A go given from the sprint closes it once the promotion is out: the validated stories are closed, each finished card takes the version just released, and a card not finished stays for the next sprint.",
       "On a project with an integration branch, the sprint says how its release is made: test the stories on int, give the go in Production (linked), then close the sprint so that each finished card takes its version.",
-      "The reference-branch banner no longer shows on the board and the sprint, which do not read a branch."
-    ],
-    "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Testing, followed in the sprint and on the card; ticking a criterion at once",
-    "changements": [
+      "The reference-branch banner no longer shows on the board and the sprint, which do not read a branch.",
       "A story on int (or merged, without integration) says where its testing stands, in the sprint and on its card: Validated, by whom and when, or how many of its criteria are checked, with a link to test it.",
-      "In To test, ticking a criterion shows at once and is saved in the background, without reloading the page; Validate unlocks as soon as every criterion is ticked. If GitHub refuses, the tick goes back and the page says why."
-    ],
-    "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Clearer pull requests in the sprint; no branch menu where it does nothing",
-    "changements": [
+      "In To test, ticking a criterion shows at once and is saved in the background, without reloading the page; Validate unlocks as soon as every criterion is ticked. If GitHub refuses, the tick goes back and the page says why.",
       "Ask for a review no longer shows an empty list: when there is no one else to ask (the author of a pull request cannot review it, and the reviewers are La Fabrique's tech leads and super admins), the sprint says so.",
       "On a project without a merge workflow, the sprint says where to merge a pull request (on GitHub) and what to declare in Setup (workflows.fusionner).",
       "The reference-branch menu is gone from the board, the cards and the sprint, which do not read a branch."
