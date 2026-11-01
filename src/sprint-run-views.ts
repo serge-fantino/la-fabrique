@@ -80,7 +80,7 @@ export function runSection(viewer: Viewer, project: Project, state: RunState | n
       .join("")}<button type="submit" class="button ${kind}">${label}</button></form>`;
   const startLink = canRun && !refusal ? ` <a class="button small" href="${escapeHtml(base)}/sprint/run">${state ? "Run it again" : "Run the sprint"}</a>` : "";
   if (!state) {
-    return canRun ? `<p class="sprint-run-start">${refusal ? `<span class="muted small">To run the sprint by itself: ${escapeHtml(refusal)}</span>` : `The sprint can run by itself, up to testing.${startLink}`}</p>` : "";
+    return canRun ? `<div class="sprint-run-start"><h3>Running by itself</h3><p>${refusal ? `<span class="muted small">${escapeHtml(refusal)}</span>` : `The sprint can run by itself, up to testing.${startLink}`}</p></div>` : "";
   }
   const active = state.status === "running" || state.status === "paused" || state.status === "waiting";
   const controls = canRun
@@ -105,6 +105,7 @@ export function runSection(viewer: Viewer, project: Project, state: RunState | n
     })
     .join("");
   return `<div class="sprint-run">
+      <h3>Running by itself</h3>
       <p><strong>${STATUS_LABELS[state.status]}</strong> <span class="muted small">started by @${escapeHtml(state.startedBy)} on ${escapeHtml(formatDate(state.startedAt))}</span> ${controls}${active ? "" : startLink}</p>
       <ul class="sprint-run-cards">${cards}</ul>
     </div>`;

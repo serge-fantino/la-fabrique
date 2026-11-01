@@ -336,14 +336,27 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   // The release started when closing the sprint: running (link to the
   // workflow's runs), or failed and why; once out, the sprint is closed.
   const runs = data.releaseWorkflow ? `https://github.com/${escapeHtml(project.repo)}/actions/workflows/${encodeURIComponent(data.releaseWorkflow)}` : null;
-  const attempt = data.release;
+  // Only this sprint's release counts (la-fabrique#175).
+  const asTime = (at: string) => Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(at) ? at.replace(" ", "T") : `${at.replace(" ", "T")}Z`);
+  const attempt = data.release && sprint && asTime(data.release.at) >= asTime(sprint.startedAt) - 60_000 ? data.release : null;
+  // Closing: the release started, followed step by step until it is out.
+  const closing = attempt?.state === "running";
+  const step = (state: "done" | "current" | "waiting" | "failed", text: string) =>
+    `<li class="story-step ${state === "failed" ? "current" : state}"><span class="story-step-mark" aria-hidden="true">${state === "done" ? "✓" : state === "failed" ? "✕" : state === "current" ? "●" : "○"}</span> ${text}</li>`;
   const releaseLine = !attempt || attempt.state === "published"
     ? ""
-    : attempt.state === "running"
-      ? `<p class="notice" role="status"><strong>Release <span class="mono">${escapeHtml(attempt.version ?? "")}</span> in progress</strong>, started by <span class="mono">@${escapeHtml(attempt.by)}</span> on <span class="mono">${formatDate(attempt.at)}</span>: the project's workflow writes the release note, checks and merges it; the sprint closes once it is out.${runs ? ` <a href="${runs}">Follow it on GitHub</a>.` : ""}</p>`
-      : `<p class="notice error" role="alert"><strong>Release <span class="mono">${escapeHtml(attempt.version ?? "")}</span> failed</strong>: ${escapeHtml(attempt.reason ?? "the workflow stopped.")}${
-          attempt.run?.startsWith("https://github.com/") ? ` <a href="${escapeHtml(attempt.run)}">The run</a>.` : runs ? ` <a href="${runs}">The runs</a>.` : ""
-        } The sprint is still open: close it again once fixed.</p>`;
+    : `<div class="sprint-card sprint-closing${attempt.state === "failed" ? " failed" : ""}" role="status">
+        <h3>${attempt.state === "running" ? "Closing" : "The release failed"}: release <span class="mono">${escapeHtml(attempt.version ?? "")}</span></h3>
+        <ol class="story-steps">
+          ${step("done", `Started by <span class="mono">@${escapeHtml(attempt.by)}</span> on <span class="mono">${formatDate(attempt.at)}</span>`)}
+          ${
+            attempt.state === "running"
+              ? step("current", `The project's workflow writes the release note, checks it and merges it${runs ? ` · <a href="${runs}">Follow it on GitHub</a>` : ""}`)
+              : step("failed", `${escapeHtml(attempt.reason ?? "The workflow stopped.")}${attempt.run?.startsWith("https://github.com/") ? ` · <a href="${escapeHtml(attempt.run)}">The run</a>` : runs ? ` · <a href="${runs}">The runs</a>` : ""}`)
+          }
+          ${step("waiting", attempt.state === "running" ? "Out: the sprint closes, each finished card takes the version" : "The sprint is open again: close it once fixed")}
+        </ol>
+      </div>`;
 
   // Starting a sprint: the version it will release, and a name if wanted.
   const startCard = () => {
@@ -365,9 +378,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
 
   const current = sprint
     ? `<section class="sprint-head" aria-label="The sprint">
-        <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : `Sprint${sprint.version ? ` <span class="mono">${escapeHtml(sprint.version)}</span>` : ""}${sprint.name ? ` <span class="sprint-name">${escapeHtml(sprint.name)}</span>` : ""}`} <span class="pill warn">${RELEASE_STATE_LABELS.in_progress}</span></h2>
+        <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : `Sprint${sprint.version ? ` <span class="mono">${escapeHtml(sprint.version)}</span>` : ""}${sprint.name ? ` <span class="sprint-name">${escapeHtml(sprint.name)}</span>` : ""}`} <span class="pill warn">${closing ? "Closing" : RELEASE_STATE_LABELS.in_progress}</span></h2>
         ${
-          data.canOrder && !data.legacy
+          data.canOrder && !data.legacy && !closing
             ? `<details class="sprint-version"><summary>${sprint.version ? "Change its version or name" : "Give it its version"}</summary>
           <form method="post" action="${escapeHtml(action)}" class="inline-form" data-busy="Saving…">${csrfField(viewer)}
             <input type="hidden" name="action" value="sprint_version" />
@@ -384,7 +397,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         }</p>
         ${
           data.canOrder
-            ? `<div class="card-actions">${data.legacy || !data.canClose ? "" : button({ action: "close" }, "Close the sprint", "Close the sprint")}</div>${
+            ? `<div class="card-actions">${data.legacy || !data.canClose || closing ? "" : button({ action: "close" }, "Close the sprint", "Close the sprint")}</div>${
                 data.canClose && data.noIntegration && !data.releaseWorkflow
                   ? `<p class="muted">Closing the sprint makes the release through the project's workflow, which this project has not declared (<code>workflows.publier</code>): <a href="${escapeHtml(base)}/setup">Setup</a> says how.</p>`
                   : ""
@@ -401,7 +414,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       </section>
       <section class="sprint-work" aria-labelledby="sprint-work">
         <h2 id="sprint-work">Work in progress</h2>
-        ${data.run ?? ""}
+        ${closing ? "" : (data.run ?? "")}
         ${runsLine}
         ${claudeNext}
         ${openPulls(data.sprintCards)}
