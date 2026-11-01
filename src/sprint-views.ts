@@ -364,6 +364,29 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   );
 }
 
+// Before the close: what is not done, and a way to postpone (la-fabrique#138).
+export function releaseWarningPage(viewer: Viewer, project: Project, plan: ReleasePlan): string {
+  const base = projectUrl(project.repo);
+  const issue = (number: number) => `<a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a>`;
+  return layout(
+    `Before closing the sprint · ${project.check?.config?.nom || project.repo} · La Fabrique extraordinaire`,
+    `${projectHeader(project, "sprint")}
+      <h2>Before closing the sprint</h2>
+      <p>Some merged work is not finished. Its changes stay online but are kept for a later release; the stories stay open, in To test.</p>
+      ${plan.notDone.length ? `<h3>Stories not done</h3><ul>${plan.notDone.map((story) => `<li>${issue(story.number)} ${escapeHtml(story.title)}</li>`).join("")}</ul>` : ""}
+      ${plan.entries.some((entry) => entry.partial) ? `<h3>Partial release-note entries</h3><ul>${plan.entries.filter((entry) => entry.partial).map((entry) => `<li>${escapeHtml(entry.title ?? "(untitled)")}<br /><span class="small">${escapeHtml(entry.caveat ?? "")}</span></li>`).join("")}</ul>` : ""}
+      <form method="post" action="${escapeHtml(base)}/sprint" class="request-form" data-busy="…">${csrfField(viewer)}
+        <input type="hidden" name="action" value="close" />
+        <input type="hidden" name="confirm" value="1" />
+        <button type="submit" class="button">Go on</button>
+        <a class="button quiet" href="${escapeHtml(base)}/sprint">Postpone the close</a>
+      </form>`,
+    viewer,
+    [],
+    projectContext(project),
+  );
+}
+
 // The close of the sprint on a project without integration (la-fabrique#137):
 // what the release takes and what stays, then minor or major and the title.
 export function releasePage(
@@ -382,7 +405,7 @@ export function releasePage(
   const cardBlock = (planned: PlannedCard) =>
     `<li><strong>${escapeHtml(planned.card.title)}</strong>${planned.reason ? ` <span class="muted small">stays: ${escapeHtml(planned.reason)}</span>` : ""}<ul>${planned.stories.map(storyLine).join("")}</ul></li>`;
   const entryLine = (entry: PlannedEntry) =>
-    `<li>${escapeHtml(entry.title ?? "(untitled)")} <span class="muted small">${entry.stories.map((n) => `#${n}`).join(", ") || "no story"}${entry.reason ? ` · stays <code>next</code>: ${escapeHtml(entry.reason)}` : ""}</span></li>`;
+    `<li>${escapeHtml(entry.title ?? "(untitled)")}${entry.partial ? ` <span class="pill warn small">partial</span>` : ""} <span class="muted small">${entry.stories.map((n) => `#${n}`).join(", ") || "no story"}${entry.reason ? ` · stays <code>next</code>: ${escapeHtml(entry.reason)}` : ""}</span>${entry.caveat ? `<br /><span class="small">${escapeHtml(entry.caveat)}</span>` : ""}</li>`;
   const radio = (kind: ReleaseKind, version: string | null) =>
     version
       ? `<label class="choice"><input type="radio" name="kind" value="${kind}"${options.kind === kind ? " checked" : ""} /> ${kind === "minor" ? "Minor" : "Major"}: <span class="mono">${escapeHtml(version)}</span></label>`
@@ -401,7 +424,7 @@ export function releasePage(
       ${kept.length ? `<ul>${kept.map(cardBlock).join("")}</ul>` : `<p class="muted">No card stays.</p>`}
       ${entries.some((entry) => !entry.taken) ? `<p>Release-note entries that stay:</p><ul>${entries.filter((entry) => !entry.taken).map(entryLine).join("")}</ul>` : ""}
       ${
-        taken.length
+        taken.length || entries.some((entry) => entry.taken)
           ? `<form method="post" action="${escapeHtml(base)}/sprint" class="request-form" data-busy="…">${csrfField(viewer)}
         <input type="hidden" name="action" value="release" />
         <fieldset><legend>Version</legend>${radio("minor", plan.minor)}${radio("major", plan.major)}</fieldset>

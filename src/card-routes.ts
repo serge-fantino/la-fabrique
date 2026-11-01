@@ -2,7 +2,7 @@ import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, ca
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { storyCards } from "./card-groups";
-import { releasePage, sprintPage } from "./sprint-views";
+import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
@@ -578,6 +578,10 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
         const { view, cookies } = await projectView(request, env, project, viewer);
         return html(releasePage(viewer, view, plan, { kind, title: action === "close" || !title ? plan.title : title, ...(error ? { error } : {}) }), { cookies, status });
       };
+      if (action === "close" && form.get("confirm") !== "1" && (plan.notDone.length || plan.entries.some((entry) => entry.partial))) {
+        const { view, cookies } = await projectView(request, env, project, viewer);
+        return html(releaseWarningPage(viewer, view, plan), { cookies });
+      }
       if (action === "close") return preview();
       const version = proposeVersion(plan.newest, kind);
       if (!version) return preview("The newest release has no number to continue from.", 422);

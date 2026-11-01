@@ -61,6 +61,10 @@ export interface PlannedEntry {
   stories: number[];
   taken: boolean;
   reason: string | null;
+  // Taken, but some of its stories are not done: it goes out with a caveat.
+  partial: boolean;
+  missing: { number: number; title: string }[];
+  caveat: string | null;
 }
 
 export interface ReleasePlan {
@@ -73,6 +77,8 @@ export interface ReleasePlan {
   entries: PlannedEntry[];
   // The validated stories of the done cards: closed once the release is out.
   stories: number[];
+  // Merged stories not done (their change is online but stays for a later release).
+  notDone: { number: number; title: string }[];
 }
 
 function storyReason(story: CardStory | undefined, validated: boolean): string | null {
@@ -114,16 +120,22 @@ export function planRelease(input: {
     };
   });
   const doneStories = new Set(cards.filter((planned) => planned.done).flatMap((planned) => planned.stories.filter((story) => story.done).map((story) => story.number)));
+  // An entry is released when it declares a story done, even if its card is not finished.
+  const validatedStories = new Set(cards.flatMap((planned) => planned.stories.filter((story) => story.done).map((story) => story.number)));
   const entries = input.notes
     .filter((note) => note.version === "next")
     .map((note): PlannedEntry => {
       const declared = note.stories ?? [];
-      const taken = declared.some((number) => doneStories.has(number));
+      const taken = declared.some((number) => validatedStories.has(number));
+      const missing = taken ? declared.filter((number) => !validatedStories.has(number)).map((number) => ({ number, title: input.stories.get(number)?.title ?? `#${number}` })) : [];
       return {
         title: note.title,
         stories: declared,
         taken,
         reason: taken ? null : declared.length ? "declares only stories not done" : "declares no story",
+        partial: missing.length > 0,
+        missing,
+        caveat: missing.length ? `Partial: not done yet, ${missing.map((story) => `#${story.number} ${story.title}`).join("; ")}.` : null,
       };
     });
   const newest = input.releases.filter((release) => release.state === "shipped").sort((a, b) => compareVersions(a.version, b.version))[0]?.version ?? null;
@@ -135,6 +147,11 @@ export function planRelease(input: {
     cards,
     entries,
     stories: [...doneStories],
+    notDone: cards.flatMap((planned) =>
+      planned.stories
+        .filter((story) => !story.done && input.stories.get(story.number)?.stage === "to_validate")
+        .map((story) => ({ number: story.number, title: story.title })),
+    ),
   };
 }
 
@@ -168,7 +185,7 @@ export async function startRelease(
   const file = publishWorkflow(project);
   if (!file) return { ok: false, message: "This project declares no release workflow (workflows.publier).", status: 422 };
   const done = plan.cards.filter((planned) => planned.done);
-  if (!done.length) return { ok: false, message: "No card is done: there is nothing to release.", status: 422 };
+  if (!done.length && !plan.entries.some((entry) => entry.taken)) return { ok: false, message: "No card is done: there is nothing to release.", status: 422 };
   const details = {
     version,
     title,
@@ -177,6 +194,8 @@ export async function startRelease(
     stories: plan.stories,
     kept_cards: plan.cards.filter((planned) => !planned.done).map((planned) => planned.card.id),
     kept_entries: plan.entries.filter((entry) => !entry.taken).map((entry) => entry.title),
+    partial_entries: plan.entries.filter((entry) => entry.partial).map((entry) => ({ title: entry.title, caveat: entry.caveat })),
+    kept_stories: plan.notDone.map((story) => story.number),
   };
   try {
     const token = await installationToken(env, project.installationId);

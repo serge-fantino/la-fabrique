@@ -56,6 +56,9 @@ describe("planRelease", () => {
     ]);
     expect([plan.minor, plan.major]).toEqual(["0.79", "1.0"]);
     expect(plan.title).toBe("Week");
+    expect(plan.entries[0]).toMatchObject({ partial: true, caveat: "Partial: not done yet, #20 S20." });
+    expect(plan.entries[1]?.partial).toBe(false);
+    expect(plan.notDone).toEqual([{ number: 20, title: "S20" }]);
   });
 });
 
@@ -170,5 +173,35 @@ describe("Close the sprint makes the release", () => {
     expect((await logActions()).map((entry) => entry.action)).toEqual(expect.arrayContaining(["release_published", "card_versioned", "story_closed", "sprint_shipped"]));
     // Once per release.
     expect(await releaseRunEvent(env, project, "completed", { conclusion: "success", path: ".github/workflows/publier.yml" } as never)).toBe(false);
+  });
+});
+
+describe("a partial change is warned about before the close", () => {
+  async function seedPartial(): Promise<void> {
+    await seed();
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'releases'")
+      .bind(JSON.stringify({ commitSha: "abc", releases: [release("next", null, [21, 22], "Week change"), release("0.78", "10:00")] }), REPO)
+      .run();
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(21, "Choose the week"), { ...story(22, "Print the week"), pullRequests: [{ number: 5, state: "MERGED", merged: true }] }]), REPO)
+      .run();
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) SELECT id, 'story', '22' FROM cards WHERE title = 'Week menu'").run();
+  }
+
+  it("warns, lets the person postpone (nothing released) or go on to the partial entry with its caveat", async () => {
+    await seedPartial();
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    const warning = await (await post(`/projects/${REPO}/sprint`, { csrf, action: "close" }, cookie)).text();
+    expect(warning).toContain("Before closing the sprint");
+    expect(warning).toContain("kept for a later release");
+    expect(warning).toContain("Postpone the close");
+    expect(warning).toContain("Partial: not done yet, #22");
+    expect((await logActions()).map((entry) => entry.action)).not.toContain("release_started");
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM sprints WHERE ended_at IS NULL").first<{ n: number }>())?.n).toBe(1);
+    const preview = await (await post(`/projects/${REPO}/sprint`, { csrf, action: "close", confirm: "1" }, cookie)).text();
+    expect(preview).toContain("The release takes");
+    expect(preview).toContain("partial");
+    expect(preview).toContain("Partial: not done yet, #22");
   });
 });
