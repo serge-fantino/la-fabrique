@@ -407,3 +407,48 @@
   height: 22px;
   margin-top: 2px;
 }
+
+/* Recording what the tester does (kit 1.5.0) */
+.fab-rep-recorder {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 2px solid var(--fab-rep-accent, #c23d17);
+  border-radius: 14px;
+  background: #fff;
+  color: #18211b;
+  font: 600 14px/1.3 Archivo, system-ui, sans-serif;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+}
+
+.fab-rep-steps {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+.fab-rep-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  border-top: 0;
+  padding: 4px 0;
+}
+
+.fab-rep-step-input {
+  flex: 1 1 140px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--fab-rep-line);
+  border-radius: 10px;
+  font: inherit;
+}
+
+.fab-rep-record {
+  margin-left: 32px;
+}

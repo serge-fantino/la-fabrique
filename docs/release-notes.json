@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Record what the tester does for a criterion",
+    "changements": [
+      "Report kit 1.5.0: Record on a criterion keeps the pages visited, buttons and links pressed and fields filled (by name, never what is typed) until Stop; the steps can be edited or dropped before they are sent with the tick.",
+      "POST …/to-test/{story}/criteria accepts steps; La Fabrique keeps them in the log with the criterion, the story, the version tested and the tester (story_test_recorded).",
+      "The relay must pass steps on POST ?to-test={story}/criteria (docs/report-kit.md)."
+    ],
+    "stories": [167],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Tick, validate and report from the app",
     "changements": [
       "Tick a story's criteria, validate it or report a defect from the app on int: the kit's panel (1.4.0) shows checkboxes, a Validate button and Report a defect on this story.",

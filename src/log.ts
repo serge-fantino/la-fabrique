@@ -3,7 +3,7 @@
 
 export const LOG_GROUPS: { id: string; label: string; actions: string[] }[] = [
   { id: "requests", label: "Requests", actions: ["request_created"] },
-  { id: "validation", label: "Validation on int", actions: ["criterion_checked", "criterion_unchecked", "story_validated", "defect_reported"] },
+  { id: "validation", label: "Validation on int", actions: ["criterion_checked", "criterion_unchecked", "story_test_recorded", "story_validated", "defect_reported"] },
   { id: "backlog", label: "Priorities", actions: ["priority_set"] },
   { id: "production", label: "Go to production", actions: ["go_given", "next_release_proposed", "stories_shipped"] },
   { id: "claude", label: "Claude", actions: ["claude_launched", "claude_update_launched", "claude_run_finished", "claude_pr_opened", "claude_pr_updated", "review_requested", "pull_merge_launched", "pull_merge_finished"] },

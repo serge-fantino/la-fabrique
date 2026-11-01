@@ -48,7 +48,7 @@ export async function readIssue(env: Env, project: Project, number: number): Pro
 }
 
 // The version int runs, from the last production read.
-async function intVersion(env: Env, project: Project): Promise<string | null> {
+export async function intVersion(env: Env, project: Project): Promise<string | null> {
   const status = (await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION))?.data;
   const production = productionBranch(project);
   return status?.versions.find((version) => version.environment !== "production" && version.environment !== production)?.version ?? null;

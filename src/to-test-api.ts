@@ -11,7 +11,9 @@ import { STORIES, type Story } from "./stories";
 import { DEFECT_LABEL } from "./defect-targets";
 import { reportingEnvironments } from "./defects";
 import type { Project } from "./projects";
-import { readIssue, storyChecks, tickCriterion, validateStory } from "./validation";
+import { intVersion, readIssue, storyChecks, tickCriterion, validateStory } from "./validation";
+import { activityStatement } from "./activity-log";
+import { cleanSteps } from "./test-steps";
 import { acceptanceCriteria } from "./stories";
 
 // The stories on int to test, for the project's app (scope `stories:test`,
@@ -103,7 +105,7 @@ export async function actOnStoryForApp(request: Request, env: Env, props: GrantP
   }
   let outcome;
   if (action === "criteria") {
-    let data = null as { index?: unknown; done?: unknown } | null;
+    let data = null as { index?: unknown; done?: unknown; steps?: unknown } | null;
     try {
       data = (await request.json()) as typeof data;
     } catch {
@@ -113,12 +115,24 @@ export async function actOnStoryForApp(request: Request, env: Env, props: GrantP
     if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || typeof data?.done !== "boolean") {
       return refuse(400, "invalid", "Send the criterion's index and done (true or false).");
     }
+    const steps = cleanSteps(data?.steps);
+    if (steps === null) return refuse(400, "invalid", "steps must be a list.");
     // The text is read from the issue as it is now, never trusted from the app.
     const issue = await readIssue(env, project, story);
     const criterion = issue ? acceptanceCriteria(issue.body)[index] : undefined;
     if (!criterion) return refuse(422, "invalid", `Story #${story} has no criterion ${index}.`);
     outcome = await tickCriterion(request, env, project, props.login, story, index, criterion.text, data.done);
-    if (outcome.ok) return json({ ok: true, index, done: data.done }, { headers: { "cache-control": "no-store" } });
+    if (outcome.ok && steps.length > 0) {
+      // Kept with the criterion, the story, the version tested and the tester.
+      await activityStatement(env.DB, {
+        actor: props.login,
+        action: "story_test_recorded",
+        repo: project.repo,
+        issueNumber: story,
+        details: { index, text: criterion.text, done: data.done, version: await intVersion(env, project).catch(() => null), steps },
+      }).run();
+    }
+    if (outcome.ok) return json({ ok: true, index, done: data.done, steps: steps.length }, { headers: { "cache-control": "no-store" } });
   } else {
     outcome = await validateStory(request, env, project, props.login, story);
     if (outcome.ok) return json({ ok: true, validated: true }, { headers: { "cache-control": "no-store" } });
