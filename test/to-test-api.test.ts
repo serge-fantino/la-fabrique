@@ -162,3 +162,108 @@ describe("The consent page and the scope", () => {
 });
 
 void INT_URL;
+
+describe("Tick, validate from the app (la-fabrique#166)", () => {
+  const J = { headers: { "content-type": "application/json" } };
+  let issueBody = "";
+
+  function github() {
+    return fetchMock.get("https://api.github.com");
+  }
+
+  // The issue as GitHub holds it: PATCH changes it, GET reads it.
+  function mockIssue(number: number, text: string, times: { token: number; get: number; patch: number }): void {
+    issueBody = text;
+    const issue = () => JSON.stringify({ number, title: `Story ${number}`, state: "open", html_url: "", labels: [], user: null, created_at: "", updated_at: "", closed_at: null, body: issueBody });
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_x" }), J).times(times.token);
+    github().intercept({ method: "GET", path: `/repos/${REPO}/issues/${number}` }).reply(200, issue, J).times(times.get);
+    if (!times.patch) return;
+    github()
+      .intercept({ method: "PATCH", path: `/repos/${REPO}/issues/${number}` })
+      .reply(200, (options) => {
+        issueBody = (JSON.parse(String(options.body)) as { body: string }).body;
+        return issue();
+      }, J)
+      .times(times.patch);
+  }
+
+  function act(token: string, story: number, action: string, body?: unknown): Promise<Response> {
+    return SELF.fetch(`${BASE}/api/projects/widget/to-test/${story}/${action}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: body === undefined ? null : JSON.stringify(body),
+    });
+  }
+
+  async function logged(): Promise<string[]> {
+    const { results } = await env.DB.prepare("SELECT actor, action FROM activity_log ORDER BY id").all<{ actor: string; action: string }>();
+    return results.map((row) => `${row.actor}:${row.action}`);
+  }
+
+  it("ticks a criterion in the issue, logs it, and To test then shows it", async () => {
+    const { tokens } = await connect("mona", CONFIG, SCOPES);
+    await grantRole("mona", "tester");
+    await seed();
+    mockIssue(146, "## Need\n\nx\n\n## Acceptance criteria\n\n- [x] It saves\n- [ ] It shows\n", { token: 8, get: 6, patch: 2 });
+    const response = await act(tokens.access_token, 146, "criteria", { index: 1, done: true });
+    expect(response.status).toBe(200);
+    expect(issueBody).toContain("- [x] It shows");
+    expect(await logged()).toContain("mona:criterion_checked");
+    const list = (await (await call(tokens.access_token)).json()) as { stories: { number: number; criteria: { done: boolean }[] }[] };
+    expect(list.stories.find((s) => s.number === 146)?.criteria.map((c) => c.done)).toEqual([true, true]);
+    const untick = await act(tokens.access_token, 146, "criteria", { index: 1, done: false });
+    expect(untick.status).toBe(200);
+    expect(issueBody).toContain("- [ ] It shows");
+    expect(await logged()).toContain("mona:criterion_unchecked");
+  });
+
+  it("refuses a bad criterion, a story not to test, a missing scope and a person who may not validate", async () => {
+    const { tokens } = await connect("mona", CONFIG, SCOPES);
+    await seed();
+    expect((await act(tokens.access_token, 146, "criteria", { index: 0, done: true })).status).toBe(403);
+    await grantRole("mona", "tester");
+    mockIssue(146, "## Acceptance criteria\n\n- [ ] It saves\n", { token: 1, get: 1, patch: 0 });
+    const r5 = await act(tokens.access_token, 146, "criteria", { index: 5, done: true });
+    expect(r5.status).toBe(422);
+    expect((await act(tokens.access_token, 146, "criteria", { index: "0", done: true })).status).toBe(400);
+    expect((await act(tokens.access_token, 140, "criteria", { index: 0, done: true })).status).toBe(404);
+    expect((await act(tokens.access_token, 148, "validate")).status).toBe(404);
+    const get = await SELF.fetch(`${BASE}/api/projects/widget/to-test/146/validate`, { headers: { authorization: `Bearer ${tokens.access_token}` } });
+    expect(get.status).toBe(405);
+    expect(issueBody).toBe("## Acceptance criteria\n\n- [ ] It saves\n");
+  });
+
+  it("refuses an app without the stories:test scope", async () => {
+    const { tokens } = await connect("mona");
+    await grantRole("mona", "tester");
+    await seed();
+    const response = await act(tokens.access_token, 146, "validate");
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { error: string }).error).toBe("insufficient_scope");
+  });
+
+  it("refuses to validate before every criterion is ticked, validates after, and logs it", async () => {
+    const { tokens } = await connect("mona", CONFIG, SCOPES);
+    await grantRole("mona", "tester");
+    await seed();
+    mockIssue(146, "## Acceptance criteria\n\n- [x] It saves\n- [ ] It shows\n", { token: 7, get: 5, patch: 1 });
+    const refused = await act(tokens.access_token, 146, "validate");
+    expect(refused.status).toBe(422);
+    expect(await logged()).not.toContain("mona:story_validated");
+    await act(tokens.access_token, 146, "criteria", { index: 1, done: true });
+    let comment = "";
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues/146/comments` })
+      .reply(201, (options) => {
+        comment = String(options.body);
+        return "{}";
+      }, J);
+    const done = await act(tokens.access_token, 146, "validate");
+    expect(done.status).toBe(200);
+    expect(await done.json()).toEqual({ ok: true, validated: true });
+    expect(comment).toContain("mona");
+    expect(await logged()).toContain("mona:story_validated");
+    const list = (await (await call(tokens.access_token)).json()) as { stories: { number: number; validated: { by: string } | null }[] };
+    expect(list.stories.find((s) => s.number === 146)?.validated?.by).toBe("mona");
+  });
+});

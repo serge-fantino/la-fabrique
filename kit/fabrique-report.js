@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.3.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.4.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.3.0";
+  var VERSION = "1.4.0";
   var QUEUE_KEY = "fabrique-report-queue";
   var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
   var PREFIX = "fab-rep";
@@ -28,6 +28,12 @@
       noCriteria: "This story lists no criteria.",
       notValidated: "Not validated yet",
       validatedBy: "Validated by",
+      validate: "Validate",
+      validating: "Validating…",
+      validatedNow: "Validated.",
+      tickFailed: "The criterion could not be saved.",
+      validateFailed: "The story could not be validated.",
+      reportOnStory: "Report a defect on this story",
       pick: "Touch or click the part of the page that is wrong.",
       chosen: "This part?",
       wider: "Wider",
@@ -82,6 +88,12 @@
       noCriteria: "Cette story n'a pas de critères.",
       notValidated: "Pas encore validée",
       validatedBy: "Validée par",
+      validate: "Valider",
+      validating: "Validation…",
+      validatedNow: "Validée.",
+      tickFailed: "Le critère n'a pas pu être enregistré.",
+      validateFailed: "La story n'a pas pu être validée.",
+      reportOnStory: "Signaler un défaut sur cette story",
       pick: "Touchez ou cliquez la partie de la page qui ne va pas.",
       chosen: "Cette partie ?",
       wider: "Plus large",
@@ -487,6 +499,35 @@
       });
   }
 
+  // The relay answers POST {endpoint}?to-test={story}/criteria with {index, done}
+  // and POST ?to-test={story}/validate with La Fabrique's
+  // POST /api/projects/{project}/to-test/{story}/criteria and /validate.
+  function actOnStory(story, action, body) {
+    var address = options.endpoint + (options.endpoint.indexOf("?") >= 0 ? "&" : "?") + "to-test=" + story + "/" + action;
+    return fetch(address, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: headers({ "content-type": "application/json", accept: "application/json" }),
+      body: JSON.stringify(body || {}),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            return { ok: response.ok && data.ok !== false, message: data && data.message ? data.message : "" };
+          });
+      })
+      .catch(function () {
+        return { ok: false, message: "" };
+      });
+  }
+
+  // The story the defect form is about, set by the panel.
+  var defectStory = null;
+
   var testing = false;
   // A panel with the stories one at a time, each with its criteria.
   function testPanel() {
@@ -526,17 +567,79 @@
           ]),
         );
         body.appendChild(el("h4", { className: cls("criteria-title"), text: t.criteria }));
+        var message = el("p", { className: cls("note"), role: "status" });
+        var validate = el("button", { type: "button", className: cls("button"), text: t.validate });
+        function allTicked() {
+          return criteria.length > 0 && criteria.every(function (criterion) {
+            return criterion.done;
+          });
+        }
+        function refresh() {
+          validate.disabled = !!story.validated || !allTicked();
+        }
         body.appendChild(
           criteria.length
             ? el(
                 "ul",
                 { className: cls("criteria") },
-                criteria.map(function (criterion) {
-                  return el("li", { className: criterion.done ? cls("done-criterion") : "" }, [(criterion.done ? "☑ " : "☐ ") + criterion.text]);
+                criteria.map(function (criterion, at) {
+                  var box = el("input", { type: "checkbox" });
+                  box.checked = !!criterion.done;
+                  box.addEventListener("change", function () {
+                    var done = box.checked;
+                    box.disabled = true;
+                    message.textContent = "";
+                    actOnStory(story.number, "criteria", { index: at, done: done }).then(function (outcome) {
+                      box.disabled = false;
+                      if (outcome.ok) criterion.done = done;
+                      else {
+                        box.checked = !done;
+                        message.textContent = outcome.message || t.tickFailed;
+                      }
+                      refresh();
+                    });
+                  });
+                  return el("li", {}, [el("label", {}, [box, " " + criterion.text])]);
                 }),
               )
             : el("p", { className: cls("note"), text: t.noCriteria }),
         );
+        validate.addEventListener("click", function () {
+          validate.disabled = true;
+          message.textContent = t.validating;
+          actOnStory(story.number, "validate", {}).then(function (outcome) {
+            if (outcome.ok) {
+              loadStoriesToTest().then(function (found) {
+                if (found) {
+                  var kept = found.filter(function (other) {
+                    return other.number === story.number;
+                  })[0];
+                  stories[index] = kept || story;
+                }
+                show();
+              });
+              return;
+            }
+            message.textContent = outcome.message || t.validateFailed;
+            refresh();
+          });
+        });
+        refresh();
+        var report = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.reportOnStory });
+        report.addEventListener("click", function () {
+          defectStory = story.number;
+          finish();
+          start().then(
+            function () {
+              defectStory = null;
+            },
+            function () {
+              defectStory = null;
+            },
+          );
+        });
+        body.appendChild(message);
+        body.appendChild(el("div", { className: cls("actions") }, [validate, report]));
       }
       previous.addEventListener("click", function () {
         index = Math.max(0, index - 1);
@@ -780,7 +883,7 @@
         else preview.removeAttribute("src");
       }
 
-      loadTargets().then(function (versions) {
+      if (!defectStory) loadTargets().then(function (versions) {
         if (!versions || !versions.length || !dialog.isConnected) return;
         picker = aboutPicker(versions);
         aboutHolder.appendChild(picker.node);
@@ -863,7 +966,8 @@
         if (options.version) body.version = options.version;
         if (options.deployment) body.deployment = options.deployment;
         if (image) body.screenshot = image;
-        if (picker) {
+        if (defectStory) body.story = defectStory;
+        else if (picker) {
           var about = picker.value();
           if (about.story) body.story = about.story;
           if (about.release) body.release = about.release;

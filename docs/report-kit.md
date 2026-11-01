@@ -74,7 +74,7 @@ Two routes at the address you chose, for a signed-in person of your app, outside
 
 `can_report` is `can.report_defect` of La Fabrique's `GET /api/me`. Not linked: `{ "linked": false, "can_report": false, "can_test": false, "link_url": "…" }`.
 
-**Testing (kit 1.3.0).** To let a tester read the stories to test without leaving the app, the relay:
+**Testing (kit 1.3.0, ticking since 1.4.0).** To let a tester read the stories to test without leaving the app, the relay:
 
 1. asks for the scope `stories:test` next to `defects:report` when it sends the person to `/oauth/authorize` (the consent page says what it allows; *Connected apps* shows it). A link made before keeps only `defects:report`: the person links again;
 2. answers `"can_test": true` in its `GET` when `can.test_stories` of `GET /api/me` is true (the scope was allowed, the person's role may validate, and the project has an environment open to the kit); the kit then shows **Test** next to **Report a defect**;
@@ -87,7 +87,11 @@ Two routes at the address you chose, for a signed-in person of your app, outside
     "validated": { "by": "tess", "at": "2026-10-31T09:00:00.000Z", "version": "1.170" } } ] }
 ```
 
-The stories are those on int that wait to be tested (epics and defects left out); `card` and `validated` are `null` when there is none. `403` when the person may not validate (`not_allowed`), the app was not allowed the scope (`insufficient_scope`) or the environment is closed (`testing_disabled`). The panel is read only: it shows the stories one at a time with their criteria; ticking and validating stay in La Fabrique. Without this route, the panel says the stories could not be read.
+The stories are those on int that wait to be tested (epics and defects left out); `card` and `validated` are `null` when there is none. `403` when the person may not validate (`not_allowed`), the app was not allowed the scope (`insufficient_scope`) or the environment is closed (`testing_disabled`). Without this route, the panel says the stories could not be read. The panel reads the stories again each time it opens, so what is done from La Fabrique shows too.
+4. **Ticking and validating (kit 1.4.0, la-fabrique#166).** The panel shows each criterion as a checkbox, a **Validate** button and **Report a defect on this story**. The relay answers two more `POST`s, passed through (with the person's token) to La Fabrique:
+   - `POST ?to-test={story}/criteria` with `{ "index": 1, "done": true }` → `POST {FABRIQUE_URL}/api/projects/{project}/to-test/{story}/criteria`: ticks or unticks the criterion in the issue (written by La Fabrique's App, in the person's name in the log, as *To test* does) and answers `{ "ok": true }`;
+   - `POST ?to-test={story}/validate` → `POST {FABRIQUE_URL}/api/projects/{project}/to-test/{story}/validate`: validates the story as *To test* does, `422` (`not_ready`) while a criterion is not ticked.
+   Both need the scope `stories:test`, a role that may validate, an environment open to testing, and a story that is one of those to test (`404` otherwise); a refusal is `{ "error": "…", "message": "…" }`, which the panel shows. The defect reported from the panel is the existing `POST` of the relay with `story` set to the story.
 
 **`GET ?targets=1`**: what a report can be about, passed through from La Fabrique's `GET {FABRIQUE_URL}/api/projects/{project}/targets` (with the person's token).
 

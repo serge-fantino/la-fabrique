@@ -26,7 +26,7 @@ export const KIT_SOURCES: Record<string, string> = {
 // What a project's relay must do for each version, beyond copying the files.
 export const KIT_CHANGES: { version: string; relay: string | null }[] = [
   {
-    version: "1.3.0",
+    version: "1.4.0",
     relay:
       "To show the stories to test, the relay asks for the scope `stories:test` when linking, answers `can_test` in its `GET`, and answers `GET ?to-test=1` with La Fabrique's `GET /api/projects/{project}/to-test`.",
   },
