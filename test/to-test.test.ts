@@ -129,7 +129,7 @@ describe("To test", () => {
     expect(page).toContain("Shopping lists.");
   });
 
-  it("without an integration branch, lists the stories merged and still open to validate in production; validated, the issue is closed", async () => {
+  it("without an integration branch, lists the stories merged and still open to validate in production; validated, the issue stays open", async () => {
     const merged = { number: 40, url: `https://github.com/${REPO}/pull/40`, state: "merged" };
     await seed({ nom: "Widget" }, null);
     await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
@@ -160,20 +160,11 @@ describe("To test", () => {
         comment = JSON.parse(String(options.body)).body;
         return "{}";
       });
-    let closing: unknown = null;
-    github()
-      .intercept({ method: "PATCH", path: `/repos/${REPO}/issues/34` })
-      .reply(200, (options) => {
-        closing = JSON.parse(String(options.body));
-        return JSON.stringify({ ...issue, state: "closed" });
-      });
     const response = await post(`/projects/${REPO}/to-test/validate`, { csrf, issue: "34" }, cookie);
     expect(response.status).toBe(303);
-    expect(comment).toBe("Validé en production par @admin-one : tous les critères d'acceptation sont vérifiés. La demande est terminée.");
-    expect(closing).toEqual({ state: "closed", state_reason: "completed" });
+    // Online, not released: validated, the issue stays open (no PATCH was mocked, so closing it would fail).
+    expect(comment).toBe("Validé par @admin-one : tous les critères d'acceptation sont vérifiés. La demande reste ouverte jusqu'à la version qui la livre.");
     expect(await logActions()).toContainEqual({ actor: "admin-one", action: "story_validated", details: JSON.stringify({ version: null }) });
-    // Done: no longer to validate.
-    expect(await (await get(`/projects/${REPO}/to-test`, cookie)).text()).not.toContain("Stories to validate");
   });
 });
 

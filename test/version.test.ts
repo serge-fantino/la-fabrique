@@ -11,3 +11,13 @@ describe("GET /api/version", () => {
     expect(body.commit).toBe("test-commit");
   });
 });
+
+describe("The version online", () => {
+  it("is the last release plus the changes online since", async () => {
+    const { onlineVersion } = await import("../src/build");
+    const notes = [{ version: "next" }, { version: "next" }, { version: "next" }, { version: "0.78" }, { version: "0.77" }];
+    expect(onlineVersion(notes)).toBe("0.78 + 3 changes");
+    expect(onlineVersion(notes.slice(2))).toBe("0.78 + 1 change");
+    expect(onlineVersion(notes.slice(3))).toBe("0.78");
+  });
+});

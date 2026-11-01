@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import releaseNotes from "../docs/release-notes.json";
 import { get, signIn } from "./helpers";
 
-const latest = releaseNotes[0] as { version: string; titre: string; changements: string[] };
+const latest = releaseNotes.find((note) => note.version !== "next") as { version: string; titre: string; changements: string[] };
 
 describe("What's new", () => {
   it("lists La Fabrique's own release notes, newest first, linked from the (i) of the header", async () => {
@@ -16,6 +16,19 @@ describe("What's new", () => {
     // The link sits in the version's popover, on every page.
     const home = await (await get("/settings", cookie)).text();
     expect(home).toContain(`<a class="button quiet small" href="/whats-new#v${latest.version.replace(".", "-")}">What's new</a>`);
+  });
+
+  it("shows the next entries under \"Online, not released yet\", above the last release", async () => {
+    const { whatsNewPage } = await import("../src/whats-new");
+    const { parseReleases } = await import("../src/roadmap");
+    const notes = [
+      { version: "next", date: "2026-11-01", titre: "Waiting change", changements: ["It is online."], stories: [139] },
+      { version: "0.78", date: "2026-11-01", heure: "00:26", titre: "Last release", changements: ["Released."], stories: [] },
+    ];
+    const page = whatsNewPage({ login: "x", role: "tester", csrfToken: "" } as never, parseReleases(JSON.stringify(notes)), null);
+    expect(page).toContain("Online, not released yet");
+    expect(page.indexOf("Online, not released yet")).toBeLessThan(page.indexOf("Waiting change"));
+    expect(page.indexOf("Waiting change")).toBeLessThan(page.indexOf('id="v0-78"'));
   });
 
   it("links the stories to La Fabrique's repository when it is a project here", async () => {

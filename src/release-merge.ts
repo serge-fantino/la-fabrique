@@ -38,11 +38,25 @@ export interface MergedNotes {
   versions: string[];
 }
 
-export function mergeReleaseNotes(base: string, branch: string, main: string, now: { date: string; time: string }): MergedNotes {
-  const known = new Set(parse(base, "merge base").map(versionOf));
-  const own = parse(branch, "branch").filter((entry) => !known.has(versionOf(entry)));
+export function mergeReleaseNotes(base: string, branch: string, main: string, now: { date: string; time: string }, options: { keepNext?: boolean } = { keepNext: true }): MergedNotes {
+  const baseEntries = parse(base, "merge base");
+  const known = new Set(baseEntries.map(versionOf));
+  const knownNext = new Set(baseEntries.filter((entry) => versionOf(entry) === "next").map((entry) => JSON.stringify(entry)));
+  // `next` entries are not unique by version: the merge base's own are told apart by content.
+  const own = parse(branch, "branch").filter((entry) =>
+    versionOf(entry) === "next" ? !knownNext.has(JSON.stringify(entry)) : !known.has(versionOf(entry)),
+  );
   const mainEntries = parse(main, "main");
   if (!own.length) return { text: main, versions: [] };
+  // A project without integration: merging puts the change online and gives it no number (la-fabrique#139).
+  // The entries stay `next` on top of main's; the release at the close of the sprint numbers them.
+  if (options.keepNext && own.every((entry) => versionOf(entry) === "next")) {
+    const body = main.trimStart();
+    if (!body.startsWith("[")) throw new Error("main's release notes do not start with [");
+    const rest = body.slice(1).replace(/^\s*\n/, "");
+    const head = own.map(formatEntry).join(",\n");
+    return { text: rest.trimStart().startsWith("]") ? `[\n${head}\n]\n` : `[\n${head},\n${rest}`, versions: [] };
+  }
   const top = mainEntries[0] ? versionOf(mainEntries[0]) : null;
   if (!top) throw new Error("main's release notes have no version to number after");
   const numbered = own.map((entry, index) => {
