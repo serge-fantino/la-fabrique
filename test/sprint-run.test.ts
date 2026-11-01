@@ -59,11 +59,19 @@ describe("The sprint's run, card by card", () => {
     const links: StoryCards = { cards: new Map(), byStory: new Map(), order: new Map([[1, [10, 11, 12, 13, 14]]]), nice: new Set(["1:10"]) };
     const plan = planRun([{ id: 1, title: "Menu" } as Card], links, new Map([
       [10, story(10)],
-      [11, story(11, { pulls: [{ number: 30, url: "x", state: "merged" }] })],
+      [11, story(11, { stage: "to_validate", pulls: [{ number: 30, url: "x", state: "merged" }] })],
       [12, story(12, { pulls: [{ number: 31, url: "x", state: "open" }], stage: "in_dev" })],
       [13, story(13, { stage: "backlog", missing: ["acceptance criteria"] })],
       [14, story(14)],
     ]));
+    // A story merged through a pull request linked by its text only (as
+    // "Refs #159"), to validate or on int: merged for the run.
+    const guessed = planRun([{ id: 2, title: "Run" } as Card], { ...links, order: new Map([[2, [20, 21, 22]]]), nice: new Set() }, new Map([
+      [20, story(20, { stage: "to_validate", pulls: [{ number: 40, url: "x", state: "merged", guessed: true }] })],
+      [21, story(21, { stage: "on_int" })],
+      [22, story(22)],
+    ]));
+    expect(guessed[0]?.stories.map((one) => one.plan)).toEqual(["done", "done", "launch"]);
     expect(plan[0]?.stories.map((one) => [one.number, one.plan, one.why])).toEqual([
       [11, "done", null],
       [12, "merge", null],

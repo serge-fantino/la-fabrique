@@ -74,8 +74,13 @@ export interface PlannedCard {
   stories: PlannedStory[];
 }
 
+// Merged already, for the run: closed, or its stage says it is developed
+// (on int, to validate, done), however its pull request is linked (a link
+// read from the text counts once GitHub says the work is merged).
+const DEVELOPED = new Set(["on_int", "to_validate", "done"]);
+
 function merged(story: CardStory | undefined): boolean {
-  return Boolean(story?.closed) || Boolean(story?.pulls.some((pull) => pull.state === "merged" && !pull.guessed) && !story?.pulls.some((pull) => pull.state === "open" && !pull.guessed));
+  return Boolean(story?.closed) || DEVELOPED.has(story?.stage ?? "");
 }
 
 // The stories of a card, in its order, nice to have last.
