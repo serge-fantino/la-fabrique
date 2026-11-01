@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A sprint gets its version when it starts",
+    "changements": [
+      "Starting a sprint is a card: the version it will release (the next minor or major proposed, or one you type, 1.0 included) and a name if you want; the sprint page and the board then say \"Sprint 0.82\".",
+      "The sprint's version and name can be changed while it runs; a version not ahead of the newest release is refused, saying why.",
+      "Closing the sprint releases its version: the close is a card showing what the release takes, asking only its title, with a \"Close the sprint and release 0.82\" button."
+    ],
+    "stories": [174],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint page shows the sprint only",
     "changements": [
       "The sprint page no longer lists Next release, which stays on the board; without a sprint, it says how many cards the next sprint would take, with a link to the board.",

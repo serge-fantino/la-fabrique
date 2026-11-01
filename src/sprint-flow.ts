@@ -1,5 +1,6 @@
 import { activityStatement } from "./activity-log";
-import { boardReleases, compareVersions, NEXT_RELEASE, SPRINT_LANE, type BoardRelease } from "./card-releases";
+import { boardReleases, compareVersions, isFixedLane, NEXT_RELEASE, SPRINT_LANE, type BoardRelease } from "./card-releases";
+import { proposeVersion } from "./sprint-release";
 import { isNice, storyCards, type StoryCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { listCards, moveCard, type Card } from "./cards";
@@ -18,17 +19,48 @@ async function moveCards(db: D1Database, cards: Card[], to: string, login: strin
   for (const card of cards) await moveCard(db, card, login, { set: { release: to }, before: null, after: null }, NO_VALUES, reason);
 }
 
-export async function startSprint(env: Env, project: Project, login: string): Promise<{ ok: true; cards: number } | { ok: false; message: string }> {
+// The versions a new sprint may take: the next minor and major after the
+// project's newest release (la-fabrique#174).
+export async function sprintVersions(env: Env, project: Project): Promise<{ newest: string | null; minor: string | null; major: string | null; releases: BoardRelease[] }> {
+  const releases = await boardReleases(env, project, []);
+  const newest = releases.filter((release) => release.state === "shipped" && !isFixedLane(release.version)).sort((a, b) => compareVersions(a.version, b.version))[0]?.version ?? null;
+  return { newest, minor: proposeVersion(newest, "minor"), major: proposeVersion(newest, "major"), releases };
+}
+
+// Why a version cannot be the sprint's, or null.
+export function sprintVersionProblem(_project: Project, version: string, releases: BoardRelease[]): string | null {
+  if (!version) return "Give the sprint its version.";
+  if (!/^[0-9A-Za-z.-]{1,30}$/.test(version)) return `"${version}" is not a version: letters, digits, dots and dashes.`;
+  // Any numbering, a major jump included (0.81 → 1.0): only ahead of what
+  // is out or on its way.
+  const out = releases.find((release) => release.state !== "planned" && !isFixedLane(release.version) && compareVersions(version, release.version) >= 0);
+  return out ? `${version} is not ahead of ${out.version}, already ${out.state === "shipped" ? "out" : "in progress"}.` : null;
+}
+
+export async function startSprint(
+  env: Env,
+  project: Project,
+  login: string,
+  wanted: { version?: string | null; name?: string | null } = {},
+): Promise<{ ok: true; cards: number } | { ok: false; message: string; reason: "running" | "empty" | "version" }> {
   const running = await activeSprint(env.DB, project.repo);
-  if (running) return { ok: false, message: "A sprint is in progress: close it first." };
+  if (running) return { ok: false, message: "A sprint is in progress: close it first.", reason: "running" };
+  // Its version: the one asked for, else the next minor (none without a release yet).
+  const versions = await sprintVersions(env, project);
+  const version = wanted.version?.trim() || versions.minor;
+  if (version) {
+    const problem = sprintVersionProblem(project, version, versions.releases);
+    if (problem) return { ok: false, message: problem, reason: "version" };
+  }
+  const name = wanted.name?.replace(/\s+/g, " ").trim().slice(0, 80) || null;
   const all = (await listCards(env.DB, project.repo)).filter((card) => !card.archivedAt);
   // The cards kept in the Sprint lane by the last close come with the new ones.
   const next = all.filter((card) => card.release === NEXT_RELEASE);
   const kept = all.filter((card) => card.release === SPRINT_LANE);
-  if (!next.length && !kept.length) return { ok: false, message: "Next release has no card: place the cards of the next sprint in it first." };
+  if (!next.length && !kept.length) return { ok: false, message: "Next release has no card: place the cards of the next sprint in it first.", reason: "empty" };
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, ?, ?)").bind(project.repo, SPRINT_LANE, login),
-    activityStatement(env.DB, { actor: login, action: "sprint_started", repo: project.repo, details: { cards: [...kept, ...next].map((card) => card.id) } }),
+    env.DB.prepare("INSERT INTO sprints (repo, release, started_by, version, name) VALUES (?, ?, ?, ?, ?)").bind(project.repo, SPRINT_LANE, login, version, name),
+    activityStatement(env.DB, { actor: login, action: "sprint_started", repo: project.repo, details: { cards: [...kept, ...next].map((card) => card.id), version, name } }),
   ]);
   await moveCards(env.DB, next, SPRINT_LANE, login, "sprint started");
   return { ok: true, cards: next.length + kept.length };

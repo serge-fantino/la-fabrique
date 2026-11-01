@@ -73,6 +73,8 @@ export interface SprintData {
   failure?: string | undefined;
   // The sprint running by itself: its state, or how to start it.
   run?: string;
+  // The versions a new sprint may take, after the newest release.
+  versions?: { newest: string | null; minor: string | null; major: string | null };
 }
 
 // A run's state: queued, working (since when), done, failed; its link.
@@ -343,9 +345,38 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           attempt.run?.startsWith("https://github.com/") ? ` <a href="${escapeHtml(attempt.run)}">The run</a>.` : runs ? ` <a href="${runs}">The runs</a>.` : ""
         } The sprint is still open: close it again once fixed.</p>`;
 
+  // Starting a sprint: the version it will release, and a name if wanted.
+  const startCard = () => {
+    const versions = data.versions;
+    const choices = [versions?.minor ? { value: versions.minor, label: `${versions.minor} <span class="muted small">next minor</span>` } : null, versions?.major ? { value: versions.major, label: `${versions.major} <span class="muted small">next major</span>` } : null].filter(
+      (choice): choice is { value: string; label: string } => choice !== null,
+    );
+    return `<form method="post" action="${escapeHtml(action)}" class="sprint-card sprint-start-card" data-busy="Starting…">${csrfField(viewer)}
+        <input type="hidden" name="action" value="start" />
+        <h3>Start the next sprint</h3>
+        <fieldset class="sprint-versions"><legend>The version it will release${versions?.newest ? ` <span class="muted small">(newest: <span class="mono">${escapeHtml(versions.newest)}</span>)</span>` : ""}</legend>
+          ${choices.map((choice, index) => `<label class="choice"><input type="radio" name="version" value="${escapeHtml(choice.value)}"${index === 0 ? " checked" : ""} /> <span class="mono">${choice.label}</span></label>`).join("")}
+          <label class="choice"><input type="radio" name="version" value="other"${choices.length ? "" : " checked"} /> Another: <input type="text" name="version_other" maxlength="30" class="mono" placeholder="${escapeHtml(versions?.minor ?? "1.0")}" aria-label="Another version" /></label>
+        </fieldset>
+        <label class="sprint-name-field">Name <span class="muted small">optional</span> <input type="text" name="name" maxlength="80" placeholder="Menus and shopping" /></label>
+        <button type="submit" class="button">Start the sprint</button>
+      </form>`;
+  };
+
   const current = sprint
     ? `<section class="sprint-head" aria-label="The sprint">
-        <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : "Sprint"} <span class="pill warn">${RELEASE_STATE_LABELS.in_progress}</span></h2>
+        <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : `Sprint${sprint.version ? ` <span class="mono">${escapeHtml(sprint.version)}</span>` : ""}${sprint.name ? ` <span class="sprint-name">${escapeHtml(sprint.name)}</span>` : ""}`} <span class="pill warn">${RELEASE_STATE_LABELS.in_progress}</span></h2>
+        ${
+          data.canOrder && !data.legacy
+            ? `<details class="sprint-version"><summary>${sprint.version ? "Change its version or name" : "Give it its version"}</summary>
+          <form method="post" action="${escapeHtml(action)}" class="inline-form" data-busy="Saving…">${csrfField(viewer)}
+            <input type="hidden" name="action" value="sprint_version" />
+            <label>Version <input type="text" name="version" value="${escapeHtml(sprint.version ?? "")}" maxlength="30" required class="mono" /></label>
+            <label>Name <input type="text" name="name" value="${escapeHtml(sprint.name ?? "")}" maxlength="80" placeholder="optional" /></label>
+            <button type="submit" class="button quiet small">Save</button>
+          </form></details>`
+            : ""
+        }
         <p class="muted">Started by <span class="mono">@${escapeHtml(sprint.startedBy)}</span> on <span class="mono">${formatDate(sprint.startedAt)}</span>. ${
           data.legacy
             ? `It ends when the release notes date ${escapeHtml(sprint.release)}.`
@@ -391,7 +422,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
                 .join(" and ")} on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
             : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
         }</p>
-        ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? button({ action: "start" }, "Start the sprint", "Start the sprint", "") : ""}
+        ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? startCard() : ""}
       </section>`;
 
   const kept = data.keptCards.length
@@ -450,7 +481,7 @@ export function releasePage(
   viewer: Viewer,
   project: Project,
   plan: ReleasePlan,
-  options: { kind: ReleaseKind; title: string; error?: string },
+  options: { kind: ReleaseKind; title: string; error?: string; version?: string | null },
 ): string {
   const base = projectUrl(project.repo);
   const taken = plan.cards.filter((planned) => planned.done);
@@ -472,7 +503,7 @@ export function releasePage(
     `Close the sprint · ${project.check?.config?.nom || project.repo} · La Fabrique extraordinaire`,
     `${projectHeader(project, "sprint")}
       ${notice(options.error, "error")}
-      <h2>Close the sprint</h2>
+      <h2>Close the sprint${options.version ? ` <span class="mono">${escapeHtml(options.version)}</span>` : ""}</h2>
       <p class="muted">Newest release: <span class="mono">${escapeHtml(plan.newest ?? "none")}</span>. The project's release workflow numbers and writes the release; La Fabrique writes nothing on the branch.</p>
       <h3>The release takes</h3>
       ${taken.length ? `<ul>${taken.map(cardBlock).join("")}</ul>` : `<p class="muted">No card is done: nothing to release.</p>`}
@@ -482,12 +513,13 @@ export function releasePage(
       ${entries.some((entry) => !entry.taken) ? `<p>Release-note entries that stay:</p><ul>${entries.filter((entry) => !entry.taken).map(entryLine).join("")}</ul>` : ""}
       ${
         taken.length || entries.some((entry) => entry.taken)
-          ? `<form method="post" action="${escapeHtml(base)}/sprint" class="request-form" data-busy="…">${csrfField(viewer)}
+          ? `<form method="post" action="${escapeHtml(base)}/sprint" class="sprint-card sprint-close-card" data-busy="Closing…">${csrfField(viewer)}
         <input type="hidden" name="action" value="release" />
-        <fieldset><legend>Version</legend>${radio("minor", plan.minor)}${radio("major", plan.major)}</fieldset>
-        <label>Release title <input type="text" name="title" value="${escapeHtml(options.title)}" maxlength="200" required /></label>
-        <button type="submit" class="button">Start the release</button>
-        <a class="button quiet" href="${escapeHtml(base)}/sprint">Cancel</a>
+        <h3>${options.version ? `Release <span class="mono">${escapeHtml(options.version)}</span>` : "The release"}</h3>
+        ${options.version ? `<p class="muted small">The sprint's version. To release another one, change it on the sprint first.</p>` : `<fieldset class="sprint-versions"><legend>Its version</legend>${radio("minor", plan.minor)}${radio("major", plan.major)}</fieldset>`}
+        <label class="sprint-title-field">Its title <input type="text" name="title" value="${escapeHtml(options.title)}" maxlength="200" required /></label>
+        <div class="card-actions"><button type="submit" class="button">Close the sprint and release${options.version ? ` <span class="mono">${escapeHtml(options.version)}</span>` : ""}</button>
+        <a class="button quiet" href="${escapeHtml(base)}/sprint">Not now</a></div>
       </form>`
           : `<p><a class="button quiet" href="${escapeHtml(base)}/sprint">Back to the sprint</a></p>`
       }`,

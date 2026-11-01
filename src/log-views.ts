@@ -109,7 +109,7 @@ export function describe(entry: LogEntry, repo: string): string {
     case "claude_pr_updated":
       return `Claude ${d["conclusion"] === "success" ? "brought" : "tried to bring"} pull request ${pull(d["pull"])} of ${story} up to date${runLink(d["run"])}`;
     case "sprint_started":
-      return `started the sprint ${text(d["release"])}`;
+      return `started the sprint${d["version"] ? ` ${text(d["version"])}` : ` ${text(d["release"])}`}${d["name"] ? ` “${text(d["name"])}”` : ""}`;
     case "sprint_stopped":
       return `stopped the sprint ${text(d["release"])}`;
     case "sprint_card_moved":
@@ -136,6 +136,8 @@ export function describe(entry: LogEntry, repo: string): string {
       const stories = Array.isArray(d["stories"]) ? (d["stories"] as unknown[]).map((n) => `#${text(n)}`).join(", ") : "";
       return `imported card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}${stories ? `, with ${stories}` : ""}`;
     }
+    case "sprint_versioned":
+      return `set the sprint's version to ${text(d["to"])}${d["from"] ? ` (was ${text(d["from"])})` : ""}${d["name"] ? `, “${text(d["name"])}”` : ""}`;
     case "sprint_run_started":
       return "started the sprint running by itself";
     case "sprint_run_paused":

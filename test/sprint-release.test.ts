@@ -107,6 +107,26 @@ describe("Close the sprint makes the release", () => {
     expect((await logActions()).map((entry) => entry.action)).not.toContain("release_started");
   });
 
+  it("releases the sprint's own version: only the title is asked", async () => {
+    await seed();
+    await env.DB.prepare("UPDATE sprints SET version = '0.82', name = 'Menus' WHERE repo = ?").bind(REPO).run();
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    const page = await (await post(`/projects/${REPO}/sprint`, { csrf, action: "close" }, cookie)).text();
+    expect(page).toContain('<h3>Release <span class="mono">0.82</span></h3>');
+    expect(page).not.toContain("Minor:");
+    expect(page).toContain('Close the sprint and release <span class="mono">0.82</span>');
+    TOKEN();
+    let sent: unknown = null;
+    fetchMock.get("https://api.github.com").intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/publier.yml/dispatches` }).reply(204, (options) => {
+      sent = JSON.parse(String(options.body));
+      return "";
+    });
+    // A kind sent anyway changes nothing: the sprint's version is released.
+    await post(`/projects/${REPO}/sprint`, { csrf, action: "release", kind: "major", title: "Weekly menus" }, cookie);
+    expect(sent).toEqual({ ref: "main", inputs: { version: "0.82", titre: "Weekly menus", stories: "21", par: "pe" } });
+  });
+
   it("dispatches the project's release workflow on confirmation and logs it; the sprint stays open", async () => {
     await seed();
     await grantRole("pe", "product_engineer");
