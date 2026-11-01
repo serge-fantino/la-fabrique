@@ -88,6 +88,62 @@
     visit(url.href, true);
   });
 
+  // A criterion ticked in To test: at once on the page, sent in the
+  // background; GitHub's answer confirms it, or the tick goes back with why.
+  document.addEventListener(
+    "submit",
+    async (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-criterion")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (form.dataset.pending) return;
+      const data = new FormData(form);
+      const done = form.elements.namedItem("done");
+      const button = form.querySelector("button.criterion");
+      const box = button && button.querySelector(".box");
+      const item = form.closest("li");
+      const story = form.closest(".test-story");
+      const show = (on) => {
+        if (button) button.setAttribute("aria-pressed", String(on));
+        if (box) box.textContent = on ? "✓" : "";
+        if (item) item.classList.toggle("done", on);
+        if (done instanceof HTMLInputElement) done.value = on ? "0" : "1";
+        const validate = story && story.querySelector("[data-validate]");
+        if (validate) {
+          const all = [...story.querySelectorAll("button.criterion")].every((criterion) => criterion.getAttribute("aria-pressed") === "true");
+          validate.disabled = !all;
+          validate.classList.toggle("quiet", !all);
+        }
+      };
+      const wanted = data.get("done") === "1";
+      const old = story && story.querySelector("[data-criterion-error]");
+      if (old) old.remove();
+      show(wanted);
+      form.dataset.pending = "1";
+      form.setAttribute("aria-busy", "true");
+      try {
+        const response = await fetch(form.action, { method: "POST", body: data, headers: { accept: "application/json" } });
+        const answer = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(answer.error || "The tick was not saved.");
+      } catch (error) {
+        show(!wanted);
+        if (story) {
+          const note = document.createElement("p");
+          note.className = "notice error";
+          note.setAttribute("role", "alert");
+          note.setAttribute("data-criterion-error", "");
+          note.textContent = error instanceof Error && error.message ? error.message : "The tick was not saved: reload the page.";
+          (form.closest("ul") || story).before(note);
+        }
+      } finally {
+        delete form.dataset.pending;
+        form.removeAttribute("aria-busy");
+      }
+    },
+    true,
+  );
+
   document.addEventListener("submit", (event) => {
     if (event.defaultPrevented) return;
     const form = event.target;

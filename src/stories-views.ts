@@ -27,6 +27,18 @@ function links(story: Story): string {
 
 const STAGE_TONES: Record<Stage, string> = { backlog: "", ready: "ok", in_dev: "warn", on_int: "warn", to_validate: "warn", done: "ok" };
 
+// Where testing stands for a story that is on int (or merged, without
+// integration): validated, by whom; else how many criteria are ticked.
+export function testingNote(story: { stage: Stage | null; validated?: { by: string; at: string } | null; criteria?: { done: boolean }[] }): string {
+  if (story.stage !== "on_int" && story.stage !== "to_validate") return "";
+  if (story.validated) {
+    return ` <span class="pill ok small" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}</span>`;
+  }
+  const criteria = story.criteria ?? [];
+  const ticked = criteria.filter((criterion) => criterion.done).length;
+  return criteria.length ? ` <span class="muted small">${ticked}/${criteria.length} criteria checked</span>` : ` <span class="muted small">to test</span>`;
+}
+
 export function stagePill(stage: Stage): string {
   const label = STAGES.find((candidate) => candidate.id === stage)?.label ?? stage;
   return `<span class="pill stage-${stage}${STAGE_TONES[stage] ? ` ${STAGE_TONES[stage]}` : ""}">${label}</span>`;

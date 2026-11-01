@@ -1,4 +1,4 @@
-import { env, fetchMock } from "cloudflare:test";
+import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { ProductionStatus } from "../src/production";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
@@ -215,6 +215,26 @@ describe("Validating on int", () => {
     expect(auth).toBe("Bearer gho_session_token");
     expect(sent?.body).toBe("## Besoin\n\nPlanifier.\n\n## Critères d'acceptation\n\nSept jours s'affichent\n- [x] Un repas se déplace\n\n---\nDemande de @pe");
     expect(await logActions()).toContainEqual({ actor: "qa", action: "criterion_checked", details: JSON.stringify({ index: 1, text: "Un repas se déplace" }) });
+  });
+
+  it("answers in JSON when the page's script ticks a criterion, without reloading the page", async () => {
+    await seed(CONFIG_FR);
+    appToken();
+    github().intercept({ path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify(ISSUE), JSON_HEADERS);
+    github().intercept({ method: "PATCH", path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify(ISSUE), JSON_HEADERS);
+    const { cookie, csrf } = await signIn("admin-one");
+    const response = await SELF.fetch(`https://la-fabrique.test/projects/${REPO}/to-test/criterion`, {
+      method: "POST",
+      headers: { cookie, accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ csrf, issue: "31", index: "1", text: "Un repas se déplace", done: "1" }),
+      redirect: "manual",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, done: true });
+    // The page marks the form for its script.
+    const page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
+    expect(page).toContain("/to-test/criterion\" data-criterion>");
+    expect(page).toContain("data-validate>");
   });
 
   it("refuses when the issue changed meanwhile", async () => {

@@ -121,3 +121,33 @@ describe("The status follows the stories once validated", () => {
     expect(log).toContain("go from In development to In production (3/3), from its stories");
   });
 });
+
+describe("Testing, followed on the card", () => {
+  it("says which stories on int are validated, by whom, and how many criteria the others have checked", async () => {
+    const id = await seed();
+    const now = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify({ nom: "Widget", branches: { production: "main", integration: "integration" } }), REPO),
+      env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(
+        JSON.stringify([
+          story(1, { criteria: [{ text: "A", done: true }] }),
+          story(2, { criteria: [{ text: "B", done: true }, { text: "C", done: false }] }),
+          story(3, { state: "closed" }),
+        ]),
+        REPO,
+      ),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, ?)").bind(
+        REPO,
+        JSON.stringify({ production: "main", integration: "integration", integrationHead: "abc", aheadBy: 2, groups: [{ branch: "feature/1-a", title: "", mergedAt: now, commits: [], issues: [1, 2] }], workflows: [], versions: [], waiting: [], ready: true, blockers: [] }),
+        now,
+      ),
+      env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('qa', 'story_validated', ?, 1, '{}')").bind(REPO),
+    ]);
+    const { cookie } = await signIn("admin-one");
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toMatch(/Story 1 <span class="pill stage-on_int warn">On int<\/span> <span class="pill ok small" title="[^"]*">Validated<\/span> <span class="muted small">by @qa<\/span>/);
+    expect(page).toContain('Story 2 <span class="pill stage-on_int warn">On int</span> <span class="muted small">1/2 criteria checked</span>');
+    // The card: to test, 2 of the 3 validated (the third is already out).
+    expect(page).toContain('<option value="validated" selected>To test 2/3 validated</option>');
+  });
+});

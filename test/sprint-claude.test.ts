@@ -356,7 +356,7 @@ describe("A merged story in the sprint", () => {
     github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
     github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
     const page = await (await get(`/projects/${REPO}/sprint`, (await signIn("pe")).cookie)).text();
-    expect(page).toContain('<span class="pill stage-to_validate warn">To validate</span> <a class="small" href="/projects/acme/widget/to-test#story-12">Validate in To test</a>');
+    expect(page).toContain('<span class="pill stage-to_validate warn">To validate</span> <span class="muted small">0/1 criteria checked</span> <a class="small" href="/projects/acme/widget/to-test#story-12">Test it</a>');
   });
 });
 

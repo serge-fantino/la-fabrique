@@ -555,6 +555,10 @@ export async function toTestAction(
       ? await reportDefect(request, env, project, viewer.login, issue, defect)
       : ({ ok: false, message: "A defect needs a title and what you saw.", status: 422 } as const);
   }
+  // Ticked from the page's script: an answer, not a new page.
+  if (action === "criterion" && (request.headers.get("accept") ?? "").includes("application/json")) {
+    return outcome.ok ? json({ ok: true, done: form.get("done") === "1" }) : json({ error: outcome.message }, { status: outcome.status });
+  }
   if (outcome.ok) return redirect(`/projects/${project.repo}/to-test#story-${issue}`);
   return showToTest(request, env, viewer, repo, { message: outcome.message, status: outcome.status });
 }
