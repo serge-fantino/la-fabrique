@@ -338,6 +338,11 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : ""
         }
         ${releaseLine}
+        ${
+          data.noIntegration
+            ? ""
+            : `<p class="muted">With an integration branch, the release is the go: test the stories on int, then give the go in <a href="${escapeHtml(base)}/production">Production</a>${data.canClose ? "" : " (Product Engineer or super admin)"}; once it is out, close the sprint and each finished card takes its version.</p>`
+        }
         ${summary(data.sprintCards)}
         ${runsLine}
         ${claudeNext}
