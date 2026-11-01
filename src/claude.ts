@@ -6,6 +6,9 @@ import { dispatchRefusal, githubJson, githubPost, installationToken } from "./gi
 import { productionBranch, type Project } from "./projects";
 import { developmentLinks, pullStories } from "./pull-links";
 import { applyIssueEvent, STORIES, type RestIssue } from "./stories";
+import { storyCards } from "./card-groups";
+import { heldStories, waitReason } from "./card-lock";
+import { cardStories } from "./card-stories";
 import { sprintLiveFor } from "./live";
 import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
 import { wordingFor } from "./wording";
@@ -28,6 +31,29 @@ export function claudeCap(project: Project): number {
 interface RestRun {
   status: string;
   html_url: string;
+  display_title?: string;
+}
+
+// The stories Claude is working on now, from the runs' names ("Claude #12").
+function workingOn(runs: RestRun[]): Set<number> {
+  return new Set(
+    runs
+      .filter((run) => run.status !== "completed")
+      .map((run) => Number(/#(\d+)/.exec(run.display_title ?? "")?.[1] ?? NaN))
+      .filter((number) => Number.isInteger(number)),
+  );
+}
+
+// One story at a time per card (la-fabrique#159): the story in progress
+// that this one waits for, if any.
+async function waitingFor(env: Env, project: Project, number: number, running: Set<number>): Promise<string | null> {
+  const links = await storyCards(env.DB, project.repo);
+  const cards = links.byStory.get(number) ?? [];
+  if (!cards.length) return null;
+  const siblings = [...new Set(cards.flatMap((card) => links.order.get(card) ?? []))];
+  const stories = await cardStories(env, project, siblings);
+  const busy = heldStories(links, stories, running, cards).get(number);
+  return busy ? waitReason(number, busy) : null;
 }
 
 export type LaunchOutcome = { ok: true; running: number } | { ok: false; message: string; status: 409 | 422 | 502 };
@@ -46,6 +72,8 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
     if (running >= cap) {
       return { ok: false, message: `Claude already runs ${running} time${running > 1 ? "s" : ""} on this project (cap ${cap}): wait for one to end.`, status: 409 };
     }
+    const waits = await waitingFor(env, project, number, workingOn(runs.workflow_runs));
+    if (waits) return { ok: false, message: waits, status: 409 };
 
     const path = `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/dispatches`;
     const ref = productionBranch(project) ?? "main";

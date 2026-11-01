@@ -3,6 +3,7 @@ import { cardGroupHead, isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { cardRef } from "./card-views";
 import { isRunning, type ClaudeRun } from "./claude";
+import { waitReason, type InProgress } from "./card-lock";
 import type { PullDetail } from "./sprint-pulls";
 import type { Card } from "./cards";
 import { notice, projectContext, projectHeader } from "./project-views";
@@ -61,6 +62,8 @@ export interface SprintData {
     cap: number;
     launches: Map<number, { by: string; at: string }>;
     next: number | null;
+    // The stories waiting for another of their card, in progress.
+    held: Map<number, InProgress>;
     // The workflow's runs, newest first, and its page on GitHub.
     runs: ClaudeRun[];
     runsUrl: string | null;
@@ -103,6 +106,10 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const run = data.claude.runs.find((candidate) => candidate.issue === number);
     const last = `${run ? runPill(run) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
     if (!data.claude.canLaunch || !data.claude.workflow || story?.stage !== "ready" || (run && isRunning(run))) return last;
+    const busy = data.claude.held.get(number);
+    if (busy) {
+      return `<span class="muted small" title="${escapeHtml(waitReason(number, busy))}">Waits for <span class="mono">#${busy.story}</span></span>${last}`;
+    }
     return `${button({ action: "launch", story: number }, `Launch Claude on #${number}`, launched ? "Launch again" : "Launch Claude", "quiet small claude")}${last}`;
   };
   // A priority chosen from a list, sent at once (the button without script).

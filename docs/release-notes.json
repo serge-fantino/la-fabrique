@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "One story at a time per card",
+    "changements": [
+      "In the sprint, a card's stories are launched with Claude one at a time: while one is in progress (Claude working on it, or its pull request open and not merged), the card's other stories wait, and say which story they wait for.",
+      "\"Launch the next story\" skips the cards that already have a story in progress; a launch sent anyway (an old page, Claude through the MCP) is refused with the same reason. Updating the story in progress with Claude stays possible."
+    ],
+    "stories": [159],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "La Fabrique's logo in Claude",
     "changements": [
       "The MCP server gives La Fabrique's logo to Claude, and the logo is also served as PNG (favicon, icons) for what does not read SVG.",

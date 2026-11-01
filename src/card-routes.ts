@@ -14,7 +14,8 @@ import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice
 import { closeSprint, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
-import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude, updateWithClaude } from "./claude";
+import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
+import { heldStories } from "./card-lock";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
 import { cycleRules, projectRules } from "./lifecycle";
@@ -686,9 +687,13 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
     cardProgress(env, project, [...sprintCards, ...keptCards, ...nextCards, ...integrationCards], links),
     lastMergeAttempts(env.DB, project.repo),
   ]);
+  // One story at a time per card: the stories waiting for another of their
+  // card, in progress (la-fabrique#159).
+  const held = heldStories(links, stories, new Set(runs.filter(isRunning).map((run) => run.issue).filter((issue): issue is number => issue !== null)), sprintCards.map((card) => card.id));
   // The next for Claude: in the sprint's order, the first ready story not
-  // launched yet.
-  const next = sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number)) ?? null;
+  // launched yet, nor waiting for another of its card.
+  const next =
+    sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number) && !held.has(number)) ?? null;
   const launched = Number(params.get("story"));
   return html(
     sprintPage(viewer, view, {
@@ -721,6 +726,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
         cap: claudeCap(project),
         launches,
         next,
+        held,
         runs,
         runsUrl: claudeWorkflow(project) ? `https://github.com/${project.repo}/actions/workflows/${encodeURIComponent(claudeWorkflow(project) ?? "")}` : null,
       },

@@ -121,6 +121,62 @@ describe("Claude Code from the sprint", () => {
   });
 });
 
+describe("One story at a time per card", () => {
+  it("holds a card's other stories while one is in progress, on the page and on the server", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml" }, claude: { plafond: 2 } });
+    const card = (await env.DB.prepare("SELECT id FROM cards WHERE title = 'Week menu'").first<{ id: number }>())?.id ?? 0;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', '15', 3)").bind(card),
+      env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(
+        JSON.stringify([
+          story(1, "Epic", { parent: null, subTotal: 3 }),
+          story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] }),
+          story(13, "Bare one", { criteria: [] }),
+          story(15, "Next one"),
+        ]),
+        REPO,
+      ),
+    ]);
+    const { cookie, csrf } = await signIn("admin-one");
+    const runs = (list: unknown[]) =>
+      github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: list }), JSON_HEADERS);
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(6);
+    runs([]);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30` })
+      .reply(200, JSON.stringify({ number: 30, title: "Story #12", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, draft: false, user: { login: "claude[bot]" }, requested_reviewers: [] }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    // #15 waits for #12, whose pull request is open; it is not the next one.
+    expect(page).toMatch(/title="#15 waits for #12 of the same card: its pull request #30 is not merged yet\. One story at a time per card\.">Waits for <span class="mono">#12<\/span>/);
+    expect(page).not.toContain('aria-label="Launch Claude on #15"');
+
+    // Sent anyway (an old page, the MCP): refused with the same reason.
+    runs([]);
+    const refused = await post(`/projects/${REPO}/sprint`, { csrf, action: "launch", story: "15" }, cookie);
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toContain("#15 waits for #12 of the same card: its pull request #30 is not merged yet");
+
+    // Claude working on #12, with no pull request yet: the same.
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one"), story(13, "Bare one", { criteria: [] }), story(15, "Next one")]), REPO)
+      .run();
+    runs([{ display_title: "Claude #12", status: "in_progress", html_url: "https://github.com/run/1" }]);
+    const working = await post(`/projects/${REPO}/sprint`, { csrf, action: "launch", story: "15" }, cookie);
+    expect(working.status).toBe(409);
+    expect(await working.text()).toContain("#15 waits for #12 of the same card: Claude is working on it");
+
+    // #12 merged: #15 can go.
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "x", state: "merged" }] }), story(13, "Bare one", { criteria: [] }), story(15, "Next one")]), REPO)
+      .run();
+    runs([]);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, "");
+    github().intercept({ method: "POST", path: `/repos/${REPO}/issues/15/comments` }).reply(201, "{}", JSON_HEADERS);
+    const launched = await post(`/projects/${REPO}/sprint`, { csrf, action: "launch", story: "15" }, cookie);
+    expect(launched.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=launched&story=15`);
+  });
+});
+
 async function webhook(event: string, payload: unknown): Promise<Response> {
   const body = JSON.stringify(payload);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("test-webhook-secret"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
