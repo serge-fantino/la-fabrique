@@ -247,8 +247,8 @@ export async function authorize(request: Request, env: Env): Promise<Response> {
 
 async function authorizeMcp(request: Request, env: Env, helpers: OAuthHelpers, authRequest: AuthRequest, appName: string): Promise<Response> {
   const url = new URL(request.url);
-  const requested = authRequest.scope.length ? authRequest.scope : [MCP_SCOPE];
-  if (requested.some((scope) => scope !== MCP_SCOPE)) return errorRedirect(authRequest, "invalid_scope", `Only ${MCP_SCOPE} can be granted to an assistant.`);
+  // An assistant gets `fabrique`, whatever else it asks for (some ask for
+  // every scope the discovery lists): a narrower grant, said in the token.
   const session = await readSession(request, env.DB);
   if (!session) {
     if (request.method !== "GET") return errorPage("Signed out", "Your session ended: connect the assistant again.", 403);

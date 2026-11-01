@@ -33,7 +33,7 @@ async function register(): Promise<string> {
   return ((await response.json()) as { client_id: string }).client_id;
 }
 
-async function authorizePath(clientId: string, scope = "fabrique"): Promise<string> {
+async function authorizePath(clientId: string, scope = "fabrique", resource = `${BASE}/`): Promise<string> {
   const query = new URLSearchParams({
     response_type: "code",
     client_id: clientId,
@@ -42,15 +42,17 @@ async function authorizePath(clientId: string, scope = "fabrique"): Promise<stri
     state: "s1",
     code_challenge: await challenge(VERIFIER),
     code_challenge_method: "S256",
-    resource: `${BASE}/`,
+    resource,
   });
   return `/oauth/authorize?${query}`;
 }
 
-async function connectClaude(login: string): Promise<Tokens> {
+let lastClient = "";
+async function connectClaude(login: string, scope = "fabrique", resource = `${BASE}/`): Promise<Tokens> {
   const clientId = await register();
+  lastClient = clientId;
   const { cookie, csrf } = await signIn(login);
-  const path = await authorizePath(clientId);
+  const path = await authorizePath(clientId, scope, resource);
   const consent = await (await get(path, cookie)).text();
   expect(consent).toContain("will be able to work in La Fabrique in your name");
   expect(consent).toContain("Never the go to production");
@@ -58,7 +60,7 @@ async function connectClaude(login: string): Promise<Tokens> {
   const approved = await post(path, { csrf, decision: "allow" }, cookie);
   expect(approved.status).toBe(302);
   const code = new URL(approved.headers.get("location") ?? "").searchParams.get("code") ?? "";
-  const response = await token({ grant_type: "authorization_code", code, redirect_uri: CALLBACK, code_verifier: VERIFIER, client_id: clientId, resource: `${BASE}/` });
+  const response = await token({ grant_type: "authorization_code", code, redirect_uri: CALLBACK, code_verifier: VERIFIER, client_id: clientId, resource });
   expect(response.status).toBe(200);
   return (await response.json()) as Tokens;
 }
@@ -88,16 +90,23 @@ describe("La Fabrique's MCP server", () => {
     expect(metadata["resource"]).toBe(BASE);
   });
 
-  it("is refused to an account without a role, and to another scope", async () => {
+  it("is refused to an account without a role", async () => {
     const clientId = await register();
     const { cookie } = await signIn("stranger");
     const page = await get(await authorizePath(clientId), cookie);
     expect(page.status).toBe(403);
     expect(await page.text()).toContain("has no role in La Fabrique");
+  });
+
+  it("connects as claude.ai does: the MCP address as the resource, every scope asked, `fabrique` granted", async () => {
     await grantRole("pe", "product_engineer");
-    const other = await get(await authorizePath(clientId, "defects:report"), (await signIn("pe")).cookie);
-    expect(other.status).toBe(302);
-    expect(other.headers.get("location")).toContain("error=invalid_scope");
+    const tokens = await connectClaude("pe", "defects:report fabrique", `${BASE}/mcp`);
+    expect(tokens.scope).toBe("fabrique");
+    expect((await rpc(tokens.access_token, "ping")).result).toEqual({});
+    // Its refresh token works the same way.
+    const refreshed = await token({ grant_type: "refresh_token", refresh_token: tokens.refresh_token, client_id: lastClient, resource: `${BASE}/mcp` });
+    expect(refreshed.status).toBe(200);
+    expect((await rpc(((await refreshed.json()) as Tokens).access_token, "ping")).result).toEqual({});
   });
 
   it("lets Claude write a card, its spec and its stories, start the sprint, in the person's name and in the log", async () => {
