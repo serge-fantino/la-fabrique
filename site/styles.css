@@ -3036,3 +3036,33 @@ tr.nice td {
 .story-pulls {
   padding-left: 1.25rem;
 }
+
+/* The sprint running by itself (la-fabrique#160). */
+.sprint-run,
+.sprint-run-start {
+  background: #fff;
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.sprint-run-cards {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.run-plan {
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.run-plan-stop {
+  color: #8a2a0f;
+}
+
+.alert-text {
+  color: #8a2a0f;
+}

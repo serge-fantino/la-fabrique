@@ -36,9 +36,16 @@
     ]
   },
   "durable_objects": {
-    "bindings": [{ "name": "CARD_LIVE", "class_name": "CardLive" }]
+    "bindings": [
+      { "name": "CARD_LIVE", "class_name": "CardLive" },
+      // The sprint that runs by itself (la-fabrique#160): one object per project.
+      { "name": "SPRINT_RUN", "class_name": "SprintRun" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CardLive"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CardLive"] },
+    { "tag": "v2", "new_sqlite_classes": ["SprintRun"] }
+  ],
   "observability": {
     "enabled": true
   }

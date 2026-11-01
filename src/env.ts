@@ -18,6 +18,8 @@ export interface Env {
   // per card that pushes their progress to the open pages.
   CLAUDE_QUEUE?: Queue<{ job: number }>;
   CARD_LIVE?: DurableObjectNamespace<import("./live").CardLive>;
+  // The sprint that runs by itself: one object per project (src/sprint-run.ts).
+  SPRINT_RUN?: DurableObjectNamespace<import("./sprint-run").SprintRun>;
   // Set on each request: the OAuth library's store (in D1) and its helpers.
   OAUTH_KV?: KVNamespace;
   OAUTH_PROVIDER?: OAuthHelpers;

@@ -518,6 +518,7 @@ function withSecurityHeaders(response: Response): Response {
 // Claude's background jobs (src/jobs.ts) and the object that pushes their
 // progress to the card's open pages.
 export { CardLive } from "./live";
+export { SprintRun } from "./sprint-run";
 
 export default {
   async queue(batch: MessageBatch<{ job: number }>, env: Env): Promise<void> {
