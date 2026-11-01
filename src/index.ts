@@ -18,6 +18,7 @@ import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
 import { ACCESS_TOKEN_TTL, api, AUTHORIZE_PATH, authorize, DEFECTS_SCOPE, discovery, DISCOVERY_PATH, REFRESH_TOKEN_TTL, REGISTER_PATH, revoke, REVOKE_PATH, TOKEN_PATH, type GrantProps } from "./oauth";
 import { d1KeyValue } from "./oauth-store";
+import { ICON_PNGS } from "./icons";
 import { MCP_PATH, MCP_SCOPE } from "./mcp";
 import { SCREENSHOT_ROUTE, serveScreenshot } from "./defects";
 import { CARD_ROUTE, cardRoute } from "./card-routes";
@@ -98,8 +99,16 @@ const app = {
 
     switch (pathname) {
       case "/favicon.svg":
-      case "/favicon.ico":
         return svg(LOGO_SVG);
+      // PNG for what does not read SVG (favicon readers, assistants).
+      case "/favicon.ico":
+        return png("32");
+      case "/apple-touch-icon.png":
+        return png("180");
+      case "/icon-192.png":
+        return png("192");
+      case "/icon-512.png":
+        return png("512");
       case "/api/version":
         return json({ numero: onlineVersion(), commit: env.COMMIT_SHA });
       case "/auth/login":
@@ -486,6 +495,17 @@ async function mcpResourceAsOrigin(request: Request, origin: string): Promise<Re
   const headers = new Headers(request.headers);
   headers.delete("content-length");
   return new Request(url.href, { method: request.method, headers, ...(request.method === "POST" ? { body: body ?? (await request.text()) } : {}) });
+}
+
+const PNG_BYTES = new Map<string, Uint8Array>();
+
+function png(size: string): Response {
+  let bytes = PNG_BYTES.get(size);
+  if (!bytes) {
+    bytes = Uint8Array.from(atob(ICON_PNGS[size] ?? ""), (char) => char.charCodeAt(0));
+    PNG_BYTES.set(size, bytes);
+  }
+  return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
 }
 
 function withSecurityHeaders(response: Response): Response {
