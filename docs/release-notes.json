@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "One reading of where a story stands",
+    "changements": [
+      "Where a story stands (ready, in development, developed, to test, finished) is now read the same way everywhere: the card's status, the sprint, its run, the one-story-at-a-time rule and the story's page no longer each look at the pull requests their own way.",
+      "When the sprint's run cannot launch Claude on a story, it says why from the story's stage: not ready and what it lacks, or in development by hand."
+    ],
+    "stories": [160],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "The sprint's run sees a story merged through any link",
     "changements": [
       "Running the sprint, a story already merged (on int, to validate, done) is seen as merged even when its pull request is linked by its text only (\"Refs #159\"): its card is no longer stopped on it as not ready."

@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
 import { activityStatement } from "./activity-log";
-import { inProgress } from "./card-lock";
 import { isNice, storyCards, type StoryCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { listCards, type Card } from "./cards";
@@ -11,6 +10,7 @@ import { findProject, type Project } from "./projects";
 import { lastMergeAttempts, mergePull, mergeWorkflow, pullDetails } from "./sprint-pulls";
 import { activeSprint } from "./sprints";
 import { storiesChanged } from "./stories";
+import { isDeveloped, isInDevelopment, isReadyStage } from "./lifecycle";
 
 // The sprint runs by itself (la-fabrique#160, #161): for each card in the
 // sprint's order, its stories one after another (launch Claude, wait for
@@ -74,14 +74,9 @@ export interface PlannedCard {
   stories: PlannedStory[];
 }
 
-// Merged already, for the run: closed, or its stage says it is developed
-// (on int, to validate, done), however its pull request is linked (a link
-// read from the text counts once GitHub says the work is merged).
-const DEVELOPED = new Set(["on_int", "to_validate", "done"]);
-
-function merged(story: CardStory | undefined): boolean {
-  return Boolean(story?.closed) || DEVELOPED.has(story?.stage ?? "");
-}
+// Merged already, for the run: developed (src/lifecycle.ts), however its
+// pull request is linked.
+const merged = (story: CardStory | undefined) => isDeveloped(story);
 
 // The stories of a card, in its order, nice to have last.
 export function storiesInOrder(links: StoryCards, card: number): number[] {
@@ -98,10 +93,10 @@ export function planRun(cards: Card[], links: StoryCards, stories: Map<number, C
       const base = { number, title: story?.title ?? `#${number}`, nice: isNice(links, card.id, number) };
       if (merged(story)) return { ...base, plan: "done", why: null };
       if (stopped) return { ...base, plan: "after", why: null };
-      if (inProgress(number, story, new Set())?.pull) return { ...base, plan: "merge", why: null };
-      if (story?.stage === "ready" || story?.stage === "in_dev") return { ...base, plan: "launch", why: null };
+      if (isInDevelopment(story) && openPull(story)) return { ...base, plan: "merge", why: null };
+      if (isReadyStage(story)) return { ...base, plan: "launch", why: null };
       stopped = true;
-      return { ...base, plan: "stop", why: `not ready${story?.missing.length ? `: ${story.missing.join(", ")}` : ""}` };
+      return { ...base, plan: "stop", why: notLaunchable(story) };
     });
     return { card, stories: planned };
   });
@@ -161,7 +156,15 @@ function runOf(seen: Seen, story: number, since: string | null): ClaudeRun | nul
 }
 
 function openPull(story: CardStory | undefined): number | null {
-  return story?.pulls.find((pull) => pull.state === "open" && !pull.guessed)?.number ?? null;
+  return story?.pulls.find((pull) => pull.state === "open")?.number ?? null;
+}
+
+// Why Claude is not launched on a story, from its stage, said as it is.
+function notLaunchable(story: CardStory | undefined): string {
+  if (!story) return "not read on GitHub yet";
+  if (story.stage === "backlog") return `not ready${story.missing.length ? `: it lacks ${story.missing.join(", ")}` : ""}`;
+  if (isInDevelopment(story)) return "in development by hand (a branch without a pull request): finish it or drop the branch";
+  return `at the stage ${story.stage ?? "unknown"}, not ready`;
 }
 
 // One pass over the run: each card moves as far as it can. Pure but for
@@ -235,8 +238,8 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
           if (!(await startMerge(card, pull))) break;
           continue;
         }
-        if (story?.stage !== "ready" && story?.stage !== "in_dev") {
-          await stop(card, `#${number} is not ready${story?.missing.length ? `: it lacks ${story.missing.join(", ")}` : ""}`);
+        if (!isReadyStage(story)) {
+          await stop(card, `#${number} is ${notLaunchable(story)}`);
           break;
         }
         if (card.runs >= RUNS_PER_STORY) {

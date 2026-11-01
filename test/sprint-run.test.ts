@@ -75,7 +75,7 @@ describe("The sprint's run, card by card", () => {
     expect(plan[0]?.stories.map((one) => [one.number, one.plan, one.why])).toEqual([
       [11, "done", null],
       [12, "merge", null],
-      [13, "stop", "not ready: acceptance criteria"],
+      [13, "stop", "not ready: it lacks acceptance criteria"],
       [14, "after", null],
       [10, "after", null],
     ]);
