@@ -3,6 +3,7 @@ import { storyCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { claudeLaunches, claudeRuns, type ClaudeRun } from "./claude";
 import type { Env } from "./env";
+import { isDeveloped, isToTest } from "./lifecycle";
 import type { LogEntry } from "./log";
 import { describe } from "./log-views";
 import { projectContext, projectHeader } from "./project-views";
@@ -83,7 +84,7 @@ function steps(detail: StoryDetail, project: Project): { label: string; state: S
   const closed = Boolean(state?.closed);
   const merged = detail.pulls.some((pull) => pull.state === "merged") || (state?.pulls ?? []).some((pull) => pull.state === "merged");
   const open = (state?.pulls ?? []).some((pull) => pull.state === "open");
-  const online = closed || stage === "on_int" || stage === "to_validate" || merged;
+  const online = isDeveloped(state) || merged;
   const tested = closed || Boolean(state?.validated);
   const hasIntegration = Boolean(project.check?.config?.branches?.integration);
   // Each step and whether it is done; the first not done is the current one.
@@ -158,7 +159,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
             ? `<ul class="criteria">${criteria.map((criterion) => `<li class="${criterion.done ? "done" : ""}"><span class="box" aria-hidden="true">${criterion.done ? "✓" : ""}</span> ${escapeHtml(criterion.text)}</li>`).join("")}</ul>`
             : `<p class="muted">No acceptance criteria written.</p>`
         }
-        ${state?.stage === "on_int" || state?.stage === "to_validate" ? `<p><a class="button quiet" href="${escapeHtml(base)}/to-test#story-${detail.number}">Test it in To test</a></p>` : ""}
+        ${isToTest(state) ? `<p><a class="button quiet" href="${escapeHtml(base)}/to-test#story-${detail.number}">Test it in To test</a></p>` : ""}
         <h2>Pull requests</h2>
         ${pulls}
         <h2>Claude's runs</h2>

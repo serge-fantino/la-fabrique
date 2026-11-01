@@ -1,7 +1,7 @@
 import { env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { validateFabriqueConfig } from "../src/fabrique-config";
-import { cycleRules, missingForReady, stageOf } from "../src/lifecycle";
+import { cycleRules, isDeveloped, isFinished, isInDevelopment, isReadyStage, isToTest, missingForReady, stageOf, type Stage } from "../src/lifecycle";
 import { acceptanceCriteria, type Story } from "../src/stories";
 import { get, signIn } from "./helpers";
 
@@ -39,6 +39,30 @@ describe("acceptanceCriteria", () => {
     expect(acceptanceCriteria("### Critères d’acceptation\n- [ ] Un")).toEqual([{ text: "Un", done: false }]);
     expect(acceptanceCriteria("No heading\n- [ ] item")).toEqual([]);
     expect(acceptanceCriteria(null)).toEqual([]);
+  });
+});
+
+describe("What a stage means, said once", () => {
+  it("answers every module from the stage, never from the pull requests", () => {
+    const at = (stage: Stage | null, closed = false) => ({ stage, closed });
+    const table = (["backlog", "ready", "in_dev", "on_int", "to_validate", "done"] as Stage[]).map((stage) => [
+      stage,
+      isReadyStage(at(stage)),
+      isInDevelopment(at(stage)),
+      isDeveloped(at(stage)),
+      isToTest(at(stage)),
+      isFinished(at(stage)),
+    ]);
+    expect(table).toEqual([
+      ["backlog", false, false, false, false, false],
+      ["ready", true, false, false, false, false],
+      ["in_dev", false, true, false, false, false],
+      ["on_int", false, false, true, true, false],
+      ["to_validate", false, false, true, true, false],
+      ["done", false, false, true, false, true],
+    ]);
+    // A closed issue is finished, whatever its stage said.
+    expect([isFinished(at("to_validate", true)), isToTest(at("to_validate", true)), isDeveloped(at("ready", true))]).toEqual([true, false, true]);
   });
 });
 

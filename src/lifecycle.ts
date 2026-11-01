@@ -23,6 +23,35 @@ export function isStage(value: string | null): value is Stage {
   return STAGES.some((stage) => stage.id === value);
 }
 
+// What a stage means, said once (the board, the card, the sprint, its run,
+// the story's page and the MCP all ask here, never the pull requests).
+type Staged = { stage: Stage | null; closed?: boolean } | null | undefined;
+
+// Ready for Claude: meets the Definition of Ready, nothing started.
+export function isReadyStage(story: Staged): boolean {
+  return story?.stage === "ready" && !story.closed;
+}
+
+// In development: a branch or an open pull request, not merged yet.
+export function isInDevelopment(story: Staged): boolean {
+  return story?.stage === "in_dev" && !story.closed;
+}
+
+// Developed: merged (on int, to validate) or out.
+export function isDeveloped(story: Staged): boolean {
+  return Boolean(story?.closed) || story?.stage === "on_int" || story?.stage === "to_validate" || story?.stage === "done";
+}
+
+// To test: merged and open, its criteria to check.
+export function isToTest(story: Staged): boolean {
+  return !story?.closed && (story?.stage === "on_int" || story?.stage === "to_validate");
+}
+
+// Finished: in production, or its issue closed.
+export function isFinished(story: Staged): boolean {
+  return Boolean(story?.closed) || story?.stage === "done";
+}
+
 const DEFAULT_READY: ReadyCheck[] = ["criteres", "epique"];
 
 const MISSING: Record<ReadyCheck, string> = {

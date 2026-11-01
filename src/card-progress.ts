@@ -6,6 +6,7 @@ import type { Env } from "./env";
 import type { Project } from "./projects";
 import { activeSprint } from "./sprints";
 import { storyChecks, type StoryChecks } from "./validation";
+import { isDeveloped, isFinished, isInDevelopment, isReadyStage } from "./lifecycle";
 import type { Progress } from "./progress-stages";
 
 export { PROGRESS_LABELS, PROGRESS_STAGES, isProgressStage, progressPill, type Progress, type ProgressStage } from "./progress-stages";
@@ -16,7 +17,6 @@ export { PROGRESS_LABELS, PROGRESS_STAGES, isProgressStage, progressPill, type P
 // there, story by story, to production. Each change is written in the log
 // with its date (principle 4); the stage last seen is kept on the card
 // (`cards.progress`) to place it on the board and to notice the change.
-const DEVELOPED = new Set(["on_int", "to_validate", "done"]);
 
 // The stage, from the needed stories' stages: the furthest the whole card
 // has reached (a nice to have never holds it back). The counts take every
@@ -34,24 +34,21 @@ export function progressOf(
   const needed = mine.filter((number) => !isNice(links, card.id, number));
   const counted = needed.length ? needed : mine;
   if (!counted.length) return null;
-  const stageOf = (number: number) => {
-    const story = stories.get(number);
-    return story?.closed ? "done" : (story?.stage ?? null);
-  };
-  const isOut = (number: number) => stageOf(number) === "done";
-  const isDeveloped = (number: number) => DEVELOPED.has(stageOf(number) ?? "");
+  const story = (number: number) => stories.get(number);
+  const isOut = (number: number) => isFinished(story(number));
+  const developed = (number: number) => isDeveloped(story(number));
   const isValidated = (number: number) => isOut(number) || Boolean(checks.get(number)?.validated);
   // Ready, or further: a story started was ready.
-  const isReady = (number: number) => stageOf(number) === "ready" || stageOf(number) === "in_dev" || isDeveloped(number);
+  const isReady = (number: number) => isReadyStage(story(number)) || isInDevelopment(story(number)) || developed(number);
   const all = (test: (number: number) => boolean) => mine.filter(test).length;
   const need = (test: (number: number) => boolean) => counted.filter(test).length;
   const nice = mine.length - needed.length;
-  const counts = { ready: all(isReady), developed: all(isDeveloped), validated: all(isValidated), out: all(isOut), ...(nice && needed.length ? { nice } : {}) };
+  const counts = { ready: all(isReady), developed: all(developed), validated: all(isValidated), out: all(isOut), ...(nice && needed.length ? { nice } : {}) };
   const total = mine.length;
   const at = (stage: Progress["stage"], done: number): Progress => ({ stage, done, total, counts });
   if (need(isOut) === counted.length) return at("in_production", counts.out);
-  if (need(isDeveloped) === counted.length) return at("to_test", counts.validated);
-  if (counted.some((number) => stageOf(number) === "in_dev") || need(isDeveloped) > 0) return at("in_dev", counts.developed);
+  if (need(developed) === counted.length) return at("to_test", counts.validated);
+  if (counted.some((number) => isInDevelopment(story(number))) || need(developed) > 0) return at("in_dev", counts.developed);
   if (sprintLane !== null && card.release === sprintLane) return at("in_sprint", counts.ready);
   return at(need(isReady) === counted.length ? "ready" : "to_prepare", counts.ready);
 }

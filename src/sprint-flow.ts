@@ -4,6 +4,7 @@ import { isNice, storyCards, type StoryCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { listCards, moveCard, type Card } from "./cards";
 import type { Env } from "./env";
+import { isFinished } from "./lifecycle";
 import type { Project } from "./projects";
 import { activeSprint, type Sprint } from "./sprints";
 
@@ -41,7 +42,7 @@ export interface SprintCard {
 
 function isDone(stories: Map<number, CardStory>, number: number): boolean {
   const story = stories.get(number);
-  return story?.stage === "done" || Boolean(story?.closed);
+  return isFinished(story);
 }
 
 // A card is done when it has stories and every needed one (all of them when

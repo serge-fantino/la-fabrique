@@ -2,7 +2,7 @@ import { cardGroupHead, nicePill, sharedWith, type StoryCards } from "./card-gro
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Story, StoryFilters, StoryGroup } from "./stories";
-import { missingForReady, STAGES, type CycleRules, type Stage } from "./lifecycle";
+import { isToTest, missingForReady, STAGES, type CycleRules, type Stage } from "./lifecycle";
 import { projectUrl } from "./urls";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -30,7 +30,7 @@ const STAGE_TONES: Record<Stage, string> = { backlog: "", ready: "ok", in_dev: "
 // Where testing stands for a story that is on int (or merged, without
 // integration): validated, by whom; else how many criteria are ticked.
 export function testingNote(story: { stage: Stage | null; validated?: { by: string; at: string } | null; criteria?: { done: boolean }[] }): string {
-  if (story.stage !== "on_int" && story.stage !== "to_validate") return "";
+  if (!isToTest(story)) return "";
   if (story.validated) {
     return ` <span class="pill ok small" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}</span>`;
   }

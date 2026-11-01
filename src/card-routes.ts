@@ -20,7 +20,7 @@ import { loadPlan as loadRunPlan, newRun, runRefusal, sprintRunFor } from "./spr
 import { runPreviewPage, runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
-import { cycleRules, projectRules } from "./lifecycle";
+import { cycleRules, isReadyStage, projectRules } from "./lifecycle";
 import {
   addValue,
   archiveCard,
@@ -715,7 +715,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   // The next for Claude: in the sprint's order, the first ready story not
   // launched yet, nor waiting for another of its card.
   const next =
-    sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => stories.get(number)?.stage === "ready" && !launches.has(number) && !held.has(number)) ?? null;
+    sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => isReadyStage(stories.get(number)) && !launches.has(number) && !held.has(number)) ?? null;
   const launched = Number(params.get("story"));
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(

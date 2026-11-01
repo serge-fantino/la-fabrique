@@ -6,6 +6,7 @@ import { isRunning, type ClaudeRun } from "./claude";
 import { waitReason, type InProgress } from "./card-lock";
 import type { PullDetail } from "./sprint-pulls";
 import type { Card } from "./cards";
+import { isFinished, isReadyStage, isToTest } from "./lifecycle";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
@@ -98,7 +99,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       .join("")}<button type="submit" class="button ${kind}" aria-label="${escapeHtml(label)}">${text}</button></form>`;
   const isDone = (number: number) => {
     const story = data.stories.get(number);
-    return story?.stage === "done" || Boolean(story?.closed);
+    return isFinished(story);
   };
   const storiesOf = (card: number) => data.links.order.get(card) ?? [];
 
@@ -107,7 +108,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const launched = data.claude.launches.get(number);
     const run = data.claude.runs.find((candidate) => candidate.issue === number);
     const last = `${run ? runPill(run) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
-    if (!data.claude.canLaunch || !data.claude.workflow || story?.stage !== "ready" || (run && isRunning(run))) return last;
+    if (!data.claude.canLaunch || !data.claude.workflow || !isReadyStage(story) || (run && isRunning(run))) return last;
     const busy = data.claude.held.get(number);
     if (busy) {
       return `<span class="muted small" title="${escapeHtml(waitReason(number, busy))}">Waits for <span class="mono">#${busy.story}</span></span>${last}`;
@@ -214,7 +215,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <td>${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${
           story ? testingNote(story) : ""
         }${
-          (story?.stage === "to_validate" || story?.stage === "on_int") && !story.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
+          isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
         }${readiness(number, controls)}</td>
         ${
           data.priorities.length
