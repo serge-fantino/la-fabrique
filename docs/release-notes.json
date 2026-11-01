@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The sprint's run sees a story merged through any link",
+    "changements": [
+      "Running the sprint, a story already merged (on int, to validate, done) is seen as merged even when its pull request is linked by its text only (\"Refs #159\"): its card is no longer stopped on it as not ready."
+    ],
+    "stories": [160],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A pull request that names several stories links them all",
     "changements": [
       "A pull request whose text names a list of stories (\"Refs #160, #161\", \"Closes #3 and #4\") is now linked to each of them, not only the first: each story shows it and moves on when it is merged."
