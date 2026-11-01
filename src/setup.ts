@@ -19,6 +19,7 @@ export type SetupKey =
   | "cycle"
   | "promotion"
   | "merge_workflow"
+  | "release_workflow"
   | "claude_workflow"
   | "app"
   | "integration";
@@ -218,6 +219,17 @@ export function setupChecklist({ check, releases, stories, branches, versions, a
       typeof merge === "string"
         ? `\`${merge}\`: Merge on a pull request of the sprint starts it; it numbers and dates the release notes at the merge.`
         : "No `workflows.fusionner`: pull requests are merged outside La Fabrique, and their release notes numbered by hand.",
+      true,
+    ),
+  );
+  const publish = config?.workflows?.["publier"];
+  items.push(
+    item(
+      "release_workflow",
+      typeof publish === "string",
+      typeof publish === "string"
+        ? `\`${publish}\`: Close the sprint starts it; it numbers the release, writes its release note, opens a pull request on the production branch and merges it.`
+        : "No `workflows.publier`: on a project without an integration branch, the sprint cannot be closed from La Fabrique.",
       true,
     ),
   );

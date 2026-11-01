@@ -98,6 +98,12 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
     how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>pr</code> (the pull request) and <code>par</code> (who merges). It merges the base branch into the pull request, numbers and dates its release-notes entries after the newest, checks again and merges; its push must use a token that triggers the project's CI and deployment. Into the production branch, Merge is a go: the super admin only. La Fabrique's own: <code>.github/workflows/merge.yml</code> and <code>scripts/release-at-merge.ts</code> in its repository.</p>
       ${code(`"workflows": { "fusionner": "merge.yml" }`)}`,
   },
+  release_workflow: {
+    title: "Release workflow",
+    why: "Optional, needed on a project without an integration branch. Closing the sprint makes one release for everything validated in To test: the project's own workflow writes it.",
+    how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>version</code> (the number chosen: minor or major), <code>titre</code> (the release title), <code>stories</code> (the done stories, comma-separated) and <code>par</code> (who closed the sprint). It replaces the <code>next</code> entries that declare one of those stories by a single entry (number, date and time in Paris, title, every change, every story), keeps the others <code>next</code>, opens a pull request on the production branch and merges it; the merge deploys. Its push must use a token that triggers the project's CI and deployment. La Fabrique then gives the version to the cards done and closes their validated stories.</p>
+      ${code(`"workflows": { "publier": "publier.yml" }`)}`,
+  },
   claude_workflow: {
     title: "Claude workflow",
     why: "Optional. Tech leads and super admins launch Claude Code on a ready story, from the sprint (Launch the next story) or the Backlog; the project's own workflow runs it, with its own key.",
@@ -140,7 +146,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "claude_workflow", "app"]);
+const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",

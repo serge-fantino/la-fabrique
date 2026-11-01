@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Closing the sprint makes one release",
+    "changements": [
+      "On a project without an integration branch, a Product Engineer or super admin who clicks Close the sprint chooses minor or major (numbers proposed after the newest release), sees what the release takes and what stays, each with its reason, edits the proposed title, and starts the project's release workflow (workflows.publier, documented in Setup). A project that has not declared it is refused with a link to Setup.",
+      "Once the release workflow succeeds, the sprint closes, each done card takes the new version and its validated stories are closed with a comment; the close, the release started and out, each card versioned and each story closed are in the project log.",
+      "Tech leads and testers do not get Close the sprint on such a project."
+    ],
+    "stories": [137],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A sprint ends only when someone closes it",
     "changements": [
       "A sprint no longer closes by itself when its needed stories are in production: a Product Engineer or super admin closes it with Close the sprint.",
