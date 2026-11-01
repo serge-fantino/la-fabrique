@@ -18,12 +18,13 @@ export function isProgressStage(value: unknown): value is ProgressStage {
 
 export interface Progress {
   stage: ProgressStage;
-  // How far the stage goes: stories ready, developed, validated, out; of the
-  // stories needed (the nice to have count only when all are).
+  // How far the stage goes: stories ready, developed, validated, out, of
+  // all the card's stories, nice to have included ("3/3 validated"). The
+  // stage itself follows the stories needed only.
   done: number;
   total: number;
   // All the counts, for the pill's title: "3 stories: 3 ready, 2 developed…".
-  counts?: { ready: number; developed: number; validated: number; out: number };
+  counts?: { ready: number; developed: number; validated: number; out: number; nice?: number };
 }
 
 // What the count of a stage means: "1/3 developed".
@@ -51,7 +52,7 @@ export function progressPill(progress: Progress | null | undefined, since?: stri
   const detail = progressDetail(progress);
   const counts = progress.counts;
   const breakdown = counts
-    ? `${progress.total} stor${progress.total === 1 ? "y" : "ies"}: ${counts.ready} ready, ${counts.developed} developed, ${counts.validated} validated, ${counts.out} in production`
+    ? `${progress.total} stor${progress.total === 1 ? "y" : "ies"}${counts.nice ? ` (${counts.nice} nice to have)` : ""}: ${counts.ready} ready, ${counts.developed} developed, ${counts.validated} validated, ${counts.out} in production`
     : `${progress.total} stor${progress.total === 1 ? "y" : "ies"}`;
   const title = `Status from the card's stories. ${breakdown}${since ? `. Since ${since.slice(0, 16).replace("T", " ")} UTC` : ""}.`;
   return `<span class="pill card-${progress.stage}" title="${title}">${PROGRESS_LABELS[progress.stage]}${detail ? ` <span class="mono">${detail}</span>` : ""}</span>`;

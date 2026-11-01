@@ -19,7 +19,9 @@ export { PROGRESS_LABELS, PROGRESS_STAGES, isProgressStage, progressPill, type P
 const DEVELOPED = new Set(["on_int", "to_validate", "done"]);
 
 // The stage, from the needed stories' stages: the furthest the whole card
-// has reached. Null without a story, or for a dropped card.
+// has reached (a nice to have never holds it back). The counts take every
+// story, nice to have included: "To test 3/3 validated". Null without a
+// story, or for a dropped card.
 export function progressOf(
   card: Pick<Card, "id" | "status" | "release">,
   links: StoryCards,
@@ -32,24 +34,26 @@ export function progressOf(
   const needed = mine.filter((number) => !isNice(links, card.id, number));
   const counted = needed.length ? needed : mine;
   if (!counted.length) return null;
-  const total = counted.length;
   const stageOf = (number: number) => {
     const story = stories.get(number);
     return story?.closed ? "done" : (story?.stage ?? null);
   };
-  const count = (test: (number: number) => boolean) => counted.filter(test).length;
-  const out = count((number) => stageOf(number) === "done");
-  const developed = count((number) => DEVELOPED.has(stageOf(number) ?? ""));
-  const validated = count((number) => stageOf(number) === "done" || Boolean(checks.get(number)?.validated));
+  const isOut = (number: number) => stageOf(number) === "done";
+  const isDeveloped = (number: number) => DEVELOPED.has(stageOf(number) ?? "");
+  const isValidated = (number: number) => isOut(number) || Boolean(checks.get(number)?.validated);
   // Ready, or further: a story started was ready.
-  const ready = count((number) => stageOf(number) === "ready" || stageOf(number) === "in_dev" || DEVELOPED.has(stageOf(number) ?? ""));
-  const counts = { ready, developed, validated, out };
+  const isReady = (number: number) => stageOf(number) === "ready" || stageOf(number) === "in_dev" || isDeveloped(number);
+  const all = (test: (number: number) => boolean) => mine.filter(test).length;
+  const need = (test: (number: number) => boolean) => counted.filter(test).length;
+  const nice = mine.length - needed.length;
+  const counts = { ready: all(isReady), developed: all(isDeveloped), validated: all(isValidated), out: all(isOut), ...(nice && needed.length ? { nice } : {}) };
+  const total = mine.length;
   const at = (stage: Progress["stage"], done: number): Progress => ({ stage, done, total, counts });
-  if (out === total) return at("in_production", out);
-  if (developed === total) return at("to_test", validated);
-  if (counted.some((number) => stageOf(number) === "in_dev") || developed > 0) return at("in_dev", developed);
-  if (sprintLane !== null && card.release === sprintLane) return at("in_sprint", ready);
-  return at(ready === total ? "ready" : "to_prepare", ready);
+  if (need(isOut) === counted.length) return at("in_production", counts.out);
+  if (need(isDeveloped) === counted.length) return at("to_test", counts.validated);
+  if (counted.some((number) => stageOf(number) === "in_dev") || need(isDeveloped) > 0) return at("in_dev", counts.developed);
+  if (sprintLane !== null && card.release === sprintLane) return at("in_sprint", counts.ready);
+  return at(need(isReady) === counted.length ? "ready" : "to_prepare", counts.ready);
 }
 
 // The progress of each card, worked out from the stories; a change since

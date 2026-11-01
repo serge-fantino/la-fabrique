@@ -1,7 +1,7 @@
 import { dimensionValues, type Card, type FreeDimension } from "./cards";
 import type { Env } from "./env";
 import { PRODUCTION, type ProductionStatus } from "./production";
-import type { Project } from "./projects";
+import { productionBranch, type Project } from "./projects";
 import { loadReleases } from "./roadmap";
 import { readSnapshot } from "./snapshots";
 import { activeSprint, endSprint } from "./sprints";
@@ -19,6 +19,9 @@ export interface BoardRelease {
   stories?: number[] | null;
   // Started as the sprint in La Fabrique (la-fabrique#109).
   sprint?: boolean;
+  // In progress on the project's integration branch, waiting for the go:
+  // the branch, to say "On int · integration".
+  integration?: string;
 }
 
 // Two lanes with no version: what the next sprint will take, and the
@@ -133,6 +136,12 @@ export async function boardReleases(env: Env, project: Project, planned: string[
     if (release?.state === "shipped") await endSprint(env.DB, sprint, "la-fabrique", "shipped");
     else found.set(sprint.release, { ...(release ?? { version: sprint.release, title: null }), state: "in_progress", sprint: true });
   }
+  // On a project with an integration branch, a release in progress is
+  // the one on int, waiting for the go.
+  const integration = project.check?.config?.branches?.integration;
+  if (typeof integration === "string" && integration !== productionBranch(project)) {
+    for (const release of found.values()) if (release.state === "in_progress" && !release.sprint) release.integration = integration;
+  }
   const fixed: BoardRelease[] = [
     { version: NEXT_RELEASE, title: "What the next sprint takes", state: "planned" },
     ...(sprint?.release === SPRINT_LANE ? [{ version: SPRINT_LANE, title: "The sprint in progress", state: "in_progress" as const, sprint: true }] : []),
@@ -149,7 +158,19 @@ export async function knownValues(
   cards: Card[],
 ): Promise<{ known: Record<FreeDimension, string[]>; releases: Map<string, BoardRelease> }> {
   const known = await dimensionValues(env.DB, project.repo, cards);
-  const releases = await boardReleases(env, project, known.release);
+  const all = await boardReleases(env, project, known.release);
+  // A release planned by number that is now in progress or out (the
+  // project wrote it in its notes, "1.170" for a planned "v1.170") is no
+  // longer a lane of its own, unless a card still carries it.
+  const used = new Set(cards.map((card) => card.release).filter(Boolean));
+  const stale = (release: BoardRelease) =>
+    release.state === "planned" &&
+    !isFixedLane(release.version) &&
+    !used.has(release.version) &&
+    all.some((other) => other.state !== "planned" && !isFixedLane(other.version) && compareVersions(release.version, other.version) >= 0);
+  const gone = new Set(all.filter(stale).map((release) => release.version));
+  const releases = all.filter((release) => !gone.has(release.version));
+  known.release = known.release.filter((value) => !gone.has(value));
   const others = known.release.filter((value) => !releases.some((release) => release.version === value));
   const fixed = releases.filter((release) => isFixedLane(release.version)).map((release) => release.version);
   // Next release and Sprint first, then the values without a number, then

@@ -106,4 +106,20 @@ describe("The board's releases", () => {
     expect(await (await get(`/projects/${REPO}/board?by=release&failure=release&value=v1.12`, session.cookie)).text()).not.toContain("notice error");
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM card_values WHERE dimension = 'release'").first<{ n: number }>())?.n).toBe(0);
   });
+
+  it("shows the release on int as On int with its branch, and drops a release planned by number once it is there", async () => {
+    await seed();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify({ ...CONFIG, branches: { production: "main", integration: "integration" } }), REPO),
+      // Planned before the sprints, now the release on int ("v1.11" too).
+      env.DB.prepare("INSERT INTO card_values (repo, dimension, value, position, created_by) VALUES (?, 'release', 'v1.11', 1, 'pe')").bind(REPO),
+      env.DB.prepare("INSERT INTO card_values (repo, dimension, value, position, created_by) VALUES (?, 'release', '1.10', 2, 'pe')").bind(REPO),
+    ]);
+    await grantRole("pe", "product_engineer");
+    const page = await (await get(`/projects/${REPO}/board?by=release`, (await signIn("pe")).cookie)).text();
+    expect(page).toContain('title="On the integration branch, waiting for the go: Being built">v1.11 <span class="pill warn small">On int</span> <code class="small">integration</code>');
+    expect(page.match(/aria-label="v1\.11"/g)).toHaveLength(1);
+    expect(page).not.toContain('aria-label="1.10"');
+    expect(page).not.toContain('<span class="pill kind small">Planned</span>');
+  });
 });
