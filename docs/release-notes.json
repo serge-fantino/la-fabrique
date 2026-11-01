@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Closing the sprint warns about what is not done and ships partial changes with a caveat",
+    "changements": [
+      "Before the close, a warning lists the merged stories not done and the partial release-note entries, says their changes stay online but are kept for a later release, and lets you postpone or go on.",
+      "A release-note entry with at least one done story is released marked partial, with a caveat naming the stories not done; those stories stay open in To test."
+    ],
+    "stories": [138],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Closing the sprint makes one release",
     "changements": [
       "On a project without an integration branch, a Product Engineer or super admin who clicks Close the sprint chooses minor or major (numbers proposed after the newest release), sees what the release takes and what stays, each with its reason, edits the proposed title, and starts the project's release workflow (workflows.publier, documented in Setup). A project that has not declared it is refused with a link to Setup.",
