@@ -119,6 +119,9 @@ export async function boardReleases(env: Env, project: Project, planned: string[
   ]);
   const found = new Map<string, BoardRelease>();
   for (const release of releases) {
+    // An entry not released yet ("next": the sprint's work, online without
+    // a version) is not a release of its own (la-fabrique#173).
+    if (release.version.toLowerCase() === "next") continue;
     // Entries newer than the newest one with a time are not out yet; older
     // ones without a time came before times were written down.
     found.set(release.version, { version: release.version, title: release.title, state: release.upcoming ? "in_progress" : "shipped", stories: release.stories });

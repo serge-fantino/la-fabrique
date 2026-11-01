@@ -130,4 +130,16 @@ describe("The board's releases", () => {
     );
     expect(sprint).not.toContain('aria-label="v1.11"');
   });
+
+  it("shows no lane for the release-note entries not released yet", async () => {
+    await seed();
+    const release = (version: string, time: string | null, upcoming: boolean) => ({ version, date: "2026-10-01", time, title: `Title ${version}`, changes: [], links: [], stories: null, upcoming });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'releases'")
+      .bind(JSON.stringify({ commitSha: "abc", releases: [release("next", null, true), release("v1.10", "10:00", false)] }), REPO)
+      .run();
+    await grantRole("pe", "product_engineer");
+    const page = await (await get(`/projects/${REPO}/board?by=release`, (await signIn("pe")).cookie)).text();
+    expect(page).not.toContain('aria-label="next"');
+    expect(page).toContain('aria-label="v1.10"');
+  });
 });

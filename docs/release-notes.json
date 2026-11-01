@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The sprint page shows the sprint only",
+    "changements": [
+      "The sprint page no longer lists Next release, which stays on the board; without a sprint, it says how many cards the next sprint would take, with a link to the board.",
+      "The board by release no longer shows a \"next\" lane for the release-note entries not released yet: they are the sprint's work, online without a version."
+    ],
+    "stories": [173],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Ticking criteria quickly keeps every tick",
     "changements": [
       "In To test, criteria ticked quickly one after another are all kept: they are saved one at a time, in order, and Validate waits until every tick is saved.",

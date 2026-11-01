@@ -383,7 +383,12 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <h2>No sprint in progress</h2>
         <p>${lastLine} ${
           data.nextCards.length || data.keptCards.length
-            ? `The next sprint takes the ${data.keptCards.length ? `${data.keptCards.length} unfinished card${data.keptCards.length === 1 ? "" : "s"} of the last one and the ` : ""}${data.nextCards.length} card${data.nextCards.length === 1 ? "" : "s"} of Next release, below.`
+            ? `The next sprint takes ${[
+                data.keptCards.length ? `the ${data.keptCards.length} unfinished card${data.keptCards.length === 1 ? "" : "s"} of the last one` : "",
+                data.nextCards.length ? `the ${data.nextCards.length} card${data.nextCards.length === 1 ? "" : "s"} placed in Next release` : "",
+              ]
+                .filter(Boolean)
+                .join(" and ")} on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
             : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
         }</p>
         ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? button({ action: "start" }, "Start the sprint", "Start the sprint", "") : ""}
@@ -393,12 +398,6 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     ? `<h2 id="kept">Kept in the sprint <span class="muted mono">${data.keptCards.length}</span></h2>
       <p class="muted">Not finished when the last sprint closed: they stay with their feature, their stories already in production folded.</p>${cardsSection(data.keptCards, data.canOrder, false, true)}`
     : "";
-  const next = `<h2 id="next">Next release <span class="muted mono">${data.nextCards.length}</span></h2>
-      ${
-        data.nextCards.length
-          ? `<p class="muted">What the next sprint takes, in this order.</p>${cardsSection(data.nextCards, data.canOrder)}`
-          : `<p class="muted">No card yet: drag cards into the Next release lane of <a href="${escapeHtml(base)}/board?by=release">the board</a>.</p>`
-      }`;
 
   // The release in progress on the integration branch (its release notes),
   // read-only.
@@ -415,7 +414,6 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       ${notice(data.failure, "error")}
       ${current}
       ${kept}
-      ${next}
       ${integration}`,
     viewer,
     [],
