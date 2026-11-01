@@ -1,70 +1,26 @@
 [
   {
-    "version": "next",
+    "version": "0.79",
     "date": "2026-11-01",
-    "titre": "The release, followed from the sprint",
+    "heure": "09:35",
+    "titre": "Merging puts work online; closing the sprint makes the release",
     "changements": [
       "Once Close the sprint starts the release, the sprint says it is in progress, with a link to follow it on GitHub, and updates by itself; if it fails, it says why (from the run) and the sprint stays open to close again.",
-      "The release no longer stops on a test that expected changes waiting right after a release."
-    ],
-    "stories": [137],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "La Fabrique can close its sprint: its release workflow",
-    "changements": [
-      "La Fabrique declares its release workflow (workflows.publier): Close the sprint now makes its release instead of saying none is declared. The workflow turns the release-note entries of the stories done into one entry (the version chosen, the date and time, the title, every change, the stories), marks an entry with a story not done yet as partial and names it, keeps the other entries for a later release, checks, then merges a pull request on main, which deploys."
-    ],
-    "stories": [137],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Closing the sprint warns about what is not done and ships partial changes with a caveat",
-    "changements": [
+      "The release no longer stops on a test that expected changes waiting right after a release.",
+      "La Fabrique declares its release workflow (workflows.publier): Close the sprint now makes its release instead of saying none is declared. The workflow turns the release-note entries of the stories done into one entry (the version chosen, the date and time, the title, every change, the stories), marks an entry with a story not done yet as partial and names it, keeps the other entries for a later release, checks, then merges a pull request on main, which deploys.",
       "Before the close, a warning lists the merged stories not done and the partial release-note entries, says their changes stay online but are kept for a later release, and lets you postpone or go on.",
-      "A release-note entry with at least one done story is released marked partial, with a caveat naming the stories not done; those stories stay open in To test."
-    ],
-    "stories": [138],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Closing the sprint makes one release",
-    "changements": [
+      "A release-note entry with at least one done story is released marked partial, with a caveat naming the stories not done; those stories stay open in To test.",
       "On a project without an integration branch, a Product Engineer or super admin who clicks Close the sprint chooses minor or major (numbers proposed after the newest release), sees what the release takes and what stays, each with its reason, edits the proposed title, and starts the project's release workflow (workflows.publier, documented in Setup). A project that has not declared it is refused with a link to Setup.",
       "Once the release workflow succeeds, the sprint closes, each done card takes the new version and its validated stories are closed with a comment; the close, the release started and out, each card versioned and each story closed are in the project log.",
-      "Tech leads and testers do not get Close the sprint on such a project."
-    ],
-    "stories": [137],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A sprint ends only when someone closes it",
-    "changements": [
+      "Tech leads and testers do not get Close the sprint on such a project.",
       "A sprint no longer closes by itself when its needed stories are in production: a Product Engineer or super admin closes it with Close the sprint.",
       "Stop the sprint is gone.",
-      "A card that is not finished stays in the Sprint lane for the next sprint, with its stories already in production folded under it as done."
-    ],
-    "stories": [136],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Merging puts work online without making a version",
-    "changements": [
+      "A card that is not finished stays in the Sprint lane for the next sprint, with its stories already in production folded under it as done.",
       "On a project without an integration branch, merging deploys the change and no longer gives it a version number: its release-notes entry stays next until the release.",
       "The (i) and /api/version show the last release plus what is online since (0.78 + 3 changes); What's new lists these entries under Online, not released yet, above the last release.",
       "Validating a merged story on such a project no longer closes its issue: it stays To test, online and not released."
     ],
-    "stories": [139],
+    "stories": [136, 137, 138, 139],
     "liens": null
   },
   {
