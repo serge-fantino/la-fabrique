@@ -1,7 +1,8 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { StoryCards } from "../src/card-groups";
-import { progressOf } from "../src/card-progress";
+import { progressOf, shippedNote, shippedOf } from "../src/card-progress";
+import type { Release } from "../src/roadmap";
 import type { CardStory } from "../src/card-stories";
 import type { Stage } from "../src/lifecycle";
 import type { StoryChecks } from "../src/validation";
@@ -54,6 +55,26 @@ describe("A card's progress, from its stories", () => {
     expect(three).toMatchObject({ stage: "to_test", done: 3, total: 3, counts: { nice: 1 } });
     expect(progressOf(CARD, links([1], [1]), stories({ 1: "in_dev" }), NONE, null)).toMatchObject({ stage: "in_dev", done: 0, total: 1 });
     expect(progressOf(CARD, links([]), stories({}), NONE, null)).toBeNull();
+  });
+});
+
+describe("What shipped a feature (la-fabrique#189)", () => {
+  const release = (version: string, stories: number[] | null, upcoming = false): Release => ({ version, date: "2026-11-01", time: upcoming ? null : "10:00", title: null, changes: [], links: [], stories, upcoming });
+  const RELEASES = [release("next", [3]), release("0.82", [2], true), release("0.81", [2]), release("0.80", [1]), release("0.79", [9])];
+
+  it("lists the versions that shipped its stories, oldest first, and what is left", () => {
+    const shipped = shippedOf(CARD, links([1, 2, 3]), stories({ 1: "closed", 2: "closed", 3: "to_validate" }), RELEASES);
+    expect(shipped).toEqual({ versions: ["0.80", "0.81"], left: [3], nice: [] });
+    expect(shippedNote(shipped)).toBe('<p class="card-shipped">Shipped in <span class="mono">0.80</span>, <span class="mono">0.81</span> · <span class="pill warn small" title="#3">1 story left</span></p>');
+    // Complete, with a nice to have still open.
+    const nice = shippedOf(CARD, links([1, 2, 3], [3]), stories({ 1: "closed", 2: "closed", 3: "backlog" }), RELEASES);
+    expect(shippedNote(nice)).toContain("Complete, 1 nice to have left");
+    expect(shippedNote(shippedOf(CARD, links([1, 2]), stories({ 1: "closed", 2: "closed" }), RELEASES))).toContain('<span class="pill ok small">Complete</span>');
+    // Nothing out yet: nothing to say.
+    expect(shippedOf(CARD, links([1, 2]), stories({ 1: "to_validate", 2: "ready" }), RELEASES)).toBeUndefined();
+    // No entry declares its stories: the version the card took.
+    expect(shippedOf({ ...CARD, release: "0.79" }, links([5]), stories({ 5: "closed" }), RELEASES)?.versions).toEqual(["0.79"]);
+    expect(shippedNote(shippedOf(CARD, links([5]), stories({ 5: "closed" }), RELEASES))).toContain("In production · ");
   });
 });
 
@@ -149,7 +170,9 @@ describe("Testing, followed on the card", () => {
     ]);
     const { cookie } = await signIn("admin-one");
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
-    expect(page).toMatch(/Story 1 <span class="pill stage-on_int warn">On int<\/span> <span class="pill ok small" title="[^"]*">Validated<\/span> <span class="muted small">by @qa<\/span>/);
+    // One status per story (la-fabrique#186): Validated replaces On int.
+    expect(page).toMatch(/Story 1 <span class="pill ok stage-validated" title="[^"]*">Validated<\/span> <span class="muted small">by @qa<\/span>/);
+    expect(page).not.toMatch(/Story 1 <span class="pill stage-on_int/);
     expect(page).toContain('Story 2 <span class="pill stage-on_int warn">On int</span> <span class="muted small">1/2 criteria checked</span>');
     // The card: to test, 2 of the 3 validated (the third is already out).
     expect(page).toContain('<option value="validated" selected>To test 2/3 validated</option>');

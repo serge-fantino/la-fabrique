@@ -10,6 +10,8 @@ const WORDS = {
     validatedInProduction: (login: string) => `Validé par @${login} : tous les critères d'acceptation sont vérifiés. La demande reste ouverte jusqu'à la version qui la livre.`,
     shipped: (version: string | null) => `En production${version ? ` en version ${version}` : ""}, après sa validation sur int : la demande est terminée (La Fabrique extraordinaire).`,
     inVersion: (version: string) => `En production en version ${version}.`,
+    reopened: (by: string) =>
+      `Rouverte par La Fabrique extraordinaire : GitHub l'a fermée à la fusion de ${by}, mais elle n'est pas encore validée. Elle reste ouverte jusqu'à sa validation, puis la version qui la livre.`,
     defectIntro: (story: number) => `Défaut trouvé sur int en testant #${story}.`,
     did: "Ce que j'ai fait",
     saw: "Ce que j'ai vu",
@@ -52,6 +54,8 @@ const WORDS = {
     validatedInProduction: (login: string) => `Validated by @${login}: every acceptance criterion checked. The story stays open until the release that ships it.`,
     shipped: (version: string | null) => `In production${version ? ` in version ${version}` : ""}, after its validation on int: the story is done (La Fabrique extraordinaire).`,
     inVersion: (version: string) => `In production in version ${version}`,
+    reopened: (by: string) =>
+      `Reopened by La Fabrique extraordinaire: GitHub closed it when ${by} was merged, but it is not validated yet. It stays open until it is validated, then until the release that ships it.`,
     defectIntro: (story: number) => `Defect found on int while testing #${story}.`,
     did: "What I did",
     saw: "What I saw",

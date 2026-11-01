@@ -3063,6 +3063,51 @@ tr.nice td {
   color: #8a2a0f;
 }
 
+/* The run's plan in its card, lane by lane (la-fabrique#188). */
+.run-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.run-lane {
+  background: #f3f4ee;
+  border-radius: 12px;
+  padding: 0.5rem 0.75rem;
+}
+
+.run-lane h4,
+.run-again h4 {
+  margin: 0 0 0.25rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.run-lane .run-plan {
+  padding-left: 0;
+  list-style: none;
+  gap: 0.5rem;
+}
+
+.run-lane .run-plan-card p {
+  margin: 0 0 0.25rem;
+}
+
+.run-plan-stories {
+  padding-left: 1.25rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.run-again {
+  border-top: 1px solid #e6e8e0;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+}
+
 .alert-text {
   color: #8a2a0f;
 }
@@ -3330,4 +3375,11 @@ pre.gherkin {
   border-radius: 10px;
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.85rem;
+}
+
+/* What shipped a feature (la-fabrique#189). */
+.card-shipped,
+.sprint-shipped,
+.fiche-shipped {
+  margin: 0.25rem 0 0;
 }

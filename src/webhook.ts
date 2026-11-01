@@ -1,6 +1,7 @@
 import { promotionRunEvent } from "./go";
 import { releaseRunEvent } from "./sprint-release";
 import { sprintRunFor } from "./sprint-run";
+import { reopenIfClosedByMerge } from "./story-reopen";
 import { mergeRunEvent } from "./sprint-pulls";
 import { claudeRunEvent, type RestWorkflowRun } from "./claude";
 import { sprintLiveFor } from "./live";
@@ -61,7 +62,11 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
 
   if (event === "issues" && payload.issue) {
     await applyIssueEvent(env, project.repo, payload.action ?? "", payload.issue);
-    return json({ updated: payload.issue.number });
+    // Closed by a merge, not validated: open again (la-fabrique#186).
+    const reopened = payload.action === "closed" ? await reopenIfClosedByMerge(env, project, payload.issue).catch(() => null) : null;
+    // The open sprint pages show it (la-fabrique#187).
+    await sprintLiveFor(env, project.repo)?.notify({ kind: "story", issue: payload.issue.number, status: payload.action ?? "", conclusion: null, url: "", at: new Date().toISOString() }).catch(() => undefined);
+    return json({ updated: payload.issue.number, ...(reopened ? { reopened: true } : {}) });
   }
   if (STORY_EVENTS.has(event)) {
     await storiesChanged(env, project.repo);

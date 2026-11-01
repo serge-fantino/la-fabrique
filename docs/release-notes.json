@@ -2,6 +2,52 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "A feature in production says which versions ship it",
+    "changements": [
+      "Once one of its stories is out, a feature says which versions shipped it (those whose release notes declare its stories, oldest first), on its page, on the board and in the sprint.",
+      "Next to them: Complete, Complete with the nice to have left, or the number of stories still to ship."
+    ],
+    "stories": [189],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "Run the sprint from its card, lane by lane",
+    "changements": [
+      "The Running by itself card of the sprint shows what the run will do, without a page of its own: the features in lanes (as many as Claude runs may go at once), each with its stories waiting, in order, and where it would stop; the features with nothing to run are listed apart, with why.",
+      "One button confirms; the order is the sprint's, set below. After a run, the same card shows what a new run would do.",
+      "The old Run the sprint page leads to that card."
+    ],
+    "stories": [188],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "The sprint page follows each step without a reload",
+    "changements": [
+      "While something is in progress in the sprint (Claude working, a pull request open, the sprint running by itself, the release), the page reads itself again every minute, and at once when GitHub reports a run, a pull request or a story that moved.",
+      "It waits for a calm moment: never while you type, drag a story, send a form or have a form open; a page in the background catches up when you come back.",
+      "During a sprint, the stories are read from GitHub again after a minute at most, so a pull request's link to its story, late on GitHub's side, shows up without a manual refresh."
+    ],
+    "stories": [187],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
+    "titre": "One status per story; a story stays open until validated",
+    "changements": [
+      "A validated story shows one status, Validated by whom, instead of To validate (or On int) next to Validated: on the card, the sprint and the story's page.",
+      "When GitHub closes a story of a card by itself, at the merge of its pull request, before anyone validated it, La Fabrique opens it again, says why on the issue in the project's language, and logs it (story reopened). A story closed by a person, or not planned, is left closed."
+    ],
+    "stories": [186],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A recorded test becomes a Gherkin scenario",
     "changements": [
       "A story's page and To test show each recorded criterion as a Gherkin scenario (Given the first page, When the steps, Then the criterion), with Copy.",

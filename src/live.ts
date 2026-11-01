@@ -15,7 +15,7 @@ export interface LiveEvent {
 // What a run of the project's Claude workflow tells the open sprint pages
 // (la-fabrique#113): one started, moved or ended.
 export interface SprintEvent {
-  kind: "claude_run" | "pull_request";
+  kind: "claude_run" | "pull_request" | "story";
   issue: number | null;
   status: string;
   conclusion: string | null;

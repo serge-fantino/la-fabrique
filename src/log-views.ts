@@ -34,6 +34,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return `proposed ${Number(d["scenarios"]) || 0} recorded scenario${Number(d["scenarios"]) === 1 ? "" : "s"} of ${story} to the project: <a href="https://github.com/${escapeHtml(repo)}/pull/${Number(d["pull"]) || 0}">PR #${Number(d["pull"]) || 0}</a>`;
     case "story_validated":
       return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
+    case "story_reopened":
+      return `opened ${story} again: closed by the merge of ${d["pull"] ? issue(d["pull"]) : `commit <span class="mono">${text(String(d["commit"] ?? "").slice(0, 7))}</span>`}, not validated yet`;
     case "defect_reported":
       return `reported defect ${issue(d["defect"])}${story ? ` on ${story}` : ""}${d["release"] ? ` (version <span class="mono">${text(d["release"])}</span>${d["change"] ? `, “${text(d["change"])}”` : ""})` : ""}${d["title"] ? `: “${text(d["title"])}”` : ""}`;
     case "priority_set":

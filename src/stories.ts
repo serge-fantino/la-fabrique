@@ -50,6 +50,7 @@ export interface RestIssue {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  state_reason?: string | null;
   body?: string | null;
   pull_request?: unknown;
   parent_issue_url?: string | null;
@@ -191,9 +192,13 @@ export interface StoriesView {
   failure?: string;
 }
 
-export async function loadStories(env: Env, project: Project): Promise<StoriesView> {
+// The sprint page, while a sprint runs, asks for a younger copy: GitHub's
+// links (a pull request's issue) can lag behind its webhook.
+export const FOLLOW_MAX_AGE_MS = 60 * 1000;
+
+export async function loadStories(env: Env, project: Project, maxAgeMs = MAX_AGE_MS): Promise<StoriesView> {
   const snapshot = await readSnapshot<Story[]>(env.DB, project.repo, STORIES);
-  if (snapshot && isFresh(snapshot, MAX_AGE_MS)) return { stories: snapshot.data, fetchedAt: snapshot.fetchedAt };
+  if (snapshot && isFresh(snapshot, maxAgeMs)) return { stories: snapshot.data, fetchedAt: snapshot.fetchedAt };
   try {
     const stories = await fetchStories(env, project);
     const fetchedAt = await writeSnapshot(env.DB, project.repo, STORIES, stories);
