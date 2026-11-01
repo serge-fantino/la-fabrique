@@ -589,6 +589,8 @@ const TOOLS: Tool[] = [
       if (!known.get(number)) fail(`#${number} is not a story La Fabrique knows in ${project.repo}.`);
       await linkStory(ctx.env.DB, card, ctx.login, number, `https://github.com/${project.repo}/issues/${number}`);
       if (args["nice"] === true) await setNice(ctx.env.DB, project.repo, card.id, number, true, ctx.login);
+      // A card with its story is validated, as when its stories are made.
+      await advanceStatus(ctx.env.DB, project.repo, card.id, ctx.login, "validated", "story linked");
       return { linked: number, card: absolute(ctx, cardUrl(project.repo, card.id)) };
     },
   },
@@ -704,11 +706,23 @@ export async function mcpServer(request: Request, env: Env, props: GrantProps): 
 async function method(id: unknown, name: string, params: Record<string, unknown>, request: Request, env: Env, props: GrantProps): Promise<unknown> {
   switch (name) {
     case "initialize": {
+      const origin = new URL(request.url).origin;
       const asked = typeof params["protocolVersion"] === "string" ? params["protocolVersion"] : "";
       return reply(id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "la-fabrique", title: "La Fabrique extraordinaire", version: "1.0.0" },
+        serverInfo: {
+          name: "la-fabrique",
+          title: "La Fabrique extraordinaire",
+          version: "1.0.0",
+          websiteUrl: origin,
+          // Its mark, for the assistant to show (MCP 2025-11-25).
+          icons: [
+            { src: `${origin}/favicon.svg`, mimeType: "image/svg+xml", sizes: ["any"] },
+            { src: `${origin}/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] },
+            { src: `${origin}/icon-192.png`, mimeType: "image/png", sizes: ["192x192"] },
+          ],
+        },
         instructions: INSTRUCTIONS,
       });
     }

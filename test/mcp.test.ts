@@ -103,6 +103,14 @@ describe("La Fabrique's MCP server", () => {
     const tokens = await connectClaude("pe", "defects:report fabrique", `${BASE}/mcp`);
     expect(tokens.scope).toBe("fabrique");
     expect((await rpc(tokens.access_token, "ping")).result).toEqual({});
+    // La Fabrique's mark, for the assistant to show; served as PNG too.
+    const info = (await rpc(tokens.access_token, "initialize", { protocolVersion: "2025-11-25" })).result?.["serverInfo"] as { icons: { src: string; mimeType: string }[] };
+    expect(info.icons.map((icon) => icon.src)).toEqual([`${BASE}/favicon.svg`, `${BASE}/icon-512.png`, `${BASE}/icon-192.png`]);
+    for (const path of ["/favicon.ico", "/icon-512.png", "/icon-192.png", "/apple-touch-icon.png"]) {
+      const icon = await SELF.fetch(`${BASE}${path}`);
+      expect(icon.headers.get("content-type")).toBe("image/png");
+      expect([...new Uint8Array(await icon.arrayBuffer()).slice(1, 4)].map((byte) => String.fromCharCode(byte)).join("")).toBe("PNG");
+    }
     // Its refresh token works the same way.
     const refreshed = await token({ grant_type: "refresh_token", refresh_token: tokens.refresh_token, client_id: lastClient, resource: `${BASE}/mcp` });
     expect(refreshed.status).toBe(200);
@@ -182,6 +190,11 @@ describe("La Fabrique's MCP server", () => {
     expect((sprint.data["cards"] as { stories: { number: number; nice_to_have: boolean }[] }[])[0]?.stories).toMatchObject([{ number: 41, nice_to_have: false }, { number: 42, nice_to_have: true }]);
     expect(sprint.data["stories_left"]).toEqual([41]);
 
+    // An issue linked to a draft card validates it, as making its stories does.
+    const other = (await call(access, "card_create", { project: REPO, title: "Print it" })).data["created"] as { id: number };
+    expect((await call(access, "story_link", { project: REPO, card: other.id, story: 41 })).data).toMatchObject({ linked: 41 });
+    expect(((await call(access, "card", { project: REPO, card: other.id })).data["status"])).toBe("validated");
+
     // A change over a newer version is refused.
     expect((await call(access, "card_update", { project: REPO, card: card.id, title: "Menu", rev: 1 })).data["error"]).toContain("changed since");
     const updated = await call(access, "card_update", { project: REPO, card: card.id, title: "The weekly menu" });
@@ -194,6 +207,8 @@ describe("La Fabrique's MCP server", () => {
       "card_spec",
       "stories_create",
       "sprint_start",
+      "card_create",
+      "story_link",
       "card_update",
     ]);
     expect(actions.find((entry) => entry.action === "card_created")?.actor).toBe("pe");

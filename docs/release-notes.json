@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "La Fabrique's logo in Claude",
+    "changements": [
+      "The MCP server gives La Fabrique's logo to Claude, and the logo is also served as PNG (favicon, icons) for what does not read SVG.",
+      "Through Claude, linking an existing story to a card validates the card, as making its stories does."
+    ],
+    "stories": [155],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Claude works in La Fabrique: the MCP server",
     "changements": [
       "La Fabrique is an MCP server (/mcp): connected from claude.ai or Claude Code, Claude reads the projects' boards, cards, stories and sprints, and writes in your name what your role allows: cards and their specs, stories made from a card on GitHub, starting and closing the sprint; for a tech lead, launching Claude Code on a story and merging a pull request.",
