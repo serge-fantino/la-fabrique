@@ -149,7 +149,9 @@ describe("Testing, followed on the card", () => {
     ]);
     const { cookie } = await signIn("admin-one");
     const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
-    expect(page).toMatch(/Story 1 <span class="pill stage-on_int warn">On int<\/span> <span class="pill ok small" title="[^"]*">Validated<\/span> <span class="muted small">by @qa<\/span>/);
+    // One status per story (la-fabrique#186): Validated replaces On int.
+    expect(page).toMatch(/Story 1 <span class="pill ok stage-validated" title="[^"]*">Validated<\/span> <span class="muted small">by @qa<\/span>/);
+    expect(page).not.toMatch(/Story 1 <span class="pill stage-on_int/);
     expect(page).toContain('Story 2 <span class="pill stage-on_int warn">On int</span> <span class="muted small">1/2 criteria checked</span>');
     // The card: to test, 2 of the 3 validated (the third is already out).
     expect(page).toContain('<option value="validated" selected>To test 2/3 validated</option>');

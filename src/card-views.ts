@@ -34,7 +34,7 @@ import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } fr
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, type Progress } from "./progress-stages";
-import { stagePill, testingNote } from "./stories-views";
+import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { renderMarkdown } from "./markdown";
 import type { Rubrique } from "./requests";
@@ -828,7 +828,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
               .map((link) => {
                 const state = data.storyStates.get(Number(link.ref));
                 return `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${escapeHtml(link.ref)}">#${escapeHtml(link.ref)}</a>
-                  ${state ? `${escapeHtml(state.title)} ${state.stage ? stagePill(state.stage) : `<span class="pill">${state.closed ? "Closed" : "Open"}</span>`}${testingNote(state)}` : `<span class="muted">not read yet</span>`}</li>`;
+                  ${state ? `${escapeHtml(state.title)} ${storyStatus(state)}` : `<span class="muted">not read yet</span>`}</li>`;
               })
               .join("")}</ul>`
           : ""

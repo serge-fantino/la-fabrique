@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "One status per story; a story stays open until validated",
+    "changements": [
+      "A validated story shows one status, Validated by whom, instead of To validate (or On int) next to Validated: on the card, the sprint and the story's page.",
+      "When GitHub closes a story of a card by itself, at the merge of its pull request, before anyone validated it, La Fabrique opens it again, says why on the issue in the project's language, and logs it (story reopened). A story closed by a person, or not planned, is left closed."
+    ],
+    "stories": [186],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A recorded test becomes a Gherkin scenario",
     "changements": [
       "A story's page and To test show each recorded criterion as a Gherkin scenario (Given the first page, When the steps, Then the criterion), with Copy.",

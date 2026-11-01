@@ -11,7 +11,7 @@ import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
 import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./sprint-release";
-import { stagePill, testingNote } from "./stories-views";
+import { storyStatus } from "./stories-views";
 import type { Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
@@ -234,7 +234,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
-          <p class="sprint-story-status">${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${story ? testingNote(story) : ""}${
+          <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
             isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
           }${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
             others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""

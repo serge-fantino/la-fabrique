@@ -50,6 +50,7 @@ export interface RestIssue {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  state_reason?: string | null;
   body?: string | null;
   pull_request?: unknown;
   parent_issue_url?: string | null;
