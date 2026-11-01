@@ -64,7 +64,9 @@ describe("Next release and the sprint", () => {
     const session = await writer();
     const before = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
     expect(before).toContain("No sprint in progress");
-    expect(before).toContain("The next sprint takes the 2 cards of Next release");
+    expect(before).toContain("The next sprint takes the 2 cards placed in Next release on <a");
+    // Next release stays on the board: not listed here (la-fabrique#173).
+    expect(before).not.toContain('<h2 id="next">');
 
     expect((await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=started`);
     expect([await releaseOf(week), await releaseOf(empty)]).toEqual(["Sprint", "Sprint"]);
@@ -73,7 +75,7 @@ describe("Next release and the sprint", () => {
     expect(page).toContain("<strong>2 stories left</strong> · 2 cards, 2 stories, 0 in production.");
     expect(page).toContain("Choose the week");
     expect(page).not.toContain("Other release");
-    expect(page).toContain('Next release <span class="muted mono">0</span>');
+    expect(page).not.toContain('<h2 id="next">');
     expect(await (await get(`/projects/${REPO}/board?by=release`, session.cookie)).text()).toContain('Sprint <span class="pill warn small">In progress</span>');
 
     // One at a time.
