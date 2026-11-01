@@ -422,3 +422,14 @@ describe("A pull request opened by the only reviewer, on a project without a mer
     expect(page).not.toContain("data-branch-menu");
   });
 });
+
+describe("The sprint of a project with an integration branch", () => {
+  it("leads to the go in Production, and shows no reference-branch banner", async () => {
+    await seed({ nom: "Widget", branches: { production: "main", integration: "integration" }, workflows: { claude: "claude.yml" }, claude: { plafond: 1 } });
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint?ref=integration`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toMatch(/the release is the go: test the stories on int, then give the go in <a [^>]*href="\/projects\/acme\/widget\/production">Production<\/a>; once it is out, close the sprint/);
+    expect(page).not.toContain("ref-banner");
+  });
+});

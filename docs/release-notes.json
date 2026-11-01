@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The sprint leads to the go",
+    "changements": [
+      "On a project with an integration branch, the sprint says how its release is made: test the stories on int, give the go in Production (linked), then close the sprint so that each finished card takes its version.",
+      "The reference-branch banner no longer shows on the board and the sprint, which do not read a branch."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "Testing, followed in the sprint and on the card; ticking a criterion at once",
     "changements": [
       "A story on int (or merged, without integration) says where its testing stands, in the sprint and on its card: Validated, by whom and when, or how many of its criteria are checked, with a link to test it.",

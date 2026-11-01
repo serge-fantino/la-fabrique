@@ -130,7 +130,8 @@ export function projectHeader(project: Project, active: ProjectTab, heading?: st
     })
     .join("");
   const production = productionBranch(project) ?? "main";
-  const banner = view?.ref
+  // The board, the cards and the sprint read no branch: no banner there.
+  const banner = view?.ref && active !== "board" && active !== "sprint"
     ? `<p class="ref-banner" role="status">Reference branch <code>${escapeHtml(view.ref)}</code>; production is <code>${escapeHtml(production)}</code>.
         <a href="${escapeHtml(view.path)}?ref=">Back to production</a></p>`
     : "";
