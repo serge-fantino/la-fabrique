@@ -3277,3 +3277,44 @@ main:has(.sprint-layout) {
 .sprint-story.nice .sprint-story-title a:not(.mono) {
   font-weight: 400;
 }
+
+/* Reordering by drag and drop (la-fabrique#181): a handle with the page's
+   script; the arrows without it. */
+.sort-handle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted, #4a5650);
+  font-size: 1.1rem;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.sort-handle:hover,
+.sort-handle:focus-visible {
+  background: #f3f4ee;
+}
+
+.js .sort-handle {
+  display: inline-flex;
+}
+
+.js [data-sortable] .sprint-controls {
+  display: none;
+}
+
+.sorting {
+  opacity: 0.65;
+  box-shadow: 0 6px 24px rgba(24, 33, 27, 0.18);
+  cursor: grabbing;
+}
+
+.sprint-card-head {
+  align-items: center;
+}

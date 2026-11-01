@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "Reorder the sprint by drag and drop",
+    "changements": [
+      "In the sprint, features and their stories are reordered by dragging their handle (mouse or touch), or with the up and down arrow keys on it; the new order is saved at once and logged.",
+      "Without the page's script, the up and down arrows remain."
+    ],
+    "stories": [181],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "A story of the sprint is a row; nice to have is a priority",
     "changements": [
       "In the sprint, a story is a row: its number and title on top, where it stands below (stage, testing, nice to have, pull request, Claude), its priority and order at the end; no more table of columns.",

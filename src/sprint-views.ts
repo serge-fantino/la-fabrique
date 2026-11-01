@@ -102,6 +102,12 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     `<form method="post" action="${escapeHtml(action)}" class="inline sprint-order" data-busy="…">${csrfField(viewer)}${Object.entries(fields)
       .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
       .join("")}<button type="submit" class="button ${kind}" aria-label="${escapeHtml(label)}">${text}</button></form>`;
+  // Reordered by drag and drop, or the arrow keys on the handle
+  // (la-fabrique#181); without the page's script, the arrows remain.
+  const sortable = (sortAction: string, card?: number) =>
+    ` data-sortable="${sortAction}" data-sort-url="${escapeHtml(action)}" data-csrf="${escapeHtml(viewer.csrfToken)}"${card !== undefined ? ` data-sort-card="${card}"` : ""}`;
+  const handle = (what: string) =>
+    `<button type="button" class="sort-handle" data-sort-handle aria-label="Move ${escapeHtml(what)}: drag it, or use the up and down arrow keys" title="Drag to reorder">⠿</button>`;
   const isDone = (number: number) => {
     const story = data.stories.get(number);
     return isFinished(story);
@@ -224,7 +230,8 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           : ""
       : "";
     const claude = launchable ? claudeCell(number) : "";
-    return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}">
+    return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
+        ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
           <p class="sprint-story-status">${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${story ? testingNote(story) : ""}${
@@ -253,7 +260,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   // Claude is launched from the sprint only.
   const cardsSection = (cards: Card[], controls: boolean, claude = false, foldDone = false) => {
     const launchable = claude && Boolean(data.claude.workflow);
-    return cards
+    const html = cards
       .map((card, index) => {
         const mine = storiesOf(card.id);
         // The card's priority: its stories take it (one level lower when
@@ -270,7 +277,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
               index < cards.length - 1 ? button({ action: "card_down", card: card.id }, `Move ${cardRef(card.id)} down`, "↓") : ""
             }</span>`
           : "";
-        return `<section id="card-${card.id}" class="sprint-card"><div class="sprint-card-head">${cardGroupHead(
+        return `<section id="card-${card.id}" class="sprint-card"${controls ? ` data-sort-id="${card.id}"` : ""}><div class="sprint-card-head">${controls && cards.length > 1 ? handle(cardRef(card.id)) : ""}${cardGroupHead(
           project.repo,
           { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position, progress: card.progress },
           mine.length,
@@ -279,7 +286,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           ${foldedDone(card.id, foldDone)}
           ${
             mine.length
-              ? `<ol class="sprint-stories-list">${mine
+              ? `<ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${mine
                   .map((number, at) => (shown(mine, number, foldDone) ? storyRow(number, card.id, at, mine.length, controls, launchable) : ""))
                   .join("")}</ol>`
               : `<p class="muted">No story yet: <a href="${escapeHtml(base)}/cards/${card.id}#spec">make them from the card</a>.</p>`
@@ -287,6 +294,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         </section>`;
       })
       .join("");
+    return html && controls && cards.length > 1 ? `<div class="sprint-cards"${sortable("card_order")}>${html}</div>` : html;
   };
 
   // What is left: the needed stories not done yet (a story needed by one

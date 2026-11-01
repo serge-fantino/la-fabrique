@@ -158,6 +158,74 @@
     true,
   );
 
+  // Reordering a list by drag and drop (pointer: mouse, pen or touch), or by
+  // the arrow keys on an item's handle (la-fabrique#181). The new order is
+  // sent at once; refused, the page is read again.
+  const sortItems = (list) => [...list.children].filter((child) => child.hasAttribute("data-sort-id"));
+  const orderOf = (list) => sortItems(list).map((child) => child.getAttribute("data-sort-id")).join(",");
+  const saveOrder = async (list) => {
+    const body = new URLSearchParams({ csrf: list.dataset.csrf || "", action: list.dataset.sortable || "", order: orderOf(list) });
+    if (list.dataset.sortCard) body.set("card", list.dataset.sortCard);
+    try {
+      const response = await fetch(list.dataset.sortUrl || location.href, { method: "POST", body, headers: { accept: "application/json" } });
+      if (!response.ok) throw new Error("refused");
+    } catch {
+      location.reload();
+    }
+  };
+  // The item of this list under a point (not a nested list's).
+  const itemAt = (list, x, y) => {
+    let node = document.elementFromPoint(x, y);
+    while (node && node !== list) {
+      if (node.parentElement === list && node.hasAttribute("data-sort-id")) return node;
+      node = node.parentElement;
+    }
+    return null;
+  };
+  let dragging = null;
+  document.addEventListener("pointerdown", (event) => {
+    const handle = event.target instanceof Element ? event.target.closest("[data-sort-handle]") : null;
+    if (!handle || event.button !== 0) return;
+    const item = handle.closest("[data-sort-id]");
+    const list = item && item.parentElement;
+    if (!list || !list.hasAttribute("data-sortable")) return;
+    event.preventDefault();
+    dragging = { item, list, before: orderOf(list) };
+    item.classList.add("sorting");
+  });
+  document.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    event.preventDefault();
+    const over = itemAt(dragging.list, event.clientX, event.clientY);
+    if (!over || over === dragging.item) return;
+    const box = over.getBoundingClientRect();
+    dragging.list.insertBefore(dragging.item, event.clientY > box.top + box.height / 2 ? over.nextSibling : over);
+  });
+  const endDrag = () => {
+    if (!dragging) return;
+    const { item, list, before } = dragging;
+    dragging = null;
+    item.classList.remove("sorting");
+    if (orderOf(list) !== before) saveOrder(list);
+  };
+  document.addEventListener("pointerup", endDrag);
+  document.addEventListener("pointercancel", endDrag);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const handle = event.target instanceof Element ? event.target.closest("[data-sort-handle]") : null;
+    const item = handle && handle.closest("[data-sort-id]");
+    const list = item && item.parentElement;
+    if (!list || !list.hasAttribute("data-sortable")) return;
+    event.preventDefault();
+    const items = sortItems(list);
+    const at = items.indexOf(item);
+    const to = event.key === "ArrowUp" ? at - 1 : at + 1;
+    if (to < 0 || to >= items.length) return;
+    list.insertBefore(item, event.key === "ArrowUp" ? items[to] : items[to].nextSibling);
+    handle.focus();
+    saveOrder(list);
+  });
+
   document.addEventListener("submit", (event) => {
     if (event.defaultPrevented) return;
     const form = event.target;
