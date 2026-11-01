@@ -122,6 +122,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return `closed the sprint: release ${text(d["version"])} “${text(d["title"])}”`;
     case "release_started":
       return `started the release ${text(d["version"])} (${text(d["workflow"])})`;
+    case "release_failed":
+      return `saw the release <span class="mono">${text(d["version"])}</span> fail: ${text(d["reason"]) || "the workflow stopped"}${runLink(d["run"])}`;
     case "release_published":
       return `saw the release ${text(d["version"])} out${runLink(d["run"])}`;
     case "card_versioned":

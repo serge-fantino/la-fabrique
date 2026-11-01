@@ -92,10 +92,12 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npm run typecheck
+        run: |
+          npm run typecheck || { echo "::error title=Release refused::The typecheck fails with the release's notes: see the run."; exit 1; }
 
       - name: Tests
-        run: npm test
+        run: |
+          npm test || { echo "::error title=Release refused::Tests fail with the release's notes: see the run."; exit 1; }
 
       - name: Pull request on main, then squash-merge
         env:

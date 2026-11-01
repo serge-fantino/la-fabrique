@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-01",
+    "titre": "The release, followed from the sprint",
+    "changements": [
+      "Once Close the sprint starts the release, the sprint says it is in progress, with a link to follow it on GitHub, and updates by itself; if it fails, it says why (from the run) and the sprint stays open to close again.",
+      "The release no longer stops on a test that expected changes waiting right after a release."
+    ],
+    "stories": [137],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-01",
     "titre": "La Fabrique can close its sprint: its release workflow",
     "changements": [
       "La Fabrique declares its release workflow (workflows.publier): Close the sprint now makes its release instead of saying none is declared. The workflow turns the release-note entries of the stories done into one entry (the version chosen, the date and time, the title, every change, the stories), marks an entry with a story not done yet as partial and names it, keeps the other entries for a later release, checks, then merges a pull request on main, which deploys."

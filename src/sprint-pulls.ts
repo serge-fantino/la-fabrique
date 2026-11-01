@@ -150,24 +150,7 @@ export async function mergeRunEvent(env: Env, project: Project, action: string, 
   if (!file || action !== "completed" || !run.path?.endsWith(`/${file}`)) return false;
   const pull = Number(/#(\d+)/.exec(run.display_title ?? "")?.[1] ?? NaN);
   if (!Number.isInteger(pull)) return false;
-  let reason: string | null = null;
-  if (run.conclusion !== "success" && run.id) {
-    try {
-      const token = await installationToken(env, project.installationId);
-      const { jobs } = await githubJson<{ jobs: { id: number; conclusion: string | null }[] }>(token, `/repos/${project.repo}/actions/runs/${run.id}/jobs`);
-      for (const job of jobs.filter((candidate) => candidate.conclusion === "failure")) {
-        const annotations = await githubJson<RestAnnotation[]>(token, `/repos/${project.repo}/check-runs/${job.id}/annotations`);
-        const failures = annotations.filter((note) => note.annotation_level === "failure" && note.message && !/^Process completed with exit code/.test(note.message));
-        const found = failures.find((note) => note.title === "Merge refused") ?? failures[0];
-        if (found?.message) {
-          reason = found.message.slice(0, 500);
-          break;
-        }
-      }
-    } catch {
-      // The run's link says the rest.
-    }
-  }
+  const reason = run.conclusion !== "success" && run.id ? await runFailure(env, project, run.id, "Merge refused") : null;
   await activityStatement(env.DB, {
     actor: "github",
     action: "pull_merge_finished",
@@ -203,4 +186,22 @@ export async function lastMergeAttempts(db: D1Database, repo: string): Promise<M
     });
   }
   return found;
+}
+
+// Why a run failed: its annotation titled `title` (the workflow's ::error),
+// else its first failure annotation; null when GitHub does not say.
+export async function runFailure(env: Env, project: Project, runId: number, title: string): Promise<string | null> {
+  try {
+    const token = await installationToken(env, project.installationId);
+    const { jobs } = await githubJson<{ jobs: { id: number; conclusion: string | null }[] }>(token, `/repos/${project.repo}/actions/runs/${runId}/jobs`);
+    for (const job of jobs.filter((candidate) => candidate.conclusion === "failure")) {
+      const annotations = await githubJson<RestAnnotation[]>(token, `/repos/${project.repo}/check-runs/${job.id}/annotations`);
+      const failures = annotations.filter((note) => note.annotation_level === "failure" && note.message && !/^Process completed with exit code/.test(note.message));
+      const found = failures.find((note) => note.title === title) ?? failures[0];
+      if (found?.message) return found.message.slice(0, 500);
+    }
+  } catch {
+    // The run's link says the rest.
+  }
+  return null;
 }

@@ -7,7 +7,7 @@ import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, setNice } from "./sprints";
 import { closeSprint, startSprint } from "./sprint-flow";
-import { hasIntegration, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
+import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, launchClaude, updateWithClaude } from "./claude";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
@@ -699,6 +699,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       canOrder: canWriteCards(viewer),
       canClose: hasIntegration(project) ? canWriteCards(viewer) : can(viewer.role, "promote"),
       releaseWorkflow: publishWorkflow(project),
+      release: await lastReleaseAttempt(env.DB, project.repo),
       noIntegration: !hasIntegration(project),
       pulls,
       reviewers: people,
