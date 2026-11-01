@@ -1,79 +1,26 @@
 [
   {
-    "version": "next",
+    "version": "0.81",
     "date": "2026-11-01",
-    "titre": "One reading of where a story stands",
+    "heure": "22:42",
+    "titre": "Run the sprint by itself: each card's stories one after another, cards side by side and Claude works in La Fabrique t...",
     "changements": [
       "Where a story stands (ready, in development, developed, to test, finished) is now read the same way everywhere: the card's status, the sprint, its run, the one-story-at-a-time rule and the story's page no longer each look at the pull requests their own way.",
-      "When the sprint's run cannot launch Claude on a story, it says why from the story's stage: not ready and what it lacks, or in development by hand."
-    ],
-    "stories": [160],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint's run sees a story merged through any link",
-    "changements": [
-      "Running the sprint, a story already merged (on int, to validate, done) is seen as merged even when its pull request is linked by its text only (\"Refs #159\"): its card is no longer stopped on it as not ready."
-    ],
-    "stories": [160],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A pull request that names several stories links them all",
-    "changements": [
-      "A pull request whose text names a list of stories (\"Refs #160, #161\", \"Closes #3 and #4\") is now linked to each of them, not only the first: each story shows it and moves on when it is merged."
-    ],
-    "stories": [161],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint runs by itself",
-    "changements": [
+      "When the sprint's run cannot launch Claude on a story, it says why from the story's stage: not ready and what it lacks, or in development by hand.",
+      "Running the sprint, a story already merged (on int, to validate, done) is seen as merged even when its pull request is linked by its text only (\"Refs #159\"): its card is no longer stopped on it as not ready.",
+      "A pull request whose text names a list of stories (\"Refs #160, #161\", \"Closes #3 and #4\") is now linked to each of them, not only the first: each story shows it and moves on when it is merged.",
       "\"Run the sprint\" (Product Engineer, super admin) first shows what will run, then runs it up to testing: each card's stories one after another (Claude, then the merge of its pull request), the cards side by side, never more Claude runs than the project allows, one merge at a time. GitHub's events move it on; a check every few minutes catches up a lost one.",
       "A card that meets a problem stops and says why, with a link, while the others go on: a story not ready, Claude's run failed or ended without a pull request, a merge refused (a conflict first gets one update by Claude), too many runs on a story, a run past 70 minutes. Resume the card once fixed; pause, resume or stop the whole run at any time.",
-      "The sprint's Work in progress shows each card's step live; every step is in the log. Nothing is validated, released or closed by the run."
-    ],
-    "stories": [160, 161],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "One story at a time per card",
-    "changements": [
+      "The sprint's Work in progress shows each card's step live; every step is in the log. Nothing is validated, released or closed by the run.",
       "In the sprint, a card's stories are launched with Claude one at a time: while one is in progress (Claude working on it, or its pull request open and not merged), the card's other stories wait, and say which story they wait for.",
-      "\"Launch the next story\" skips the cards that already have a story in progress; a launch sent anyway (an old page, Claude through the MCP) is refused with the same reason. Updating the story in progress with Claude stays possible."
-    ],
-    "stories": [159],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "La Fabrique's logo in Claude",
-    "changements": [
+      "\"Launch the next story\" skips the cards that already have a story in progress; a launch sent anyway (an old page, Claude through the MCP) is refused with the same reason. Updating the story in progress with Claude stays possible.",
       "The MCP server gives La Fabrique's logo to Claude, and the logo is also served as PNG (favicon, icons) for what does not read SVG.",
-      "Through Claude, linking an existing story to a card validates the card, as making its stories does."
-    ],
-    "stories": [155],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Claude works in La Fabrique: the MCP server",
-    "changements": [
+      "Through Claude, linking an existing story to a card validates the card, as making its stories does.",
       "La Fabrique is an MCP server (/mcp): connected from claude.ai or Claude Code, Claude reads the projects' boards, cards, stories and sprints, and writes in your name what your role allows: cards and their specs, stories made from a card on GitHub, starting and closing the sprint; for a tech lead, launching Claude Code on a story and merging a pull request.",
       "The go to production is never given through it: it stays on the sprint page.",
       "Claude registers itself and asks you to allow it; only an account with a role can. Each write is in the project's log under your login, marked as made through Claude, and you disconnect it from Connected apps."
     ],
-    "stories": [155],
+    "stories": [155, 159, 160, 161],
     "liens": null
   },
   {
