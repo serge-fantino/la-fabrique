@@ -1,4 +1,5 @@
 import { relayFacts } from "./relay";
+import { projectUrl } from "./urls";
 import { storyCards } from "./card-groups";
 import type { Env } from "./env";
 import { json } from "./http";
@@ -103,7 +104,9 @@ export async function storiesToTestForApp(request: Request, env: Env, props: Gra
           number: story.number,
           title: story.title,
           url: story.url,
-          card: card ? { id: card.id, title: card.title } : null,
+          // Its feature and its page in La Fabrique (la-fabrique#206).
+          card: card ? { id: card.id, title: card.title, url: new URL(`${projectUrl(guard.project.repo)}/cards/${card.id}`, request.url).toString() } : null,
+          page: new URL(`${projectUrl(guard.project.repo)}/sprint/stories/${story.number}`, request.url).toString(),
           criteria: (story.criteria ?? []).map((criterion, index) => ({ text: criterion.text, done: criterion.done, failed: failedAt(index) })),
           validated: validated ? { by: validated.by, at: validated.at, version: validated.version } : null,
           rework,

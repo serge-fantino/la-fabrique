@@ -56,7 +56,7 @@ Options (`FabriqueReport.configure`, `start`, or the `data-` attributes of the s
 
 API: `FabriqueReport.start()` (picking, then the form; resolves with the result, or `null` if cancelled), `test()` (the Test panel), `launcher(options)` (the launcher, from your own code: it asks the relay what the person may do, then shows itself or not), `status()` (the relay's `GET`), `flush()` (sends the reports kept offline; done at load and when the network is back), `errors()`, `version`.
 
-The Test panel (1.7.0) floats above the app and never blocks it: the person drags it by its head, folds it into a bar (the story and how many criteria are ticked) and closes it; its place and state are kept on the device. On a phone it takes half the screen at most. It goes through the stories waiting on int (Previous, Next), then lists the story's criteria, each a box and its text, with **Record** (the steps) and **Fail**: a feedback written in the panel (what happened instead, a screenshot of the page if wanted). A feedback is not a new issue: La Fabrique writes it as a comment on the story, in the tester's name, quoting the criterion, and the story goes back to development (the rework label, `demandes.etiquettes.retour`); the criterion stays unticked and shows **Failed**, and the story cannot be validated until its code changed and it is tested again. Nothing is launched by itself: a person reworks the story with its feedbacks.
+The Test panel (1.7.0) floats above the app and never blocks it: the person drags it by its head, folds it into a bar (the story and how many criteria are ticked) and closes it; its place and state are kept on the device, and since 1.8.0 it stays open from one page of the app to the next, at the same story, with the feedback being written (la-fabrique#207); closed, it stays closed. Each story says its feature, a link to the card in La Fabrique. On a phone it takes half the screen at most. It goes through the stories waiting on int (Previous, Next), then lists the story's criteria, each a box and its text, with **Record** (the steps) and **Fail**: a feedback written in the panel (what happened instead, a screenshot of the page if wanted). A feedback is not a new issue: La Fabrique writes it as a comment on the story, in the tester's name, quoting the criterion, and the story goes back to development (the rework label, `demandes.etiquettes.retour`); the criterion stays unticked and shows **Failed**, and the story cannot be validated until its code changed and it is tested again. Nothing is launched by itself: a person reworks the story with its feedbacks.
 
 What it is about: the form asks the person what the defect is about (**It is about**): the release notes in detail, the versions on int first, then those released, newest first. Under each version, each of its changes can be chosen, then the stories it declares; a search finds an older one; **I don't know** is always possible. When a single story is on int, it is chosen already.
 
@@ -142,7 +142,7 @@ Two routes at the address you chose, for a signed-in person of your app, outside
 
 ```json
 { "stories": [
-  { "number": 146, "title": "…", "url": "…", "card": { "id": 17, "title": "…" },
+  { "number": 146, "title": "…", "url": "…", "card": { "id": 17, "title": "…", "url": "https://…/cards/17" }, "page": "https://…/sprint/stories/146",
     "criteria": [{ "text": "…", "done": true }, { "text": "…", "done": false }],
     "validated": { "by": "tess", "at": "2026-10-31T09:00:00.000Z", "version": "1.170" } } ] }
 ```

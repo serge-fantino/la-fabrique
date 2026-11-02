@@ -3,9 +3,9 @@ import { activityStatement } from "./activity-log";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { cardProgress, PROGRESS_LABELS, type Progress } from "./card-progress";
 import { progressDetail } from "./progress-stages";
-import { NEXT_RELEASE, SPRINT_LANE } from "./card-releases";
+import { knownValues, NEXT_RELEASE, SPRINT_LANE } from "./card-releases";
 import { cardStories, type CardStory } from "./card-stories";
-import { storyCards, isNice } from "./card-groups";
+import { storyCards, isNice, type StoryCards } from "./card-groups";
 import { cardPermalink, cardRef, cardUrl } from "./card-views";
 import {
   advanceStatus,
@@ -36,7 +36,7 @@ import { findProject, listProjects, productionBranch, type Project } from "./pro
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
 import { activeSprint, setNice } from "./sprints";
-import { closeSprint, startSprint } from "./sprint-flow";
+import { closeSprint, joinSprint, startSprint, type Joined } from "./sprint-flow";
 import { canMerge, mergePull, pullDetails } from "./sprint-pulls";
 import { hasIntegration } from "./sprint-release";
 import { missingSections, specRubriques } from "./specs";
@@ -108,6 +108,13 @@ function integer(args: Args, key: string): number {
 }
 
 // A project by "owner/repo" or by its repository's name alone.
+// Reality first (la-fabrique#205): while a sprint runs, the cards being
+// worked on join it, as on the board and the sprint page.
+async function joinRunningSprint(ctx: Context, project: Project, cards: Card[], links: StoryCards): Promise<Joined[]> {
+  const { releases } = await knownValues(ctx.env, project, cards);
+  return joinSprint(ctx.env, project, cards, releases, links);
+}
+
 async function projectOf(ctx: Context, args: Args): Promise<Project> {
   const wanted = text(args, "project", 200)?.trim();
   if (!wanted) return fail("Say which project (owner/repo, or the repository's name): the projects tool lists them.");
@@ -246,6 +253,7 @@ const TOOLS: Tool[] = [
         release: { type: "string", description: "Next release, Sprint, a version, or none" },
         kind: { type: "string", description: "feature, idea, question" },
         archived: { type: "boolean", description: "Include archived cards" },
+        story: { type: "integer", description: "Only the cards of this story (its issue number)" },
       },
       required: ["project"],
     },
@@ -258,8 +266,11 @@ const TOOLS: Tool[] = [
       const kind = text(args, "kind", 30);
       const all = await listCards(ctx.env.DB, project.repo);
       const links = await storyCards(ctx.env.DB, project.repo);
+      await joinRunningSprint(ctx, project, all, links);
+      const story = typeof args["story"] === "number" && Number.isInteger(args["story"]) ? args["story"] : null;
       const cards = all.filter(
         (card) =>
+          (story === null || (links.order.get(card.id) ?? []).includes(story)) &&
           (args["archived"] === true || !card.archivedAt) &&
           (!status || card.status === status) &&
           (!kind || card.kind === kind) &&
@@ -311,7 +322,10 @@ const TOOLS: Tool[] = [
       const sprint = await activeSprint(ctx.env.DB, project.repo);
       const links = await storyCards(ctx.env.DB, project.repo);
       const lane = sprint ? sprint.release : NEXT_RELEASE;
-      const cards = (await listCards(ctx.env.DB, project.repo)).filter((card) => card.release === lane && !card.archivedAt);
+      const all = await listCards(ctx.env.DB, project.repo);
+      // Reality first (la-fabrique#205): a card being worked on is in the sprint.
+      const joined = await joinRunningSprint(ctx, project, all, links);
+      const cards = all.filter((card) => card.release === lane && !card.archivedAt);
       const numbers = [...new Set(cards.flatMap((card) => links.order.get(card.id) ?? []))];
       const [stories, progress] = await Promise.all([cardStories(ctx.env, project, numbers), cardProgress(ctx.env, project, cards, links)]);
       const left = cards.flatMap((card) => (links.order.get(card.id) ?? []).filter((number) => !isNice(links, card.id, number) && !stories.get(number)?.closed));
@@ -325,6 +339,7 @@ const TOOLS: Tool[] = [
           stories: (links.order.get(card.id) ?? []).map((number) => storySummary(project, stories.get(number), number, isNice(links, card.id, number))),
         })),
         stories_left: [...new Set(left)],
+        ...(joined.length ? { joined: joined.map((entry) => ({ card: `C${entry.card.id}`, stories: entry.stories, why: "being developed or tested" })) } : {}),
         url: absolute(ctx, `${projectUrl(project.repo)}/sprint`),
       };
     },

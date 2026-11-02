@@ -26,6 +26,10 @@ export const KIT_SOURCES: Record<string, string> = {
 // What a project's relay must do for each version, beyond copying the files.
 export const KIT_CHANGES: { version: string; relay: string | null }[] = [
   {
+    version: "1.8.0",
+    relay: null,
+  },
+  {
     version: "1.7.0",
     relay:
       "With the generic relay (protocol 2), nothing to change: the feedback on a criterion goes to ?path=to-test/{story}/feedback. A relay route by route cannot pass it. To use the kit's own launcher, load it with data-button=\"true\" or call FabriqueReport.launcher() instead of your own buttons.",

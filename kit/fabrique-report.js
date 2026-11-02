@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.7.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.8.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.7.0";
+  var VERSION = "1.8.0";
   // The relay's protocol: 1, a route per call (?targets=1, ?to-test=…); 2, a
   // generic relay that passes ?path={path} to La Fabrique's project API (said
   // by the relay's GET: "relay": 2). Until the relay has said, protocol 1.
@@ -432,6 +432,8 @@
       if (old) old.remove();
       if (!data || (!data.can_report && !data.can_test)) return null;
       var t = words();
+      // The test panel open on the page before is open again here (#207).
+      var reopen = data.can_test && (readPlace(PANEL_KEY) || {}).open;
       var logo = el("button", { type: "button", className: cls("logo"), "aria-label": t.launcher, "aria-expanded": "false", title: t.launcher });
       logo.innerHTML = LOGO;
       var report = el("button", { type: "button", className: cls("button"), text: t.report });
@@ -474,6 +476,7 @@
         fold();
         testPanel();
       });
+      if (reopen) testPanel();
       return box;
     });
   }
@@ -860,6 +863,14 @@
       var index = 0;
       var stories = [];
       var place = readPlace(PANEL_KEY) || {};
+      // Kept on the device from one page to the next (#207): open, the story
+      // shown, the feedbacks being written.
+      function remember(changes) {
+        var kept = readPlace(PANEL_KEY) || {};
+        for (var key in changes) kept[key] = changes[key];
+        keepPlace(PANEL_KEY, kept);
+      }
+      remember({ open: true });
       var body = el("div", { className: cls("test-body"), "aria-live": "polite", text: "…" });
       var previous = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: "‹ " + t.previous });
       var next = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: t.next + " ›" });
@@ -1005,13 +1016,14 @@
       // A criterion fails (#201): a feedback on the story, written here,
       // with a screenshot of the page if wanted. Not a new issue: a comment on
       // the story, which goes back to development.
-      var failing = {};
+      var failing = place.drafts && typeof place.drafts === "object" ? place.drafts : {};
       function feedbackEditor(story, at, criterion) {
         var key = story.number + "/" + at;
         var input = el("textarea", { rows: "3", maxlength: "4000", className: cls("feedback-input"), "aria-label": t.failSeen, placeholder: t.failSeen });
         input.value = failing[key] || "";
         input.addEventListener("input", function () {
           failing[key] = input.value;
+          remember({ drafts: failing });
         });
         var shotBox = el("input", { type: "checkbox", id: cls("shot-" + key.replace("/", "-")) });
         var shotLine = el("div", { className: cls("check"), hidden: true }, [shotBox, el("label", { for: shotBox.id, text: t.failShot })]);
@@ -1026,6 +1038,7 @@
         var cancel = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: t.cancel });
         cancel.addEventListener("click", function () {
           delete failing[key];
+          remember({ drafts: failing });
           show();
         });
         send.addEventListener("click", function () {
@@ -1062,6 +1075,7 @@
                 return;
               }
               delete failing[key];
+              remember({ drafts: failing });
               criterion.done = false;
               story.rework = true;
               var feedback = { criterion: at, text: text, by: null, at: new Date().toISOString(), url: (outcome.data && outcome.data.comment) || null };
@@ -1090,10 +1104,17 @@
         var story = stories[index];
         if (!story) return;
         var criteria = story.criteria || [];
+        remember({ story: story.number });
         counter.textContent = t.storyOf.replace("{n}", index + 1).replace("{total}", stories.length);
         summary.textContent = "#" + story.number + " · " + tickedOf(story);
         body.appendChild(el("h3", { className: cls("story-title") }, [el("span", { className: cls("tag"), text: "#" + story.number }), " " + story.title]));
-        if (story.card) body.appendChild(el("p", { className: cls("note"), text: t.forCard + " C" + story.card.id + " · " + story.card.title }));
+        // Its feature, a link to the card in La Fabrique (#206).
+        if (story.card) {
+          var cardText = t.forCard + " C" + story.card.id + " · " + story.card.title;
+          body.appendChild(
+            el("p", { className: cls("note") }, [story.card.url ? el("a", { href: story.card.url, target: "_blank", rel: "noopener", text: cardText }) : cardText]),
+          );
+        }
         body.appendChild(
           el("p", { className: cls("note") }, [
             story.validated ? t.validatedBy + " @" + story.validated.by + (story.validated.version ? " · " + story.validated.version : "") : t.notValidated,
@@ -1214,6 +1235,7 @@
       close.addEventListener("click", function () {
         node.remove();
         panel = null;
+        remember({ open: false, drafts: {} });
         resolve(stories);
       });
       loadStoriesToTest().then(function (found) {
@@ -1225,6 +1247,8 @@
         }
         stories = found;
         panel.stories = stories;
+        // Back at the story shown on the page before, if it is still to test.
+        for (var at = 0; at < stories.length; at++) if (stories[at].number === place.story) index = at;
         if (!stories.length) {
           body.textContent = t.noStories;
           previous.hidden = next.hidden = true;

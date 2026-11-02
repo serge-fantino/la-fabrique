@@ -1,3 +1,4 @@
+import type { StoryCards } from "./card-groups";
 import { reworkLabelOf } from "./lifecycle";
 import type { Recorded } from "./gherkin";
 import { scenarioBlock } from "./gherkin-views";
@@ -26,6 +27,8 @@ export interface CardActions {
   // The label of a story back in development after a feedback.
   reworkLabel?: string;
   scenarios?: Map<number, Recorded[]>;
+  // Each story's features (la-fabrique#206): a link to the card.
+  cards?: StoryCards;
 }
 
 // The feedbacks from testing (la-fabrique#201): the last one of a
@@ -127,9 +130,18 @@ function validation(story: Story, actions: CardActions): string {
     </div>`;
 }
 
+// Where a story comes from: its feature, and its page in La Fabrique.
+function storyOrigin(story: Story, actions: CardActions): string {
+  if (!actions.base) return "";
+  const cards = (actions.cards?.byStory.get(story.number) ?? []).map((id) => ({ id, title: actions.cards?.cards.get(id)?.title ?? "" }));
+  const features = cards.map((card) => `<a class="mono" href="${escapeHtml(actions.base)}/cards/${card.id}">C${card.id}</a> ${escapeHtml(card.title)}`).join(", ");
+  return `<p class="test-origin small">${features ? `<span class="muted">Feature</span> ${features} · ` : ""}<a href="${escapeHtml(actions.base)}/sprint/stories/${story.number}">The story's steps</a></p>`;
+}
+
 function storyCard(story: Story, actions: CardActions): string {
   return `<article class="test-story" id="story-${story.number}">
       <h4><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)}</h4>
+      ${storyOrigin(story, actions)}
       ${isRework(story, actions) ? `<p><span class="pill warn">Back in development</span> <span class="muted small">Feedbacks from testing: its code takes them into account, then it is tested again.</span></p>` : ""}
       ${criteriaList(story, actions)}
       ${feedbackList(story, actions)}

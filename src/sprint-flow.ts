@@ -5,7 +5,7 @@ import { isNice, storyCards, type StoryCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { listCards, moveCard, type Card } from "./cards";
 import type { Env } from "./env";
-import { isFinished } from "./lifecycle";
+import { isFinished, isInDevelopment, isToTest } from "./lifecycle";
 import type { Project } from "./projects";
 import { activeSprint, type Sprint } from "./sprints";
 
@@ -124,4 +124,50 @@ export async function closeSprint(env: Env, project: Project, sprint: Sprint, lo
   }
   await endWith(env, project, sprint, login, "closed", newest);
   return newest;
+}
+
+// Reality first (la-fabrique#205): while a sprint runs, a card whose story
+// is being developed or tested is in the sprint, even if nobody put it
+// there: the work says where the card is. It joins the Sprint lane, with
+// the reason in the card's history; a card already out (a shipped version)
+// or on int under its own version keeps its lane, and so does a dropped or
+// archived card. The cards given are updated in place; the joined ones are
+// returned with the stories that brought them.
+export interface Joined {
+  card: Card;
+  stories: number[];
+}
+
+export async function joinSprint(
+  env: Env,
+  project: Project,
+  cards: Card[],
+  releases: Map<string, BoardRelease>,
+  links?: StoryCards,
+): Promise<Joined[]> {
+  const sprint = await activeSprint(env.DB, project.repo);
+  if (!sprint || sprint.release !== SPRINT_LANE) return [];
+  const storyLinks = links ?? (await storyCards(env.DB, project.repo));
+  const outside = (card: Card) => {
+    if (card.archivedAt || card.status === "dropped" || card.release === SPRINT_LANE) return false;
+    const release = card.release ? releases.get(card.release) : undefined;
+    return !release || release.version === NEXT_RELEASE || release.state === "planned";
+  };
+  const candidates = cards.filter((card) => outside(card) && (storyLinks.order.get(card.id) ?? []).length);
+  if (!candidates.length) return [];
+  const stories = await cardStories(env, project, [...new Set(candidates.flatMap((card) => storyLinks.order.get(card.id) ?? []))]);
+  const working = (number: number) => {
+    const story = stories.get(number);
+    return isInDevelopment(story) || isToTest(story);
+  };
+  const joined: Joined[] = [];
+  for (const card of candidates) {
+    const mine = (storyLinks.order.get(card.id) ?? []).filter(working);
+    if (!mine.length) continue;
+    const why = mine.map((number) => `#${number} ${isToTest(stories.get(number)) ? "to test" : "in development"}`).join(", ");
+    const moved = await moveCard(env.DB, card, "la-fabrique", { set: { release: SPRINT_LANE }, before: null, after: null }, NO_VALUES, `joined the sprint: ${why}`);
+    Object.assign(card, moved);
+    joined.push({ card, stories: mine });
+  }
+  return joined;
 }
