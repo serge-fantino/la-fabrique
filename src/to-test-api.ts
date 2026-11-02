@@ -1,3 +1,4 @@
+import { relayFacts } from "./relay";
 import { storyCards } from "./card-groups";
 import type { Env } from "./env";
 import { json } from "./http";
@@ -47,7 +48,8 @@ async function allowed(request: Request, env: Env, props: GrantProps, projectPar
   // Never in production: only an environment the project opens to testing
   // (not of the production type); asked by name, or any of them.
   const environments = await reportingEnvironments(env, project);
-  const asked = new URL(request.url).searchParams.get("environment");
+  // Asked by the query, or said by the relay (protocol 2, la-fabrique#195).
+  const asked = new URL(request.url).searchParams.get("environment") ?? relayFacts(request).environment;
   if (asked ? !environments[asked] : Object.keys(environments).length === 0) {
     return refuse(403, "testing_disabled", asked ? `Testing is off on ${asked}.` : "This project has no environment to test on.");
   }

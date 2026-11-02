@@ -131,10 +131,10 @@ const REPORT = {
   errors: ["TypeError: x is undefined"],
 };
 
-function report(accessToken: string, body: unknown, project = "widget"): Promise<Response> {
+function report(accessToken: string, body: unknown, project = "widget", extra: Record<string, string> = {}): Promise<Response> {
   return SELF.fetch(`${BASE}/api/projects/${project}/defects`, {
     method: "POST",
-    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json", ...extra },
     body: JSON.stringify(body),
   });
 }
@@ -147,7 +147,8 @@ describe("Reporting a defect from the project's app", () => {
     const sent = mockGitHub();
     mockStoryComment(sent);
 
-    const response = await report(tokens.access_token, { ...REPORT, screenshot: PNG });
+    // The relay's headers (protocol 2), URI-encoded, win over the body's version.
+    const response = await report(tokens.access_token, { ...REPORT, version: "pirate", screenshot: PNG }, "widget", { "x-fabrique-version": encodeURIComponent("1.169–int") });
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       issue: { number: 150, url: `https://github.com/${REPO}/issues/150` },
@@ -203,6 +204,20 @@ describe("Reporting a defect from the project's app", () => {
     expect(await production.json()).toMatchObject({ error: "reporting_disabled" });
     const local = await report(tokens.access_token, { ...REPORT, environment: "local" });
     expect(local.status).toBe(403);
+  });
+
+  it("takes the environment, version and deployment from the relay's headers over the body's (protocol 2, la-fabrique#195)", async () => {
+    const { tokens } = await connect();
+    // The body says production; the relay's header says int, and wins.
+    const relayed = { "x-fabrique-environment": "production" };
+    const refused = await report(tokens.access_token, { ...REPORT, environment: "int" }, "widget", relayed);
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ error: "reporting_disabled" });
+    // Without environment in the body, the header is enough to be valid.
+    const { environment: _left, ...withoutEnvironment } = REPORT;
+    const local = await report(tokens.access_token, withoutEnvironment, "widget", { "x-fabrique-environment": "local", "x-fabrique-version": encodeURIComponent("1.171–int") });
+    expect(local.status).toBe(403);
+    expect(await local.json()).toMatchObject({ error: "reporting_disabled", message: "Reporting is off on local." });
   });
 
   it("refuses when the environment does not answer the same environnement", async () => {

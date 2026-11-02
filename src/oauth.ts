@@ -108,13 +108,13 @@ function consentPage(
         <p class="eyebrow">Connect an app</p>
         <h1>${escapeHtml(appName)}</h1>
         <p class="lead"><strong>${escapeHtml(appName)}</strong> will be able to report defects in your name on <strong>${escapeHtml(projectLabel)}</strong>${
-          scopes.includes(TEST_SCOPE) ? " and show you the stories to test" : ""
+          scopes.includes(TEST_SCOPE) ? " and test its stories with you" : ""
         }.</p>
         <ul class="consent-list">
           <li>Each report becomes an issue of <a href="https://github.com/${escapeHtml(project.repo)}">${escapeHtml(project.repo)}</a>, signed with your GitHub login.</li>${
             scopes.includes(TEST_SCOPE)
               ? `
-          <li>It can read the stories of ${escapeHtml(projectLabel)} that wait to be tested on int, with their acceptance criteria and who validated them (<code>${TEST_SCOPE}</code>), if your role lets you validate. Read only: it cannot tick a criterion or validate.</li>`
+          <li>It can show you the stories of ${escapeHtml(projectLabel)} that wait to be tested on int, with their acceptance criteria and who validated them, and, in your name, tick a criterion, validate a story and keep the steps you choose to record (<code>${TEST_SCOPE}</code>), if your role lets you validate. Never in production.</li>`
               : ""
           }
           <li>It never gets a GitHub token, and cannot read or change anything else.</li>

@@ -1,3 +1,4 @@
+import { relayFacts } from "./relay";
 import { effectiveRole } from "./accounts";
 import { DEFECT_LABEL, defectTargets, isKnownStory, storiesOnIntOf } from "./defect-targets";
 import { activityStatement } from "./activity-log";
@@ -339,6 +340,15 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
     data = JSON.parse(body);
   } catch {
     return failure(400, "invalid", "The report is not JSON.", { fields: ["body"] });
+  }
+  // The relay's headers (protocol 2) say the environment, the version and
+  // the deployment: they win over the body's.
+  const facts = relayFacts(request);
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const body = data as Record<string, unknown>;
+    if (facts.environment) body["environment"] = facts.environment;
+    if (facts.version) body["version"] = facts.version;
+    if (facts.deployment) body["deployment"] = facts.deployment;
   }
   const read = readReport(data);
   if ("invalid" in read) return failure(400, "invalid", `Missing or invalid: ${read.invalid.join(", ")}.`, { fields: read.invalid });
