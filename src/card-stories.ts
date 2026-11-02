@@ -19,6 +19,10 @@ export interface CardStory {
   pulls: LinkedPull[];
   // Validated on int (or in production without integration): by whom, when.
   validated?: { by: string; at: string } | null;
+  // Back in development after feedbacks from testing (la-fabrique#201,
+  // #202), and how many feedbacks it has.
+  rework?: boolean;
+  feedbacks?: number;
 }
 
 export async function cardStories(env: Env, project: Project, numbers: number[], maxAgeMs?: number): Promise<Map<number, CardStory>> {
@@ -39,6 +43,8 @@ export async function cardStories(env: Env, project: Project, numbers: number[],
       missing: missingForReady(story, rules),
       pulls: story.pullRequests,
       validated: checks.get(story.number)?.validated ?? null,
+      rework: story.state === "open" && story.labels.includes(rules.reworkLabel),
+      feedbacks: checks.get(story.number)?.feedbacks?.length ?? 0,
     });
   }
   return found;

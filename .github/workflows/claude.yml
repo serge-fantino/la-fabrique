@@ -12,7 +12,7 @@
 #   the pull request it creates start the CI, which the GITHUB_TOKEN would not.
 name: Claude
 # The issue number in the run's name: La Fabrique finds the run of each story by it.
-run-name: "Claude #${{ inputs.issue }}${{ inputs.pr && format(' · update #{0}', inputs.pr) || '' }}"
+run-name: "Claude #${{ inputs.issue }}${{ inputs.pr && format(' · update #{0}', inputs.pr) || '' }}${{ inputs.rework == 'true' && ' · rework' || '' }}"
 
 on:
   workflow_dispatch:
@@ -25,6 +25,9 @@ on:
         required: false
       pr:
         description: "A pull request of this story to bring up to date (number); empty: work on the story"
+        required: false
+      rework:
+        description: "true: the story was tested and has feedbacks; change its code to take them into account (new branch, new pull request)"
         required: false
 
 concurrency:
@@ -80,6 +83,8 @@ jobs:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
           ISSUE: ${{ inputs.issue }}
           PR: ${{ inputs.pr }}
+          REWORK: ${{ inputs.rework }}
+          RUN: ${{ github.run_number }}
         run: |
           if [ -n "$PR" ]; then
             branch=$(gh pr view "$PR" --json headRefName,state --jq 'select(.state == "OPEN") | .headRefName')
@@ -91,6 +96,8 @@ jobs:
             data=$(gh issue view "$ISSUE" --json id,title)
             slug=$(jq -r .title <<<"$data" | iconv -f utf-8 -t ascii//TRANSLIT | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//' | cut -c1-40 | sed -E 's/-+$//')
             branch="claude/$ISSUE-${slug:-story}"
+            # A rework after feedbacks: a new branch of the same story, from main as it is now.
+            [ "$REWORK" = "true" ] && branch="claude/$ISSUE-rework-$RUN"
             if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
               gh api graphql \
                 -f query='mutation($issue: ID!, $oid: GitObjectID!, $name: String!) { createLinkedBranch(input: { issueId: $issue, oid: $oid, name: $name }) { linkedBranch { id } } }' \
@@ -118,9 +125,9 @@ jobs:
             ${{ inputs.pr && format('main is merged into it; files left in conflict: {0}.', env.CONFLICTS) || '' }}
             1. Read the story with its comments: `gh issue view ${{ inputs.issue }} --comments`${{ inputs.pr && format(', and the pull request with its reviews: `gh pr view {0} --comments`', inputs.pr) || '' }}. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
             2. Follow CLAUDE.md (principles, security, conventions, design).
-            3. ${{ inputs.pr && 'Resolve the conflicts keeping both sides'' intent (finish the merge with `git commit --no-edit`), and answer what the reviews still ask.' || 'Do the work.' }}
+            3. ${{ inputs.pr && 'Resolve the conflicts keeping both sides'' intent (finish the merge with `git commit --no-edit`), and answer what the reviews still ask.' || inputs.rework == 'true' && 'This story was already developed and merged, then tested: its comments that start with **Test feedback** say what fails (a criterion, what the tester saw, a screenshot). Change the code so that each feedback is addressed, without undoing what works; this is the same story, not a new one.' || 'Do the work.' }}
             4. Check: `npm run typecheck`, `npm test`; add tests for what you change.
             5. Release notes: if anything visible changes, this branch has one entry at the top of docs/release-notes.json with `"version": "next"`, today's date and no `heure`, in English, `"stories": [${{ inputs.issue }}]`. Never write a version number or a time: the merge workflow numbers and dates it when it merges, after main's newest.
-            6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it, then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}
+            6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it (for a rework: each test feedback and how it is addressed), then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}
             7. Comment on the issue: the pull request, what is done, what is left or what made you hesitate.
             Never push to main; touch neither secrets nor workflows.

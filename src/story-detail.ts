@@ -13,9 +13,10 @@ import type { Project } from "./projects";
 import { lastMergeAttempts, pullDetails, type MergeAttempt, type PullDetail } from "./sprint-pulls";
 import { loadStories, type Story } from "./stories";
 import { canValidate } from "./validation";
+import { canLaunchClaude } from "./claude";
 import { storyStatus } from "./stories-views";
 import { projectUrl } from "./urls";
-import { escapeHtml, formatDate, layout, type Viewer } from "./views";
+import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
 // A story's detail, from the sprint (la-fabrique#113): where it stands, step
 // by step (ready, Claude, pull request, online, tested, in production), its
@@ -124,6 +125,26 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
   const state = detail.state;
   const title = detail.story?.title ?? state?.title ?? `Story #${detail.number}`;
   const criteria = state?.criteria ?? [];
+  // Feedbacks from testing (la-fabrique#201), from the log; reworked with
+  // Claude by a person's choice (#202).
+  const feedbacks = detail.history.filter((entry) => entry.action === "story_feedback" && entry.issue === detail.number).reverse();
+  const reworkButton =
+    state?.rework && canLaunchClaude(viewer.role) && !(state.pulls ?? []).some((pull) => pull.state === "open")
+      ? `<form method="post" action="${escapeHtml(base)}/sprint" class="inline" data-busy="Launching…">${csrfField(viewer)}<input type="hidden" name="action" value="rework" /><input type="hidden" name="story" value="${detail.number}" /><button type="submit" class="button small claude">Rework with Claude</button></form>`
+      : "";
+  const feedbackSection = feedbacks.length
+    ? `<h2 id="feedbacks">Feedbacks from testing <span class="muted mono">${feedbacks.length}</span></h2>
+        ${state?.rework ? `<p><span class="pill warn">Back in development</span> <span class="muted small">Its code takes these feedbacks into account, then it is tested again.</span> ${reworkButton}</p>` : ""}
+        <ul class="feedback-list">${feedbacks
+          .map((entry) => {
+            const d = entry.details;
+            const text = (key: string) => (typeof d[key] === "string" ? escapeHtml(String(d[key])) : "");
+            return `<li><span class="mono small">${escapeHtml(entry.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(entry.actor)}${
+              d["criterion_text"] ? ` · criterion “${text("criterion_text")}”` : ""
+            }: ${text("text")}${typeof d["comment"] === "string" && String(d["comment"]).startsWith("https://github.com/") ? ` <a href="${escapeHtml(String(d["comment"]))}">On GitHub</a>` : ""}</li>`;
+          })
+          .join("")}</ul>`
+    : "";
   const timeline = steps(detail, project)
     .map(
       (step) =>
@@ -170,6 +191,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
             ? `<ul class="criteria">${criteria.map((criterion) => `<li class="${criterion.done ? "done" : ""}"><span class="box" aria-hidden="true">${criterion.done ? "✓" : ""}</span> ${escapeHtml(criterion.text)}</li>`).join("")}</ul>`
             : `<p class="muted">No acceptance criteria written.</p>`
         }
+        ${feedbackSection}
         ${
           feature.pull
             ? `<p class="notice ok" role="status">Proposed to the project: <a href="https://github.com/${escapeHtml(project.repo)}/pull/${feature.pull}">pull request #${feature.pull}</a>.</p>`

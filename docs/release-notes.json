@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-02",
+    "titre": "Rework a story with its test feedbacks",
+    "changements": [
+      "A story back in development after feedbacks says so in the sprint (Back in development, with its feedbacks) and on its page, where the feedbacks are listed; nothing starts by itself.",
+      "Rework with Claude (tech lead and above) launches the project's Claude workflow on the same story with rework: a new branch of the story, the feedbacks to take into account, a pull request that refers to the story.",
+      "When that pull request is merged, the rework label goes, the story is to test again, and its issue says so. The sprint running by itself stops at a story with feedbacks instead of launching it."
+    ],
+    "stories": [202],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-02",
     "titre": "Testing from the app, the next round: a discreet launcher, a floating panel, a criterion that fails",
     "changements": [
       "Report kit 1.7.0: one small round La Fabrique button in the app instead of two pills; a tap unfolds Report a defect and Test; drag it anywhere, it stays there.",
