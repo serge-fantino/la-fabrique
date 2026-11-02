@@ -67,8 +67,8 @@ async function seed(): Promise<void> {
 
 const SCOPES = "defects:report stories:test";
 
-function call(accessToken: string, query = ""): Promise<Response> {
-  return SELF.fetch(`${BASE}/api/projects/widget/to-test${query}`, { headers: { authorization: `Bearer ${accessToken}` } });
+function call(accessToken: string, query = "", extra: Record<string, string> = {}): Promise<Response> {
+  return SELF.fetch(`${BASE}/api/projects/widget/to-test${query}`, { headers: { authorization: `Bearer ${accessToken}`, ...extra } });
 }
 
 describe("The stories to test, for the project's app", () => {
@@ -127,6 +127,9 @@ describe("The stories to test, for the project's app", () => {
     expect((await call(tokens.access_token, "?environment=production")).status).toBe(403);
     expect((await call(tokens.access_token, "?environment=nowhere")).status).toBe(403);
     expect((await call(tokens.access_token, "?environment=int")).status).toBe(200);
+    // Said by the relay's header (protocol 2, la-fabrique#195).
+    expect((await call(tokens.access_token, "", { "x-fabrique-environment": "production" })).status).toBe(403);
+    expect((await call(tokens.access_token, "", { "x-fabrique-environment": "int" })).status).toBe(200);
     const onlyProduction = { ...CONFIG, environnements: { production: { url: "https://widget.example.com", version: "/api/version", type: "production" } } };
     await env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify(onlyProduction), REPO).run();
     expect((await call(tokens.access_token)).status).toBe(403);

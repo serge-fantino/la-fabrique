@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.5.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.6.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,12 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.5.0";
+  var VERSION = "1.6.0";
+  // The relay's protocol: 1, a route per call (?targets=1, ?to-test=…); 2, a
+  // generic relay that passes ?path={path} to La Fabrique's project API (said
+  // by the relay's GET: "relay": 2). Until the relay has said, protocol 1.
+  var relayProtocol = 1;
+  var relaySaid = false;
   var QUEUE_KEY = "fabrique-report-queue";
   var MAX_IMAGE_BYTES = 2 * 1024 * 1024;
   var PREFIX = "fab-rep";
@@ -512,12 +517,27 @@
     });
   }
 
+  // The relay's address for a call: protocol 2, ?path={path} (La Fabrique's
+  // /api/projects/{project}/{path}); protocol 1, the call's own query.
+  // Before the first call of a page, ask the relay which protocol it speaks.
+  function relayKnown() {
+    return relaySaid || !options.endpoint ? Promise.resolve() : status();
+  }
+
+  function relayAddress(path, legacy) {
+    var join = options.endpoint.indexOf("?") >= 0 ? "&" : "?";
+    if (relayProtocol >= 2) return options.endpoint + join + "path=" + path;
+    return legacy ? options.endpoint + join + legacy : options.endpoint;
+  }
+
   // --- The stories to test ----------------------------------------------------
   // The relay answers GET {endpoint}?to-test=1 with La Fabrique's
   // GET /api/projects/{project}/to-test; read only.
   function loadStoriesToTest() {
-    var address = options.endpoint + (options.endpoint.indexOf("?") >= 0 ? "&" : "?") + "to-test=1";
-    return fetch(address, { credentials: "same-origin", headers: headers({ accept: "application/json" }) })
+    return relayKnown()
+      .then(function () {
+        return fetch(relayAddress("to-test", "to-test=1"), { credentials: "same-origin", headers: headers({ accept: "application/json" }) });
+      })
       .then(function (response) {
         return response.ok ? response.json() : null;
       })
@@ -531,15 +551,18 @@
 
   // The relay answers POST {endpoint}?to-test={story}/criteria with {index, done}
   // and POST ?to-test={story}/validate with La Fabrique's
-  // POST /api/projects/{project}/to-test/{story}/criteria and /validate.
+  // POST /api/projects/{project}/to-test/{story}/criteria and /validate
+  // (protocol 2: ?path=to-test/{story}/criteria and /validate).
   function actOnStory(story, action, body) {
-    var address = options.endpoint + (options.endpoint.indexOf("?") >= 0 ? "&" : "?") + "to-test=" + story + "/" + action;
-    return fetch(address, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: headers({ "content-type": "application/json", accept: "application/json" }),
-      body: JSON.stringify(body || {}),
-    })
+    return relayKnown()
+      .then(function () {
+        return fetch(relayAddress("to-test/" + story + "/" + action, "to-test=" + story + "/" + action), {
+          method: "POST",
+          credentials: "same-origin",
+          headers: headers({ "content-type": "application/json", accept: "application/json" }),
+          body: JSON.stringify(body || {}),
+        });
+      })
       .then(function (response) {
         return response
           .json()
@@ -877,8 +900,10 @@
   // versions on int, then those released, each with its stories.
   function loadTargets() {
     if (!options.endpoint) return Promise.resolve(null);
-    var address = options.endpoint + (options.endpoint.indexOf("?") >= 0 ? "&" : "?") + "targets=1";
-    return fetch(address, { credentials: "same-origin", headers: headers({ accept: "application/json" }) })
+    return relayKnown()
+      .then(function () {
+        return fetch(relayAddress("targets", "targets=1"), { credentials: "same-origin", headers: headers({ accept: "application/json" }) });
+      })
       .then(function (response) {
         return response.ok ? response.json() : null;
       })
@@ -1211,12 +1236,15 @@
   }
 
   // --- Sending ------------------------------------------------------------------
+  // A relay of protocol 2 also takes a POST without a path as a defect.
   function post(body) {
-    return fetch(options.endpoint, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: headers({ "content-type": "application/json", accept: "application/json" }),
-      body: JSON.stringify(body),
+    return relayKnown().then(function () {
+      return fetch(relayAddress("defects", null), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: headers({ "content-type": "application/json", accept: "application/json" }),
+        body: JSON.stringify(body),
+      });
     });
   }
 
@@ -1319,6 +1347,13 @@
       })
       .then(function (data) {
         linkUrl = data.link_url || null;
+        relaySaid = true;
+        // Protocol 2: the relay passes La Fabrique's `can` (GET /api/me).
+        relayProtocol = Number(data.relay) >= 2 ? 2 : 1;
+        if (data.can && typeof data.can === "object") {
+          if (data.can_report === undefined) data.can_report = Boolean(data.can.report_defect);
+          if (data.can_test === undefined) data.can_test = Boolean(data.can.test_stories);
+        }
         return data;
       })
       .catch(function () {

@@ -26,6 +26,11 @@ export const KIT_SOURCES: Record<string, string> = {
 // What a project's relay must do for each version, beyond copying the files.
 export const KIT_CHANGES: { version: string; relay: string | null }[] = [
   {
+    version: "1.6.0",
+    relay:
+      "Nothing to change: the kit still speaks to the relay as before. The relay can now be generic, written once (protocol 2, docs/report-kit.md): it answers \"relay\": 2 in its GET, then passes any `?path={path}` to La Fabrique's `/api/projects/{project}/{path}` with the person's token and the headers X-Fabrique-Environment, X-Fabrique-Version and X-Fabrique-Deployment; no new route for the next kit versions.",
+  },
+  {
     version: "1.5.0",
     relay:
       "The relay passes `steps` (a list) on `POST ?to-test={story}/criteria` to La Fabrique's criteria call, as it comes.",

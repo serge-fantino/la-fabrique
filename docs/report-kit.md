@@ -5,7 +5,7 @@ A **Report a defect** button for a project's own app. The person picks the part 
 The kit has two halves:
 
 - **In the browser**: three files you copy into your app and serve yourself, with no dependency. They talk only to your own server, never to La Fabrique, and hold no token. A strict security policy (`script-src 'self'`, `connect-src 'self'`) is enough.
-- **On your server**: a small relay with two routes. It keeps the person's La Fabrique token, adds what only the server knows (environment, version) and forwards the report to La Fabrique.
+- **On your server**: a small relay, written once (protocol 2). It keeps the person's La Fabrique token, adds what only the server knows (environment, version, deployment) and passes each call of the kit to La Fabrique.
 
 ## 1. Copy the files
 
@@ -63,6 +63,64 @@ Picking: the person touches or clicks a part; **Wider** goes to the enclosing pa
 Styles: change `--fab-rep-ink`, `--fab-rep-paper`, `--fab-rep-muted`, `--fab-rep-line`, `--fab-rep-accent`, `--fab-rep-radius`, `--fab-rep-font`, and `--fab-rep-bottom` (to stay above a bottom bar), on `.fab-rep`.
 
 ## 3. The relay on your server
+
+**Write the generic relay (protocol 2, kit 1.6.0 and later, la-fabrique#195).** Written once, it passes every call of the kit to La Fabrique, so a new kit version is only an update of the files from *Setup*: no new route. The former relay, a route per call (protocol 1, described after it), still works.
+
+### The generic relay (protocol 2)
+
+One address (the kit's `endpoint`), for a signed-in person of your app, outside production only.
+
+**`GET {endpoint}`**: what the person can do, from La Fabrique's `GET {FABRIQUE_URL}/api/me` with the person's token.
+
+```json
+{ "relay": 2, "linked": true, "login": "octocat", "link_url": "/auth/fabrique/link",
+  "can": { "report_defect": true, "test_stories": true } }
+```
+
+`"relay": 2` tells the kit to speak protocol 2; `can` is `/api/me`'s `can`, passed as it comes (the kit reads `report_defect` and `test_stories`; `can_report` and `can_test` may be given too). Not linked: `{ "relay": 2, "linked": false, "link_url": "…" }`.
+
+**`GET` or `POST {endpoint}?path={path}`**: passed to `{FABRIQUE_URL}/api/projects/{project}/{path}`, where `{project}` is your project, never the kit's choice:
+
+1. `path` is lowercase words separated by `/`: `^[a-z0-9-]+(/[a-z0-9-]+)*$`, at most 200 characters (no `..`, no query, no other project); anything else is refused (`400`);
+2. only `GET` and `POST`; a `POST` body is passed as it comes, up to 3 MB (a screenshot); a `POST` without `path` is a defect (`path=defects`), so a report kept offline by an older kit still arrives;
+3. the relay adds the person's access token (`authorization: Bearer …`, renewed with the refresh token when it expires) and three headers only it can say, which La Fabrique trusts over the body: `X-Fabrique-Environment` (the name of this environment in `.fabrique.json`, which its version path answers), `X-Fabrique-Version` and `X-Fabrique-Deployment`;
+4. it answers La Fabrique's status and body as they come; on `401`, the link is no longer valid: forget it (the next `GET` answers `linked: false`);
+5. in production, it answers `403 { "error": "reporting_disabled" }` without calling La Fabrique.
+
+What the kit calls today, for reference (La Fabrique checks the scopes, the role and the environment of each): `targets` (`GET`, what a report can be about), `defects` (`POST`, a report), `to-test` (`GET`, the stories to test), `to-test/{story}/criteria` and `to-test/{story}/validate` (`POST`). A later kit may call more paths of the same API: the relay does not change.
+
+A generic relay for a Cloudflare Worker, where `link` is what your app keeps of the person's link (tokens on the server only):
+
+```ts
+const PATH = /^[a-z0-9-]+(\/[a-z0-9-]+)*$/;
+
+async function relay(request: Request, env: Env, link: { access: string } | null, project: string): Promise<Response> {
+  if (env.ENVIRONMENT === "production") return Response.json({ error: "reporting_disabled" }, { status: 403 });
+  const path = new URL(request.url).searchParams.get("path") ?? (request.method === "POST" ? "defects" : null);
+  if (request.method === "GET" && path === null) return status(env, link); // { relay: 2, linked, login, link_url, can }
+  if (!link) return Response.json({ error: "not_linked" }, { status: 401 });
+  if (!path || path.length > 200 || !PATH.test(path) || !["GET", "POST"].includes(request.method)) {
+    return Response.json({ error: "invalid" }, { status: 400 });
+  }
+  const response = await fetch(`${env.FABRIQUE_URL}/api/projects/${project}/${path}`, {
+    method: request.method,
+    headers: {
+      authorization: `Bearer ${link.access}`,
+      "content-type": "application/json",
+      "x-fabrique-environment": env.ENVIRONMENT, // e.g. "int"
+      "x-fabrique-version": await currentVersion(env),
+      "x-fabrique-deployment": env.CF_VERSION_METADATA?.id ?? "",
+    },
+    body: request.method === "POST" ? await request.text() : undefined,
+  });
+  if (response.status === 401) await forgetLink(env, link);
+  return new Response(response.body, { status: response.status, headers: { "content-type": "application/json" } });
+}
+```
+
+### The relay route by route (protocol 1)
+
+Before kit 1.6.0, a relay answers each call on its own route. It keeps working with kit 1.6.0 and later (the kit speaks protocol 1 when the relay's `GET` does not say `"relay": 2`), but each new kit version may ask it for a new route.
 
 Two routes at the address you chose, for a signed-in person of your app, outside production only.
 
