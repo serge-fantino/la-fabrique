@@ -531,6 +531,7 @@ export async function showToTest(
       canValidate: canValidate(viewer.role),
       checks: await storyChecks(env.DB, project.repo),
       scenarios: await recordedByStory(env.DB, project.repo),
+      cards: await storyCards(env.DB, project.repo),
     },
   });
   return html(part ? content : toTestPage(viewer, view, content), { cookies, status: failed?.status ?? 200 });

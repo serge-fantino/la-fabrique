@@ -125,7 +125,7 @@ describe("The report kit", () => {
     expect(script.headers.get("content-type")).toContain("javascript");
     expect(script.headers.get("access-control-allow-origin")).toBe("*");
     const body = await script.text();
-    expect(body).toContain("FabriqueReport 1.7.0");
+    expect(body).toContain("FabriqueReport 1.8.0");
     expect(body).toContain("to-test=1");
     expect(body).toContain("can_test");
     expect(body).not.toMatch(/\beval\(|new Function\(/);

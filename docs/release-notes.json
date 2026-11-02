@@ -2,6 +2,19 @@
   {
     "version": "next",
     "date": "2026-11-02",
+    "titre": "Reality first: the sprint shows what is being worked on",
+    "changements": [
+      "While a sprint runs, a card whose story is being developed, back in development after feedbacks, or tested joins the sprint by itself, wherever it was placed (Next release, not set); the sprint says so once, and the card's history keeps the reason. A card already out, carrying its own version, dropped or archived stays where it is.",
+      "To test says each story's feature, with a link to the card and to the story's steps; in an app's test panel, the feature is a link to the card in La Fabrique.",
+      "The board's search finds a card by one of its stories: #170 (or 170). The MCP's board takes a story too.",
+      "Report kit 1.8.0: the test panel stays open from one page of the app to the next, at the same story, with the feedback being written; closed, it stays closed."
+    ],
+    "stories": [205, 206, 207],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-02",
     "titre": "Rework a story with its test feedbacks",
     "changements": [
       "A story back in development after feedbacks says so in the sprint (Back in development, with its feedbacks) and on its page, where the feedbacks are listed; nothing starts by itself.",

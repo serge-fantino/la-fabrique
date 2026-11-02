@@ -12,7 +12,7 @@ import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
-import { closeSprint, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
+import { closeSprint, joinSprint, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
@@ -108,13 +108,16 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
     cardSpends(env.DB, project.repo),
     workingCards(env.DB, project.repo),
   ]);
-  const [{ known, releases }, progress] = await Promise.all([knownValues(env, project, cards), cardProgress(env, project, cards)]);
+  const { known, releases } = await knownValues(env, project, cards);
+  // Reality first (la-fabrique#205): a card being worked on is in the sprint.
+  await joinSprint(env, project, cards, releases);
+  const progress = await cardProgress(env, project, cards);
   const notice = url.searchParams.get("notice");
   // A release that could not be planned: why, worked out again.
   const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
   return html(
     boardPage(viewer, view, {
-      cards: filterCards(cards, board.filters),
+      cards: filterCards(cards, board.filters, (await storyCards(env.DB, project.repo)).order),
       total: cards.filter((card) => !card.archivedAt).length,
       known,
       board,
@@ -739,10 +742,19 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
   return showSprint(request, env, viewer, project);
 }
 
+// The cards that joined the sprint by their work, said once (la-fabrique#205).
+function joinedNotice(joined: Joined[]): string | undefined {
+  if (!joined.length) return undefined;
+  const one = (entry: Joined) => `${cardRef(entry.card.id)} (${entry.stories.map((number) => `#${number}`).join(", ")})`;
+  return `${joined.map(one).join(", ")} joined the sprint: ${joined.length === 1 ? "a story of it is" : "their stories are"} being developed or tested. The work says where a card is.`;
+}
+
 async function showSprint(request: Request, env: Env, viewer: Viewer, project: Project, refused?: string, status = 200): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const cards = await listCards(env.DB, project.repo);
   const { releases } = await knownValues(env, project, cards);
+  // Reality first (la-fabrique#205): a card being worked on is in the sprint.
+  const joined = await joinSprint(env, project, cards, releases);
   const [sprint, latest, links, { view, cookies }, launches, runs] = await Promise.all([
     activeSprint(env.DB, project.repo),
     latestSprint(env.DB, project.repo),
@@ -820,7 +832,8 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       },
       ...(sprint ? {} : { versions: await sprintVersions(env, project) }),
       notice:
-        params.get("notice") === "versioned"
+        joinedNotice(joined) ??
+        (params.get("notice") === "versioned"
           ? "The sprint's version is saved: it is the release the sprint makes when it closes."
           : params.get("notice") === "run_started"
           ? "The sprint is running by itself: each card's stories one after another, up to testing. Pause or stop it at any time."
@@ -834,7 +847,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
             ? `Pull request #${Number(params.get("pull"))} is being merged by the project's workflow: it numbers and dates the release notes, checks again, then merges.`
             : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))
             ? `Claude is bringing pull request #${Number(params.get("pull"))} up to date: it merges the base branch, resolves the conflicts and pushes to the same branch.`
-            : SPRINT_NOTICES[params.get("notice") ?? ""],
+            : SPRINT_NOTICES[params.get("notice") ?? ""]),
       failure:
         refused ??
         (failure === "running" ? "A sprint is in progress: close or stop it first." : failure === "empty" ? "Next release has no card: place the cards of the next sprint in it first." : undefined),

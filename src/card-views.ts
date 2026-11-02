@@ -181,7 +181,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
         </label>
         ${free}
         <label>Text
-          <input type="search" name="q" value="${escapeHtml(filters.q)}" placeholder="Words, C12" />
+          <input type="search" name="q" value="${escapeHtml(filters.q)}" placeholder="Words, C12, #170" />
         </label>
         <label class="check"><input type="checkbox" name="all" value="1"${filters.all ? " checked" : ""} data-autosubmit /> Dropped and archived</label>
         ${active ? `<a class="board-clear" href="${escapeHtml(base)}/board?by=${board.by}${board.then === "none" ? "" : `&amp;then=${board.then}`}${board.hideEmpty ? "&amp;empty=hide" : ""}">Clear the filters</a>` : ""}

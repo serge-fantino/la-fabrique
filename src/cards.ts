@@ -854,7 +854,9 @@ export function readBoardQuery(params: URLSearchParams): BoardQuery {
   };
 }
 
-export function filterCards(cards: Card[], filters: BoardFilters): Card[] {
+// `storiesOf`: each card's stories, so "#170" (or "170") finds the cards of
+// story 170 (la-fabrique#206).
+export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>): Card[] {
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean);
   return cards.filter((card) => {
     if (!filters.all && (card.archivedAt || (card.status === "dropped" && filters.status !== "dropped"))) return false;
@@ -867,7 +869,9 @@ export function filterCards(cards: Card[], filters: BoardFilters): Card[] {
     }
     if (words.length) {
       const text = `${card.title} ${card.body} C${card.id}`.toLowerCase();
-      if (!words.every((word) => text.includes(word))) return false;
+      const stories = storiesOf?.get(card.id) ?? [];
+      const story = (word: string) => /^#?\d+$/.test(word) && stories.includes(Number(word.replace("#", "")));
+      if (!words.every((word) => story(word) || text.includes(word))) return false;
     }
     return true;
   });
