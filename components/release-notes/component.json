@@ -1,0 +1,25 @@
+{
+  "id": "release-notes",
+  "nom": "Release notes and What's new",
+  "nature": "produit",
+  "version": "1.0.0",
+  "resume": "One file of release notes, versioned with the code: each change written in its pull request without a number, numbered and dated when it is merged or released, with the stories it ships; shown to the users as « What's new ».",
+  "apporte": [
+    "A release-notes file in the repository, one entry per version: number, date and time, title, changes, stories",
+    "Entries written in each pull request as « next », without number nor time: no conflict between pull requests",
+    "The number and the time given at the merge, or at the release that groups the « next » entries",
+    "A « What's new » page, newest first, each story linked to its issue",
+    "Checks that refuse an entry without its stories, or a « next » entry on the production branch"
+  ],
+  "demande": [
+    { "type": "file", "description": "The release-notes file declared in .fabrique.json (version.fichier) and the form of its numbers (version.forme)" },
+    { "type": "workflow", "description": "A merge workflow that numbers the entries of the pull request (workflows.fusionner), and a release workflow for a project without integration branch (workflows.publier)" },
+    { "type": "check", "description": "The project's tests or CI run the check on each pull request" }
+  ],
+  "dependances": [],
+  "implementations": [
+    { "stack": { "langage": "typescript", "outil": "node", "hebergement": "cloudflare-workers" }, "chemin": "/scripts" }
+  ],
+  "donnees_personnelles": null,
+  "origine": null
+}

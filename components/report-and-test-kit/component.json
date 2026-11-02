@@ -1,0 +1,27 @@
+{
+  "id": "report-and-test-kit",
+  "nom": "Report a defect and test from the app",
+  "nature": "produit",
+  "version": "1.6.0",
+  "resume": "A button in the project's own app to report a defect on the part of the page that is wrong, and a panel to test the stories waiting on int: tick their criteria, record the steps, validate. Everything goes to La Fabrique through the project's server, never from the browser.",
+  "apporte": [
+    "A « Report a defect » flow: pick the part of the page, two lines, an optional screenshot; the issue is opened in the person's name, with page, version, component, screen, browser and recent errors",
+    "« What it is about »: the release notes on int then released, a change or a story to choose",
+    "A « Test » panel for a tester: the stories waiting on int, their acceptance criteria to tick, Validate, a defect reported on the story",
+    "Recording what the tester does for a criterion (pages, buttons, field names, never a value typed), kept as steps and shown as a Gherkin scenario",
+    "Reports kept on the device while offline, sent when the network is back"
+  ],
+  "demande": [
+    { "type": "files", "description": "Copy fabrique-report.js, fabrique-report.css and fabrique-report-early.js into the app and serve them yourself (application.kit in .fabrique.json: Setup proposes the updates)" },
+    { "type": "route", "description": "A generic relay on the project's server (protocol 2): GET says what the person can do, GET or POST ?path= is passed to La Fabrique with the person's token and the environment, version and deployment headers" },
+    { "type": "oauth", "description": "The app registered in La Fabrique (Setup > Connected app), scopes defects:report and stories:test; tokens kept on the server only" },
+    { "type": "environment", "description": "The environments open to reporting declared in .fabrique.json (signalement: true, never production), their version path answering the same environnement" },
+    { "type": "csp", "description": "script-src 'self' and connect-src 'self' are enough: the browser talks only to the project's server" }
+  ],
+  "dependances": [],
+  "implementations": [
+    { "stack": { "langage": "javascript", "front": "html-sans-build", "relais": "protocole-2" }, "chemin": "/kit" }
+  ],
+  "donnees_personnelles": "privacy.md",
+  "origine": null
+}

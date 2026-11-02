@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-02",
+    "titre": "A project's components",
+    "changements": [
+      "A project declares the folder of its components in .fabrique.json (composants), and each component is a folder of its repository that describes itself: component.json (what it brings, what it asks of the project, its implementations per stack, its personal data, where it was taken from), with its README, spec, Gherkin scenarios and changelog.",
+      "A new Components tab lists them, filtered by nature (product, library, design system) and by stack; a component's page shows its contract, its implementations on GitHub, its README, spec, scenarios, personal data and changelog. An invalid component.json is listed with its reasons.",
+      "La Fabrique's own first two components: the report kit (Report a defect and test from the app) and the release notes with What's new. The format is in the .fabrique.json guide."
+    ],
+    "stories": [197],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-02",
     "titre": "A generic relay for the report kit",
     "changements": [
       "Report kit 1.6.0 speaks a second relay protocol: a relay written once that passes each call of the kit to La Fabrique's project API (?path=…), with the person's token and three headers only the project's server can say (environment, version, deployment). A new kit version then needs no new code in the project, only the update proposed by Setup.",

@@ -69,6 +69,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `demandes.etiquettes` | Étiquettes GitHub du circuit : demande écrite, prête pour Claude, à valider sur int. |
 | `claude.plafond` | Combien de Claude lancés depuis La Fabrique peuvent tourner en même temps sur le projet (1 à 10 ; 2 par défaut). |
 | `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
+| `composants.dossier` | Le dossier des composants du projet (ci-dessous) ; `components` par défaut. Sans `composants` : pas de composants. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
 
 ## Cycle d'une story
@@ -109,6 +110,57 @@ Le super admin enregistre l'app depuis l'onglet *Setup* du projet (*Connected ap
 ```
 
 Il suffit que le compte GitHub de la personne voie le dépôt : un rôle dans La Fabrique n'est pas nécessaire pour signaler.
+
+## Composants
+
+Un composant est une fonction que le projet a déjà et qui pourrait servir ailleurs (signaler un défaut, notes de version, centre de confidentialité…), décrite une fois. C'est un dossier du dépôt du projet, qui se décrit lui-même, avec ou sans code, dans le dossier que déclare `composants` (épique F6, la-fabrique#194) :
+
+```json
+"composants": { "dossier": "components" }
+```
+
+Chaque sous-dossier est un composant ; son nom est son identifiant (minuscules, chiffres, tirets). Ce qu'il contient :
+
+```
+components/
+  report-and-test-kit/
+    component.json        ← obligatoire : ce qu'il est, ce qu'il apporte, ce qu'il demande, son code
+    README.md             ← la présentation
+    spec.md               ← la spec et ses critères d'acceptation : elle fait foi
+    scenarios/*.feature   ← les scénarios (Gherkin) : ils valident une implémentation, et une réécriture
+    privacy.md            ← les données personnelles : quoi, pourquoi, combien de temps
+    CHANGELOG.md          ← les versions, avec ce que chacune demande au projet
+```
+
+`component.json` :
+
+```json
+{
+  "nom": "Report a defect and test from the app",
+  "nature": "produit",
+  "version": "1.6.0",
+  "resume": "…",
+  "apporte": ["Un bouton « Signaler un défaut »", "…"],
+  "demande": [{ "type": "route", "description": "Un relais générique côté serveur" }],
+  "dependances": [],
+  "implementations": [{ "stack": { "langage": "javascript", "front": "html-sans-build" }, "chemin": "/kit" }],
+  "donnees_personnelles": "privacy.md",
+  "origine": null
+}
+```
+
+| Champ | Sert à |
+|---|---|
+| `nom` | Obligatoire : son nom. |
+| `nature` | Obligatoire : `produit` (une fonction qu'on voit), `bibliotheque` (du code sans interface) ou `design-system` (jetons, composants d'interface). |
+| `version`, `resume` | Sa version (`1.6.0`) et une phrase qui le dit. |
+| `apporte`, `demande` | Ce qu'il apporte (des textes), et ce que le projet doit fournir pour l'avoir (`type` : route, table, variable, secret, oauth, csp… et `description`). |
+| `dependances` | Les identifiants des autres composants du projet dont il a besoin. |
+| `implementations[]` | Son code pour une stack : `stack` (des paires libres, `{ "langage": "typescript", "hebergement": "cloudflare-workers" }`) et `chemin`, un dossier du composant, ou du dépôt quand il commence par `/`. Aucune : une spec seule, de quoi l'écrire pour n'importe quelle stack. |
+| `donnees_personnelles` | Le fichier qui dit les données personnelles qu'il touche (`privacy.md`). |
+| `origine` | Repris d'un autre projet (le partage passe par git) : `depot` (adresse https), `chemin`, `version`, `commit`. |
+
+La Fabrique lit les composants à chaque commit (comme la documentation) et les montre dans l'onglet *Components* du projet ; un `component.json` invalide y est listé avec ses raisons. Elle ne garde rien d'autre que ce cache.
 
 ## Validation
 

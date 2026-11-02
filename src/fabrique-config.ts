@@ -28,6 +28,9 @@ export interface FabriqueConfig {
   // environment with `signalement`, and its local address in development.
   // `kit`: the folder where the project keeps its copy of the report kit.
   application?: { nom?: string; retour?: string; local?: string; kit?: string };
+  // The project's components (la-fabrique#197): the folder holding them, one
+  // self-described sub-folder each (component.json).
+  composants?: { dossier: string };
 }
 
 export const ENVIRONMENT_TYPES = ["integration", "production"] as const;
@@ -319,6 +322,19 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
         if (folder && !folder.split("/").includes("..") && /^[\w./-]+$/.test(folder)) config.application.kit = folder;
         else errors.push("`application.kit` must be a folder of the repository, such as site/static/vendor/fabrique.");
       }
+    }
+  }
+
+  const composants = parsed["composants"];
+  if (composants !== undefined) {
+    const raw = isObject(composants) ? composants["dossier"] : undefined;
+    const folder = raw === undefined ? "components" : typeof raw === "string" ? raw.replace(/^\.?\//, "").replace(/\/$/, "") : "";
+    if (!isObject(composants) || !folder || folder.split("/").includes("..") || !/^[\w./-]+$/.test(folder)) {
+      errors.push("`composants` must be an object, with `dossier` a folder of the repository (components by default).");
+    } else if (!folderExists(folder)) {
+      errors.push(`\`composants.dossier\`: \`${folder}\` does not exist.`);
+    } else {
+      config.composants = { dossier: folder };
     }
   }
 

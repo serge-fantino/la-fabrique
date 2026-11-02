@@ -17,6 +17,7 @@ export type ProjectTab =
   | "defects"
   | "roadmap"
   | "releases"
+  | "components"
   | "production"
   | "delivery"
   | "activity"
@@ -35,6 +36,7 @@ const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "defects", label: "Defects", path: "/defects" },
   { id: "roadmap", label: "Roadmap", path: "/roadmap" },
   { id: "releases", label: "Releases", path: "/releases" },
+  { id: "components", label: "Components", path: "/components" },
   { id: "production", label: "Production", path: "/production" },
   { id: "delivery", label: "Delivery", path: "/delivery" },
   { id: "activity", label: "Activity", path: "/activity" },
