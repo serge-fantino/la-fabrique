@@ -12,6 +12,7 @@ import { CLAUDE_CHECK_PATH, REFRESH_PATH, refreshHeaders, SETTINGS_PATH, setting
 import { checkKey, claudeSettings, usageReport } from "./llm";
 import { consumeJobs } from "./jobs";
 import { changePeople, showPeople } from "./people";
+import { showComponent, showComponents } from "./components-routes";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
@@ -26,7 +27,7 @@ import { cardUrl } from "./card-views";
 import { findCardById } from "./cards";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/components|\/components\/[a-z0-9-]{1,63}|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { applySecurityHeaders } from "./headers";
@@ -254,6 +255,12 @@ const app = {
       }
       if (projectRoute[2] === "/roadmap") {
         return method === "GET" ? showRoadmap(request, env, viewer, repo) : methodNotAllowed();
+      }
+      if (projectRoute[2] === "/components") {
+        return method === "GET" ? showComponents(request, env, viewer, repo) : methodNotAllowed();
+      }
+      if (projectRoute[2]?.startsWith("/components/")) {
+        return method === "GET" ? showComponent(request, env, viewer, repo, projectRoute[2].slice("/components/".length)) : methodNotAllowed();
       }
       if (projectRoute[2] === "/releases") {
         return method === "GET" ? showReleases(request, env, viewer, repo) : methodNotAllowed();

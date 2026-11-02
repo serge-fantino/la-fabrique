@@ -44,7 +44,7 @@ describe("Perspectives", () => {
 
     await choose(session, "administration");
     const admin = await (await get(`/projects/${REPO}`, session.cookie)).text();
-    expect(tabs(admin)).toEqual(["Overview", "Production", "To test", "Defects", "In development", "Delivery", "Activity", "Releases", "Log", "Setup"]);
+    expect(tabs(admin)).toEqual(["Overview", "Production", "To test", "Defects", "In development", "Delivery", "Activity", "Releases", "Components", "Log", "Setup"]);
   });
 
   it("keeps the tab one is on, marked, when it is outside the perspective", async () => {
