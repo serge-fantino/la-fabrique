@@ -1,12 +1,11 @@
 import { cardRef } from "./card-views";
-import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
-import type { PlannedCard, RunCard, RunState } from "./sprint-run";
+import { runLanes, type PlannedCard, type RunCard, type RunState } from "./sprint-run";
 import { projectUrl } from "./urls";
-import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
+import { csrfField, escapeHtml, formatDate, type Viewer } from "./views";
 
-// The sprint running by itself (la-fabrique#160): what it will do, then
-// where each card is.
+// The sprint running by itself (la-fabrique#160): what it will do, in its
+// card on the sprint page, then where each card is.
 
 const PLAN_LABELS: Record<PlannedCard["stories"][number]["plan"], string> = {
   done: "Merged already",
@@ -16,43 +15,40 @@ const PLAN_LABELS: Record<PlannedCard["stories"][number]["plan"], string> = {
   after: "Waits behind",
 };
 
-export function runPreviewPage(viewer: Viewer, project: Project, plan: PlannedCard[], refusal: string | null): string {
+// What the run will do, in its card (la-fabrique#188): the cards in lanes
+// (as many as Claude runs may go at once), each with its stories waiting,
+// in order, and where it would stop; one button to confirm. Nothing to
+// choose: the order is the sprint's, set below.
+function runPlan(viewer: Viewer, project: Project, plan: PlannedCard[], cap: number, again: boolean): string {
   const base = projectUrl(project.repo);
-  const cards = plan.filter((planned) => planned.stories.length);
-  const rows = cards
-    .map(
-      (planned) => `<li class="run-plan-card">
-        <p><a class="mono" href="${escapeHtml(base)}/cards/${planned.card.id}">${cardRef(planned.card.id)}</a> <strong>${escapeHtml(planned.card.title)}</strong></p>
-        <ol>${planned.stories
+  const { lanes, idle } = runLanes(plan, cap);
+  const cardItem = (planned: PlannedCard) => {
+    const waiting = planned.stories.filter((story) => story.plan !== "done");
+    const merged = planned.stories.length - waiting.length;
+    return `<li class="run-plan-card">
+        <p><a class="mono" href="${escapeHtml(base)}/cards/${planned.card.id}">${cardRef(planned.card.id)}</a> <strong>${escapeHtml(planned.card.title)}</strong>${merged ? ` <span class="muted small">${merged} merged already</span>` : ""}</p>
+        <ol class="run-plan-stories">${waiting
           .map(
             (story) =>
-              `<li class="run-plan-${story.plan}"><span class="mono">#${story.number}</span> ${escapeHtml(story.title)}${story.nice ? ` <span class="pill kind small">Nice to have</span>` : ""} — <span class="${story.plan === "stop" ? "alert-text" : "muted"} small">${PLAN_LABELS[story.plan]}${story.why ? `: ${escapeHtml(story.why)}` : ""}</span></li>`,
+              `<li class="run-plan-${story.plan}"><span class="mono">#${story.number}</span> ${escapeHtml(story.title)}${story.nice ? ` <span class="pill kind small">Nice to have</span>` : ""} <span class="${story.plan === "stop" ? "alert-text" : "muted"} small">${PLAN_LABELS[story.plan]}${story.why ? `: ${escapeHtml(story.why)}` : ""}</span></li>`,
           )
           .join("")}</ol>
-      </li>`,
-    )
+      </li>`;
+  };
+  const lanesHtml = lanes
+    .map((lane, index) => `<section class="run-lane" aria-label="Lane ${index + 1}"><h4>Lane ${index + 1}</h4><ol class="run-plan">${lane.map(cardItem).join("")}</ol></section>`)
     .join("");
-  const startable = !refusal && cards.some((planned) => planned.stories.some((story) => story.plan === "launch" || story.plan === "merge"));
-  return layout(
-    `Run the sprint · La Fabrique extraordinaire`,
-    `${projectHeader(project, "sprint", "Run the sprint")}
-      <p class="crumbs"><a href="${escapeHtml(base)}/sprint">Sprint</a> <span aria-hidden="true">›</span> Run</p>
-      <p class="lead">The sprint runs by itself, up to testing: each card's stories one after another (Claude, then the merge of its pull request), the cards side by side, never more Claude runs than the project allows, one merge at a time. A card that meets a problem stops and says why; the others go on. Nothing is validated, released or closed by the run.</p>
-      ${refusal ? notice(refusal, "error") : ""}
-      ${cards.length ? `<ol class="run-plan">${rows}</ol>` : `<p class="muted">No card in the sprint.</p>`}
-      ${
-        startable
-          ? `<form method="post" action="${escapeHtml(base)}/sprint" class="actions" data-busy="Starting…">${csrfField(viewer)}
-          <input type="hidden" name="action" value="run_start" />
-          <button type="submit" class="button">Run the sprint</button>
-          <a class="button quiet" href="${escapeHtml(base)}/sprint">Back</a>
-        </form>`
-          : `<p class="muted">Nothing to run${refusal ? "" : ": every story is merged, or each card stops at its first story"}.</p>`
-      }`,
-    viewer,
-    [],
-    projectContext(project, false),
-  );
+  const idleHtml = idle.length
+    ? `<p class="muted small">Not in the run: ${idle.map(({ planned, why }) => `<a class="mono" href="${escapeHtml(base)}/cards/${planned.card.id}">${cardRef(planned.card.id)}</a> ${escapeHtml(why)}`).join(" · ")}</p>`
+    : "";
+  if (!lanes.length) return `<p class="muted">Nothing to run: every story is merged, or each card stops at its first story.</p>${idleHtml}`;
+  return `<p class="muted small">Up to testing: in each lane, the cards one after another, and each card's stories one after another (Claude, then the merge of its pull request); ${lanes.length > 1 ? `${lanes.length} lanes side by side` : "one lane"}, at most ${cap} Claude run${cap === 1 ? "" : "s"} at once, one merge at a time. A card that meets a problem stops and says why; the others go on. Nothing is validated, released or closed by the run.</p>
+    <div class="run-lanes">${lanesHtml}</div>
+    ${idleHtml}
+    <form method="post" action="${escapeHtml(base)}/sprint" class="actions" data-busy="Starting…">${csrfField(viewer)}
+      <input type="hidden" name="action" value="run_start" />
+      <button type="submit" class="button">${again ? "Run it again" : "Run the sprint"}</button>
+    </form>`;
 }
 
 const STEP_LABELS: Record<RunCard["step"], string> = {
@@ -72,17 +68,18 @@ const STATUS_LABELS: Record<RunState["status"], string> = {
   waiting: "The run waits for a person: a card stopped",
 };
 
-export function runSection(viewer: Viewer, project: Project, state: RunState | null, canRun: boolean, refusal: string | null): string {
+export function runSection(viewer: Viewer, project: Project, state: RunState | null, canRun: boolean, refusal: string | null, plan: PlannedCard[] = [], cap = 1): string {
   const base = projectUrl(project.repo);
   const control = (action: string, label: string, extra: Record<string, string | number> = {}, kind = "quiet small") =>
     `<form method="post" action="${escapeHtml(base)}/sprint" class="inline" data-busy="…">${csrfField(viewer)}<input type="hidden" name="action" value="${action}" />${Object.entries(extra)
       .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
       .join("")}<button type="submit" class="button ${kind}">${label}</button></form>`;
-  const startLink = canRun && !refusal ? ` <a class="button small" href="${escapeHtml(base)}/sprint/run">${state ? "Run it again" : "Run the sprint"}</a>` : "";
+  const active = Boolean(state) && (state?.status === "running" || state?.status === "paused" || state?.status === "waiting");
+  // Not running: what it would do, to confirm (la-fabrique#188).
+  const proposal = canRun && !active ? (refusal ? `<p><span class="muted small">${escapeHtml(refusal)}</span></p>` : runPlan(viewer, project, plan, cap, Boolean(state))) : "";
   if (!state) {
-    return canRun ? `<div class="sprint-run-start"><h3>Running by itself</h3><p>${refusal ? `<span class="muted small">${escapeHtml(refusal)}</span>` : `The sprint can run by itself, up to testing.${startLink}`}</p></div>` : "";
+    return canRun ? `<div class="sprint-run-start" id="sprint-run"><h3>Running by itself</h3>${proposal}</div>` : "";
   }
-  const active = state.status === "running" || state.status === "paused" || state.status === "waiting";
   const controls = canRun
     ? [
         state.status === "running" ? control("run_pause", "Pause") : "",
@@ -104,9 +101,10 @@ export function runSection(viewer: Viewer, project: Project, state: RunState | n
         }</li>`;
     })
     .join("");
-  return `<div class="sprint-run">
+  return `<div class="sprint-run" id="sprint-run">
       <h3>Running by itself</h3>
-      <p><strong>${STATUS_LABELS[state.status]}</strong> <span class="muted small">started by @${escapeHtml(state.startedBy)} on ${escapeHtml(formatDate(state.startedAt))}</span> ${controls}${active ? "" : startLink}</p>
+      <p><strong>${STATUS_LABELS[state.status]}</strong> <span class="muted small">started by @${escapeHtml(state.startedBy)} on ${escapeHtml(formatDate(state.startedAt))}</span> ${controls}</p>
       <ul class="sprint-run-cards">${cards}</ul>
+      ${proposal ? `<div class="run-again"><h4>A new run</h4>${proposal}</div>` : ""}
     </div>`;
 }

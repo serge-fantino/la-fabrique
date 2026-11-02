@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { StoryCards } from "../src/card-groups";
 import type { CardStory } from "../src/card-stories";
 import type { ClaudeRun } from "../src/claude";
-import { advance, planRun, type Moves, type RunState, type Seen } from "../src/sprint-run";
+import { advance, planRun, runLanes, type Moves, type PlannedCard, type RunState, type Seen } from "../src/sprint-run";
 import type { Card } from "../src/cards";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
@@ -197,20 +197,43 @@ async function seedSprint(): Promise<number> {
   return id;
 }
 
+describe("The run's plan, lane by lane (la-fabrique#188)", () => {
+  const planned = (id: number, plans: PlannedCard["stories"][number]["plan"][]): PlannedCard => ({
+    card: { id, title: `Card ${id}` } as Card,
+    stories: plans.map((plan, index) => ({ number: id * 10 + index, title: `Story ${id * 10 + index}`, nice: false, plan, why: plan === "stop" ? "not ready" : null })),
+  });
+
+  it("puts the cards side by side within the cap, the next ones on the lightest lane, and leaves out those with nothing to run", () => {
+    const { lanes, idle } = runLanes([planned(1, ["launch", "launch", "launch"]), planned(2, ["merge"]), planned(3, ["done", "launch"]), planned(4, ["stop", "after"]), planned(5, ["done"])], 2);
+    expect(lanes.map((lane) => lane.map((card) => card.card.id))).toEqual([[1], [2, 3]]);
+    expect(idle.map(({ planned: card, why }) => [card.card.id, why])).toEqual([
+      [4, "stops at #40: not ready"],
+      [5, "every story is merged"],
+    ]);
+    expect(runLanes([planned(1, ["launch"]), planned(2, ["launch"])], 1).lanes.map((lane) => lane.length)).toEqual([2]);
+  });
+});
+
 describe("Running the sprint from its page", () => {
   it("shows what will run to a Product Engineer, not to a tech lead, then runs it, pauses and stops it", async () => {
     const id = await seedSprint();
     await grantRole("lead", "tech_lead");
-    expect((await get(`/projects/${REPO}/sprint/run`, (await signIn("lead")).cookie)).status).toBe(403);
+    const github = fetchMock.get("https://api.github.com");
+    // A tech lead sees no plan; the old preview page leads to the sprint's card.
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    const leadPage = await (await get(`/projects/${REPO}/sprint`, (await signIn("lead")).cookie)).text();
+    expect(leadPage).not.toContain('value="run_start"');
     await grantRole("pe", "product_engineer");
     const { cookie, csrf } = await signIn("pe");
-    const preview = await (await get(`/projects/${REPO}/sprint/run`, cookie)).text();
-    expect(preview).toContain("<h1>Run the sprint</h1>");
-    expect(preview).toMatch(/#12<\/span> Story 12 — <span class="muted small">Claude, then merge/);
+    expect((await get(`/projects/${REPO}/sprint/run`, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint#sprint-run`);
+    // The plan, in the run's card on the sprint page, lane by lane (la-fabrique#188).
+    const preview = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(preview).toMatch(/<section class="run-lane" aria-label="Lane 1"><h4>Lane 1<\/h4>.*#12<\/span> Story 12 <span class="muted small">Claude, then merge/s);
+    expect(preview).not.toContain("Lane 2");
     expect(preview).toContain('name="action" value="run_start"');
 
     // Started: #12 launched (the cap leaves room, #13 waits behind it).
-    const github = fetchMock.get("https://api.github.com");
     github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(3);
     github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS).times(2);
     let dispatched: unknown = null;

@@ -104,6 +104,8 @@ describe("Claude Code from the sprint", () => {
     expect(after).toContain("Claude Code launched on #12");
     expect(after).toContain("launched by @admin-one");
     expect(after).toMatch(/Claude is working: <a [^>]*class="pill warn small" href="https:\/\/github.com\/run\/1"[^>]*>Claude working<\/a>/);
+    // Something in progress: the page reads itself again every minute (la-fabrique#187).
+    expect(after).toContain('<div class="sprint-layout" data-follow="60"');
     expect(after).toMatch(/href="https:\/\/github.com\/acme\/widget\/actions\/workflows\/claude.yml">Every Claude run on GitHub<\/a>/);
     // Launched: no longer the next one.
     expect(after).toContain("No story ready for Claude");
@@ -285,7 +287,7 @@ describe("The pull requests of the sprint's stories", () => {
     const at = (text: string) => page.indexOf(text);
     expect(at('id="sprint-work">Implementation</h2>')).toBeGreaterThan(0);
     // Two cards beside the features (la-fabrique#179): the sprint's status, the implementation.
-    expect(page).toMatch(/<div class="sprint-layout">\s*<div class="sprint-side">\s*<section class="sprint-head sprint-panel"/);
+    expect(page).toMatch(/<div class="sprint-layout"[^>]*>\s*<div class="sprint-side">\s*<section class="sprint-head sprint-panel"/);
     expect(page).toContain('<section class="sprint-work sprint-panel"');
     expect(page).toContain('<section class="sprint-stories sprint-main"');
     expect(at('id="sprint-stories">Features and stories</h2>')).toBeGreaterThan(at("Implementation</h2>"));

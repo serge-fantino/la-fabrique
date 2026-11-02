@@ -7,9 +7,11 @@ import type { Project } from "./projects";
 import { activeSprint } from "./sprints";
 import { storyChecks, type StoryChecks } from "./validation";
 import { isDeveloped, isFinished, isInDevelopment, isReadyStage } from "./lifecycle";
-import type { Progress } from "./progress-stages";
+import type { Progress, Shipped } from "./progress-stages";
+import { loadReleases, type Release } from "./roadmap";
+import { compareVersions } from "./card-releases";
 
-export { PROGRESS_LABELS, PROGRESS_STAGES, isProgressStage, progressPill, type Progress, type ProgressStage } from "./progress-stages";
+export { PROGRESS_LABELS, PROGRESS_STAGES, isProgressStage, progressPill, shippedNote, type Progress, type ProgressStage, type Shipped } from "./progress-stages";
 
 // A card's progress (la-fabrique#113): where its delivery stands, read from
 // its stories (GitHub) and the sprint, never typed. The card's status says
@@ -53,6 +55,24 @@ export function progressOf(
   return at(need(isReady) === counted.length ? "ready" : "to_prepare", counts.ready);
 }
 
+// What shipped a card (la-fabrique#189), once one of its stories is out:
+// the released versions whose notes declare one of its stories, oldest
+// first (else the version the card took, when it is a release), and the
+// stories left, needed or nice to have.
+export function shippedOf(card: Pick<Card, "id" | "release">, links: StoryCards, stories: Map<number, CardStory>, releases: Release[]): Shipped | undefined {
+  const mine = links.order.get(card.id) ?? [];
+  if (!mine.some((number) => isFinished(stories.get(number)))) return undefined;
+  const out = releases.filter((release) => !release.upcoming && release.version.toLowerCase() !== "next");
+  const declaring = out.filter((release) => (release.stories ?? []).some((number) => mine.includes(number))).map((release) => release.version);
+  const versions = declaring.length ? declaring : out.some((release) => release.version === card.release) && card.release ? [card.release] : [];
+  const left = mine.filter((number) => !isFinished(stories.get(number)));
+  return {
+    versions: [...new Set(versions)].sort((a, b) => compareVersions(b, a)),
+    left: left.filter((number) => !isNice(links, card.id, number)),
+    nice: left.filter((number) => isNice(links, card.id, number)),
+  };
+}
+
 // The progress of each card, worked out from the stories; a change since
 // the last time is kept on the card and written in the log, dated.
 export async function cardProgress(env: Env, project: Project, cards: Card[], links?: StoryCards): Promise<Map<number, Progress>> {
@@ -62,9 +82,14 @@ export async function cardProgress(env: Env, project: Project, cards: Card[], li
   if (!live.length) return found;
   const numbers = [...new Set(live.flatMap((card) => storyLinks.order.get(card.id) ?? []))];
   const [stories, checks, sprint] = await Promise.all([cardStories(env, project, numbers), storyChecks(env.DB, project.repo), activeSprint(env.DB, project.repo)]);
+  // The release notes, once a story is out: the versions that shipped it.
+  const anyOut = numbers.some((number) => isFinished(stories.get(number)));
+  const releases = anyOut ? (await loadReleases(env, project)).releases : [];
   const changes: D1PreparedStatement[] = [];
   for (const card of live) {
     const progress = progressOf(card, storyLinks, stories, checks, sprint?.release ?? null);
+    const shipped = progress ? shippedOf(card, storyLinks, stories, releases) : undefined;
+    if (progress && shipped) progress.shipped = shipped;
     if (progress) found.set(card.id, progress);
     const stage = progress?.stage ?? null;
     if (stage === card.progress) continue;

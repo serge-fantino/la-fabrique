@@ -102,6 +102,41 @@ export function planRun(cards: Card[], links: StoryCards, stories: Map<number, C
   });
 }
 
+// The plan in lanes (la-fabrique#188): the run works on at most `cap`
+// cards at once (one Claude run each); a lane takes the next card, in the
+// sprint's order, when its card is done. Each card goes to the lane with
+// the least work so far (its stories to launch or merge), as the run would
+// roughly do. The cards with nothing to run are left out, with why.
+export interface RunLanes {
+  lanes: PlannedCard[][];
+  idle: { planned: PlannedCard; why: string }[];
+}
+
+const work = (planned: PlannedCard) => planned.stories.filter((story) => story.plan === "launch" || story.plan === "merge").length;
+
+export function runLanes(plan: PlannedCard[], cap: number): RunLanes {
+  const lanes: PlannedCard[][] = [];
+  const load: number[] = [];
+  const idle: RunLanes["idle"] = [];
+  for (const planned of plan) {
+    if (!planned.stories.length) continue;
+    if (!work(planned)) {
+      const stop = planned.stories.find((story) => story.plan === "stop");
+      idle.push({ planned, why: stop ? `stops at #${stop.number}: ${stop.why ?? "not ready"}` : "every story is merged" });
+      continue;
+    }
+    if (lanes.length < Math.max(1, cap)) {
+      lanes.push([planned]);
+      load.push(work(planned));
+      continue;
+    }
+    const lightest = load.indexOf(Math.min(...load));
+    lanes[lightest]?.push(planned);
+    load[lightest] = (load[lightest] ?? 0) + work(planned);
+  }
+  return { lanes, idle };
+}
+
 export function newRun(repo: string, login: string, plan: PlannedCard[], now: string): RunState {
   return {
     repo,

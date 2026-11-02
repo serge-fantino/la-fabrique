@@ -6,13 +6,13 @@ import { isRunning, type ClaudeRun } from "./claude";
 import { waitReason, type InProgress } from "./card-lock";
 import type { PullDetail } from "./sprint-pulls";
 import type { Card } from "./cards";
-import { isFinished, isReadyStage, isToTest } from "./lifecycle";
+import { isFinished, isInDevelopment, isReadyStage, isToTest } from "./lifecycle";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
 import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./sprint-release";
-import { stagePill, testingNote } from "./stories-views";
-import type { Progress } from "./progress-stages";
+import { storyStatus } from "./stories-views";
+import { shippedNote, type Progress } from "./progress-stages";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -73,6 +73,8 @@ export interface SprintData {
   failure?: string | undefined;
   // The sprint running by itself: its state, or how to start it.
   run?: string;
+  // The run going on (running, paused, waiting): the page follows it.
+  runActive?: boolean;
   // The versions a new sprint may take, after the newest release.
   versions?: { newest: string | null; minor: string | null; major: string | null };
 }
@@ -234,7 +236,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
-          <p class="sprint-story-status">${story?.stage ? stagePill(story.stage) : story ? `<span class="pill">${story.closed ? "Closed" : "Open"}</span>` : ""}${story ? testingNote(story) : ""}${
+          <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
             isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
           }${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
             others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""
@@ -283,6 +285,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           mine.length,
           data.progress?.get(card.id),
         )}${priority}${order}</div>
+          ${shippedNote(data.progress?.get(card.id)?.shipped, "sprint-shipped small")}
           ${foldedDone(card.id, foldDone)}
           ${
             mine.length
@@ -392,8 +395,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       </form>`;
   };
 
+  // Something in progress (Claude, a pull request, the run, the release):
+  // the page reads itself again every minute, between two events
+  // (la-fabrique#187).
+  const inSprint = data.sprintCards.flatMap((card) => data.links.order.get(card.id) ?? []);
+  const following =
+    Boolean(sprint) &&
+    (running.length > 0 || Boolean(data.runActive) || closing || data.pulls.size > 0 || inSprint.some((number) => isInDevelopment(data.stories.get(number))));
   const current = sprint
-    ? `<div class="sprint-layout">
+    ? `<div class="sprint-layout"${following ? ` data-follow="60" title="This page follows the sprint: it reads GitHub again every minute while something is in progress."` : ""}>
       <div class="sprint-side">
       <section class="sprint-head sprint-panel" aria-label="The sprint">
         <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : `Sprint${sprint.version ? ` <span class="mono">${escapeHtml(sprint.version)}</span>` : ""}${sprint.name ? ` <span class="sprint-name">${escapeHtml(sprint.name)}</span>` : ""}`} <span class="pill warn">${closing ? "Closing" : RELEASE_STATE_LABELS.in_progress}</span></h2>

@@ -135,6 +135,7 @@ function cardSummary(ctx: Context, card: Card, progress: Progress | undefined, s
     title: card.title,
     kind: card.kind,
     status: card.status,
+    ...(progress?.shipped ? { shipped: { versions: progress.shipped.versions, complete: !progress.shipped.left.length, stories_left: progress.shipped.left, nice_to_have_left: progress.shipped.nice } } : {}),
     shown_status: progress ? `${PROGRESS_LABELS[progress.stage]}${progressDetail(progress) ? ` ${progressDetail(progress)}` : ""}` : STATUS_LABELS[card.status],
     release: card.release,
     priority: card.priority,

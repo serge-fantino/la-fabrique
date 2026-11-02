@@ -39,6 +39,17 @@ export function testingNote(story: { stage: Stage | null; validated?: { by: stri
   return criteria.length ? ` <span class="muted small">${ticked}/${criteria.length} criteria checked</span>` : ` <span class="muted small">to test</span>`;
 }
 
+// One status per story (la-fabrique#186): its stage, except a story to
+// test that is validated, which says Validated, by whom, instead of To
+// validate; else the stage, then how far testing went.
+export function storyStatus(story: { stage: Stage | null; closed?: boolean; validated?: { by: string; at: string } | null; criteria?: { done: boolean }[] }): string {
+  if (!story.stage) return `<span class="pill">${story.closed ? "Closed" : "Open"}</span>`;
+  if (isToTest(story) && story.validated) {
+    return `<span class="pill ok stage-validated" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}</span>`;
+  }
+  return `${stagePill(story.stage)}${testingNote(story)}`;
+}
+
 export function stagePill(stage: Stage): string {
   const label = STAGES.find((candidate) => candidate.id === stage)?.label ?? stage;
   return `<span class="pill stage-${stage}${STAGE_TONES[stage] ? ` ${STAGE_TONES[stage]}` : ""}">${label}</span>`;

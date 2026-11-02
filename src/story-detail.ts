@@ -13,7 +13,7 @@ import type { Project } from "./projects";
 import { lastMergeAttempts, pullDetails, type MergeAttempt, type PullDetail } from "./sprint-pulls";
 import { loadStories, type Story } from "./stories";
 import { canValidate } from "./validation";
-import { stagePill, testingNote } from "./stories-views";
+import { storyStatus } from "./stories-views";
 import { projectUrl } from "./urls";
 import { escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -158,7 +158,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
     `#${detail.number} ${title} · Sprint · La Fabrique extraordinaire`,
     `${projectHeader(project, "sprint", `#${detail.number} ${title}`)}
       <p class="crumbs"><a href="${escapeHtml(base)}/sprint">Sprint</a> <span aria-hidden="true">›</span> <span class="mono">#${detail.number}</span></p>
-      <p class="fiche-tags"><a class="mono small" href="${github}/issues/${detail.number}">Issue #${detail.number} on GitHub</a> ${state?.stage ? stagePill(state.stage) : ""}${state ? testingNote(state) : ""}${state?.priority ? ` <span class="pill">${escapeHtml(state.priority)}</span>` : ""}${
+      <p class="fiche-tags"><a class="mono small" href="${github}/issues/${detail.number}">Issue #${detail.number} on GitHub</a> ${state?.stage ? storyStatus(state) : ""}${state?.priority ? ` <span class="pill">${escapeHtml(state.priority)}</span>` : ""}${
         detail.cards.length ? ` <span class="muted small">from ${detail.cards.map((card) => `<a class="mono" href="${escapeHtml(cardUrl(project.repo, card.id))}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}`).join(", ")}</span>` : ""
       }</p>
       <section class="story-detail">

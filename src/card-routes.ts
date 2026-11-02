@@ -6,6 +6,7 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
@@ -16,8 +17,8 @@ import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWo
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
 import { heldStories } from "./card-lock";
-import { loadPlan as loadRunPlan, newRun, runRefusal, sprintRunFor } from "./sprint-run";
-import { runPreviewPage, runSection } from "./sprint-run-views";
+import { loadPlan as loadRunPlan, newRun, planRun, runRefusal, sprintRunFor } from "./sprint-run";
+import { runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
 import { cycleRules, isReadyStage, projectRules } from "./lifecycle";
@@ -744,7 +745,9 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const integrationCards = integration ? inLane(integration.version) : [];
   const numbers = [...new Set([...sprintCards, ...keptCards, ...nextCards, ...integrationCards].flatMap((card) => links.order.get(card.id) ?? []))];
   const failure = params.get("failure");
-  const stories = await cardStories(env, project, numbers);
+  // While a sprint runs, the stories are read again after a minute at most
+  // (la-fabrique#187).
+  const stories = await cardStories(env, project, numbers, sprint ? FOLLOW_MAX_AGE_MS : undefined);
   // The open pull requests of the sprint's stories, as GitHub has them.
   const inSprint = sprintCards.flatMap((card) => links.order.get(card.id) ?? []);
   const openPulls = inSprint.flatMap((number) => (stories.get(number)?.pulls ?? []).filter((pull) => pull.state === "open").map((pull) => pull.number));
@@ -765,7 +768,8 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
-      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project)) : "",
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project)) : "",
+      runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,
@@ -1014,12 +1018,10 @@ export async function cardRoute(
     const live = sprintLiveFor(env, project.repo);
     return live ? live.fetch(request) : new Response("Not found", { status: 404 });
   }
-  // The sprint running by itself: what it will do, before it starts.
+  // What the run will do is in its card on the sprint page (la-fabrique#188).
   if (path === "sprint/run") {
     if (method !== "GET") return notAllowed();
-    if (!can(viewer.role, "promote")) return forbidden(viewer);
-    const [{ view, cookies }, { plan }] = await Promise.all([projectView(request, env, project, viewer), loadRunPlan(env, project)]);
-    return html(runPreviewPage(viewer, view, plan, runRefusal(project)), { cookies });
+    return redirect(`${projectUrl(project.repo)}/sprint#sprint-run`);
   }
   // A story's detail, from the sprint: its steps, pull requests, runs, history.
   const storyPath = /^sprint\/stories\/(\d{1,9})$/.exec(path);
