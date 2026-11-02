@@ -34,6 +34,10 @@ export function describe(entry: LogEntry, repo: string): string {
       return `proposed ${Number(d["scenarios"]) || 0} recorded scenario${Number(d["scenarios"]) === 1 ? "" : "s"} of ${story} to the project: <a href="https://github.com/${escapeHtml(repo)}/pull/${Number(d["pull"]) || 0}">PR #${Number(d["pull"]) || 0}</a>`;
     case "story_validated":
       return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
+    case "story_rework_launched":
+      return `launched Claude to rework ${story} with its test feedbacks`;
+    case "story_rework_merged":
+      return `saw the rework of ${story} merged (pull request ${issue(d["pull"])}): to test again`;
     case "story_feedback":
       return `gave a feedback on ${story} from testing${d["criterion_text"] ? ` (criterion “${text(d["criterion_text"])}”)` : ""}: “${text(d["text"])}”${d["comment"] ? ` <a href="${escapeHtml(String(d["comment"]))}">On GitHub</a>` : ""}; back in development`;
     case "story_reopened":

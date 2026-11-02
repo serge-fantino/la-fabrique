@@ -539,6 +539,21 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=launched&story=${number}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // A story back in development after feedbacks from testing: Claude
+    // reworks its code with them, by a person's choice (la-fabrique#202).
+    if (action === "rework") {
+      if (!canLaunchClaude(viewer.role)) return forbidden(viewer);
+      const number = Number(form.get("story"));
+      const links = await storyCards(env.DB, project.repo);
+      const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
+      if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
+      const story = (await cardStories(env, project, [number])).get(number);
+      if (!story?.rework) return showSprint(request, env, viewer, project, `#${number} has no feedback to take into account.`, 409);
+      if (story.pulls.some((pull) => pull.state === "open")) return showSprint(request, env, viewer, project, `#${number} already has a pull request open: update or merge it first.`, 409);
+      const outcome = await launchClaude(env, project, viewer.login, number, { rework: true });
+      if (outcome.ok) return redirect(`${base}?notice=reworking&story=${number}`);
+      return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
     // An open pull request of a sprint story, brought up to date by Claude.
     if (action === "update") {
       if (!canLaunchClaude(viewer.role)) return forbidden(viewer);
@@ -809,6 +824,8 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
           ? "The sprint's version is saved: it is the release the sprint makes when it closes."
           : params.get("notice") === "run_started"
           ? "The sprint is running by itself: each card's stories one after another, up to testing. Pause or stop it at any time."
+          : params.get("notice") === "reworking" && Number.isInteger(launched)
+          ? `Claude reworks #${launched} with its test feedbacks: a new branch of the story, then a pull request to merge, then a new test.`
           : params.get("notice") === "launched" && Number.isInteger(launched)
           ? `Claude Code launched on #${launched}: the project's workflow is starting on GitHub.`
           : params.get("notice") === "releasing"

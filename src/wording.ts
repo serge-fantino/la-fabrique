@@ -28,6 +28,10 @@ const WORDS = {
     criterionFails: (index: number, story: number) => `Le critère ${index} de #${story} échoue :`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude lancé sur cette demande par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
+    claudeRework: (login: string, url: string | null) =>
+      `Claude retravaille cette demande avec ses retours de test, lancé par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
+    reworkMerged: (pull: number) =>
+      `Les retours de test sont pris en compte (PR #${pull} fusionnée) : la demande est à tester à nouveau (La Fabrique extraordinaire).`,
     claudeUpdating: (login: string, url: string | null) =>
       `Claude remet cette PR à jour (fusion de la branche de base, conflits, vérifications), lancé par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
     appDefectIntro: (environment: string, story: number | null) =>
@@ -79,6 +83,10 @@ const WORDS = {
     criterionFails: (index: number, story: number) => `Criterion ${index} of #${story} fails:`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude launched on this story by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
+    claudeRework: (login: string, url: string | null) =>
+      `Claude reworks this story with its test feedbacks, launched by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
+    reworkMerged: (pull: number) =>
+      `The test feedbacks are taken into account (pull request #${pull} merged): the story is to test again (La Fabrique extraordinaire).`,
     claudeUpdating: (login: string, url: string | null) =>
       `Claude brings this pull request up to date (merges its base branch, resolves the conflicts, checks again), launched by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
     appDefectIntro: (environment: string, story: number | null) =>

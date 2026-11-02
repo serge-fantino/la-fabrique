@@ -232,13 +232,23 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           : ""
       : "";
     const claude = launchable ? claudeCell(number) : "";
+    // Back in development after feedbacks (la-fabrique#202): nothing starts by
+    // itself; a person reworks it with Claude.
+    const reworking = data.claude.runs.some((run) => run.issue === number && isRunning(run));
+    const rework = story?.rework
+      ? ` <span class="pill warn small">Back in development</span> <a class="small" href="${escapeHtml(action)}/stories/${number}#feedbacks">${story.feedbacks ?? 0} feedback${story.feedbacks === 1 ? "" : "s"}</a>${
+          data.claude.canLaunch && data.claude.workflow && !reworking && !story.pulls.some((pull) => pull.state === "open")
+            ? ` ${button({ action: "rework", story: number }, `Rework #${number} with Claude, with its test feedbacks`, "Rework with Claude", "quiet small claude")}`
+            : ""
+        }`
+      : "";
     return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
         ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
           <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
             isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
-          }${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
+          }${rework}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
             others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""
           }${readiness(number, controls)}</p>
         </div>

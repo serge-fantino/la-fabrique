@@ -197,6 +197,8 @@ function openPull(story: CardStory | undefined): number | null {
 // Why Claude is not launched on a story, from its stage, said as it is.
 function notLaunchable(story: CardStory | undefined): string {
   if (!story) return "not read on GitHub yet";
+  // Feedbacks from testing: a person reworks it, never the run (la-fabrique#202).
+  if (story.rework) return "back in development with feedbacks from testing: rework it with Claude from the sprint, then resume this card";
   if (story.stage === "backlog") return `not ready${story.missing.length ? `: it lacks ${story.missing.join(", ")}` : ""}`;
   if (isInDevelopment(story)) return "in development by hand (a branch without a pull request): finish it or drop the branch";
   return `at the stage ${story.stage ?? "unknown"}, not ready`;

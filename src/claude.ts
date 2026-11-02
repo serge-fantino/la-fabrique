@@ -60,7 +60,9 @@ export type LaunchOutcome = { ok: true; running: number } | { ok: false; message
 
 // Running Claude costs and writes code: the project's own workflow, a cap
 // of runs at once, who launched it in the log and on the issue.
-export async function launchClaude(env: Env, project: Project, login: string, number: number): Promise<LaunchOutcome> {
+// `rework` (la-fabrique#202): the story was tested and has feedbacks; Claude
+// changes its code on a new branch of the same story, by a person's choice.
+export async function launchClaude(env: Env, project: Project, login: string, number: number, options: { rework?: boolean } = {}): Promise<LaunchOutcome> {
   const file = claudeWorkflow(project);
   if (!file) return { ok: false, message: "This project declares no Claude workflow (workflows.claude).", status: 422 };
   const repo = project.repo;
@@ -77,12 +79,13 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
 
     const path = `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/dispatches`;
     const ref = productionBranch(project) ?? "main";
-    let response = await githubPost(token, path, { ref, inputs: { issue: String(number), par: login } });
-    if (response.status === 422) response = await githubPost(token, path, { ref, inputs: { issue: String(number) } });
+    const rework = options.rework ? { rework: "true" } : {};
+    let response = await githubPost(token, path, { ref, inputs: { issue: String(number), par: login, ...rework } });
+    if (response.status === 422 && !options.rework) response = await githubPost(token, path, { ref, inputs: { issue: String(number) } });
     if (!response.ok) {
       return {
         ok: false,
-        message: dispatchRefusal(file, ref, response.status, "take the issue number as input"),
+        message: dispatchRefusal(file, ref, response.status, options.rework ? "take the inputs issue, par and rework (see La Fabrique's own .github/workflows/claude.yml)" : "take the issue number as input"),
         status: 502,
       };
     }
@@ -97,11 +100,13 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
       }
     }
     const runsUrl = `https://github.com/${repo}/actions/workflows/${encodeURIComponent(file)}`;
-    await githubPost(token, `/repos/${repo}/issues/${number}/comments`, { body: wordingFor(project).claudeLaunched(login, runsUrl) });
+    await githubPost(token, `/repos/${repo}/issues/${number}/comments`, {
+      body: options.rework ? wordingFor(project).claudeRework(login, runsUrl) : wordingFor(project).claudeLaunched(login, runsUrl),
+    });
 
     await activityStatement(env.DB, {
       actor: login,
-      action: "claude_launched",
+      action: options.rework ? "story_rework_launched" : "claude_launched",
       repo,
       issueNumber: number,
       details: { workflow: file, running: running + 1, cap },

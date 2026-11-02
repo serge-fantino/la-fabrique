@@ -2,6 +2,7 @@ import { promotionRunEvent } from "./go";
 import { releaseRunEvent } from "./sprint-release";
 import { sprintRunFor } from "./sprint-run";
 import { reopenIfClosedByMerge } from "./story-reopen";
+import { reworkMerged, type MergedPull } from "./story-rework";
 import { mergeRunEvent } from "./sprint-pulls";
 import { claudeRunEvent, type RestWorkflowRun } from "./claude";
 import { sprintLiveFor } from "./live";
@@ -38,6 +39,7 @@ interface Payload {
   repository?: { full_name?: string; default_branch?: string };
   head_commit?: { timestamp?: string } | null;
   issue?: RestIssue;
+  pull_request?: MergedPull;
   workflow_run?: RestWorkflowRun;
 }
 
@@ -73,6 +75,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     // A pull request moved: the open sprint pages show it.
     if (event === "pull_request") {
       await sprintLiveFor(env, project.repo)?.notify({ kind: "pull_request", issue: null, status: payload.action ?? "", conclusion: null, url: "", at: new Date().toISOString() });
+      // A rework merged: the story is to test again (la-fabrique#202).
+      if (payload.action === "closed" && payload.pull_request) await reworkMerged(env, project, payload.pull_request).catch(() => []);
       if (payload.action === "closed") await sprintRunFor(env, project.repo)?.poke().catch(() => undefined);
     }
     await inDevChanged(env, project.repo);
