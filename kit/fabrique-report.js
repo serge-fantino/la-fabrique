@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.6.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.7.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.6.0";
+  var VERSION = "1.7.0";
   // The relay's protocol: 1, a route per call (?targets=1, ?to-test=…); 2, a
   // generic relay that passes ?path={path} to La Fabrique's project API (said
   // by the relay's GET: "relay": 2). Until the relay has said, protocol 1.
@@ -39,6 +39,22 @@
       tickFailed: "The criterion could not be saved.",
       validateFailed: "The story could not be validated.",
       reportOnStory: "Report a defect on this story",
+      launcher: "La Fabrique: report a defect or test",
+      fold: "Fold",
+      unfold: "Unfold",
+      move: "Move",
+      fail: "Fail",
+      failedMark: "Failed",
+      failSeen: "What happened instead",
+      failShot: "Add a screenshot of the page",
+      failSend: "Send the feedback",
+      failSending: "Sending…",
+      failSent: "Feedback sent: the story goes back to development.",
+      failNotSent: "The feedback could not be sent.",
+      backInDev: "Back in development: its code takes the feedbacks into account, then it is tested again.",
+      feedbacks: "Feedbacks",
+      toTestAgain: "To test again",
+      ticked: "{n}/{total} ticked",
       record: "Record",
       recording: "Recording",
       stepsCount: "{n} steps",
@@ -114,6 +130,22 @@
       tickFailed: "Le critère n'a pas pu être enregistré.",
       validateFailed: "La story n'a pas pu être validée.",
       reportOnStory: "Signaler un défaut sur cette story",
+      launcher: "La Fabrique : signaler un défaut ou tester",
+      fold: "Replier",
+      unfold: "Déplier",
+      move: "Déplacer",
+      fail: "Échec",
+      failedMark: "En échec",
+      failSeen: "Ce qui s'est passé à la place",
+      failShot: "Joindre une capture de la page",
+      failSend: "Envoyer le retour",
+      failSending: "Envoi…",
+      failSent: "Retour envoyé : la story repasse en développement.",
+      failNotSent: "Le retour n'a pas pu partir.",
+      backInDev: "Repassée en développement : son code tient compte des retours, puis elle est testée à nouveau.",
+      feedbacks: "Retours",
+      toTestAgain: "À retester",
+      ticked: "{n}/{total} cochés",
       record: "Enregistrer",
       recording: "Enregistrement",
       stepsCount: "{n} étapes",
@@ -295,6 +327,155 @@
         h: Math.round(box.height),
       },
     };
+  }
+
+  // --- Floating things: a place kept on the device, moved by a finger ------
+  var LAUNCHER_KEY = "fabrique-report-launcher";
+  var PANEL_KEY = "fabrique-report-panel";
+
+  function readPlace(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key) || "null");
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function keepPlace(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      // Storage unavailable: the place is not kept.
+    }
+  }
+
+  // Inside the window, whatever its size now.
+  function clampTo(node, x, y) {
+    var box = node.getBoundingClientRect();
+    var maxX = Math.max(0, window.innerWidth - box.width);
+    var maxY = Math.max(0, window.innerHeight - box.height);
+    return { x: Math.min(Math.max(0, x), maxX), y: Math.min(Math.max(0, y), maxY) };
+  }
+
+  function placeAt(node, x, y) {
+    var at = clampTo(node, x, y);
+    node.style.left = at.x + "px";
+    node.style.top = at.y + "px";
+    node.style.right = "auto";
+    node.style.bottom = "auto";
+    return at;
+  }
+
+  // Dragged by its handle: a press that moves more than a few pixels moves
+  // the node (and keeps its place); a press that does not is a tap.
+  function draggable(node, handle, key, onTap) {
+    var start = null;
+    handle.addEventListener("pointerdown", function (event) {
+      if (event.button !== 0) return;
+      var box = node.getBoundingClientRect();
+      start = { x: event.clientX, y: event.clientY, left: box.left, top: box.top, moved: false, id: event.pointerId };
+    });
+    handle.addEventListener("pointermove", function (event) {
+      if (!start || event.pointerId !== start.id) return;
+      var dx = event.clientX - start.x;
+      var dy = event.clientY - start.y;
+      if (!start.moved && Math.abs(dx) + Math.abs(dy) < 6) return;
+      if (!start.moved) {
+        start.moved = true;
+        try {
+          handle.setPointerCapture(event.pointerId);
+        } catch (error) {
+          // Capture refused: moves still follow while over the handle.
+        }
+        node.classList.add(cls("moving"));
+      }
+      event.preventDefault();
+      placeAt(node, start.left + dx, start.top + dy);
+    });
+    function end(event) {
+      if (!start || event.pointerId !== start.id) return;
+      var moved = start.moved;
+      start = null;
+      node.classList.remove(cls("moving"));
+      if (moved) {
+        var box = node.getBoundingClientRect();
+        var place = readPlace(key) || {};
+        place.x = box.left;
+        place.y = box.top;
+        keepPlace(key, place);
+        event.preventDefault();
+      } else if (onTap && event.type === "pointerup") onTap(event);
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    // A saved place, kept inside the window when it is resized.
+    var saved = readPlace(key);
+    if (saved && typeof saved.x === "number" && typeof saved.y === "number") placeAt(node, saved.x, saved.y);
+    window.addEventListener("resize", function () {
+      var place = readPlace(key);
+      if (node.isConnected && place && typeof place.x === "number") placeAt(node, place.x, place.y);
+    });
+  }
+
+  // La Fabrique's mark, drawn here: the kit loads nothing else.
+  var LOGO =
+    '<svg aria-hidden="true" focusable="false" viewBox="0 0 32 32" width="28" height="28"><rect width="32" height="32" rx="8" fill="#18211B"/><path d="M5 26V14.5l6 4v-4l6 4v-4l6 4V9h3.5v17z" fill="#F3F4EE"/><path d="M8 22h3v4H8zM14 22h3v4h-3zM20 22h3v4h-3z" fill="#18211B"/><circle cx="24.75" cy="5.5" r="2" fill="#C23D17"/></svg>';
+
+  // --- The launcher (la-fabrique#199) -------------------------------------------
+  // One small round button with La Fabrique's mark; a tap unfolds what the
+  // person may do: Report a defect, Test. Moved by a finger, its place kept.
+  function launcher(next) {
+    configure(next);
+    if (!options.endpoint) return Promise.resolve(null);
+    return status().then(function (data) {
+      var old = document.querySelector("." + cls("launcher"));
+      if (old) old.remove();
+      if (!data || (!data.can_report && !data.can_test)) return null;
+      var t = words();
+      var logo = el("button", { type: "button", className: cls("logo"), "aria-label": t.launcher, "aria-expanded": "false", title: t.launcher });
+      logo.innerHTML = LOGO;
+      var report = el("button", { type: "button", className: cls("button"), text: t.report });
+      var test = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.test });
+      var menu = el("div", { className: cls("menu"), hidden: true }, [data.can_test ? test : null, data.can_report ? report : null]);
+      var box = el("div", { className: PREFIX + " " + cls("launcher") }, [menu, logo]);
+      document.body.appendChild(box);
+      function fold() {
+        menu.hidden = true;
+        logo.setAttribute("aria-expanded", "false");
+      }
+      function toggle() {
+        menu.hidden = !menu.hidden;
+        logo.setAttribute("aria-expanded", menu.hidden ? "false" : "true");
+      }
+      draggable(box, logo, LAUNCHER_KEY, toggle);
+      // The keyboard: Enter and Space press the button (no pointer events).
+      logo.addEventListener("click", function (event) {
+        if (event.detail === 0) toggle();
+      });
+      document.addEventListener("pointerdown", function (event) {
+        if (!menu.hidden && !box.contains(event.target)) fold();
+      });
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && !menu.hidden) fold();
+      });
+      report.addEventListener("click", function () {
+        fold();
+        box.hidden = true;
+        start().then(
+          function () {
+            box.hidden = false;
+          },
+          function () {
+            box.hidden = false;
+          },
+        );
+      });
+      test.addEventListener("click", function () {
+        fold();
+        testPanel();
+      });
+      return box;
+    });
   }
 
   // --- Picking a part of the page -------------------------------------------
@@ -570,7 +751,7 @@
             return {};
           })
           .then(function (data) {
-            return { ok: response.ok && data.ok !== false, message: data && data.message ? data.message : "" };
+            return { ok: response.ok && data.ok !== false, message: data && data.message ? data.message : "", data: data };
           });
       })
       .catch(function () {
@@ -662,39 +843,98 @@
     };
   }
 
-  var testing = false;
   // A panel with the stories one at a time, each with its criteria.
+  // The Test panel (la-fabrique#200): it floats above the app without
+  // blocking it, moves by its head, folds into a bar, and keeps its place
+  // and state on the device. One story at a time (Previous, Next), then its
+  // criteria: a box and the text, Record, Fail (#201).
+  var panel = null;
   function testPanel() {
-    if (testing || !options.endpoint) return Promise.resolve(null);
-    testing = true;
+    if (!options.endpoint) return Promise.resolve(null);
+    if (panel && panel.node.isConnected) {
+      panel.unfold();
+      return Promise.resolve(panel.stories);
+    }
     var t = words();
     return new Promise(function (resolve) {
       var index = 0;
       var stories = [];
+      var place = readPlace(PANEL_KEY) || {};
       var body = el("div", { className: cls("test-body"), "aria-live": "polite", text: "…" });
-      var previous = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.previous });
-      var next = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.next });
-      var close = el("button", { type: "button", className: cls("button"), text: t.close });
-      var sheet = el("div", { className: cls("sheet") + " " + cls("test") }, [
-        el("h2", { className: cls("heading"), text: t.toTest }),
-        body,
-        el("div", { className: cls("actions") }, [previous, next, close]),
+      var previous = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: "‹ " + t.previous });
+      var next = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: t.next + " ›" });
+      var counter = el("span", { className: cls("note") });
+      var summary = el("span", { className: cls("float-summary") });
+      var grip = el("div", { className: cls("float-grip"), title: t.move }, [el("strong", { text: t.toTest }), " ", summary]);
+      var foldButton = el("button", { type: "button", className: cls("icon"), "aria-label": t.fold, "aria-expanded": "true", text: "▾" });
+      var close = el("button", { type: "button", className: cls("icon"), "aria-label": t.close, text: "×" });
+      var main = el("div", { className: cls("float-main") }, [el("div", { className: cls("float-nav") }, [previous, counter, next]), body]);
+      var node = el("section", { className: PREFIX + " " + cls("float"), role: "dialog", "aria-modal": "false", "aria-label": t.toTest }, [
+        el("div", { className: cls("float-head") }, [grip, foldButton, close]),
+        main,
       ]);
-      var dialog = el("div", { className: PREFIX + " " + cls("dialog"), role: "dialog", "aria-modal": "true", "aria-label": t.toTest }, [sheet]);
-      document.body.appendChild(dialog);
-      close.focus();
+      document.body.appendChild(node);
+      panel = {
+        node: node,
+        stories: stories,
+        unfold: function () {
+          setFolded(false);
+          node.hidden = false;
+        },
+      };
+
+      function setFolded(folded) {
+        main.hidden = folded;
+        node.classList.toggle(cls("folded"), folded);
+        foldButton.textContent = folded ? "▴" : "▾";
+        foldButton.setAttribute("aria-label", folded ? t.unfold : t.fold);
+        foldButton.setAttribute("aria-expanded", folded ? "false" : "true");
+        var kept = readPlace(PANEL_KEY) || {};
+        kept.folded = folded;
+        keepPlace(PANEL_KEY, kept);
+        // Folded or not, it stays inside the window.
+        var box = node.getBoundingClientRect();
+        if (typeof kept.x === "number") placeAt(node, box.left, box.top);
+      }
+      foldButton.addEventListener("click", function () {
+        setFolded(!main.hidden);
+      });
+      grip.addEventListener("dblclick", function () {
+        setFolded(!main.hidden);
+      });
+      draggable(node, grip, PANEL_KEY, null);
+      if (place.folded) setFolded(true);
+      node.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") setFolded(true);
+      });
+
+      // While the person reports or records, the panel steps aside.
+      function aside(work) {
+        node.hidden = true;
+        return Promise.resolve()
+          .then(work)
+          .then(
+            function (result) {
+              node.hidden = false;
+              return result;
+            },
+            function () {
+              node.hidden = false;
+              return null;
+            },
+          );
+      }
 
       // Steps recorded and not yet sent, by story and criterion.
       var recorded = {};
       function recordCriterion(story, at) {
-        var bar = null;
         var count = el("span", { text: t.stepsCount.replace("{n}", 0) });
         var recorder = createRecorder(function (n) {
           count.textContent = t.stepsCount.replace("{n}", n);
         });
         var stop = el("button", { type: "button", className: cls("button"), text: t.stop });
-        bar = el("div", { className: PREFIX + " " + cls("recorder"), role: "status" }, [el("strong", { text: "● " + t.recording + " " }), count, " ", stop]);
-        dialog.style.display = "none";
+        var bar = el("div", { className: PREFIX + " " + cls("recorder"), role: "status" }, [el("strong", { text: "● " + t.recording + " " }), count, " ", stop]);
+        node.hidden = true;
         document.body.appendChild(bar);
         recorder.start();
         stop.focus();
@@ -702,7 +942,7 @@
           var steps = recorder.stop();
           bar.remove();
           recorded[story.number + "/" + at] = steps;
-          dialog.style.display = "";
+          node.hidden = false;
           show();
         });
       }
@@ -762,6 +1002,86 @@
         ]);
       }
 
+      // A criterion fails (#201): a feedback on the story, written here,
+      // with a screenshot of the page if wanted. Not a new issue: a comment on
+      // the story, which goes back to development.
+      var failing = {};
+      function feedbackEditor(story, at, criterion) {
+        var key = story.number + "/" + at;
+        var input = el("textarea", { rows: "3", maxlength: "4000", className: cls("feedback-input"), "aria-label": t.failSeen, placeholder: t.failSeen });
+        input.value = failing[key] || "";
+        input.addEventListener("input", function () {
+          failing[key] = input.value;
+        });
+        var shotBox = el("input", { type: "checkbox", id: cls("shot-" + key.replace("/", "-")) });
+        var shotLine = el("div", { className: cls("check"), hidden: true }, [shotBox, el("label", { for: shotBox.id, text: t.failShot })]);
+        loadCapture().then(function (capture) {
+          if (capture) {
+            shotLine.hidden = false;
+            shotBox.checked = true;
+          }
+        });
+        var note = el("p", { className: cls("note"), role: "status" });
+        var send = el("button", { type: "button", className: cls("button") + " " + cls("small"), text: t.failSend });
+        var cancel = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: t.cancel });
+        cancel.addEventListener("click", function () {
+          delete failing[key];
+          show();
+        });
+        send.addEventListener("click", function () {
+          var text = input.value.trim();
+          if (!text) {
+            input.focus();
+            return;
+          }
+          send.disabled = cancel.disabled = true;
+          note.textContent = t.failSending;
+          var shot = shotBox.checked
+            ? aside(function () {
+                return loadCapture().then(function (capture) {
+                  return capture ? capture(document.body) : null;
+                });
+              })
+            : Promise.resolve(null);
+          shot
+            .then(function (dataUrl) {
+              var body = {
+                criterion: at,
+                text: text,
+                page: location.pathname + location.search,
+                viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 },
+                user_agent: navigator.userAgent,
+              };
+              if (dataUrl) body.screenshot = dataUrl;
+              return actOnStory(story.number, "feedback", body);
+            })
+            .then(function (outcome) {
+              if (!outcome || !outcome.ok) {
+                send.disabled = cancel.disabled = false;
+                note.textContent = (outcome && outcome.message) || t.failNotSent;
+                return;
+              }
+              delete failing[key];
+              criterion.done = false;
+              story.rework = true;
+              var feedback = { criterion: at, text: text, by: null, at: new Date().toISOString(), url: (outcome.data && outcome.data.comment) || null };
+              story.feedbacks = (story.feedbacks || []).concat([feedback]);
+              criterion.failed = { text: text, url: feedback.url, open: true };
+              show();
+            });
+        });
+        return el("div", { className: cls("feedback") }, [input, shotLine, note, el("div", { className: cls("actions") }, [send, cancel])]);
+      }
+
+      function tickedOf(story) {
+        var criteria = story.criteria || [];
+        return t.ticked
+          .replace("{n}", criteria.filter(function (criterion) {
+            return criterion.done;
+          }).length)
+          .replace("{total}", criteria.length);
+      }
+
       function show() {
         body.textContent = "";
         previous.disabled = index === 0;
@@ -770,7 +1090,8 @@
         var story = stories[index];
         if (!story) return;
         var criteria = story.criteria || [];
-        body.appendChild(el("p", { className: cls("note"), text: t.storyOf.replace("{n}", index + 1).replace("{total}", stories.length) }));
+        counter.textContent = t.storyOf.replace("{n}", index + 1).replace("{total}", stories.length);
+        summary.textContent = "#" + story.number + " · " + tickedOf(story);
         body.appendChild(el("h3", { className: cls("story-title") }, [el("span", { className: cls("tag"), text: "#" + story.number }), " " + story.title]));
         if (story.card) body.appendChild(el("p", { className: cls("note"), text: t.forCard + " C" + story.card.id + " · " + story.card.title }));
         body.appendChild(
@@ -778,16 +1099,20 @@
             story.validated ? t.validatedBy + " @" + story.validated.by + (story.validated.version ? " · " + story.validated.version : "") : t.notValidated,
           ]),
         );
-        body.appendChild(el("h4", { className: cls("criteria-title"), text: t.criteria }));
+        body.appendChild(el("h4", { className: cls("criteria-title"), text: t.criteria + " · " + tickedOf(story) }));
         var message = el("p", { className: cls("note"), role: "status" });
         var validate = el("button", { type: "button", className: cls("button"), text: t.validate });
+        function openFailure() {
+          return !!story.rework;
+        }
         function allTicked() {
           return criteria.length > 0 && criteria.every(function (criterion) {
             return criterion.done;
           });
         }
         function refresh() {
-          validate.disabled = !!story.validated || !allTicked();
+          validate.disabled = !!story.validated || !allTicked() || openFailure();
+          summary.textContent = "#" + story.number + " · " + tickedOf(story);
         }
         body.appendChild(
           criteria.length
@@ -795,7 +1120,7 @@
                 "ul",
                 { className: cls("criteria") },
                 criteria.map(function (criterion, at) {
-                  var box = el("input", { type: "checkbox" });
+                  var box = el("input", { type: "checkbox", id: cls("criterion-" + story.number + "-" + at) });
                   box.checked = !!criterion.done;
                   box.addEventListener("change", function () {
                     var done = box.checked;
@@ -811,16 +1136,33 @@
                       refresh();
                     });
                   });
-                  var record = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("record"), text: t.record });
+                  var record = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small"), text: t.record });
                   record.addEventListener("click", function () {
                     recordCriterion(story, at);
                   });
+                  var fail = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small") + " " + cls("fail"), text: t.fail });
+                  fail.addEventListener("click", function () {
+                    failing[story.number + "/" + at] = failing[story.number + "/" + at] || "";
+                    show();
+                  });
+                  var state = criterion.failed
+                    ? el("p", { className: cls("failed") }, [
+                        criterion.failed.open ? t.failedMark + " · " : t.toTestAgain + " · ",
+                        criterion.failed.url ? el("a", { href: criterion.failed.url, target: "_blank", rel: "noopener", text: criterion.failed.text || t.feedbacks }) : criterion.failed.text || "",
+                      ])
+                    : null;
                   var pending = recorded[story.number + "/" + at];
-                  return el("li", {}, [el("label", {}, [box, " " + criterion.text]), pending ? stepsEditor(story, at, criterion, pending) : record]);
+                  var editing = typeof failing[story.number + "/" + at] === "string";
+                  return el("li", { className: criterion.failed && criterion.failed.open ? cls("is-failed") : "" }, [
+                    el("div", { className: cls("criterion") }, [box, el("label", { for: box.id, text: criterion.text })]),
+                    state,
+                    pending ? stepsEditor(story, at, criterion, pending) : editing ? feedbackEditor(story, at, criterion) : el("div", { className: cls("criterion-actions") }, [record, fail]),
+                  ]);
                 }),
               )
             : el("p", { className: cls("note"), text: t.noCriteria }),
         );
+        if (openFailure()) body.insertBefore(el("p", { className: cls("rework"), text: t.backInDev }), body.firstChild);
         validate.addEventListener("click", function () {
           validate.disabled = true;
           message.textContent = t.validating;
@@ -844,16 +1186,19 @@
         refresh();
         var report = el("button", { type: "button", className: cls("button") + " " + cls("quiet"), text: t.reportOnStory });
         report.addEventListener("click", function () {
-          defectStory = story.number;
-          finish();
-          start().then(
-            function () {
-              defectStory = null;
-            },
-            function () {
-              defectStory = null;
-            },
-          );
+          aside(function () {
+            defectStory = story.number;
+            return start().then(
+              function (result) {
+                defectStory = null;
+                return result;
+              },
+              function () {
+                defectStory = null;
+                return null;
+              },
+            );
+          });
         });
         body.appendChild(message);
         body.appendChild(el("div", { className: cls("actions") }, [validate, report]));
@@ -866,25 +1211,20 @@
         index = Math.min(stories.length - 1, index + 1);
         show();
       });
-      function finish() {
-        document.removeEventListener("keydown", onKey, true);
-        dialog.remove();
-        testing = false;
+      close.addEventListener("click", function () {
+        node.remove();
+        panel = null;
         resolve(stories);
-      }
-      function onKey(event) {
-        if (event.key === "Escape") finish();
-      }
-      document.addEventListener("keydown", onKey, true);
-      close.addEventListener("click", finish);
+      });
       loadStoriesToTest().then(function (found) {
-        if (!dialog.isConnected) return;
+        if (!node.isConnected) return;
         if (!found) {
           body.textContent = t.testFailed;
           previous.hidden = next.hidden = true;
           return;
         }
         stories = found;
+        panel.stories = stories;
         if (!stories.length) {
           body.textContent = t.noStories;
           previous.hidden = next.hidden = true;
@@ -1046,6 +1386,7 @@
   function form(node) {
     return new Promise(function (resolve) {
       var t = words();
+      var aboutStory = defectStory;
       var facts = context(node);
       var image = null;
       var titleInput = el("input", { id: cls("title"), type: "text", maxlength: "200", required: true, autocomplete: "off" });
@@ -1102,7 +1443,7 @@
         else preview.removeAttribute("src");
       }
 
-      if (!defectStory) loadTargets().then(function (versions) {
+      if (!aboutStory) loadTargets().then(function (versions) {
         if (!versions || !versions.length || !dialog.isConnected) return;
         picker = aboutPicker(versions);
         aboutHolder.appendChild(picker.node);
@@ -1185,7 +1526,7 @@
         if (options.version) body.version = options.version;
         if (options.deployment) body.deployment = options.deployment;
         if (image) body.screenshot = image;
-        if (defectStory) body.story = defectStory;
+        if (aboutStory) body.story = aboutStory;
         else if (picker) {
           var about = picker.value();
           if (about.story) body.story = about.story;
@@ -1382,33 +1723,13 @@
       );
   }
 
-  function showButton() {
-    if (document.querySelector("." + cls("launch"))) return;
-    var button = el("button", { type: "button", className: PREFIX + " " + cls("launch"), text: words().report });
-    button.addEventListener("click", function () {
-      button.hidden = true;
-      start().then(function () {
-        button.hidden = false;
-      });
-    });
-    document.body.appendChild(button);
-  }
-
-  function showTestButton() {
-    if (document.querySelector("." + cls("test-launch"))) return;
-    var button = el("button", { type: "button", className: PREFIX + " " + cls("launch") + " " + cls("test-launch"), text: words().test });
-    button.addEventListener("click", function () {
-      testPanel();
-    });
-    document.body.appendChild(button);
-  }
-
   var api = {
     version: VERSION,
     configure: configure,
     status: status,
     start: start,
     test: testPanel,
+    launcher: launcher,
     flush: flush,
     errors: function () {
       return errors.slice();
@@ -1431,11 +1752,8 @@
 
   function ready() {
     flush();
-    if (options.button)
-      status().then(function (data) {
-        if (data.can_report) showButton();
-        if (data.can_test) showTestButton();
-      });
+    // data-button: the launcher (1.7.0), in place of the two buttons.
+    if (options.button) launcher();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready);
   else ready();

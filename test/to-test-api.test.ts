@@ -86,8 +86,10 @@ describe("The stories to test, for the project's app", () => {
           title: "Story 146",
           url: `https://github.com/${REPO}/issues/146`,
           card: { id: 17, title: "Plan the week" },
-          criteria: [{ text: "It saves", done: true }, { text: "It shows", done: false }],
+          criteria: [{ text: "It saves", done: true, failed: null }, { text: "It shows", done: false, failed: null }],
           validated: null,
+          rework: false,
+          feedbacks: [],
         },
         {
           number: 147,
@@ -96,6 +98,8 @@ describe("The stories to test, for the project's app", () => {
           card: null,
           criteria: [],
           validated: { by: "tess", at: expect.any(String), version: "1.170" },
+          rework: false,
+          feedbacks: [],
         },
       ],
     });
@@ -220,6 +224,52 @@ describe("Tick, validate from the app (la-fabrique#166)", () => {
     expect(untick.status).toBe(200);
     expect(issueBody).toContain("- [ ] It shows");
     expect(await logged()).toContain("mona:criterion_unchecked");
+  });
+
+  it("takes a feedback on a criterion: a comment on the story, the rework label, the criterion unticked, logged; no new issue (la-fabrique#201)", async () => {
+    const { tokens } = await connect("mona", CONFIG, SCOPES);
+    await grantRole("mona", "tester");
+    await seed();
+    issueBody = "## Acceptance criteria\n\n- [x] It saves\n- [ ] It shows\n";
+    let labels: string[] = [];
+    const issue = () => JSON.stringify({ number: 146, title: "Story 146", state: "open", html_url: "", labels: labels.map((name) => ({ name })), user: null, created_at: "", updated_at: "", closed_at: null, body: issueBody });
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_x" }), J).times(5);
+    github().intercept({ method: "GET", path: `/repos/${REPO}/issues/146` }).reply(200, issue, J).times(3);
+    github().intercept({ method: "PATCH", path: `/repos/${REPO}/issues/146` }).reply(200, (options) => {
+      issueBody = (JSON.parse(String(options.body)) as { body: string }).body;
+      return issue();
+    }, J);
+    let comment = "";
+    github().intercept({ method: "POST", path: `/repos/${REPO}/issues/146/comments` }).reply(201, (options) => {
+      comment = (JSON.parse(String(options.body)) as { body: string }).body;
+      return JSON.stringify({ html_url: `https://github.com/${REPO}/issues/146#issuecomment-1` });
+    }, J);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/issues/146/labels` }).reply(200, (options) => {
+      labels = (JSON.parse(String(options.body)) as { labels: string[] }).labels;
+      return "[]";
+    }, J);
+    const response = await SELF.fetch(`${BASE}/api/projects/widget/to-test/146/feedback`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${tokens.access_token}`, "content-type": "application/json", "x-fabrique-environment": "int", "x-fabrique-version": encodeURIComponent("1.171–int") },
+      body: JSON.stringify({ criterion: 0, text: "Nothing is saved", page: "/app/repas.html" }),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ ok: true, rework: true, comment: `https://github.com/${REPO}/issues/146#issuecomment-1` });
+    expect(comment).toContain("**Test feedback** from @mona on int (version 1.171–int)");
+    expect(comment).toContain("Criterion 1 fails: “It saves”");
+    expect(comment).toContain("> Nothing is saved");
+    expect(comment).toContain("Page: `/app/repas.html`");
+    expect(labels).toEqual(["rework"]);
+    expect(issueBody).toContain("- [ ] It saves");
+    expect(await logged()).toEqual(expect.arrayContaining(["mona:story_feedback", "mona:criterion_unchecked"]));
+    // The list says it: back in development, the feedback on its criterion.
+    const list = (await (await call(tokens.access_token)).json()) as { stories: { number: number; rework: boolean; feedbacks: { text: string }[]; criteria: { failed: { text: string; open: boolean } | null }[] }[] };
+    const story = list.stories.find((candidate) => candidate.number === 146);
+    expect(story?.rework).toBe(true);
+    expect(story?.feedbacks.map((feedback) => feedback.text)).toEqual(["Nothing is saved"]);
+    expect(story?.criteria[0]?.failed).toMatchObject({ text: "Nothing is saved", open: true });
+    // Without a text, refused.
+    expect((await act(tokens.access_token, 146, "feedback", { criterion: 0 })).status).toBe(400);
   });
 
   it("refuses a bad criterion, a story not to test, a missing scope and a person who may not validate", async () => {

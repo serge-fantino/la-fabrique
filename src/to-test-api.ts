@@ -10,7 +10,11 @@ import { effectiveRole } from "./accounts";
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
 import { DEFECT_LABEL } from "./defect-targets";
-import { reportingEnvironments } from "./defects";
+import { decodeScreenshot, reportingEnvironments, storeScreenshot } from "./defects";
+import { installationToken, githubPost } from "./github-app";
+import { reworkLabelOf } from "./lifecycle";
+import { applyIssueEvent } from "./stories";
+import { wordingFor } from "./wording";
 import type { Project } from "./projects";
 import { intVersion, readIssue, storyChecks, tickCriterion, validateStory } from "./validation";
 import { activityStatement } from "./activity-log";
@@ -22,7 +26,8 @@ import { acceptanceCriteria } from "./stories";
 
 export const TO_TEST_ROUTE = /^\/api\/projects\/([^/]+)\/to-test$/;
 // Tick a criterion, validate (la-fabrique#166).
-export const TO_TEST_STORY_ROUTE = /^\/api\/projects\/([^/]+)\/to-test\/(\d+)\/(criteria|validate)$/;
+// …and give a feedback that sends the story back to development (#201).
+export const TO_TEST_STORY_ROUTE = /^\/api\/projects\/([^/]+)\/to-test\/(\d+)\/(criteria|validate|feedback)$/;
 
 function refuse(status: number, error: string, message: string): Response {
   return json({ error, message }, { status, headers: { "cache-control": "no-store" } });
@@ -81,13 +86,28 @@ export async function storiesToTestForApp(request: Request, env: Env, props: Gra
       stories: stories.map((story) => {
         const card = (cards.byStory.get(story.number) ?? []).map((id) => cards.cards.get(id)).find((head) => head !== undefined);
         const validated = checks.get(story.number)?.validated ?? null;
+        // Its feedbacks from testing, and whether it is back in development.
+        const feedbacks = (checks.get(story.number)?.feedbacks ?? []).map((feedback) => ({
+          criterion: feedback.criterion,
+          text: feedback.text,
+          by: feedback.by,
+          at: feedback.at,
+          url: feedback.url,
+        }));
+        const rework = story.labels.includes(reworkLabelOf(guard.project.check?.config));
+        const failedAt = (index: number) => {
+          const last = [...feedbacks].reverse().find((feedback) => feedback.criterion === index);
+          return last ? { text: last.text, by: last.by, at: last.at, url: last.url, open: rework } : null;
+        };
         return {
           number: story.number,
           title: story.title,
           url: story.url,
           card: card ? { id: card.id, title: card.title } : null,
-          criteria: (story.criteria ?? []).map((criterion) => ({ text: criterion.text, done: criterion.done })),
+          criteria: (story.criteria ?? []).map((criterion, index) => ({ text: criterion.text, done: criterion.done, failed: failedAt(index) })),
           validated: validated ? { by: validated.by, at: validated.at, version: validated.version } : null,
+          rework,
+          feedbacks,
         };
       }),
     },
@@ -135,9 +155,88 @@ export async function actOnStoryForApp(request: Request, env: Env, props: GrantP
       }).run();
     }
     if (outcome.ok) return json({ ok: true, index, done: data.done, steps: steps.length }, { headers: { "cache-control": "no-store" } });
+  } else if (action === "feedback") {
+    return giveFeedback(request, env, project, props, story);
   } else {
     outcome = await validateStory(request, env, project, props.login, story);
     if (outcome.ok) return json({ ok: true, validated: true }, { headers: { "cache-control": "no-store" } });
   }
   return refuse(outcome.status, outcome.status === 422 ? "not_ready" : outcome.status === 409 ? "conflict" : "github", outcome.message);
+}
+
+// A feedback from testing (la-fabrique#201): a criterion that fails (or the
+// story as a whole), what the tester saw, an optional screenshot. Not a new
+// issue: a comment on the story, in the tester's name and the project's
+// language; the story gets the rework label and goes back to development,
+// the criterion unticked. Nothing is launched: a person decides (#202).
+async function giveFeedback(request: Request, env: Env, project: Project, props: GrantProps, story: number): Promise<Response> {
+  let data: Record<string, unknown> | null = null;
+  try {
+    const raw = await request.text();
+    if (raw.length > 3 * 1024 * 1024) return refuse(400, "invalid", "The feedback is too large.");
+    const parsed: unknown = JSON.parse(raw);
+    data = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    data = null;
+  }
+  const text = typeof data?.["text"] === "string" ? data["text"].trim().slice(0, 4000) : "";
+  if (!data || !text) return refuse(400, "invalid", "Say what happened (text).");
+  const rawIndex = data["criterion"];
+  if (rawIndex !== undefined && rawIndex !== null && (typeof rawIndex !== "number" || !Number.isInteger(rawIndex) || rawIndex < 0)) {
+    return refuse(400, "invalid", "criterion must be the criterion's index.");
+  }
+  const screenshot = decodeScreenshot(data["screenshot"]);
+  if (screenshot === "invalid") return refuse(400, "invalid", "The screenshot must be a PNG or JPEG image of 2 MB at most.");
+  const page = typeof data["page"] === "string" && data["page"].startsWith("/") ? data["page"].slice(0, 500) : null;
+  // The criterion's text is read from the issue as it is now.
+  const issue = await readIssue(env, project, story);
+  if (!issue) return refuse(502, "github", `Issue #${story} could not be read.`);
+  const index = typeof rawIndex === "number" ? rawIndex : null;
+  const criterion = index !== null ? acceptanceCriteria(issue.body)[index] : undefined;
+  if (index !== null && !criterion) return refuse(422, "invalid", `Story #${story} has no criterion ${index + 1}.`);
+
+  const facts = relayFacts(request);
+  const version = facts.version ?? (await intVersion(env, project).catch(() => null));
+  const stored = screenshot ? await storeScreenshot(env, project.repo, props.login, screenshot) : null;
+  const screenshotUrl = stored ? new URL(`/screenshots/${stored}`, request.url).href : null;
+  const words = wordingFor(project);
+  const body = [
+    words.feedback(props.login, facts.environment, version),
+    criterion && index !== null ? words.feedbackCriterion(index + 1, criterion.text) : words.feedbackWhole,
+    `> ${text.replace(/\n/g, "\n> ")}`,
+    page ? `${words.feedbackPage} \`${page.replace(/`/g, "")}\`` : "",
+    screenshotUrl ? `![screenshot](${screenshotUrl})` : "",
+    `---\n${words.feedbackRework}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const token = await installationToken(env, project.installationId);
+  const comment = await githubPost(token, `/repos/${project.repo}/issues/${story}/comments`, { body });
+  if (!comment.ok) return refuse(502, "github", `GitHub refused the comment (HTTP ${comment.status}).`);
+  const commentUrl = ((await comment.json()) as { html_url?: string }).html_url ?? null;
+  const rework = reworkLabelOf(project.check?.config);
+  const labelled = await githubPost(token, `/repos/${project.repo}/issues/${story}/labels`, { labels: [rework] });
+  if (labelled.ok) {
+    const labels = issue.labels.map((label) => (typeof label === "string" ? label : (label.name ?? ""))).filter(Boolean);
+    await applyIssueEvent(env, project.repo, "labeled", { ...issue, labels: [...new Set([...labels, rework])].map((name) => ({ name })) });
+  }
+  if (criterion && index !== null && criterion.done) {
+    await tickCriterion(request, env, project, props.login, story, index, criterion.text, false).catch(() => null);
+  }
+  await activityStatement(env.DB, {
+    actor: props.login,
+    action: "story_feedback",
+    repo: project.repo,
+    issueNumber: story,
+    details: {
+      ...(index !== null && criterion ? { criterion: index, criterion_text: criterion.text.slice(0, 300) } : {}),
+      text: text.slice(0, 1000),
+      comment: commentUrl,
+      environment: facts.environment,
+      version,
+      ...(stored ? { screenshot: stored } : {}),
+    },
+  }).run();
+  return json({ ok: true, comment: commentUrl, rework: true }, { status: 201, headers: { "cache-control": "no-store" } });
 }

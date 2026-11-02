@@ -1,3 +1,4 @@
+import { reworkLabelOf } from "./lifecycle";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
@@ -113,6 +114,12 @@ export async function validateStory(
     if (criteria.some((criterion) => !criterion.done)) {
       return { ok: false, message: "Every acceptance criterion must be checked before validating.", status: 422 };
     }
+    // A story back in development after a feedback is not validated until
+    // its code changed and it is tested again (la-fabrique#201, #202).
+    const rework = reworkLabelOf(project.check?.config);
+    if (issue.labels.some((label) => (typeof label === "string" ? label : label.name) === rework)) {
+      return { ok: false, message: "This story has feedbacks: it is back in development until its code takes them into account.", status: 422 };
+    }
     // Without an integration branch, the story is checked where it is
     // online, not released yet: validated, its issue stays open until the
     // release at the close of the sprint (la-fabrique#139).
@@ -201,9 +208,21 @@ export async function reportDefect(
   return { ok: true, number: created.number };
 }
 
+export interface Feedback {
+  criterion: number | null;
+  criterionText: string | null;
+  text: string;
+  by: string;
+  at: string;
+  url: string | null;
+}
+
 export interface StoryChecks {
   validated: { by: string; at: string; version: string | null } | null;
   defects: number[];
+  // The feedbacks from testing (la-fabrique#201): a criterion that failed
+  // (or the story as a whole), what the tester saw, a comment on the story.
+  feedbacks?: Feedback[];
 }
 
 // What GitHub does not keep: who validated each story, and the defects
@@ -212,7 +231,7 @@ export async function storyChecks(db: D1Database, repo: string): Promise<Map<num
   const { results } = await db
     .prepare(
       `SELECT occurred_at, actor, action, issue_number, details FROM activity_log
-       WHERE repo = ? AND action IN ('story_validated', 'defect_reported', 'defect_linked')
+       WHERE repo = ? AND action IN ('story_validated', 'defect_reported', 'defect_linked', 'story_feedback')
        ORDER BY id`,
     )
     .bind(repo)
@@ -230,6 +249,21 @@ export async function storyChecks(db: D1Database, repo: string): Promise<Map<num
     if (row.action === "story_validated") {
       if (row.issue_number !== null) {
         entry(row.issue_number).validated = { by: row.actor, at: row.occurred_at, version: typeof details["version"] === "string" ? details["version"] : null };
+      }
+    } else if (row.action === "story_feedback") {
+      if (row.issue_number !== null) {
+        const found = entry(row.issue_number);
+        found.feedbacks = [
+          ...(found.feedbacks ?? []),
+          {
+            criterion: typeof details["criterion"] === "number" ? details["criterion"] : null,
+            criterionText: typeof details["criterion_text"] === "string" ? details["criterion_text"] : null,
+            text: typeof details["text"] === "string" ? details["text"] : "",
+            by: row.actor,
+            at: row.occurred_at,
+            url: typeof details["comment"] === "string" ? details["comment"] : null,
+          },
+        ];
       }
     } else if (typeof details["defect"] === "number") {
       links.set(details["defect"], row.issue_number);
