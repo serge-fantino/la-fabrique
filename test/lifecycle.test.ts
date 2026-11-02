@@ -80,6 +80,17 @@ describe("stageOf", () => {
     expect(stageOf(old, DEFAULT, new Set())).toBe("backlog");
   });
 
+  it("puts a story with feedbacks back in development, merged or on int, until its label goes (la-fabrique#201)", () => {
+    const merged = { pullRequests: [{ number: 9, url: "", state: "merged" as const }] };
+    expect(stageOf(story(merged), DEFAULT, new Set())).toBe("to_validate");
+    expect(stageOf(story({ ...merged, labels: ["rework"] }), DEFAULT, new Set())).toBe("in_dev");
+    expect(stageOf(story({ ...merged, labels: ["rework"] }), DEFAULT, new Set([7]))).toBe("in_dev");
+    expect(stageOf(story({ state: "closed", labels: ["rework"] }), DEFAULT, new Set())).toBe("done");
+    // The project names its own label.
+    const own = cycleRules(validateFabriqueConfig(JSON.stringify({ nom: "W", demandes: { etiquettes: { retour: "a-retravailler" } } }), { files: new Set(), folders: new Set(), complete: true }).config);
+    expect(stageOf(story({ ...merged, labels: ["a-retravailler"] }), own, new Set())).toBe("in_dev");
+  });
+
   it("follows the work: branch or open PR, on int, closed", () => {
     expect(stageOf(story({ branches: ["feature/7-x"] }), DEFAULT, new Set())).toBe("in_dev");
     expect(stageOf(story({ pullRequests: [{ number: 9, url: "", state: "open" }] }), DEFAULT, new Set())).toBe("in_dev");

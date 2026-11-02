@@ -1,3 +1,4 @@
+import { reworkLabelOf } from "./lifecycle";
 import type { Recorded } from "./gherkin";
 import { scenarioBlock } from "./gherkin-views";
 import { defectUrl, projectUrl } from "./urls";
@@ -22,7 +23,39 @@ export interface CardActions {
   canValidate: boolean;
   checks: Map<number, StoryChecks>;
   all: Map<number, Story>;
+  // The label of a story back in development after a feedback.
+  reworkLabel?: string;
   scenarios?: Map<number, Recorded[]>;
+}
+
+// The feedbacks from testing (la-fabrique#201): the last one of a
+// criterion, failed while the story is back in development, to test again
+// once its code changed.
+function feedbackOf(story: Story, index: number, actions: CardActions): string {
+  const feedback = [...(actions.checks.get(story.number)?.feedbacks ?? [])].reverse().find((candidate) => candidate.criterion === index);
+  if (!feedback) return "";
+  const rework = isRework(story, actions);
+  return ` <span class="pill ${rework ? "alert" : "warn"} small">${rework ? "Failed" : "To test again"}</span>${
+    feedback.url ? ` <a class="small" href="${escapeHtml(feedback.url)}">feedback</a>` : ""
+  }`;
+}
+
+function isRework(story: Story, actions: CardActions): boolean {
+  return story.labels.includes(actions.reworkLabel ?? "rework");
+}
+
+// The story's feedbacks, newest first.
+function feedbackList(story: Story, actions: CardActions): string {
+  const feedbacks = [...(actions.checks.get(story.number)?.feedbacks ?? [])].reverse();
+  if (!feedbacks.length) return "";
+  return `<details class="feedbacks"${isRework(story, actions) ? " open" : ""}><summary>${feedbacks.length} feedback${feedbacks.length === 1 ? "" : "s"} from testing</summary><ul>${feedbacks
+    .map(
+      (feedback) =>
+        `<li><span class="mono small">${escapeHtml(feedback.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(feedback.by)}${
+          feedback.criterion !== null ? ` · criterion ${feedback.criterion + 1}${feedback.criterionText ? ` “${escapeHtml(feedback.criterionText)}”` : ""}` : ""
+        }: ${escapeHtml(feedback.text)}${feedback.url ? ` <a href="${escapeHtml(feedback.url)}">On GitHub</a>` : ""}</li>`,
+    )
+    .join("")}</ul></details>`;
 }
 
 function criteriaList(story: Story, actions: CardActions): string {
@@ -33,7 +66,9 @@ function criteriaList(story: Story, actions: CardActions): string {
       const content = `<span class="box" aria-hidden="true">${criterion.done ? "✓" : ""}</span><span>${escapeHtml(criterion.text)}${
         criterion.done ? ` <span class="visually-hidden">(checked)</span>` : ""
       }</span>`;
-      if (!actions.canValidate) return `<li class="${criterion.done ? "done" : ""}">${content}</li>`;
+      // Next to the criterion, never inside its button: a link in it.
+      const failure = feedbackOf(story, index, actions);
+      if (!actions.canValidate) return `<li class="${criterion.done ? "done" : ""}">${content}${failure}</li>`;
       return `<li class="${criterion.done ? "done" : ""}"><form method="post" action="${escapeHtml(actions.base)}/to-test/criterion" data-criterion>
           ${csrfField(actions.viewer)}
           <input type="hidden" name="issue" value="${story.number}" />
@@ -41,7 +76,7 @@ function criteriaList(story: Story, actions: CardActions): string {
           <input type="hidden" name="text" value="${escapeHtml(criterion.text)}" />
           <input type="hidden" name="done" value="${criterion.done ? "0" : "1"}" />
           <button type="submit" class="criterion" aria-pressed="${criterion.done}">${content}</button>
-        </form></li>`;
+        </form>${failure}</li>`;
     })
     .join("")}</ul>`;
 }
@@ -62,7 +97,8 @@ function validation(story: Story, actions: CardActions): string {
   if (!actions.canValidate) {
     return `${validated}${defects.length ? `<ul class="defects">${defects.join("")}</ul>` : ""}`;
   }
-  const ready = (story.criteria ?? []).every((criterion) => criterion.done);
+  const rework = isRework(story, actions);
+  const ready = (story.criteria ?? []).every((criterion) => criterion.done) && !rework;
   return `${validated}
     ${defects.length ? `<ul class="defects">${defects.join("")}</ul>` : ""}
     <div class="test-actions">
@@ -71,7 +107,7 @@ function validation(story: Story, actions: CardActions): string {
         <input type="hidden" name="issue" value="${story.number}" />
         <button type="submit" class="button${ready ? "" : " quiet"}"${ready ? "" : " disabled"} data-validate>${check?.validated ? "Validate again" : "Validate"}</button>
       </form>
-      ${ready ? "" : `<span class="muted small">Check every criterion to validate.</span>`}
+      ${ready ? "" : `<span class="muted small">${rework ? "Back in development: its code takes the feedbacks into account first." : "Check every criterion to validate."}</span>`}
       <details class="defect-form">
         <summary class="button quiet">Report a defect</summary>
         <form method="post" action="${escapeHtml(actions.base)}/to-test/defect">
@@ -94,7 +130,9 @@ function validation(story: Story, actions: CardActions): string {
 function storyCard(story: Story, actions: CardActions): string {
   return `<article class="test-story" id="story-${story.number}">
       <h4><a href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)}</h4>
+      ${isRework(story, actions) ? `<p><span class="pill warn">Back in development</span> <span class="muted small">Feedbacks from testing: its code takes them into account, then it is tested again.</span></p>` : ""}
       ${criteriaList(story, actions)}
+      ${feedbackList(story, actions)}
       ${validation(story, actions)}
       ${scenarioBlock(actions.viewer, actions.base, story.number, story.title, actions.scenarios?.get(story.number) ?? [], actions.canValidate, "to-test")}
     </article>`;
@@ -168,9 +206,10 @@ function unlinkedDefects(project: Project, defects: NonNullable<ToTestData["unli
 // and the release-notes changes production does not have yet.
 export function toTestContent(project: Project, data: ToTestData): string {
   const all = new Map(data.stories.map((story) => [story.number, story]));
+  const reworkLabel = reworkLabelOf(project.check?.config);
   const actions: CardActions = data.actions
-    ? { ...data.actions, all }
-    : { viewer: { login: "", role: "tester", csrfToken: "" }, base: "", canValidate: false, checks: new Map(), all };
+    ? { ...data.actions, all, reworkLabel }
+    : { viewer: { login: "", role: "tester", csrfToken: "" }, base: "", canValidate: false, checks: new Map(), all, reworkLabel };
   const readOnly: CardActions = { ...actions, canValidate: false };
   const failure = notice(data.failure, "error");
 

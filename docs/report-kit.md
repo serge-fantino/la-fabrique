@@ -23,7 +23,7 @@ Keep the names as they are, without a version in them: declare the folder in `.f
 
 Only where reporting makes sense: never in production.
 
-The simplest, with its own floating button, shown when the relay says the person can report:
+The simplest, with its own launcher (kit 1.7.0): a small round button with La Fabrique's mark, shown when the relay says the person can report or test. A tap unfolds it into **Report a defect** and **Test**; the person can drag it elsewhere, and its place is kept on the device:
 
 ```html
 <link rel="stylesheet" href="/vendor/fabrique/fabrique-report.css" />
@@ -51,10 +51,12 @@ Options (`FabriqueReport.configure`, `start`, or the `data-` attributes of the s
 | `headers` | — | Headers to add to the relay calls (an object, or a function returning one): a CSRF token. |
 | `captureScript` | `data-capture-script` | Address of [html2canvas](https://html2canvas.hertzen.com/) on your site (MIT, copy it too). With it, the form offers a screenshot of the part chosen, shown before sending. Without it, the person can attach an image. |
 | `capture` | — | Your own screenshot function instead: `(element) => Promise<dataURL>`. |
-| `button` | `data-button` | `true`: a floating button, shown when the relay answers `can_report: true`. |
+| `button` | `data-button` | `true`: the launcher (1.7.0), shown when the relay answers `can_report` or `can_test`. |
 | `environment`, `version`, `deployment` | `data-environment` | Sent with the report; better set by the relay, which knows them. |
 
-API: `FabriqueReport.start()` (picking, then the form; resolves with the result, or `null` if cancelled), `status()` (the relay's `GET`), `flush()` (sends the reports kept offline; done at load and when the network is back), `errors()`, `version`.
+API: `FabriqueReport.start()` (picking, then the form; resolves with the result, or `null` if cancelled), `test()` (the Test panel), `launcher(options)` (the launcher, from your own code: it asks the relay what the person may do, then shows itself or not), `status()` (the relay's `GET`), `flush()` (sends the reports kept offline; done at load and when the network is back), `errors()`, `version`.
+
+The Test panel (1.7.0) floats above the app and never blocks it: the person drags it by its head, folds it into a bar (the story and how many criteria are ticked) and closes it; its place and state are kept on the device. On a phone it takes half the screen at most. It goes through the stories waiting on int (Previous, Next), then lists the story's criteria, each a box and its text, with **Record** (the steps) and **Fail**: a feedback written in the panel (what happened instead, a screenshot of the page if wanted). A feedback is not a new issue: La Fabrique writes it as a comment on the story, in the tester's name, quoting the criterion, and the story goes back to development (the rework label, `demandes.etiquettes.retour`); the criterion stays unticked and shows **Failed**, and the story cannot be validated until its code changed and it is tested again. Nothing is launched by itself: a person reworks the story with its feedbacks.
 
 What it is about: the form asks the person what the defect is about (**It is about**): the release notes in detail, the versions on int first, then those released, newest first. Under each version, each of its changes can be chosen, then the stories it declares; a search finds an older one; **I don't know** is always possible. When a single story is on int, it is chosen already.
 
@@ -175,7 +177,9 @@ The versions are the project's release notes: the entries on int, then those rel
   "screenshot": "data:image/png;base64,…", "story": 146, "release": "1.170", "change": 2 }
 ```
 
-`story`, `release` and `change` are what the person chose (all optional; `change` is the index of a change in that version's `changes`). La Fabrique links the issue to that story, says which version it is about and quotes the change; a change of a version that declares a single story links that story; when the person says nothing, it links the only story the versions on int declare, if there is one.
+`story`, `release` and `change` are what the person chose (all optional; `change` is the index of a change in that version's `changes`).
+
+**A feedback (kit 1.7.0, la-fabrique#201)**: `POST ?path=to-test/{story}/feedback` with `{ "criterion": 1, "text": "…", "screenshot": "data:image/png;base64,…", "page": "/…", "viewport": {…}, "user_agent": "…" }` (`criterion` optional: the story as a whole), passed to `POST {FABRIQUE_URL}/api/projects/{project}/to-test/{story}/feedback` (scope `stories:test`). It answers `201 { ok, comment, rework: true }`. The stories to test then say `rework` and `feedbacks`, and each criterion its `failed` feedback. La Fabrique links the issue to that story, says which version it is about and quotes the change; a change of a version that declares a single story links that story; when the person says nothing, it links the only story the versions on int declare, if there is one.
 
 The relay:
 

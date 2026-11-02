@@ -65,7 +65,7 @@ function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function decodeScreenshot(value: unknown): DefectReport["screenshot"] | "invalid" {
+export function decodeScreenshot(value: unknown): DefectReport["screenshot"] | "invalid" {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") return "invalid";
   const match = /^data:(image\/png|image\/jpeg);base64,([A-Za-z0-9+/=\s]+)$/.exec(value);
@@ -239,7 +239,7 @@ export function defectBody(
   return parts.join("\n\n");
 }
 
-async function storeScreenshot(env: Env, repo: string, login: string, screenshot: NonNullable<DefectReport["screenshot"]>): Promise<string> {
+export async function storeScreenshot(env: Env, repo: string, login: string, screenshot: NonNullable<DefectReport["screenshot"]>): Promise<string> {
   const id = randomToken(24);
   const statements = [
     env.DB.prepare("INSERT INTO screenshots (id, repo, reporter, content_type, size) VALUES (?, ?, ?, ?, ?)").bind(

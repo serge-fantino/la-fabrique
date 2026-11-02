@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.4.0 — styles. Change the custom properties to match your app. */
+/*! FabriqueReport 1.7.0 — styles. Change the custom properties to match your app. */
 .fab-rep {
   --fab-rep-ink: #18211b;
   --fab-rep-paper: #ffffff;
@@ -88,7 +88,6 @@
 }
 
 .fab-rep-button:focus-visible,
-.fab-rep-launch:focus-visible,
 .fab-rep-sheet :focus-visible {
   outline: 3px solid var(--fab-rep-accent);
   outline-offset: 2px;
@@ -243,26 +242,6 @@
   font-weight: 700;
 }
 
-.fab-rep-launch {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--fab-rep-bottom) + env(safe-area-inset-bottom, 0px));
-  z-index: 2147482999;
-  min-height: 44px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--fab-rep-ink);
-  color: #fff;
-  font: 600 14px/1 var(--fab-rep-font);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-}
-
-.fab-rep-launch[hidden] {
-  display: none;
-}
-
 .fab-rep-about {
   margin: 0 0 14px;
   padding: 0;
@@ -361,11 +340,6 @@
   display: none;
 }
 
-.fab-rep-test-launch {
-  right: auto;
-  left: 16px;
-}
-
 .fab-rep-test .fab-rep-story-title {
   margin: 4px 0 8px;
   font-size: 17px;
@@ -451,4 +425,211 @@
 
 .fab-rep-record {
   margin-left: 32px;
+}
+
+/* The launcher (1.7.0): one small round button with La Fabrique's mark,
+   unfolding into what the person may do; moved by a finger. */
+.fab-rep-launcher {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--fab-rep-bottom) + env(safe-area-inset-bottom, 0px));
+  z-index: 2147482999;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  touch-action: none;
+}
+
+.fab-rep-launcher[hidden],
+.fab-rep-menu[hidden],
+.fab-rep-float[hidden],
+.fab-rep-float-main[hidden] {
+  display: none;
+}
+
+.fab-rep-logo {
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fab-rep-paper);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  cursor: grab;
+  opacity: 0.85;
+  touch-action: none;
+  display: grid;
+  place-items: center;
+}
+
+.fab-rep-logo:hover,
+.fab-rep-logo[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.fab-rep-logo:focus-visible,
+.fab-rep-icon:focus-visible {
+  outline: 3px solid var(--fab-rep-accent);
+  outline-offset: 2px;
+}
+
+.fab-rep-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 18px;
+  background: var(--fab-rep-paper);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.fab-rep-moving,
+.fab-rep-moving * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+/* The Test panel (1.7.0): floating above the app, moved by its head, folded
+   into a bar. */
+.fab-rep-float {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--fab-rep-bottom) + 60px + env(safe-area-inset-bottom, 0px));
+  z-index: 2147482998;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: var(--fab-rep-paper);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.fab-rep-float-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 6px 14px;
+  background: var(--fab-rep-ink);
+  color: #fff;
+}
+
+.fab-rep-float-grip {
+  flex: 1;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fab-rep-float-summary {
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.fab-rep-icon {
+  min-width: 36px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.fab-rep-float-main {
+  overflow: auto;
+  padding: 10px 14px 14px;
+}
+
+.fab-rep-float-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.fab-rep-small {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.fab-rep-criterion {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.fab-rep-criterion input {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  flex: none;
+}
+
+.fab-rep-criterion-actions {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 0 32px;
+}
+
+.fab-rep-failed {
+  margin: 4px 0 0 32px;
+  color: var(--fab-rep-accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.fab-rep-failed a {
+  color: inherit;
+}
+
+.fab-rep-is-failed label {
+  color: var(--fab-rep-accent);
+}
+
+@media (max-width: 600px) {
+  .fab-rep-float {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(var(--fab-rep-bottom) + 56px + env(safe-area-inset-bottom, 0px));
+    max-height: 50vh;
+  }
+}
+
+/* A feedback on a criterion (1.7.0): written in the panel. */
+.fab-rep-feedback {
+  margin: 6px 0 0 32px;
+}
+
+.fab-rep-feedback-input {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid var(--fab-rep-line);
+  border-radius: 12px;
+  font: inherit;
+}
+
+.fab-rep-rework {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fab-rep-accent) 12%, transparent);
+  color: var(--fab-rep-accent);
+  font-size: 13px;
+  font-weight: 600;
 }

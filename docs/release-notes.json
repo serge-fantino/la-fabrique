@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-02",
+    "titre": "Testing from the app, the next round: a discreet launcher, a floating panel, a criterion that fails",
+    "changements": [
+      "Report kit 1.7.0: one small round La Fabrique button in the app instead of two pills; a tap unfolds Report a defect and Test; drag it anywhere, it stays there.",
+      "The Test panel floats above the app without blocking it: move it by its head, fold it into a bar with the story and how many criteria are ticked, close it; on a phone it takes half the screen at most. Previous and Next go through the stories on the same screen, then each criterion is a box and its text.",
+      "Fail on a criterion: a feedback written in the panel, with a screenshot of the page if wanted. It is not a new issue: a comment on the story in the tester's name, quoting the criterion. The story goes back to development (the rework label), the criterion stays unticked and shows Failed, and the story cannot be validated until its code changed and it is tested again, in the app as in To test, where its feedbacks are listed."
+    ],
+    "stories": [199, 200, 201],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-02",
     "titre": "A project's components",
     "changements": [
       "A project declares the folder of its components in .fabrique.json (composants), and each component is a folder of its repository that describes itself: component.json (what it brings, what it asks of the project, its implementations per stack, its personal data, where it was taken from), with its README, spec, Gherkin scenarios and changelog.",

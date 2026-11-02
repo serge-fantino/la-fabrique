@@ -65,6 +65,9 @@ export interface CycleRules {
   checks: ReadyCheck[];
   priorities: string[];
   readyLabel: string | null;
+  // A story with feedbacks from testing goes back to development
+  // (la-fabrique#201): this label says so on GitHub.
+  reworkLabel: string;
   // The stories made from a card: a card groups them as an epic would.
   inCard: Set<number>;
 }
@@ -74,6 +77,7 @@ export function cycleRules(config: FabriqueConfig | null | undefined, inCard: Se
     checks: config?.cycle?.pret ?? DEFAULT_READY,
     priorities: config?.cycle?.priorites ?? [],
     readyLabel: config?.demandes?.etiquettes?.["prete"] ?? null,
+    reworkLabel: reworkLabelOf(config),
     inCard,
   };
 }
@@ -108,8 +112,15 @@ export function missingForReady(story: Story, rules: CycleRules): string[] {
 }
 
 // `onInt`: the stories whose work is on integration and not in production.
+// The label of a story back in development after a feedback.
+export function reworkLabelOf(config: FabriqueConfig | null | undefined): string {
+  return config?.demandes?.etiquettes?.["retour"] ?? "rework";
+}
+
 export function stageOf(story: Story, rules: CycleRules, onInt: Set<number>): Stage | null {
   if (isEpic(story)) return null;
+  // Feedbacks from testing: back in development until its code changes.
+  if (story.state !== "closed" && rules.reworkLabel && story.labels.includes(rules.reworkLabel)) return "in_dev";
   if (onInt.has(story.number)) return "on_int";
   if (story.state === "closed") return "done";
   if (story.pullRequests.some((pull) => pull.state === "open")) return "in_dev";

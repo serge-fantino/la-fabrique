@@ -19,6 +19,13 @@ const WORDS = {
     defectSignature: (login: string, version: string | null) =>
       `Signalé depuis La Fabrique extraordinaire par @${login}${version ? `, sur int en version ${version}` : ""}`,
     defectOnStory: (login: string, number: number) => `Défaut signalé par @${login} : #${number}`,
+    feedback: (login: string, environment: string | null, version: string | null) =>
+      `**Retour de test** de @${login}${environment ? ` sur ${environment}` : ""}${version ? ` (version ${version})` : ""}`,
+    feedbackCriterion: (index: number, text: string) => `Le critère ${index} ne passe pas : « ${text} »`,
+    feedbackWhole: "La story ne passe pas.",
+    feedbackPage: "Page :",
+    feedbackRework: "La story repasse en développement jusqu'à ce que son code tienne compte de ce retour (La Fabrique extraordinaire).",
+    criterionFails: (index: number, story: number) => `Le critère ${index} de #${story} échoue :`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude lancé sur cette demande par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
     claudeUpdating: (login: string, url: string | null) =>
@@ -63,6 +70,13 @@ const WORDS = {
     defectSignature: (login: string, version: string | null) =>
       `Reported from La Fabrique extraordinaire by @${login}${version ? `, on int at version ${version}` : ""}`,
     defectOnStory: (login: string, number: number) => `Defect reported by @${login}: #${number}`,
+    feedback: (login: string, environment: string | null, version: string | null) =>
+      `**Test feedback** from @${login}${environment ? ` on ${environment}` : ""}${version ? ` (version ${version})` : ""}`,
+    feedbackCriterion: (index: number, text: string) => `Criterion ${index} fails: “${text}”`,
+    feedbackWhole: "The story fails.",
+    feedbackPage: "Page:",
+    feedbackRework: "The story goes back to development until its code takes this feedback into account (La Fabrique extraordinaire).",
+    criterionFails: (index: number, story: number) => `Criterion ${index} of #${story} fails:`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude launched on this story by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,
     claudeUpdating: (login: string, url: string | null) =>
