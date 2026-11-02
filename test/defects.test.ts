@@ -147,7 +147,8 @@ describe("Reporting a defect from the project's app", () => {
     const sent = mockGitHub();
     mockStoryComment(sent);
 
-    const response = await report(tokens.access_token, { ...REPORT, screenshot: PNG });
+    // The relay's headers (protocol 2), URI-encoded, win over the body's version.
+    const response = await report(tokens.access_token, { ...REPORT, version: "pirate", screenshot: PNG }, "widget", { "x-fabrique-version": encodeURIComponent("1.169–int") });
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
       issue: { number: 150, url: `https://github.com/${REPO}/issues/150` },
@@ -214,7 +215,7 @@ describe("Reporting a defect from the project's app", () => {
     expect(await refused.json()).toMatchObject({ error: "reporting_disabled" });
     // Without environment in the body, the header is enough to be valid.
     const { environment: _left, ...withoutEnvironment } = REPORT;
-    const local = await report(tokens.access_token, withoutEnvironment, "widget", { "x-fabrique-environment": "local", "x-fabrique-version": "9.9" });
+    const local = await report(tokens.access_token, withoutEnvironment, "widget", { "x-fabrique-environment": "local", "x-fabrique-version": encodeURIComponent("1.171–int") });
     expect(local.status).toBe(403);
     expect(await local.json()).toMatchObject({ error: "reporting_disabled", message: "Reporting is off on local." });
   });

@@ -16,9 +16,19 @@ export interface RelayFacts {
   deployment: string | null;
 }
 
+// A header carries ASCII only: the relay URI-encodes each value
+// (encodeURIComponent: "1.171–int" is "1.171%E2%80%93int"), La Fabrique
+// decodes it; a value that does not decode is taken as it is.
 function header(request: Request, name: string, max: number): string | null {
-  const value = request.headers.get(name)?.trim();
-  return value ? value.slice(0, max) : null;
+  const raw = request.headers.get(name)?.trim();
+  if (!raw) return null;
+  let value = raw;
+  try {
+    value = decodeURIComponent(raw);
+  } catch {
+    // Not URI-encoded: as it is.
+  }
+  return value.trim().slice(0, max) || null;
 }
 
 export function relayFacts(request: Request): RelayFacts {

@@ -83,7 +83,7 @@ One address (the kit's `endpoint`), for a signed-in person of your app, outside 
 
 1. `path` is lowercase words separated by `/`: `^[a-z0-9-]+(/[a-z0-9-]+)*$`, at most 200 characters (no `..`, no query, no other project); anything else is refused (`400`);
 2. only `GET` and `POST`; a `POST` body is passed as it comes, up to 3 MB (a screenshot); a `POST` without `path` is a defect (`path=defects`), so a report kept offline by an older kit still arrives;
-3. the relay adds the person's access token (`authorization: Bearer …`, renewed with the refresh token when it expires) and three headers only it can say, which La Fabrique trusts over the body: `X-Fabrique-Environment` (the name of this environment in `.fabrique.json`, which its version path answers), `X-Fabrique-Version` and `X-Fabrique-Deployment`;
+3. the relay adds the person's access token (`authorization: Bearer …`, renewed with the refresh token when it expires) and three headers only it can say, which La Fabrique trusts over the body: `X-Fabrique-Environment` (the name of this environment in `.fabrique.json`, which its version path answers), `X-Fabrique-Version` and `X-Fabrique-Deployment`, each value URI-encoded (`encodeURIComponent`: a header carries ASCII only, and a version may read `1.171–int`);
 4. it answers La Fabrique's status and body as they come; on `401`, the link is no longer valid: forget it (the next `GET` answers `linked: false`);
 5. in production, it answers `403 { "error": "reporting_disabled" }` without calling La Fabrique.
 
@@ -107,9 +107,9 @@ async function relay(request: Request, env: Env, link: { access: string } | null
     headers: {
       authorization: `Bearer ${link.access}`,
       "content-type": "application/json",
-      "x-fabrique-environment": env.ENVIRONMENT, // e.g. "int"
-      "x-fabrique-version": await currentVersion(env),
-      "x-fabrique-deployment": env.CF_VERSION_METADATA?.id ?? "",
+      "x-fabrique-environment": encodeURIComponent(env.ENVIRONMENT), // e.g. "int"
+      "x-fabrique-version": encodeURIComponent(await currentVersion(env)),
+      "x-fabrique-deployment": encodeURIComponent(env.CF_VERSION_METADATA?.id ?? ""),
     },
     body: request.method === "POST" ? await request.text() : undefined,
   });
