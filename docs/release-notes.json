@@ -6,7 +6,8 @@
     "changements": [
       "Report kit 1.6.0 speaks a second relay protocol: a relay written once that passes each call of the kit to La Fabrique's project API (?path=…), with the person's token and three headers only the project's server can say (environment, version, deployment). A new kit version then needs no new code in the project, only the update proposed by Setup.",
       "La Fabrique trusts those headers over the body on a defect, and reads the environment from them for the stories to test.",
-      "An older relay, a route per call, keeps working: the kit speaks its protocol until the relay says \"relay\": 2. docs/report-kit.md describes both, with a generic relay for a Cloudflare Worker."
+      "An older relay, a route per call, keeps working: the kit speaks its protocol until the relay says \"relay\": 2. docs/report-kit.md describes both, with a generic relay for a Cloudflare Worker.",
+      "The consent page now says what stories:test really allows: show the stories to test and, in your name, tick a criterion, validate a story and keep the steps recorded; never in production."
     ],
     "stories": [195],
     "liens": null

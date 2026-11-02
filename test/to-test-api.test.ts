@@ -150,7 +150,9 @@ describe("The consent page and the scope", () => {
     const { cookie } = await signIn("mona");
     mockRepoAccess();
     const page = await (await get(await authorizePath(app.clientId, SCOPES), cookie)).text();
-    expect(page).toContain("show you the stories to test");
+    expect(page).toContain("and test its stories with you");
+    // Since #166 the app ticks and validates: the page says so.
+    expect(page).toContain("tick a criterion, validate a story and keep the steps you choose to record");
     expect(page).toContain("stories:test");
     mockRepoAccess();
     const plain = await (await get(await authorizePath(app.clientId), cookie)).text();
