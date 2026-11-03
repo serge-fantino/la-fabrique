@@ -474,7 +474,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
               ]
                 .filter(Boolean)
                 .join(" and ")} on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
-            : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
+            : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>, and get them ready in <a href="${escapeHtml(base)}/refinement">Refinement</a>.`
         }</p>
         ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? startCard() : ""}
       </section>`;

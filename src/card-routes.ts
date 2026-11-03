@@ -8,6 +8,7 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { refinementCards, refinementPage } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
@@ -76,7 +77,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -762,6 +763,43 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
   return showSprint(request, env, viewer, project);
 }
 
+// The Refinement tab (la-fabrique#223): the features of Next release and
+// their next step. Reads La Fabrique's own data only.
+async function refinementRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
+  const base = `${projectUrl(project.repo)}/refinement`;
+  if (form) {
+    if (!canWriteCards(viewer)) return forbidden(viewer);
+    if (String(form.get("action") ?? "") === "story_ready") {
+      const story = Number(form.get("story"));
+      const links = await storyCards(env.DB, project.repo);
+      const inNext = (await listCards(env.DB, project.repo)).filter((card) => card.release === NEXT_RELEASE && !card.archivedAt);
+      if (!Number.isInteger(story) || !inNext.some((card) => (links.order.get(card.id) ?? []).includes(story))) return redirect(base);
+      const outcome = await markReady(env, project, story, viewer.login);
+      if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(outcome.message)}`);
+      return redirect(`${base}?notice=ready`);
+    }
+    return redirect(base);
+  }
+  const params = new URL(request.url).searchParams;
+  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const { features, others } = refinementCards(cards, NEXT_RELEASE);
+  const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
+  return html(
+    refinementPage(viewer, view, {
+      features,
+      others,
+      links,
+      stories,
+      canWrite: canWriteCards(viewer),
+      readyLabel: project.check?.config?.demandes?.etiquettes?.["prete"] ?? null,
+      canClaude: canWriteCards(viewer),
+      notice: params.get("notice") === "ready" ? "The story is labelled ready." : undefined,
+      failure: params.get("failure")?.slice(0, 300) ?? undefined,
+    }),
+    { cookies },
+  );
+}
+
 // The cards that joined the sprint by their work, said once (la-fabrique#205).
 function joinedNotice({ opened, joined }: JoinOutcome): string | undefined {
   const one = (entry: Joined) => `${cardRef(entry.card.id)} (${entry.stories.map((number) => `#${number}`).join(", ")})`;
@@ -1065,6 +1103,11 @@ export async function cardRoute(
     return data ? handler(data) : html(messagePage("Not allowed", "This form expired: reload the page.", viewer), { status: 403 });
   };
 
+  if (path === "refinement") {
+    if (method === "GET") return refinementRoute(request, env, viewer, project, null);
+    if (method === "POST") return withForm((data) => refinementRoute(request, env, viewer, project, data));
+    return notAllowed();
+  }
   if (path === "board") {
     if (method === "GET") return showBoard(request, env, viewer, project);
     if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));

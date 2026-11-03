@@ -1,6 +1,18 @@
 [
   {
     "version": "next",
+    "date": "2026-11-03",
+    "titre": "A Refinement tab for the next release",
+    "changements": [
+      "A Refinement tab, between Board and Sprint (Product and All perspectives), lists the features of Next release in priority order, each with its status, synopsis, stories and next step: Specify, Answer, Refine, Validate (with what each story lacks and Mark ready) or Ready for the sprint.",
+      "Ideas and questions of Next release are listed apart, below. The page reads only what La Fabrique already holds: no call to GitHub or Claude.",
+      "Linked from the board's Next release lane and from the sprint page when no sprint runs."
+    ],
+    "stories": [223],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-01",
     "titre": "Ticking criteria quickly keeps every tick",
     "changements": [

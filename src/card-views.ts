@@ -261,7 +261,8 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   const releaseNote = (axis: Axis, value: string) => {
     const release = axis === "release" ? data.releases.get(value) : undefined;
     // Next release needs no pill; the Sprint lane says it is in progress.
-    if (!release || release.version === NEXT_RELEASE) return "";
+    if (release?.version === NEXT_RELEASE) return ` <a class="small" href="${escapeHtml(base)}/refinement">Refine</a>`;
+    if (!release) return "";
     const planned = release.sprintVersion ? ` <span class="mono small">${escapeHtml(release.sprintVersion)}</span>` : "";
     if (release.onInt?.length) {
       return `${planned} <span class="pill ${RELEASE_TONES[release.state]} small">${RELEASE_STATE_LABELS[release.state]}</span> <span class="mono small">${release.onInt.map((version) => escapeHtml(version)).join(", ")} (int)</span>`;
