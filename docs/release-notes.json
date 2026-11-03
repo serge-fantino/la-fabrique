@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-03",
+    "titre": "The release's progress and GO / NO-GO in Refinement",
+    "changements": [
+      "Refinement opens with how far Next release is prepared: features, specified, refined and ready, and the stories (needed and nice to have); each part says what it counts on hover or focus.",
+      "GO when every feature is ready, leading to Start the sprint; otherwise NO-GO, listing what blocks each feature, linked to its card on the page. When a sprint already runs, the page says so and links to it."
+    ],
+    "stories": [225],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-03",
     "titre": "Priority and order in Refinement",
     "changements": [
       "Each feature's card in Refinement has its priority in a list (the project's priority labels): saved at once, given to its stories on GitHub (one level lower for nice to have) and logged, as from the card's page.",

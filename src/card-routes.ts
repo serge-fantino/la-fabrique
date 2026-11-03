@@ -14,7 +14,7 @@ import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
-import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
+import { activeSprint, latestSprint, sprintLabel, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
 import { closeSprint, joinSprint, type JoinOutcome, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
@@ -814,6 +814,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   const params = new URL(request.url).searchParams;
   const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
+  const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
   return html(
     refinementPage(viewer, view, {
@@ -825,6 +826,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       readyLabel: project.check?.config?.demandes?.etiquettes?.["prete"] ?? null,
       canClaude: canWriteCards(viewer),
       priorities: cycleRules(project.check?.config).priorities,
+      sprint: running ? { label: sprintLabel(running) } : null,
       notice: params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),

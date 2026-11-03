@@ -45,8 +45,45 @@ export interface RefinementData {
   readyLabel: string | null;
   canClaude: boolean;
   priorities: string[];
+  sprint?: { label: string } | null;
   notice?: string | undefined;
   failure?: string | undefined;
+}
+
+// How far Next release is prepared (la-fabrique#225).
+export interface ReleaseProgress {
+  features: number;
+  specified: number;
+  refined: number;
+  ready: number;
+  needed: number;
+  nice: number;
+  blockers: { card: Card; reason: string }[];
+}
+
+export function releaseProgress(features: Card[], links: StoryCards, known: Map<number, CardStory>): ReleaseProgress {
+  const out: ReleaseProgress = { features: features.length, specified: 0, refined: 0, ready: 0, needed: 0, nice: 0, blockers: [] };
+  for (const card of features) {
+    const numbers = links.order.get(card.id) ?? [];
+    for (const number of numbers) {
+      if (isNice(links, card.id, number)) out.nice++;
+      else out.needed++;
+    }
+    const next = nextStep(card, numbers, known);
+    if (next.step !== "specify" && next.step !== "answer") out.specified++;
+    if (next.step === "validate" || next.step === "ready") out.refined++;
+    if (next.step === "ready") {
+      out.ready++;
+      continue;
+    }
+    const reason =
+      next.step === "specify" ? "no spec"
+      : next.step === "answer" ? `${next.questions} question${next.questions === 1 ? "" : "s"} waiting`
+      : next.step === "refine" ? "spec complete, no stories"
+      : `${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready`;
+    out.blockers.push({ card, reason });
+  }
+  return out;
 }
 
 // The cards of Next release, features first (in the board's order).
@@ -104,6 +141,25 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     }
   };
 
+  const progress = releaseProgress(data.features, data.links, data.stories);
+  const meter = (label: string, value: number, total: number, tip: string) =>
+    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <span class="bar"><span style="width:${total ? Math.round((value / total) * 100) : 0}%"></span></span></div>`;
+  const go = progress.features > 0 && progress.blockers.length === 0;
+  const verdict = data.sprint
+    ? `<p><span class="pill">Sprint running</span> ${escapeHtml(data.sprint.label)} is in progress: <a href="${escapeHtml(base)}/sprint">go to the sprint</a>.</p>`
+    : go
+      ? `<p><span class="pill ok">GO</span> Every feature of Next release is ready. <a class="button" href="${escapeHtml(base)}/sprint#start-sprint">Start the sprint</a></p>`
+      : `<p><span class="pill alert">NO-GO</span> ${progress.features ? "What blocks:" : "No feature in Next release."}</p>
+        ${progress.blockers.length ? `<ul class="plain">${progress.blockers.map((b) => `<li><a href="#card-${b.card.id}"><span class="mono">${cardRef(b.card.id)}</span> ${escapeHtml(b.card.title)}</a>: ${escapeHtml(b.reason)}</li>`).join("")}</ul>` : ""}`;
+  const summary = `<section class="card release-progress" id="release-progress" aria-label="Progress of the next release">
+      <h2>Next release</h2>
+      ${meter("Features", progress.features, progress.features, "The features in Next release")}
+      ${meter("Specified", progress.specified, progress.features, "Features whose spec is complete: no question waiting")}
+      ${meter("Refined", progress.refined, progress.features, "Features specified and with stories")}
+      ${meter("Ready", progress.ready, progress.features, "Features whose every needed story meets the Definition of Ready")}
+      <p class="release-stories" tabindex="0" title="Stories of these features: needed ones hold the release back, nice to have ones never do"><span class="mono">${progress.needed + progress.nice}</span> stories: <span class="mono">${progress.needed}</span> needed, <span class="mono">${progress.nice}</span> nice to have</p>
+      ${verdict}
+    </section>`;
   const sortUrl = `${base}/refinement`;
   const hidden = (fields: Record<string, string | number>) =>
     Object.entries(fields)
@@ -153,6 +209,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
       <p class="muted">The features of <a href="${escapeHtml(base)}/board?by=release">Next release</a>, in priority order, and what each needs before the <a href="${escapeHtml(base)}/sprint">sprint</a>. Nothing is read from GitHub here: the stories are as La Fabrique last saw them.</p>
+      ${summary}
       ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
       ${apart}`,
     viewer,
