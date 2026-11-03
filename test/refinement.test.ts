@@ -1,6 +1,7 @@
 import { env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { nextStep } from "../src/refinement";
+import { fingerprint, validationOf } from "../src/feature-validation";
 import type { CardStory } from "../src/card-stories";
 import type { Story } from "../src/stories";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
@@ -29,14 +30,26 @@ beforeAll(() => {
 afterEach(() => fetchMock.assertNoPendingInterceptors());
 
 describe("The next step of a feature", () => {
-  const spec = (questions: string[]) => ({ data: { spec: { answers: { a: "x" }, questions, source: "claude" as const, at: "2026-01-01" } } });
+  const spec = (questions: string[]) => ({ title: "T", body: "B", data: { spec: { answers: { a: "x" }, questions, source: "claude" as const, at: "2026-01-01" } } });
   const known = (stage: CardStory["stage"]) => new Map([[1, { stage } as CardStory]]);
   it("goes from Specify to Ready", () => {
-    expect(nextStep({ data: {} }, [], new Map())).toEqual({ step: "specify" });
+    expect(nextStep({ title: "T", body: "B", data: {} }, [], new Map())).toEqual({ step: "specify" });
     expect(nextStep(spec(["Who?"]), [], new Map())).toEqual({ step: "answer", questions: 1 });
     expect(nextStep(spec([]), [], new Map())).toEqual({ step: "refine" });
     expect(nextStep(spec([]), [1], known("backlog"))).toEqual({ step: "validate", stories: [1] });
-    expect(nextStep(spec([]), [1], known("ready"))).toEqual({ step: "ready" });
+    expect(nextStep(spec([]), [1], known("ready"))).toEqual({ step: "approve", validation: { state: "none" } });
+  });
+
+  it("is ready once validated, and needs validating again when the feature changes", () => {
+    const base = spec([]);
+    const kept = { ...base, data: { ...base.data, validation: { by: "pe", at: "2026-11-03T10:00:00Z", ...fingerprint(base, [1]) } } };
+    expect(nextStep(kept, [1], known("ready"))).toEqual({ step: "ready" });
+    expect(validationOf({ ...kept, body: "other" }, [1])).toMatchObject({ state: "outdated", why: ["its text changed"] });
+    const respec = { ...kept, data: { ...kept.data, spec: { ...kept.data.spec, answers: { a: "y" } } } };
+    expect(validationOf(respec, [1])).toMatchObject({ state: "outdated", why: ["its spec changed"] });
+    expect(validationOf(kept, [1, 2])).toMatchObject({ why: ["a story was added"] });
+    expect(validationOf(kept, [])).toMatchObject({ why: ["a story was removed"] });
+    expect(nextStep({ ...kept, body: "other" }, [1], known("ready")).step).toBe("approve");
   });
 });
 
@@ -140,13 +153,57 @@ describe("Priority and order in Refinement", () => {
 
 import { releaseProgress } from "../src/refinement";
 describe("The release's progress", () => {
-  const mk = (id: number, data: object) => ({ id, title: `F${id}`, data }) as never;
+  const mk = (id: number, data: object) => ({ id, title: `F${id}`, body: "", data }) as never;
   const done = { spec: { answers: { a: "x" }, questions: [], source: "claude" } };
+  const validated = { ...done, validation: { by: "pe", at: "2026-11-03T10:00:00Z", ...fingerprint({ title: "F2", body: "", data: done as never }, [1, 2]) } };
   it("counts and says what blocks", () => {
     const links = { order: new Map([[2, [1, 2]], [3, [3]]]), nice: new Set<string>() } as never;
     const known = new Map([[1, { stage: "ready" }], [2, { stage: "ready" }], [3, { stage: "backlog" }]]) as never;
-    const p = releaseProgress([mk(1, {}), mk(2, done), mk(3, done)], links, known);
+    const p = releaseProgress([mk(1, {}), mk(2, validated), mk(3, done)], links, known);
     expect([p.features, p.specified, p.refined, p.ready]).toEqual([3, 2, 2, 1]);
     expect(p.blockers.map((b) => b.card.id)).toEqual([1, 3]);
+    // Stories ready but not validated: blocks, and says so.
+    const q = releaseProgress([mk(2, done)], links, known);
+    expect(q.blockers[0]?.reason).toBe("not validated");
+  });
+});
+
+describe("Validating a feature", () => {
+  it("is offered, kept with who and when, logged, shown to a tester without the button, and lost when the feature changes", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(CONFIG)),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2000-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify([story(21, "Choose the week", ["prete-pour-claude"])])),
+    ]);
+    const id = await card("Weekly", 1, { spec: { answers: { a: "x" }, questions: [], source: "claude", at: "2026-01-01T00:00:00Z" } });
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', '21', 1)").bind(id).run();
+    await grantRole("pe", "product_engineer");
+    await grantRole("tess", "tester");
+    const pe = await signIn("pe");
+
+    let page = await (await get(`/projects/${REPO}/refinement`, pe.cookie)).text();
+    expect(page).toContain(">Validate the feature</button>");
+    expect(page).toContain("not validated");
+    expect(await (await get(`/projects/${REPO}/cards/${id}`, pe.cookie)).text()).toContain(">Validate the feature</button>");
+
+    const done = await post(`/projects/${REPO}/cards/${id}`, { csrf: pe.csrf, action: "validate_feature", back: `/projects/${REPO}/refinement#card-${id}` }, pe.cookie);
+    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement#card-${id}`);
+    expect((await logActions()).map((entry) => entry.action)).toContain("card_validated");
+    page = await (await get(`/projects/${REPO}/refinement`, pe.cookie)).text();
+    expect(page).toContain("Validated by @pe");
+    expect(page).toContain("GO");
+    expect(await (await get(`/projects/${REPO}/cards/${id}`, pe.cookie)).text()).toContain("by <span class=\"mono\">me</span>");
+
+    const tester = await signIn("tess");
+    const seen = await (await get(`/projects/${REPO}/refinement`, tester.cookie)).text();
+    expect(seen).toContain("Validated by @pe");
+    expect(seen).not.toContain("Validate the feature");
+    expect((await post(`/projects/${REPO}/cards/${id}`, { csrf: tester.csrf, action: "validate_feature" }, tester.cookie)).status).toBe(403);
+
+    await env.DB.prepare("UPDATE cards SET body = 'Changed text' WHERE id = ?").bind(id).run();
+    page = await (await get(`/projects/${REPO}/refinement`, pe.cookie)).text();
+    expect(page).toContain("its text changed");
+    expect(page).toContain("NO-GO");
+    expect(page).toContain("to validate again: its text changed");
   });
 });

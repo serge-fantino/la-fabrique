@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-03",
+    "titre": "Validate a feature, from Refinement or its page",
+    "changements": [
+      "A person validates each feature before the sprint: once its stories are ready, its card on Refinement and its page propose Validate the feature (Product Engineer and above); who validated and when are shown, and logged.",
+      "A feature changed after (its text, its spec, a story added or removed) needs validating again, and its card says why; GO / NO-GO lists any feature not validated as blocking. A tester sees who validated, without the button."
+    ],
+    "stories": [232],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-03",
     "titre": "The release's progress and GO / NO-GO in Refinement",
     "changements": [
       "Refinement opens with how far Next release is prepared: features, specified, refined and ready, and the stories (needed and nice to have); each part says what it counts on hover or focus.",

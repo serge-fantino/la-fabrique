@@ -109,6 +109,8 @@ export interface StoryReview {
 export interface CardData {
   spec?: CardSpec;
   split?: CardSplit;
+  // Who validated the feature, and what it was then (src/feature-validation.ts).
+  validation?: import("./feature-validation").FeatureValidation;
 }
 
 export interface Card extends CardTags {
