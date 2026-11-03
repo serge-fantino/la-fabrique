@@ -1,7 +1,8 @@
 import type { Env } from "./env";
 import { missingForReady, priorityOf, projectRules, stagesOf, storiesOnInt, type Stage } from "./lifecycle";
 import type { Project } from "./projects";
-import { loadStories, type Criterion, type LinkedPull } from "./stories";
+import { readSnapshot } from "./snapshots";
+import { loadStories, STORIES, type Criterion, type LinkedPull, type Story } from "./stories";
 import { storyChecks } from "./validation";
 
 // A card's stories as GitHub has them (the stories' snapshot), with their
@@ -25,10 +26,13 @@ export interface CardStory {
   feedbacks?: number;
 }
 
-export async function cardStories(env: Env, project: Project, numbers: number[], maxAgeMs?: number): Promise<Map<number, CardStory>> {
+// `"cache"`: only what La Fabrique already holds, no call to GitHub
+// (la-fabrique#223).
+export async function cardStories(env: Env, project: Project, numbers: number[], maxAgeMs?: number | "cache"): Promise<Map<number, CardStory>> {
   const found = new Map<number, CardStory>();
   if (!numbers.length) return found;
-  const [{ stories }, onInt, checks] = await Promise.all([loadStories(env, project, maxAgeMs), storiesOnInt(env, project), storyChecks(env.DB, project.repo)]);
+  const read = maxAgeMs === "cache" ? readSnapshot<Story[]>(env.DB, project.repo, STORIES).then((snapshot) => ({ stories: snapshot?.data ?? [] })) : loadStories(env, project, maxAgeMs);
+  const [{ stories }, onInt, checks] = await Promise.all([read, storiesOnInt(env, project), storyChecks(env.DB, project.repo)]);
   const rules = await projectRules(env.DB, project);
   const stages = stagesOf(stories, rules, onInt);
   for (const story of stories) {
