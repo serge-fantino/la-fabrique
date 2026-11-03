@@ -1,5 +1,6 @@
 # Changelog
 
+- **1.9.0** — The Test panel hides the validated stories by default (shown on demand, the choice kept on the device); a turning ring shows while a tick or a validation is being saved.
 - **1.8.0** — The Test panel stays open from one page of the app to the next, at the same story, with the feedback being written; a story's feature is a link to La Fabrique. Reporting and testing follow `.fabrique.json`: `signalement` by audience, production included, and the test environment (`recette`).
 - **1.7.0** — A discreet launcher (Report a defect, Test); the Test panel floats, folds and moves; Fail writes a feedback on the story, which goes back to development.
 - **1.6.0** — Relay protocol 2: with a relay that says `"relay": 2`, every call goes to `?path=…`; a generic relay, written once, needs no new route for later versions. Older relays keep working.

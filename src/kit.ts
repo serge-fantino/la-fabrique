@@ -26,6 +26,10 @@ export const KIT_SOURCES: Record<string, string> = {
 // What a project's relay must do for each version, beyond copying the files.
 export const KIT_CHANGES: { version: string; relay: string | null }[] = [
   {
+    version: "1.9.0",
+    relay: null,
+  },
+  {
     version: "1.8.0",
     relay: null,
   },
