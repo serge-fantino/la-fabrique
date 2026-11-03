@@ -1,4 +1,5 @@
 import type { StoryCards } from "./card-groups";
+import { linkNamedForm } from "./card-views";
 import { reworkLabelOf } from "./lifecycle";
 import type { Recorded } from "./gherkin";
 import { scenarioBlock } from "./gherkin-views";
@@ -29,6 +30,11 @@ export interface CardActions {
   scenarios?: Map<number, Recorded[]>;
   // Each story's features (la-fabrique#206): a link to the card.
   cards?: StoryCards;
+  // The project's cards by number, and whether the person may link a story
+  // to the card it names (la-fabrique#218).
+  cardTitles?: Map<number, string>;
+  canLink?: boolean;
+  repo?: string;
 }
 
 // The feedbacks from testing (la-fabrique#201): the last one of a
@@ -135,7 +141,20 @@ function storyOrigin(story: Story, actions: CardActions): string {
   if (!actions.base) return "";
   const cards = (actions.cards?.byStory.get(story.number) ?? []).map((id) => ({ id, title: actions.cards?.cards.get(id)?.title ?? "" }));
   const features = cards.map((card) => `<a class="mono" href="${escapeHtml(actions.base)}/cards/${card.id}">C${card.id}</a> ${escapeHtml(card.title)}`).join(", ");
-  return `<p class="test-origin small">${features ? `<span class="muted">Feature</span> ${features} · ` : ""}<a href="${escapeHtml(actions.base)}/sprint/stories/${story.number}">The story's steps</a></p>`;
+  // The cards it names without being linked to them: proposed.
+  const linked = new Set(cards.map((card) => card.id));
+  const named = (story.mentions ?? []).filter((id) => !linked.has(id) && actions.cardTitles?.has(id));
+  const proposals = named
+    .map(
+      (id) =>
+        `<span class="muted">Names</span> <a class="mono" href="${escapeHtml(actions.base)}/cards/${id}">C${id}</a> ${escapeHtml(actions.cardTitles?.get(id) ?? "")}${
+          actions.canLink ? ` ${linkNamedForm(actions.viewer, actions.repo ?? "", id, story.number, `${actions.base}/to-test#story-${story.number}`)}` : ""
+        }`,
+    )
+    .join(" · ");
+  return `<p class="test-origin small">${features ? `<span class="muted">Feature</span> ${features} · ` : ""}<a href="${escapeHtml(actions.base)}/sprint/stories/${story.number}">The story's steps</a></p>${
+    proposals ? `<p class="test-origin small">${proposals}</p>` : ""
+  }`;
 }
 
 function storyCard(story: Story, actions: CardActions): string {

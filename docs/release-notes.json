@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-03",
+    "titre": "No work on int without a sprint; a shipped feature comes back; a story linked to the card it names",
+    "changements": [
+      "On a project with int, when int holds work production does not and no sprint runs, La Fabrique opens the sprint itself, with the next version, and says why; the cards being worked on join it.",
+      "A shipped feature comes back to the sprint when a new story of it, or a nice to have taken up, is developed or tested; its shipped versions stay said, and taking it out again is by hand.",
+      "A story that names a card in its title or text (C5) without being linked to it is proposed to be linked, on the card's page and in To test."
+    ],
+    "stories": [216, 217, 218],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-03",
     "titre": "Reporting and testing, two activities; La Fabrique tests itself",
     "changements": [
       "In .fabrique.json, signalement says who may report from each environment: the team (an account with a role) or any account that sees the repository (what true meant), production included; the app's own users are not open yet.",

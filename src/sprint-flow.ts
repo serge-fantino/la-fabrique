@@ -1,6 +1,8 @@
 import { activityStatement } from "./activity-log";
 import { boardReleases, compareVersions, isFixedLane, NEXT_RELEASE, SPRINT_LANE, type BoardRelease } from "./card-releases";
-import { proposeVersion } from "./sprint-release";
+import { hasIntegration, proposeVersion } from "./sprint-release";
+import { PRODUCTION, type ProductionStatus } from "./production";
+import { readSnapshot } from "./snapshots";
 import { isNice, storyCards, type StoryCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { listCards, moveCard, type Card } from "./cards";
@@ -129,13 +131,47 @@ export async function closeSprint(env: Env, project: Project, sprint: Sprint, lo
 // Reality first (la-fabrique#205): while a sprint runs, a card whose story
 // is being developed or tested is in the sprint, even if nobody put it
 // there: the work says where the card is. It joins the Sprint lane, with
-// the reason in the card's history; a card already out (a shipped version)
-// or on int under its own version keeps its lane, and so does a dropped or
-// archived card. The cards given are updated in place; the joined ones are
-// returned with the stories that brought them.
+// the reason in the card's history. A card on int under its own version
+// keeps its lane, and so does a dropped or archived card. A shipped card
+// comes back only for a story no shipped version declares, a new one or a
+// nice to have taken up (la-fabrique#217); taking it out again is by hand.
+// The cards given are updated in place.
 export interface Joined {
   card: Card;
   stories: number[];
+}
+
+export interface JoinOutcome {
+  // The sprint La Fabrique opened itself (la-fabrique#216), and why.
+  opened: { version: string | null; stories: number[] } | null;
+  joined: Joined[];
+}
+
+// No work on int without a sprint (la-fabrique#216): on a project with an
+// integration branch, when int holds work production does not have (the
+// last production read, not one marked stale) and no sprint runs, the
+// sprint opens, with the next version after the newest release.
+async function openForWorkOnInt(env: Env, project: Project, releases: Map<string, BoardRelease>): Promise<JoinOutcome["opened"]> {
+  if (!hasIntegration(project)) return null;
+  const snapshot = await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION);
+  if (!snapshot || snapshot.fetchedAt.startsWith("1970")) return null;
+  const onInt = [...new Set((snapshot.data.groups ?? []).flatMap((group) => group.issues))].sort((a, b) => a - b);
+  if (!onInt.length) return null;
+  const newest = [...releases.values()].filter((release) => release.state === "shipped" && !isFixedLane(release.version)).sort((a, b) => compareVersions(a.version, b.version))[0]?.version ?? null;
+  const version = proposeVersion(newest, "minor");
+  const inserted = await env.DB.prepare(
+    "INSERT INTO sprints (repo, release, started_by, version, name) SELECT ?, ?, 'la-fabrique', ?, NULL WHERE NOT EXISTS (SELECT 1 FROM sprints WHERE repo = ? AND ended_at IS NULL)",
+  )
+    .bind(project.repo, SPRINT_LANE, version, project.repo)
+    .run();
+  if (!inserted.meta.changes) return null;
+  await activityStatement(env.DB, {
+    actor: "la-fabrique",
+    action: "sprint_started",
+    repo: project.repo,
+    details: { cards: [], version, name: null, forced: true, reason: "int holds work production does not", stories: onInt.slice(0, 20) },
+  }).run();
+  return { version, stories: onInt };
 }
 
 export async function joinSprint(
@@ -144,17 +180,22 @@ export async function joinSprint(
   cards: Card[],
   releases: Map<string, BoardRelease>,
   links?: StoryCards,
-): Promise<Joined[]> {
-  const sprint = await activeSprint(env.DB, project.repo);
-  if (!sprint || sprint.release !== SPRINT_LANE) return [];
+): Promise<JoinOutcome> {
+  let sprint = await activeSprint(env.DB, project.repo);
+  const opened = sprint ? null : await openForWorkOnInt(env, project, releases);
+  if (opened) sprint = await activeSprint(env.DB, project.repo);
+  if (!sprint || sprint.release !== SPRINT_LANE) return { opened, joined: [] };
   const storyLinks = links ?? (await storyCards(env.DB, project.repo));
+  const shipped = (card: Card) => (card.release ? releases.get(card.release)?.state === "shipped" : false);
+  // The stories a shipped version's notes declare: done, whatever their issue says.
+  const declared = new Set([...releases.values()].filter((release) => release.state === "shipped").flatMap((release) => release.stories ?? []));
   const outside = (card: Card) => {
     if (card.archivedAt || card.status === "dropped" || card.release === SPRINT_LANE) return false;
     const release = card.release ? releases.get(card.release) : undefined;
-    return !release || release.version === NEXT_RELEASE || release.state === "planned";
+    return !release || release.version === NEXT_RELEASE || release.state === "planned" || release.state === "shipped";
   };
   const candidates = cards.filter((card) => outside(card) && (storyLinks.order.get(card.id) ?? []).length);
-  if (!candidates.length) return [];
+  if (!candidates.length) return { opened, joined: [] };
   const stories = await cardStories(env, project, [...new Set(candidates.flatMap((card) => storyLinks.order.get(card.id) ?? []))]);
   const working = (number: number) => {
     const story = stories.get(number);
@@ -162,12 +203,13 @@ export async function joinSprint(
   };
   const joined: Joined[] = [];
   for (const card of candidates) {
-    const mine = (storyLinks.order.get(card.id) ?? []).filter(working);
+    const mine = (storyLinks.order.get(card.id) ?? []).filter((number) => working(number) && !(shipped(card) && declared.has(number)));
     if (!mine.length) continue;
     const why = mine.map((number) => `#${number} ${isToTest(stories.get(number)) ? "to test" : "in development"}`).join(", ");
-    const moved = await moveCard(env.DB, card, "la-fabrique", { set: { release: SPRINT_LANE }, before: null, after: null }, NO_VALUES, `joined the sprint: ${why}`);
+    const from = shipped(card) ? ` (shipped in ${card.release})` : "";
+    const moved = await moveCard(env.DB, card, "la-fabrique", { set: { release: SPRINT_LANE }, before: null, after: null }, NO_VALUES, `joined the sprint${from}: ${why}`);
     Object.assign(card, moved);
     joined.push({ card, stories: mine });
   }
-  return joined;
+  return { opened, joined };
 }

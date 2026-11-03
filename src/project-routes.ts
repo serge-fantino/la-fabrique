@@ -1,3 +1,4 @@
+import { listCards } from "./cards";
 import { can } from "./rights";
 import { storyCards } from "./card-groups";
 import type { Env } from "./env";
@@ -532,6 +533,9 @@ export async function showToTest(
       checks: await storyChecks(env.DB, project.repo),
       scenarios: await recordedByStory(env.DB, project.repo),
       cards: await storyCards(env.DB, project.repo),
+      cardTitles: new Map((await listCards(env.DB, project.repo)).filter((card) => !card.archivedAt).map((card) => [card.id, card.title])),
+      canLink: can(viewer.role, "request"),
+      repo: project.repo,
     },
   });
   return html(part ? content : toTestPage(viewer, view, content), { cookies, status: failed?.status ?? 200 });
