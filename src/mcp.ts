@@ -36,7 +36,7 @@ import { findProject, listProjects, productionBranch, type Project } from "./pro
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
 import { activeSprint, setNice } from "./sprints";
-import { closeSprint, joinSprint, startSprint, type Joined } from "./sprint-flow";
+import { closeSprint, joinSprint, startSprint, type JoinOutcome } from "./sprint-flow";
 import { canMerge, mergePull, pullDetails } from "./sprint-pulls";
 import { hasIntegration } from "./sprint-release";
 import { missingSections, specRubriques } from "./specs";
@@ -110,7 +110,7 @@ function integer(args: Args, key: string): number {
 // A project by "owner/repo" or by its repository's name alone.
 // Reality first (la-fabrique#205): while a sprint runs, the cards being
 // worked on join it, as on the board and the sprint page.
-async function joinRunningSprint(ctx: Context, project: Project, cards: Card[], links: StoryCards): Promise<Joined[]> {
+async function joinRunningSprint(ctx: Context, project: Project, cards: Card[], links: StoryCards): Promise<JoinOutcome> {
   const { releases } = await knownValues(ctx.env, project, cards);
   return joinSprint(ctx.env, project, cards, releases, links);
 }
@@ -319,12 +319,13 @@ const TOOLS: Tool[] = [
     write: false,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const sprint = await activeSprint(ctx.env.DB, project.repo);
       const links = await storyCards(ctx.env.DB, project.repo);
-      const lane = sprint ? sprint.release : NEXT_RELEASE;
       const all = await listCards(ctx.env.DB, project.repo);
-      // Reality first (la-fabrique#205): a card being worked on is in the sprint.
-      const joined = await joinRunningSprint(ctx, project, all, links);
+      // Reality first (la-fabrique#205, #216): a card being worked on is in
+      // the sprint, which opens itself when int holds work production does not.
+      const { opened, joined } = await joinRunningSprint(ctx, project, all, links);
+      const sprint = await activeSprint(ctx.env.DB, project.repo);
+      const lane = sprint ? sprint.release : NEXT_RELEASE;
       const cards = all.filter((card) => card.release === lane && !card.archivedAt);
       const numbers = [...new Set(cards.flatMap((card) => links.order.get(card.id) ?? []))];
       const [stories, progress] = await Promise.all([cardStories(ctx.env, project, numbers), cardProgress(ctx.env, project, cards, links)]);
@@ -339,6 +340,7 @@ const TOOLS: Tool[] = [
           stories: (links.order.get(card.id) ?? []).map((number) => storySummary(project, stories.get(number), number, isNice(links, card.id, number))),
         })),
         stories_left: [...new Set(left)],
+        ...(opened ? { opened_by_la_fabrique: { version: opened.version, why: "int holds work production does not", stories: opened.stories } } : {}),
         ...(joined.length ? { joined: joined.map((entry) => ({ card: `C${entry.card.id}`, stories: entry.stories, why: "being developed or tested" })) } : {}),
         url: absolute(ctx, `${projectUrl(project.repo)}/sprint`),
       };

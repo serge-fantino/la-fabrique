@@ -33,6 +33,19 @@ export interface Story {
   branches: string[];
   // Missing from snapshots written before acceptance criteria were read.
   criteria?: Criterion[];
+  // The cards its title or text names ("C5"), linked or not: La Fabrique
+  // proposes to link a story to a card it names (la-fabrique#218).
+  mentions?: number[];
+}
+
+// "C5", "(C12)", "Lié à C5": the cards a story's title or text names.
+export function cardMentions(title: string, body: string | null | undefined): number[] {
+  const found = new Set<number>();
+  for (const match of `${title}\n${body ?? ""}`.matchAll(/(?<![\w/#-])C(\d{1,6})(?![\w-])/g)) {
+    found.add(Number(match[1]));
+    if (found.size >= 5) break;
+  }
+  return [...found];
 }
 
 export interface Criterion {
@@ -146,6 +159,7 @@ export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "
     pullRequests: links?.pullRequests ?? [],
     branches: links?.branches ?? [],
     criteria: acceptanceCriteria(issue.body),
+    mentions: cardMentions(issue.title, issue.body),
   };
 }
 

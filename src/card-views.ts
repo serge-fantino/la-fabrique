@@ -557,6 +557,20 @@ export interface CardPageData {
   // Its progress from those stories, and the stages it went through (log).
   progress?: Progress | null;
   progressHistory?: { to: string | null; at: string }[];
+  // The stories that name this card ("C5") without being linked to it
+  // (la-fabrique#218): proposed, never linked by themselves.
+  named?: { number: number; title: string; url: string }[];
+}
+
+// A story that names a card it is not linked to: the form that links it
+// (Product Engineer and above), back where it was proposed.
+export function linkNamedForm(viewer: Viewer, repo: string, card: number, story: number, back: string): string {
+  return `<form method="post" action="${escapeHtml(cardUrl(repo, card))}" class="inline" data-busy>${csrfField(viewer)}
+      <input type="hidden" name="action" value="link_story" />
+      <input type="hidden" name="story" value="${story}" />
+      <input type="hidden" name="back" value="${escapeHtml(back)}" />
+      <button type="submit" class="button quiet small">Link to ${cardRef(card)}</button>
+    </form>`;
 }
 
 export interface StoryState {
@@ -833,6 +847,20 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
                   ${state ? `${escapeHtml(state.title)} ${storyStatus(state)}` : `<span class="muted">not read yet</span>`}</li>`;
               })
               .join("")}</ul>`
+          : ""
+      }
+      ${
+        data.named?.length && !shown
+          ? `<section class="card-named" id="named"><h2>Stories that name ${cardRef(card.id)}</h2>
+              <p class="muted small">They name this card in their title or text, but are not among its stories.</p>
+              <ul class="card-stories">${data.named
+                .map(
+                  (story) =>
+                    `<li><a class="mono" href="${escapeHtml(story.url)}">#${story.number}</a> ${escapeHtml(story.title)} ${
+                      data.canWrite ? linkNamedForm(viewer, project.repo, card.id, story.number, `${url}#stories`) : ""
+                    }</li>`,
+                )
+                .join("")}</ul></section>`
           : ""
       }
       ${linkRows.length ? `<h2>Mentioned</h2><dl class="facts">${linkRows.map(([term, value]) => `<dt>${term}</dt><dd>${value}</dd>`).join("")}</dl>` : ""}

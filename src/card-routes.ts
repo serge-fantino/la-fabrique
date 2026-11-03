@@ -1,3 +1,5 @@
+import { readSnapshot } from "./snapshots";
+import { STORIES, type Story } from "./stories";
 import { loadStoryDetail, storyDetailPage } from "./story-detail";
 import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
@@ -12,7 +14,7 @@ import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
-import { closeSprint, joinSprint, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
+import { closeSprint, joinSprint, type JoinOutcome, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
@@ -278,6 +280,11 @@ async function renderCard(
     project,
     links.filter((link) => link.kind === "story").map((link) => Number(link.ref)),
   );
+  // The stories that name it without being linked (la-fabrique#218).
+  const linked = new Set(links.filter((link) => link.kind === "story").map((link) => Number(link.ref)));
+  const named = ((await readSnapshot<Story[]>(env.DB, project.repo, STORIES))?.data ?? [])
+    .filter((story) => (story.mentions ?? []).includes(card.id) && !linked.has(story.number))
+    .map((story) => ({ number: story.number, title: story.title, url: story.url }));
   // Its progress from those stories, and when it reached each stage.
   const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
   const progressHistory = await progressSince(env.DB, project.repo, card.id);
@@ -314,6 +321,7 @@ async function renderCard(
       priorities: cycleRules(project.check?.config).priorities,
       progress,
       progressHistory,
+      named,
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -331,6 +339,18 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   if (!card) return notFound(viewer, "There is no such card in this project.");
   const url = `${projectUrl(project.repo)}/cards/${card.id}`;
   const action = String(form.get("action") ?? "");
+  // A story that names the card, linked by a person (la-fabrique#218).
+  if (action === "link_story") {
+    const number = Number(form.get("story"));
+    const back = String(form.get("back") ?? "");
+    const to = back.startsWith(`${projectUrl(project.repo)}/`) ? back : `${url}#stories`;
+    if (!Number.isInteger(number) || number <= 0) return redirect(to);
+    const known = await cardStories(env, project, [number]);
+    if (!known.get(number)) return renderCard(request, env, viewer, project, card, { failure: `#${number} is not a story La Fabrique knows in this project.`, status: 404 });
+    await linkStory(env.DB, card, viewer.login, number, `https://github.com/${project.repo}/issues/${number}`);
+    await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story linked");
+    return redirect(to);
+  }
   if (action === "archive" || action === "restore") {
     if (Boolean(card.archivedAt) !== (action === "restore")) return redirect(url);
     await archiveCard(env.DB, card, viewer.login, action === "archive");
@@ -743,10 +763,18 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
 }
 
 // The cards that joined the sprint by their work, said once (la-fabrique#205).
-function joinedNotice(joined: Joined[]): string | undefined {
-  if (!joined.length) return undefined;
+function joinedNotice({ opened, joined }: JoinOutcome): string | undefined {
   const one = (entry: Joined) => `${cardRef(entry.card.id)} (${entry.stories.map((number) => `#${number}`).join(", ")})`;
-  return `${joined.map(one).join(", ")} joined the sprint: ${joined.length === 1 ? "a story of it is" : "their stories are"} being developed or tested. The work says where a card is.`;
+  const said = [
+    // No work on int without a sprint (la-fabrique#216).
+    opened
+      ? `La Fabrique opened the sprint${opened.version ? ` ${opened.version}` : ""}: int holds work production does not (${opened.stories.slice(0, 5).map((number) => `#${number}`).join(", ")}${opened.stories.length > 5 ? "…" : ""}).`
+      : "",
+    joined.length
+      ? `${joined.map(one).join(", ")} joined the sprint: ${joined.length === 1 ? "a story of it is" : "their stories are"} being developed or tested. The work says where a card is.`
+      : "",
+  ].filter(Boolean);
+  return said.length ? said.join(" ") : undefined;
 }
 
 async function showSprint(request: Request, env: Env, viewer: Viewer, project: Project, refused?: string, status = 200): Promise<Response> {
