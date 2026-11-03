@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-03",
+    "titre": "Testing, lighter",
+    "changements": [
+      "To test shows the stories not validated yet; the validated ones are folded away, one tap to see them, and the count says how many are left to test.",
+      "Report kit 1.9.0: the app's test panel goes through the stories not validated yet; a button shows the validated ones, and the choice stays on the device.",
+      "A small turning ring shows while a tick or a validation is being saved, in To test and in the app's panel."
+    ],
+    "stories": [220],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-03",
     "titre": "No work on int without a sprint; a shipped feature comes back; a story linked to the card it names",
     "changements": [
       "On a project with int, when int holds work production does not and no sprint runs, La Fabrique opens the sprint itself, with the next version, and says why; the cards being worked on join it.",

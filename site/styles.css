@@ -2652,6 +2652,59 @@ form[aria-busy="true"] button[type="submit"] {
   cursor: progress;
 }
 
+/* Waiting for GitHub (la-fabrique#220): a small turning ring in the button
+   being sent (data-busy forms), and next to a criterion being ticked. */
+form[aria-busy="true"] button[type="submit"]::after,
+form[data-criterion][aria-busy="true"]::after {
+  content: "";
+  display: inline-block;
+  flex: none;
+  width: 0.9em;
+  height: 0.9em;
+  margin-left: 0.5em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.12em;
+  animation: busy-spin 0.8s linear infinite;
+}
+
+.criteria form[data-criterion] {
+  display: flex;
+  align-items: center;
+}
+
+.criteria form[data-criterion][aria-busy="true"]::after {
+  margin: 0 0.5rem;
+  color: var(--encre-faint);
+}
+
+@keyframes busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  form[aria-busy="true"] button[type="submit"]::after,
+  form[data-criterion][aria-busy="true"]::after {
+    animation-duration: 2.4s;
+  }
+}
+
+/* The validated stories, folded away by default (la-fabrique#220). */
+.validated-stories {
+  margin: 1rem 0;
+}
+
+.validated-stories > summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--encre-faint);
+}
+
 .spec-dialogue {
   margin: 1rem 0;
 }

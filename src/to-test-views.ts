@@ -111,7 +111,7 @@ function validation(story: Story, actions: CardActions): string {
   return `${validated}
     ${defects.length ? `<ul class="defects">${defects.join("")}</ul>` : ""}
     <div class="test-actions">
-      <form method="post" action="${escapeHtml(actions.base)}/to-test/validate">
+      <form method="post" action="${escapeHtml(actions.base)}/to-test/validate" data-busy="Validating…">
         ${csrfField(actions.viewer)}
         <input type="hidden" name="issue" value="${story.number}" />
         <button type="submit" class="button${ready ? "" : " quiet"}"${ready ? "" : " disabled"} data-validate>${check?.validated ? "Validate again" : "Validate"}</button>
@@ -119,7 +119,7 @@ function validation(story: Story, actions: CardActions): string {
       ${ready ? "" : `<span class="muted small">${rework ? "Back in development: its code takes the feedbacks into account first." : "Check every criterion to validate."}</span>`}
       <details class="defect-form">
         <summary class="button quiet">Report a defect</summary>
-        <form method="post" action="${escapeHtml(actions.base)}/to-test/defect">
+        <form method="post" action="${escapeHtml(actions.base)}/to-test/defect" data-busy="Opening the issue…">
           ${csrfField(actions.viewer)}
           <input type="hidden" name="issue" value="${story.number}" />
           <label for="defect-title-${story.number}">Title</label>
@@ -167,6 +167,20 @@ function storyCard(story: Story, actions: CardActions): string {
       ${validation(story, actions)}
       ${scenarioBlock(actions.viewer, actions.base, story.number, story.title, actions.scenarios?.get(story.number) ?? [], actions.canValidate, "to-test")}
     </article>`;
+}
+
+// The validated stories are folded away by default (la-fabrique#220):
+// what is left to test comes first, the rest one tap away.
+function withValidatedFolded(repo: string, stories: Story[], all: Map<number, Story>, actions: CardActions): { count: number; html: string } {
+  const validated = stories.filter((story) => actions.checks.get(story.number)?.validated);
+  const left = stories.filter((story) => !actions.checks.get(story.number)?.validated);
+  const folded = validated.length
+    ? `<details class="validated-stories"><summary>${validated.length} validated ${validated.length === 1 ? "story" : "stories"}, hidden</summary>${byEpic(repo, validated, all, actions)}</details>`
+    : "";
+  return {
+    count: left.length,
+    html: `${left.length ? byEpic(repo, left, all, actions) : `<p class="notice ok" role="status">Every story here is validated.</p>`}${folded}`,
+  };
 }
 
 // Stories grouped by their epic, epics in number order, loose ones last.
@@ -246,10 +260,11 @@ export function toTestContent(project: Project, data: ToTestData): string {
 
   if (!data.status) {
     const pending = (data.toValidate ?? []).filter((story) => !isEpic(story));
+    const shown = withValidatedFolded(project.repo, pending, all, actions);
     const toValidate = pending.length
       ? `<p class="lede">No integration branch: the stories whose work is merged are online and checked there. Validated, a story stays open until the release that ships it.</p>
-        <h2>Stories to validate <span class="muted mono">${pending.length}</span></h2>
-        ${byEpic(project.repo, pending, all, actions)}`
+        <h2>Stories to validate <span class="muted mono">${shown.count}</span></h2>
+        ${shown.html}`
       : "";
     if (!data.latest) {
       return `${failure}${toValidate || "<p>Nothing to test: this project has no integration branch, no merged story waits for its validation, and its release notes do not say what the latest version brought yet.</p>"}`;
@@ -282,18 +297,20 @@ export function toTestContent(project: Project, data: ToTestData): string {
     ? status.versions.find((candidate) => candidate.environment === data.environment?.name)?.version
     : null;
 
+  const shown = withValidatedFolded(project.repo, referred, all, actions);
+  const validatedCount = referred.length - shown.count;
   if (status.aheadBy === 0) {
     return `${failure}<p class="notice ok" role="status">Nothing new to test: <code>${escapeHtml(status.integration)}</code> has nothing that <code>${escapeHtml(status.production)}</code> lacks.</p>`;
   }
   return `${failure}
     <div class="test-summary">
-      <p><strong>${plural(referred.length, "story", "stories")} and ${plural(changes, "change")} to test</strong> on <code>${escapeHtml(status.integration)}</code>${
+      <p><strong>${plural(shown.count, "story", "stories")} and ${plural(changes, "change")} to test</strong>${validatedCount ? ` (${validatedCount} already validated)` : ""} on <code>${escapeHtml(status.integration)}</code>${
         oldest ? `, waiting since <span class="mono">${formatDate(oldest)}</span>` : ""
       }${version ? `; it runs <span class="mono">${escapeHtml(version)}</span>` : ""}.</p>
       ${where}
     </div>
     <h2>Stories</h2>
-    ${referred.length ? byEpic(project.repo, referred, all, actions) : `<p class="muted">The work waiting refers to no story; see the changes below.</p>`}
+    ${referred.length ? shown.html : `<p class="muted">The work waiting refers to no story; see the changes below.</p>`}
     ${unlinkedDefects(project, data.unlinked ?? [])}
     <h2>Changes in the release notes</h2>
     ${changesList(releases)}`;

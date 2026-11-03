@@ -1,4 +1,4 @@
-/*! FabriqueReport 1.8.0 — report a defect from the page, to La Fabrique extraordinaire.
+/*! FabriqueReport 1.9.0 — report a defect from the page, to La Fabrique extraordinaire.
  * Copy this file (and fabrique-report.css) into your project and serve it yourself: it
  * talks only to your own server (the relay), never to La Fabrique, and holds no token.
  * Documentation: https://github.com/serge-fantino/la-fabrique/blob/main/docs/report-kit.md
@@ -8,7 +8,7 @@
   "use strict";
   if (window.FabriqueReport && window.FabriqueReport.version) return;
 
-  var VERSION = "1.8.0";
+  var VERSION = "1.9.0";
   // The relay's protocol: 1, a route per call (?targets=1, ?to-test=…); 2, a
   // generic relay that passes ?path={path} to La Fabrique's project API (said
   // by the relay's GET: "relay": 2). Until the relay has said, protocol 1.
@@ -24,6 +24,9 @@
       test: "Test",
       toTest: "Stories to test",
       noStories: "Nothing to test on this environment.",
+      showValidated: "{n} validated: show",
+      hideValidated: "Hide the validated",
+      allValidated: "Every story here is validated ({n}).",
       testFailed: "The stories to test could not be read.",
       previous: "Previous",
       next: "Next",
@@ -115,6 +118,9 @@
       test: "Tester",
       toTest: "Stories à tester",
       noStories: "Rien à tester sur cet environnement.",
+      showValidated: "{n} validées : les montrer",
+      hideValidated: "Masquer les validées",
+      allValidated: "Toutes les stories sont validées ({n}).",
       testFailed: "Les stories à tester n'ont pas pu être lues.",
       previous: "Précédente",
       next: "Suivante",
@@ -863,6 +869,24 @@
       var index = 0;
       var stories = [];
       var place = readPlace(PANEL_KEY) || {};
+      // The validated stories are hidden by default (#220), shown on demand.
+      var showValidated = !!place.showValidated;
+      function shown() {
+        return showValidated
+          ? stories
+          : stories.filter(function (story) {
+              return !story.validated;
+            });
+      }
+      var validatedToggle = el("button", { type: "button", className: cls("button") + " " + cls("quiet") + " " + cls("small") });
+      validatedToggle.addEventListener("click", function () {
+        var current = shown()[index];
+        showValidated = !showValidated;
+        remember({ showValidated: showValidated });
+        var list = shown();
+        index = Math.max(0, current ? list.indexOf(current) : 0);
+        show();
+      });
       // Kept on the device from one page to the next (#207): open, the story
       // shown, the feedbacks being written.
       function remember(changes) {
@@ -1098,14 +1122,27 @@
 
       function show() {
         body.textContent = "";
+        var list = shown();
+        var validatedCount = stories.length - stories.filter(function (candidate) {
+          return !candidate.validated;
+        }).length;
+        validatedToggle.hidden = validatedCount === 0;
+        validatedToggle.textContent = showValidated ? t.hideValidated : t.showValidated.replace("{n}", validatedCount);
+        if (index >= list.length) index = Math.max(0, list.length - 1);
         previous.disabled = index === 0;
-        next.disabled = index >= stories.length - 1;
-        previous.hidden = next.hidden = stories.length < 2;
-        var story = stories[index];
-        if (!story) return;
+        next.disabled = index >= list.length - 1;
+        previous.hidden = next.hidden = list.length < 2;
+        var story = list[index];
+        if (!story) {
+          counter.textContent = "";
+          summary.textContent = "";
+          body.appendChild(el("p", { className: cls("note"), text: t.allValidated.replace("{n}", validatedCount) }));
+          body.appendChild(el("div", { className: cls("actions") }, [validatedToggle]));
+          return;
+        }
         var criteria = story.criteria || [];
         remember({ story: story.number });
-        counter.textContent = t.storyOf.replace("{n}", index + 1).replace("{total}", stories.length);
+        counter.textContent = t.storyOf.replace("{n}", index + 1).replace("{total}", list.length);
         summary.textContent = "#" + story.number + " · " + tickedOf(story);
         body.appendChild(el("h3", { className: cls("story-title") }, [el("span", { className: cls("tag"), text: "#" + story.number }), " " + story.title]));
         // Its feature, a link to the card in La Fabrique (#206).
@@ -1117,7 +1154,7 @@
         }
         body.appendChild(
           el("p", { className: cls("note") }, [
-            story.validated ? t.validatedBy + " @" + story.validated.by + (story.validated.version ? " · " + story.validated.version : "") : t.notValidated,
+            story.validated ? t.validatedBy + (story.validated.by ? " @" + story.validated.by : "") + (story.validated.version ? " · " + story.validated.version : "") : t.notValidated,
           ]),
         );
         body.appendChild(el("h4", { className: cls("criteria-title"), text: t.criteria + " · " + tickedOf(story) }));
@@ -1147,8 +1184,12 @@
                     var done = box.checked;
                     box.disabled = true;
                     message.textContent = "";
+                    // Saving on GitHub takes a moment (#220): a turning ring.
+                    var line = box.closest("li");
+                    if (line) line.classList.add(cls("saving"));
                     actOnStory(story.number, "criteria", { index: at, done: done }).then(function (outcome) {
                       box.disabled = false;
+                      if (line) line.classList.remove(cls("saving"));
                       if (outcome.ok) criterion.done = done;
                       else {
                         box.checked = !done;
@@ -1186,6 +1227,7 @@
         if (openFailure()) body.insertBefore(el("p", { className: cls("rework"), text: t.backInDev }), body.firstChild);
         validate.addEventListener("click", function () {
           validate.disabled = true;
+          validate.classList.add(cls("busy"));
           message.textContent = t.validating;
           actOnStory(story.number, "validate", {}).then(function (outcome) {
             if (outcome.ok) {
@@ -1194,12 +1236,16 @@
                   var kept = found.filter(function (other) {
                     return other.number === story.number;
                   })[0];
-                  stories[index] = kept || story;
+                  var at = stories.indexOf(story);
+                  if (at >= 0) stories[at] = kept || story;
+                  // Validated, it goes out of sight with the others (#220).
+                  if (!kept) story.validated = story.validated || { by: null, at: new Date().toISOString(), version: null };
                 }
                 show();
               });
               return;
             }
+            validate.classList.remove(cls("busy"));
             message.textContent = outcome.message || t.validateFailed;
             refresh();
           });
@@ -1222,14 +1268,14 @@
           });
         });
         body.appendChild(message);
-        body.appendChild(el("div", { className: cls("actions") }, [validate, report]));
+        body.appendChild(el("div", { className: cls("actions") }, [validate, report, validatedToggle]));
       }
       previous.addEventListener("click", function () {
         index = Math.max(0, index - 1);
         show();
       });
       next.addEventListener("click", function () {
-        index = Math.min(stories.length - 1, index + 1);
+        index = Math.min(shown().length - 1, index + 1);
         show();
       });
       close.addEventListener("click", function () {
@@ -1248,7 +1294,8 @@
         stories = found;
         panel.stories = stories;
         // Back at the story shown on the page before, if it is still to test.
-        for (var at = 0; at < stories.length; at++) if (stories[at].number === place.story) index = at;
+        var list = shown();
+        for (var at = 0; at < list.length; at++) if (list[at].number === place.story) index = at;
         if (!stories.length) {
           body.textContent = t.noStories;
           previous.hidden = next.hidden = true;

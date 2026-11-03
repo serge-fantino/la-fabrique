@@ -2,7 +2,7 @@
   "id": "report-and-test-kit",
   "nom": "Report a defect and test from the app",
   "nature": "produit",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "resume": "A button in the project's own app to report a defect on the part of the page that is wrong, and a panel to test the stories waiting on int: tick their criteria, record the steps, validate. Everything goes to La Fabrique through the project's server, never from the browser.",
   "apporte": [
     "A « Report a defect » flow: pick the part of the page, two lines, an optional screenshot; the issue is opened in the person's name, with page, version, component, screen, browser and recent errors",
