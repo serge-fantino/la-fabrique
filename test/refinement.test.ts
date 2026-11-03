@@ -72,6 +72,9 @@ describe("The Refinement tab", () => {
     expect(page).not.toContain("Elsewhere");
     expect(page.indexOf("Ideas and questions")).toBeGreaterThan(page.indexOf("Fourth"));
     expect(page).toContain("An idea");
+    expect(page).toContain("NO-GO");
+    expect(page).toContain('href="#card-');
+    expect(page).toContain("nice to have");
 
     // Mark ready: the label on GitHub, logged.
     const gh = fetchMock.get("https://api.github.com");
@@ -132,5 +135,18 @@ describe("Priority and order in Refinement", () => {
     expect(board.indexOf("Alpha")).toBeLessThan(board.indexOf("Gamma"));
     expect(board.indexOf("Gamma")).toBeLessThan(board.indexOf("Beta"));
     expect((await logActions()).filter((entry) => entry.action === "sprint_card_moved").length).toBe(2);
+  });
+});
+
+import { releaseProgress } from "../src/refinement";
+describe("The release's progress", () => {
+  const mk = (id: number, data: object) => ({ id, title: `F${id}`, data }) as never;
+  const done = { spec: { answers: { a: "x" }, questions: [], source: "claude" } };
+  it("counts and says what blocks", () => {
+    const links = { order: new Map([[2, [1, 2]], [3, [3]]]), nice: new Set<string>() } as never;
+    const known = new Map([[1, { stage: "ready" }], [2, { stage: "ready" }], [3, { stage: "backlog" }]]) as never;
+    const p = releaseProgress([mk(1, {}), mk(2, done), mk(3, done)], links, known);
+    expect([p.features, p.specified, p.refined, p.ready]).toEqual([3, 2, 2, 1]);
+    expect(p.blockers.map((b) => b.card.id)).toEqual([1, 3]);
   });
 });
