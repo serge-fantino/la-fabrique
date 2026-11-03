@@ -2,7 +2,7 @@ import { AuthorizationError, type AuthRequest, type OAuthHelpers } from "@cloudf
 import { effectiveRole, ROLE_LABELS, type Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import { safeEqual } from "./crypto";
-import { DEFECT_ROUTE, defectTargetsForApp, reportDefectFromApp, reportingEnvironments, TARGETS_ROUTE } from "./defects";
+import { DEFECT_ROUTE, defectTargetsForApp, mayReportFrom, reportDefectFromApp, reportingEnvironments, TARGETS_ROUTE, testEnvironment } from "./defects";
 import type { Env } from "./env";
 import { fetchUser, refreshUserToken } from "./github";
 import { githubFetch } from "./github-app";
@@ -329,7 +329,19 @@ export async function discovery(response: Response, request: Request): Promise<R
 }
 
 // The API a connected app calls with its access token.
-export async function api(request: Request, env: Env, props: GrantProps): Promise<Response> {
+// What the person can do from the project's app (la-fabrique#209): report
+// from an environment open to them, test on the test environment.
+export async function abilities(env: Env, project: Project | null, role: Role | null, scopes: string[]): Promise<{ report_defect: boolean; test_stories: boolean }> {
+  if (!project) return { report_defect: false, test_stories: false };
+  const reporting = Object.values(await reportingEnvironments(env, project));
+  return {
+    report_defect: can(role, "report_defect") && reporting.some((environment) => mayReportFrom(environment, role)),
+    test_stories: scopes.includes(TEST_SCOPE) && can(role, "validate") && (await testEnvironment(env, project)) !== null,
+  };
+}
+
+// `self`: La Fabrique's own pages through its internal relay (la-fabrique#211).
+export async function api(request: Request, env: Env, props: GrantProps, options: { self?: boolean } = {}): Promise<Response> {
   const { pathname } = new URL(request.url);
   // An assistant's token reaches the MCP server only; a project app's, the
   // project's API only.
@@ -345,10 +357,7 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
         name: props.name,
         avatar_url: props.avatarUrl,
         project: { id: projectId(props.repo), role },
-        can: {
-          report_defect: project !== null && can(role, "report_defect") && Object.keys(await reportingEnvironments(env, project)).length > 0,
-          test_stories: project !== null && (props.scopes ?? []).includes(TEST_SCOPE) && can(role, "validate") && Object.keys(await reportingEnvironments(env, project)).length > 0,
-        },
+        can: await abilities(env, project, role, props.scopes ?? []),
       },
       { headers: { "cache-control": "no-store" } },
     );
@@ -356,7 +365,7 @@ export async function api(request: Request, env: Env, props: GrantProps): Promis
   const defects = DEFECT_ROUTE.exec(pathname);
   if (defects) {
     if (request.method !== "POST") return json({ error: "method_not_allowed" }, { status: 405 });
-    return reportDefectFromApp(request, env, props, defects[1] ?? "");
+    return reportDefectFromApp(request, env, props, defects[1] ?? "", options);
   }
   const targets = TARGETS_ROUTE.exec(pathname);
   if (targets) {

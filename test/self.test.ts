@@ -59,6 +59,6 @@ describe("La Fabrique as its own project", () => {
     const body = (await (await SELF.fetch("https://la-fabrique.test/api/version")).json()) as Record<string, unknown>;
     const drafts = releaseNotes.filter((note) => note.version === "next").length;
     const last = releaseNotes.find((note) => note.version !== "next")?.version;
-    expect(body).toEqual({ numero: drafts ? `${last} + ${drafts} ${drafts === 1 ? "change" : "changes"}` : last, commit: "test-commit" });
+    expect(body).toEqual({ numero: drafts ? `${last} + ${drafts} ${drafts === 1 ? "change" : "changes"}` : last, commit: "test-commit", environnement: "production" });
   });
 });

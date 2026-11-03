@@ -6,8 +6,8 @@ Finding a defect while using the app, then going to GitHub to describe it, loses
 
 ## Need
 
-- From any page of the app, outside production, a person linked to La Fabrique reports a defect on the part of the page they pick, in two lines, with an optional screenshot; the issue is opened in their name.
-- A tester sees the stories waiting on int, ticks their acceptance criteria, validates them, or reports a defect on one, without leaving the app.
+- From any page of the app, on the environments the project opens to reporting (production included when it says so), a person linked to La Fabrique reports a defect on the part of the page they pick, in two lines, with an optional screenshot; the issue is opened in their name.
+- A tester sees the stories waiting on the test environment (int, or production for a project without int), ticks their acceptance criteria, validates them, or reports a defect on one, without leaving the app.
 - What the tester does for a criterion can be recorded and becomes a scenario.
 - The browser never holds a token and never talks to La Fabrique: the project's server relays, and adds what only it knows.
 
@@ -18,5 +18,5 @@ Finding a defect while using the app, then going to GitHub to describe it, loses
 - [ ] When the network is down, the report is kept on the device and sent when it is back.
 - [ ] When a tester opens « Test », they see the stories waiting on int with their criteria; ticking one ticks it in the issue, in their name; Validate is refused until every criterion is ticked.
 - [ ] When a tester records a criterion, the steps keep pages, buttons and field names, never a value typed, and are sent with the tick.
-- [ ] When the environment is production, nothing is shown and nothing is sent.
+- [ ] When the environment opens neither reporting (`signalement`) nor testing (`recette`), nothing is shown and nothing is sent.
 - [ ] When the relay answers 401, the link is forgotten and the person is offered to link again.

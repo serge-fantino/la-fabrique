@@ -1,7 +1,7 @@
 import type { ClientInfo } from "@cloudflare/workers-oauth-provider";
 import { activityStatement } from "./activity-log";
 import { randomToken } from "./crypto";
-import { integrationConfig, reportingEnvironments } from "./defects";
+import { AUDIENCE_LABELS, integrationConfig, reportersOf, reportingEnvironments, testEnvironment } from "./defects";
 import type { Env } from "./env";
 import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { html, redirect } from "./http";
@@ -31,6 +31,9 @@ export interface ProjectApp {
 export interface AppLink {
   // Environments the app may report from, by name.
   reporting: Record<string, Environment>;
+  // The test environment (la-fabrique#209), where the app shows the stories
+  // to test; its return address counts too.
+  test: string | null;
   // Return addresses the project's `.fabrique.json` implies.
   expected: string[];
   name: string;
@@ -72,8 +75,9 @@ export async function appLink(env: Env, project: Project, origin: string): Promi
   // before production.
   const onIntegration = await integrationConfig(env, project);
   const application = project.check?.config?.application ?? onIntegration?.application;
-  const [reporting, app, used] = await Promise.all([
+  const [reporting, test, app, used] = await Promise.all([
     reportingEnvironments(env, project, onIntegration),
+    testEnvironment(env, project, onIntegration),
     projectApp(env, project.repo),
     env.DB.prepare(
       `SELECT COUNT(*) AS count, MAX(occurred_at) AS at,
@@ -83,10 +87,11 @@ export async function appLink(env: Env, project: Project, origin: string): Promi
       .bind(project.repo, project.repo)
       .first<{ count: number; at: string | null; login: string | null }>(),
   ]);
-  const expected = expectedReturns(application, reporting);
+  const expected = expectedReturns(application, { ...reporting, ...(test ? { [test.name]: test.environment } : {}) });
   const registered = app?.redirectUris ?? [];
   return {
     reporting,
+    test: test?.name ?? null,
     expected,
     name: application?.nom ?? projectName(project),
     app,
@@ -109,7 +114,7 @@ function list(uris: string[]): string {
 }
 
 function envNames(link: AppLink): string[] {
-  return Object.keys(link.reporting);
+  return [...new Set([...Object.keys(link.reporting), ...(link.test ? [link.test] : [])])];
 }
 
 // What the project itself holds: its declaration, and the app's Worker
@@ -124,10 +129,11 @@ function projectSide(link: AppLink, clientId: string | null): string {
       <ol class="app-steps">
         <li><code>.fabrique.json</code> opens reporting on an environment and says where the app comes back:
           ${codeBlock(`"environnements": {
-  "${targets[0]}": { "url": "…", "version": "/api/version", "type": "integration", "signalement": true }
+  "${targets[0]}": { "url": "…", "version": "/api/version", "type": "integration", "signalement": "comptes" }
 },
+"recette": { "environnement": "${targets[0]}" },
 "application": { "nom": "${link.name}", "retour": "/auth/fabrique/retour", "local": "http://localhost:8787" }`)}
-          <p class="muted small">The version path answers <code>"environnement": "${escapeHtml(targets[0] ?? "int")}"</code>. Never on production.</p></li>
+          <p class="muted small">The version path answers <code>"environnement": "${escapeHtml(targets[0] ?? "int")}"</code>. <code>signalement</code> says who may report from it: <code>"equipe"</code> (accounts with a role) or <code>"comptes"</code> (any account that sees the repository), production included; <code>recette</code> names the test environment (by default the integration one, else production for a project without int).</p></li>
         <li>The app's Worker, on ${targets.map((name) => `<code>${escapeHtml(name)}</code>`).join(", ")}: the variable <code>${SECRET_NAMES.url}</code> = <code>${escapeHtml(
           link.fabriqueUrl,
         )}</code>, and two secrets, <code>${SECRET_NAMES.id}</code>${clientId ? ` = <code>${escapeHtml(clientId)}</code>` : ""} and <code>${SECRET_NAMES.secret}</code> (shown once, when registered or renewed):
@@ -189,10 +195,13 @@ function withCode(text: string): string {
 export function appSection(viewer: Viewer, project: Project, link: AppLink, kit?: KitState): string {
   const admin = can(viewer.role, "go");
   const action = `${escapeHtml(projectUrl(project.repo))}/app`;
-  const reporting = envNames(link);
-  const opened = reporting.length
-    ? `Reports are open on ${reporting.map((name) => `<code>${escapeHtml(name)}</code>`).join(", ")}.`
-    : "No environment is open to reports yet: <code>signalement</code> is not <code>true</code> on any.";
+  const audiences = Object.entries(link.reporting).map(([name, environment]) => {
+    const audience = reportersOf(environment);
+    return `<code>${escapeHtml(name)}</code>${audience ? ` (${AUDIENCE_LABELS[audience]})` : ""}`;
+  });
+  const opened = `${
+    audiences.length ? `Reports are open on ${audiences.join(", ")}.` : "No environment is open to reports yet: no <code>signalement</code>."
+  } ${link.test ? `Stories are tested on <code>${escapeHtml(link.test)}</code>.` : "No test environment."}`;
 
   let status: string;
   if (!link.app) {

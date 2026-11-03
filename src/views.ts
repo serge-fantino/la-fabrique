@@ -95,7 +95,13 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" />
-    <link rel="stylesheet" href="${assetUrl("/styles.css")}" />
+    <link rel="stylesheet" href="${assetUrl("/styles.css")}" />${
+      viewer
+        ? `
+    <link rel="stylesheet" href="/kit/fabrique-report.css" />
+    <meta name="fabrique-kit" content="/self/relay" />`
+        : ""
+    }
     ${["/fabrique.js", ...scripts].map((src) => `<script src="${escapeHtml(assetUrl(src))}" defer></script>`).join("")}
   </head>
   <body>

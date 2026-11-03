@@ -11,9 +11,9 @@ import { effectiveRole } from "./accounts";
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
 import { DEFECT_LABEL } from "./defect-targets";
-import { decodeScreenshot, reportingEnvironments, storeScreenshot } from "./defects";
+import { decodeScreenshot, storeScreenshot, testEnvironment } from "./defects";
 import { installationToken, githubPost } from "./github-app";
-import { reworkLabelOf } from "./lifecycle";
+import { projectRules, reworkLabelOf, stageOf } from "./lifecycle";
 import { applyIssueEvent } from "./stories";
 import { wordingFor } from "./wording";
 import type { Project } from "./projects";
@@ -34,7 +34,7 @@ function refuse(status: number, error: string, message: string): Response {
   return json({ error, message }, { status, headers: { "cache-control": "no-store" } });
 }
 
-async function allowed(request: Request, env: Env, props: GrantProps, projectParam: string, what: string): Promise<{ project: Project } | Response> {
+async function allowed(request: Request, env: Env, props: GrantProps, projectParam: string, what: string): Promise<{ project: Project; onInt: boolean } | Response> {
   let wanted: string;
   try {
     wanted = decodeURIComponent(projectParam);
@@ -51,18 +51,37 @@ async function allowed(request: Request, env: Env, props: GrantProps, projectPar
   const role = await effectiveRole(env, props.login);
   if (!can(role, "validate")) return refuse(403, "not_allowed", "Your role does not let you test stories.");
 
-  // Never in production: only an environment the project opens to testing
-  // (not of the production type); asked by name, or any of them.
-  const environments = await reportingEnvironments(env, project);
-  // Asked by the query, or said by the relay (protocol 2, la-fabrique#195).
+  // Only on the test environment (la-fabrique#209): int, or production for
+  // a project without an integration branch. Asked by the query, or said by
+  // the relay (protocol 2, la-fabrique#195).
+  const test = await testEnvironment(env, project);
   const asked = new URL(request.url).searchParams.get("environment") ?? relayFacts(request).environment;
-  if (asked ? !environments[asked] : Object.keys(environments).length === 0) {
-    return refuse(403, "testing_disabled", asked ? `Testing is off on ${asked}.` : "This project has no environment to test on.");
-  }
-  return { project };
+  if (!test) return refuse(403, "testing_disabled", "This project has no environment to test on.");
+  if (asked && asked !== test.name) return refuse(403, "testing_disabled", `Testing is off on ${asked}: the stories are tested on ${test.name}.`);
+  return { project, onInt: test.environment.type === "integration" || Boolean(project.check?.config?.branches?.integration) };
 }
 
-async function storiesOnInt(env: Env, project: Project) {
+// The stories to test: on int, those int has; without int (la-fabrique#210),
+// those merged and still open, as To test lists them, and those back in
+// development after a feedback.
+async function storiesToTest(env: Env, project: Project, onInt: boolean) {
+  if (!onInt) {
+    const [snapshot, cards, checks, rules] = await Promise.all([
+      readSnapshot<Story[]>(env.DB, project.repo, STORIES),
+      storyCards(env.DB, project.repo),
+      storyChecks(env.DB, project.repo),
+      projectRules(env.DB, project),
+    ]);
+    const stories = (snapshot?.data ?? [])
+      .filter((story) => story.state === "open" && story.subTotal === 0 && !story.labels.includes(DEFECT_LABEL))
+      .filter((story) => {
+        const stage = stageOf(story, rules, new Set());
+        const merged = story.pullRequests.some((pull) => pull.state === "merged");
+        return stage === "to_validate" || (merged && story.labels.includes(rules.reworkLabel));
+      })
+      .sort((a, b) => a.number - b.number);
+    return { stories, cards, checks };
+  }
   const [production, snapshot, cards, checks] = await Promise.all([
     readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION),
     readSnapshot<Story[]>(env.DB, project.repo, STORIES),
@@ -81,7 +100,7 @@ async function storiesOnInt(env: Env, project: Project) {
 export async function storiesToTestForApp(request: Request, env: Env, props: GrantProps, projectParam: string): Promise<Response> {
   const guard = await allowed(request, env, props, projectParam, "show the stories to test");
   if (guard instanceof Response) return guard;
-  const { stories, cards, checks } = await storiesOnInt(env, guard.project);
+  const { stories, cards, checks } = await storiesToTest(env, guard.project, guard.onInt);
   return json(
     {
       stories: stories.map((story) => {
@@ -125,7 +144,7 @@ export async function actOnStoryForApp(request: Request, env: Env, props: GrantP
   const guard = await allowed(request, env, props, projectParam, "tick or validate stories");
   if (guard instanceof Response) return guard;
   const { project } = guard;
-  if (!(await storiesOnInt(env, project)).stories.some((candidate) => candidate.number === story)) {
+  if (!(await storiesToTest(env, project, guard.onInt)).stories.some((candidate) => candidate.number === story)) {
     return refuse(404, "not_found", `Story #${story} is not one of the stories to test.`);
   }
   let outcome;

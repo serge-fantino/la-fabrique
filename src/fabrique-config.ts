@@ -31,6 +31,10 @@ export interface FabriqueConfig {
   // The project's components (la-fabrique#197): the folder holding them, one
   // self-described sub-folder each (component.json).
   composants?: { dossier: string };
+  // The test environment (la-fabrique#209): where the stories wait for
+  // their validation. Absent: the `integration` environment, else the
+  // production one for a project without an integration branch.
+  recette?: { environnement: string };
 }
 
 export const ENVIRONMENT_TYPES = ["integration", "production"] as const;
@@ -42,10 +46,15 @@ export interface Environment {
   // What the environment is for; the version path answers the same
   // `environnement` (checked by Setup and before a report).
   type?: EnvironmentType;
-  // Whether the project's app may report defects from it (never on
-  // production: its data are real).
-  signalement?: boolean;
+  // Who may report a defect from it (la-fabrique#209): `equipe`, the
+  // accounts with a role; `comptes`, any account that sees the repository
+  // (`true` before); `utilisateurs`, the app's own users, not open yet
+  // (C33). Absent or false: nobody.
+  signalement?: Reporters | boolean;
 }
+
+export const REPORTERS = ["equipe", "comptes", "utilisateurs"] as const;
+export type Reporters = (typeof REPORTERS)[number];
 
 export const READY_CHECKS = ["criteres", "epique", "priorite", "etiquette_prete"] as const;
 export type ReadyCheck = (typeof READY_CHECKS)[number];
@@ -162,9 +171,13 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
         }
         const reporting = environment["signalement"];
         if (reporting !== undefined) {
-          if (typeof reporting !== "boolean") errors.push(`\`environnements.${name}.signalement\` must be true or false.`);
-          else if (reporting && checked.type === "production") errors.push(`\`environnements.${name}.signalement\` cannot be true on production.`);
-          else checked.signalement = reporting;
+          if (reporting === "utilisateurs") {
+            errors.push(`\`environnements.${name}.signalement\`: "utilisateurs" is not open yet: reports from the app's own users need their rules first (personal data, quotas, triage).`);
+          } else if (reporting === false) checked.signalement = false;
+          // `true` before reporting and testing were two settings: any account.
+          else if (reporting === true || reporting === "comptes") checked.signalement = "comptes";
+          else if (reporting === "equipe") checked.signalement = "equipe";
+          else errors.push(`\`environnements.${name}.signalement\` must be "equipe", "comptes" or false.`);
         }
         config.environnements[name] = checked;
       }
@@ -323,6 +336,14 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
         else errors.push("`application.kit` must be a folder of the repository, such as site/static/vendor/fabrique.");
       }
     }
+  }
+
+  const recette = parsed["recette"];
+  if (recette !== undefined) {
+    const name = isObject(recette) ? recette["environnement"] : undefined;
+    if (!isText(name)) errors.push('`recette` must be an object naming the test environment: { "environnement": "int" }.');
+    else if (!config.environnements?.[name]) errors.push(`\`recette.environnement\`: \`${name}\` is not one of the declared \`environnements\`.`);
+    else config.recette = { environnement: name };
   }
 
   const composants = parsed["composants"];
