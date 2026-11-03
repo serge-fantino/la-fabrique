@@ -8,7 +8,7 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
-import { refinementCards, refinementPage } from "./refinement";
+import { refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
@@ -769,7 +769,38 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   const base = `${projectUrl(project.repo)}/refinement`;
   if (form) {
     if (!canWriteCards(viewer)) return forbidden(viewer);
-    if (String(form.get("action") ?? "") === "story_ready") {
+    const action = String(form.get("action") ?? "");
+    // Priority and order of the features (la-fabrique#224), as in the sprint.
+    if (action === "card_priority" || action === "card_order" || action === "card_up" || action === "card_down") {
+      const all = (await listCards(env.DB, project.repo)).filter((c) => !c.archivedAt && c.release === NEXT_RELEASE && c.status !== "dropped").sort((a, b) => a.position - b.position || a.id - b.id);
+      const features = all.filter((c) => c.kind === "feature").map((c) => c.id);
+      const id = Number(form.get("card"));
+      if (action === "card_priority") {
+        const found = all.find((c) => c.id === id && c.kind === "feature");
+        const priority = String(form.get("priority") ?? "") || null;
+        if (!found || (priority && !cycleRules(project.check?.config).priorities.includes(priority))) return redirect(base);
+        if (!(await setCardPriority(env.DB, found, priority, viewer.login))) return redirect(`${base}?notice=unchanged#card-${id}`);
+        const failed = priority ? await applyCardPriority(env, project, { ...found, priority }, viewer.login) : [];
+        if (failed.length) return redirect(`${base}?failure=${encodeURIComponent(`Priority set on the card; GitHub refused it for ${failed.join("; ")}`.slice(0, 300))}#card-${id}`);
+        return redirect(`${base}?notice=priority#card-${id}`);
+      }
+      let wanted: number[] = [];
+      if (action === "card_order") {
+        wanted = String(form.get("order") ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+      } else {
+        const at = features.indexOf(id);
+        const to = action === "card_up" ? at - 1 : at + 1;
+        if (at >= 0 && to >= 0 && to < features.length) {
+          wanted = [...features];
+          [wanted[at], wanted[to]] = [wanted[to] as number, wanted[at] as number];
+        }
+      }
+      const full = withFeatureOrder(all.map((c) => c.id), features, wanted);
+      const changed = full ? await orderCardsInRelease(env.DB, project.repo, NEXT_RELEASE, full, viewer.login) : false;
+      if ((request.headers.get("accept") ?? "").includes("application/json")) return json({ ok: true, changed });
+      return redirect(`${base}#card-${id}`);
+    }
+    if (action === "story_ready") {
       const story = Number(form.get("story"));
       const links = await storyCards(env.DB, project.repo);
       const inNext = (await listCards(env.DB, project.repo)).filter((card) => card.release === NEXT_RELEASE && !card.archivedAt);
@@ -793,7 +824,8 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       canWrite: canWriteCards(viewer),
       readyLabel: project.check?.config?.demandes?.etiquettes?.["prete"] ?? null,
       canClaude: canWriteCards(viewer),
-      notice: params.get("notice") === "ready" ? "The story is labelled ready." : undefined,
+      priorities: cycleRules(project.check?.config).priorities,
+      notice: params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },

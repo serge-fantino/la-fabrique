@@ -44,6 +44,7 @@ export interface RefinementData {
   canWrite: boolean;
   readyLabel: string | null;
   canClaude: boolean;
+  priorities: string[];
   notice?: string | undefined;
   failure?: string | undefined;
 }
@@ -54,6 +55,15 @@ export function refinementCards(cards: Card[], release: string): { features: Car
     .filter((card) => !card.archivedAt && card.release === release && card.status !== "dropped")
     .sort((a, b) => a.position - b.position || a.id - b.id);
   return { features: live.filter((card) => card.kind === "feature"), others: live.filter((card) => card.kind !== "feature") };
+}
+
+// The whole order of a release's cards once its features are in `wanted`
+// order: they take the places the features had, the other cards keep theirs.
+// Null when `wanted` is not exactly the features.
+export function withFeatureOrder(all: number[], features: number[], wanted: number[]): number[] | null {
+  if (wanted.length !== features.length || new Set(wanted).size !== wanted.length || !wanted.every((id) => features.includes(id))) return null;
+  let next = 0;
+  return all.map((id) => (features.includes(id) ? (wanted[next++] as number) : id));
 }
 
 export function refinementPage(viewer: Viewer, project: Project, data: RefinementData): string {
@@ -94,11 +104,36 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     }
   };
 
-  const feature = (card: Card) => {
+  const sortUrl = `${base}/refinement`;
+  const hidden = (fields: Record<string, string | number>) =>
+    Object.entries(fields)
+      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
+      .join("");
+  const priority = (card: Card) =>
+    data.priorities.length
+      ? data.canWrite
+        ? `<form method="post" action="${escapeHtml(sortUrl)}" class="priority-form inline">${csrfField(viewer)}${hidden({ action: "card_priority", card: card.id })}<span class="muted small">Priority, for the card and its stories</span> <select name="priority" aria-label="Priority of ${cardRef(card.id)} and its stories" data-autosubmit>${[...data.priorities, ""]
+            .map((value) => `<option value="${escapeHtml(value)}"${(card.priority ?? "") === value ? " selected" : ""}>${value ? escapeHtml(value) : "No priority"}</option>`)
+            .join("")}</select><button type="submit" class="button quiet small" data-autosubmit-button>Set</button></form>`
+        : card.priority
+          ? `<span class="pill">${escapeHtml(card.priority)}</span>`
+          : ""
+      : "";
+  const order = (card: Card, index: number, total: number) => {
+    if (!data.canWrite || total < 2) return "";
+    const arrow = (action: string, text: string, label: string) =>
+      `<form method="post" action="${escapeHtml(sortUrl)}" class="inline sprint-order" data-busy="…">${csrfField(viewer)}${hidden({ action, card: card.id })}<button type="submit" class="button quiet small" aria-label="${label}">${text}</button></form>`;
+    return `<span class="sprint-controls">${index > 0 ? arrow("card_up", "↑", `Move ${cardRef(card.id)} up`) : ""}${index < total - 1 ? arrow("card_down", "↓", `Move ${cardRef(card.id)} down`) : ""}</span>`;
+  };
+
+  const feature = (card: Card, index: number, total: number) => {
     const numbers = data.links.order.get(card.id) ?? [];
     const next = nextStep(card, numbers, data.stories);
-    return `<article class="card refinement-card" id="card-${card.id}">
+    const sortable = data.canWrite && total > 1;
+    return `<article class="card refinement-card" id="card-${card.id}"${sortable ? ` data-sort-id="${card.id}"` : ""}>
+      ${sortable ? `<button type="button" class="sort-handle" data-sort-handle aria-label="Move ${cardRef(card.id)}: drag it, or use the up and down arrow keys" title="Drag to reorder">⠿</button>` : ""}
       <h3><a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
+      <p>${priority(card)} ${order(card, index, total)}</p>
       <p class="muted">${escapeHtml(synopsisOf(card))}</p>
       ${numbers.length ? `<ul class="plain">${numbers.map((number) => story(card, number)).join("")}</ul>` : `<p class="muted small">No story yet.</p>`}
       <p>${step(card, next)}</p>
@@ -118,7 +153,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
       <p class="muted">The features of <a href="${escapeHtml(base)}/board?by=release">Next release</a>, in priority order, and what each needs before the <a href="${escapeHtml(base)}/sprint">sprint</a>. Nothing is read from GitHub here: the stories are as La Fabrique last saw them.</p>
-      ${data.features.length ? data.features.map(feature).join("") : `<p class="muted">No feature in Next release.</p>`}
+      ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
       ${apart}`,
     viewer,
     [],

@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-03",
+    "titre": "Priority and order in Refinement",
+    "changements": [
+      "Each feature's card in Refinement has its priority in a list (the project's priority labels): saved at once, given to its stories on GitHub (one level lower for nice to have) and logged, as from the card's page.",
+      "Features are reordered by drag and drop on a handle or with the arrow keys, as in the sprint; up and down arrows remain without the page's script. The order is the board's, which the sprint takes, and is logged."
+    ],
+    "stories": [224],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-03",
     "titre": "A Refinement tab for the next release",
     "changements": [
       "A Refinement tab, between Board and Sprint (Product and All perspectives), lists the features of Next release in priority order, each with its status, synopsis, stories and next step: Specify, Answer, Refine, Validate (with what each story lacks and Mark ready) or Ready for the sprint.",
