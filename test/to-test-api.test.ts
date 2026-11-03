@@ -126,7 +126,7 @@ describe("The stories to test, for the project's app", () => {
     expect(((await (await me(tokens.access_token)).json()) as { can: { test_stories: boolean } }).can.test_stories).toBe(false);
   });
 
-  it("never answers for production or an environment closed to the app", async () => {
+  it("answers for the test environment only: int, or production for a project without int (la-fabrique#210)", async () => {
     const { tokens } = await connect("mona", CONFIG, SCOPES);
     await grantRole("mona", "tester");
     await seed();
@@ -138,6 +138,12 @@ describe("The stories to test, for the project's app", () => {
     expect((await call(tokens.access_token, "", { "x-fabrique-environment": "int" })).status).toBe(200);
     const onlyProduction = { ...CONFIG, environnements: { production: { url: "https://widget.example.com", version: "/api/version", type: "production" } } };
     await env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify(onlyProduction), REPO).run();
+    // No integration branch: the stories are tested in production.
+    expect((await call(tokens.access_token)).status).toBe(200);
+    expect((await call(tokens.access_token, "", { "x-fabrique-environment": "int" })).status).toBe(403);
+    // An integration branch without an environment to test on: none.
+    const noTest = { ...onlyProduction, branches: { production: "main", integration: "integration" } };
+    await env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify(noTest), REPO).run();
     expect((await call(tokens.access_token)).status).toBe(403);
   });
 

@@ -21,7 +21,7 @@ Keep the names as they are, without a version in them: declare the folder in `.f
 
 ## 2. Load the kit
 
-Only where reporting makes sense: never in production.
+Where the project opens it in `.fabrique.json` (la-fabrique#209): reporting on the environments whose `signalement` says who may report (`"equipe"`, the accounts with a role; `"comptes"`, any account that sees the repository), production included when it says so; testing on the test environment only (`recette`: int, or production for a project without an integration branch). La Fabrique checks both on each call; the relay may stay closed on an environment where the project does not want the button at all.
 
 The simplest, with its own launcher (kit 1.7.0): a small round button with La Fabrique's mark, shown when the relay says the person can report or test. A tap unfolds it into **Report a defect** and **Test**; the person can drag it elsewhere, and its place is kept on the device:
 
@@ -70,7 +70,7 @@ Styles: change `--fab-rep-ink`, `--fab-rep-paper`, `--fab-rep-muted`, `--fab-rep
 
 ### The generic relay (protocol 2)
 
-One address (the kit's `endpoint`), for a signed-in person of your app, outside production only.
+One address (the kit's `endpoint`), for a signed-in person of your app, on the environments `.fabrique.json` opens to reporting or testing.
 
 **`GET {endpoint}`**: what the person can do, from La Fabrique's `GET {FABRIQUE_URL}/api/me` with the person's token.
 
@@ -87,7 +87,7 @@ One address (the kit's `endpoint`), for a signed-in person of your app, outside 
 2. only `GET` and `POST`; a `POST` body is passed as it comes, up to 3 MB (a screenshot); a `POST` without `path` is a defect (`path=defects`), so a report kept offline by an older kit still arrives;
 3. the relay adds the person's access token (`authorization: Bearer …`, renewed with the refresh token when it expires) and three headers only it can say, which La Fabrique trusts over the body: `X-Fabrique-Environment` (the name of this environment in `.fabrique.json`, which its version path answers), `X-Fabrique-Version` and `X-Fabrique-Deployment`, each value URI-encoded (`encodeURIComponent`: a header carries ASCII only, and a version may read `1.171–int`);
 4. it answers La Fabrique's status and body as they come; on `401`, the link is no longer valid: forget it (the next `GET` answers `linked: false`);
-5. in production, it answers `403 { "error": "reporting_disabled" }` without calling La Fabrique.
+5. on an environment the project keeps closed (production, unless `.fabrique.json` opens it), it may answer `403 { "error": "reporting_disabled" }` without calling La Fabrique; La Fabrique refuses it anyway.
 
 What the kit calls today, for reference (La Fabrique checks the scopes, the role and the environment of each): `targets` (`GET`, what a report can be about), `defects` (`POST`, a report), `to-test` (`GET`, the stories to test), `to-test/{story}/criteria` and `to-test/{story}/validate` (`POST`). A later kit may call more paths of the same API: the relay does not change.
 
@@ -97,6 +97,7 @@ A generic relay for a Cloudflare Worker, where `link` is what your app keeps of 
 const PATH = /^[a-z0-9-]+(\/[a-z0-9-]+)*$/;
 
 async function relay(request: Request, env: Env, link: { access: string } | null, project: string): Promise<Response> {
+  // Closed where the project does not open reporting nor testing (here, production).
   if (env.ENVIRONMENT === "production") return Response.json({ error: "reporting_disabled" }, { status: 403 });
   const path = new URL(request.url).searchParams.get("path") ?? (request.method === "POST" ? "defects" : null);
   if (request.method === "GET" && path === null) return status(env, link); // { relay: 2, linked, login, link_url, can }

@@ -30,6 +30,7 @@ import { availablePerspectives, choosePerspective, currentPerspective, isPerspec
 const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/components|\/components\/[a-z0-9-]{1,63}|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
+import { SELF_RELAY_PATH, selfRelay } from "./self-kit";
 import { applySecurityHeaders } from "./headers";
 import { homePage, messagePage, noAccessPage, type Viewer } from "./views";
 import { WHATS_NEW_PATH } from "./urls";
@@ -111,7 +112,7 @@ const app = {
       case "/icon-512.png":
         return png("512");
       case "/api/version":
-        return json({ numero: onlineVersion(), commit: env.COMMIT_SHA });
+        return json({ numero: onlineVersion(), commit: env.COMMIT_SHA, environnement: env.ENVIRONNEMENT || "production" });
       case "/auth/login":
         return method === "GET" ? startLogin(request, env) : methodNotAllowed();
       case "/auth/callback":
@@ -147,6 +148,10 @@ const app = {
       return redirect("/no-access", [await destroySession(request, env.DB)]);
     }
     const viewer = state.kind === "signed_in" ? state.viewer : undefined;
+
+    // La Fabrique's own report and test kit, relayed by the session
+    // (la-fabrique#211).
+    if (pathname === SELF_RELAY_PATH) return selfRelay(request, env, viewer);
 
     const docRoute = DOC_ROUTE.exec(pathname);
     if (docRoute) {

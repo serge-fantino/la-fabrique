@@ -80,25 +80,31 @@ describe(".fabrique.json validation", () => {
     expect(result.config?.environnements).toEqual({ production: { url: "https://w.example" } });
   });
 
-  it("reads an environment's type and whether the app may report from it", () => {
+  it("reads an environment's type and who may report from it (la-fabrique#209)", () => {
     const result = validateFabriqueConfig(
       JSON.stringify({
         nom: "W",
         environnements: {
           int: { url: "https://int.example", version: "/api/version", type: "integration", signalement: true },
-          production: { url: "https://example", type: "production", signalement: true },
+          production: { url: "https://example", type: "production", signalement: "equipe" },
           staging: { url: "https://staging.example", type: "recette", signalement: "yes" },
+          demo: { url: "https://demo.example", signalement: "utilisateurs" },
         },
+        recette: { environnement: "int" },
       }),
       EXAMPLE_TREE,
     );
-    expect(result.config?.environnements?.["int"]).toEqual({ url: "https://int.example", version: "/api/version", type: "integration", signalement: true });
-    expect(result.config?.environnements?.["production"]).toEqual({ url: "https://example", type: "production" });
+    // `true`, from before reporting and testing were apart: any account.
+    expect(result.config?.environnements?.["int"]).toEqual({ url: "https://int.example", version: "/api/version", type: "integration", signalement: "comptes" });
+    expect(result.config?.environnements?.["production"]).toEqual({ url: "https://example", type: "production", signalement: "equipe" });
+    expect(result.config?.recette).toEqual({ environnement: "int" });
     expect(result.errors).toEqual([
-      "`environnements.production.signalement` cannot be true on production.",
       "`environnements.staging.type` must be \"integration\" or \"production\".",
-      "`environnements.staging.signalement` must be true or false.",
+      "`environnements.staging.signalement` must be \"equipe\", \"comptes\" or false.",
+      "`environnements.demo.signalement`: \"utilisateurs\" is not open yet: reports from the app's own users need their rules first (personal data, quotas, triage).",
     ]);
+    const unknown = validateFabriqueConfig(JSON.stringify({ nom: "W", environnements: { int: { url: "https://int.example" } }, recette: { environnement: "staging" } }), EXAMPLE_TREE);
+    expect(unknown.errors).toEqual(["`recette.environnement`: `staging` is not one of the declared `environnements`."]);
   });
 
   it("refuses duplicate request-form keys", () => {

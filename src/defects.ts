@@ -10,6 +10,7 @@ import type { GrantProps } from "./oauth";
 import { readVersion } from "./production";
 import type { Environment, FabriqueConfig } from "./fabrique-config";
 import { checkOtherBranch, findProject, type Project } from "./projects";
+import type { Role } from "./accounts";
 import { can } from "./rights";
 import { applyIssueEvent, type RestIssue } from "./stories";
 import { wordingFor } from "./wording";
@@ -299,16 +300,68 @@ export async function integrationConfig(env: Env, project: Project): Promise<Fab
   return branch.ok ? branch.check.config : null;
 }
 
-export async function reportingEnvironments(env: Env, project: Project, onIntegration?: FabriqueConfig | null): Promise<Record<string, Environment>> {
+// Every environment, as the branch deployed on it declares it.
+export async function declaredEnvironments(env: Env, project: Project, onIntegration?: FabriqueConfig | null): Promise<Record<string, Environment>> {
   const production = project.check?.config;
   const declared = { ...(production?.environnements ?? {}) };
   const integration = onIntegration === undefined ? await integrationConfig(env, project) : onIntegration;
   for (const [name, environment] of Object.entries(integration?.environnements ?? {})) {
     if (declared[name]?.type !== "production") declared[name] = environment;
   }
-  return Object.fromEntries(
-    Object.entries(declared).filter(([, environment]) => environment.signalement && environment.type !== "production"),
-  );
+  return declared;
+}
+
+// Who may report from an environment (la-fabrique#209): the team (an
+// account with a role), any account that sees the repository (`true`
+// before), or nobody. The app's own users are not open yet (C33).
+export type ReportAudience = "equipe" | "comptes";
+
+export function reportersOf(environment: Environment | undefined): ReportAudience | null {
+  const value = environment?.signalement;
+  if (value === true || value === "comptes") return "comptes";
+  if (value === "equipe") return "equipe";
+  return null;
+}
+
+export function mayReportFrom(environment: Environment | undefined, role: Role | null): boolean {
+  const audience = reportersOf(environment);
+  return audience === "comptes" ? can(role, "report_defect") : audience === "equipe" ? role !== null : false;
+}
+
+export const AUDIENCE_LABELS: Record<ReportAudience, string> = {
+  equipe: "the team (an account with a role)",
+  comptes: "any account that sees the repository",
+};
+
+// The environments open to reports, production included when it says so.
+export async function reportingEnvironments(env: Env, project: Project, onIntegration?: FabriqueConfig | null): Promise<Record<string, Environment>> {
+  const declared = await declaredEnvironments(env, project, onIntegration);
+  return Object.fromEntries(Object.entries(declared).filter(([, environment]) => reportersOf(environment) !== null));
+}
+
+// The test environment (la-fabrique#209): where the stories wait for their
+// validation. Said by `recette`; else the `integration` environment; else,
+// for a project without an integration branch, its production one.
+export function testEnvironmentOf(config: FabriqueConfig | null | undefined, declared: Record<string, Environment>): string | null {
+  const named = config?.recette?.environnement;
+  if (named && declared[named]) return named;
+  const entries = Object.entries(declared);
+  const integration = entries.find(([, environment]) => environment.type === "integration");
+  if (integration) return integration[0];
+  if (config?.branches?.integration) return null;
+  const production = entries.find(([, environment]) => environment.type === "production") ?? entries.find(([name]) => name === "production") ?? (entries.length === 1 ? entries[0] : undefined);
+  return production?.[0] ?? null;
+}
+
+export async function testEnvironment(env: Env, project: Project, onIntegration?: FabriqueConfig | null): Promise<{ name: string; environment: Environment } | null> {
+  const integration = onIntegration === undefined ? await integrationConfig(env, project) : onIntegration;
+  const declared = await declaredEnvironments(env, project, integration);
+  // Like the environments, `recette` may reach integration first.
+  const production = project.check?.config ?? null;
+  const recette = production?.recette ?? integration?.recette;
+  const name = testEnvironmentOf(production ? { ...production, ...(recette ? { recette } : {}) } : integration, declared);
+  const environment = name ? declared[name] : undefined;
+  return name && environment ? { name, environment } : null;
 }
 
 function startOfDay(): string {
@@ -319,7 +372,9 @@ function failure(status: number, error: string, message: string, extra: Json = {
   return json({ error, message, ...extra }, { status, headers: { "cache-control": "no-store" } });
 }
 
-export async function reportDefectFromApp(request: Request, env: Env, props: GrantProps, projectParam: string): Promise<Response> {
+// `self`: La Fabrique's own pages, through its internal relay
+// (la-fabrique#211): it knows its version, nothing to read over the network.
+export async function reportDefectFromApp(request: Request, env: Env, props: GrantProps, projectParam: string, options: { self?: boolean } = {}): Promise<Response> {
   let wanted: string;
   try {
     wanted = decodeURIComponent(projectParam);
@@ -357,13 +412,17 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
   const role = await effectiveRole(env, props.login);
   if (!can(role, "report_defect")) return failure(403, "no_access", "This account cannot report defects.");
 
-  // Reporting only from an environment the project opens to it, which
+  // Reporting only from an environment the project opens to it (production
+  // included when it says so, la-fabrique#209), by whom it says, and which
   // says it is that environment.
   const environment = (await reportingEnvironments(env, project))[report.environment];
   if (!environment) return failure(403, "reporting_disabled", `Reporting is off on ${report.environment}.`);
-  const deployed = environment.version ? await readVersion(report.environment, environment.url, environment.version) : null;
-  if (deployed?.answers !== report.environment || deployed.answers === "production") {
-    return failure(403, "reporting_disabled", `${environment.url} does not say it is ${report.environment}.`);
+  if (!mayReportFrom(environment, role)) return failure(403, "no_access", `Only the team reports defects from ${report.environment}.`);
+  if (!options.self) {
+    const deployed = environment.version ? await readVersion(report.environment, environment.url, environment.version) : null;
+    if (deployed?.answers !== report.environment) {
+      return failure(403, "reporting_disabled", `${environment.url} does not say it is ${report.environment}.`);
+    }
   }
 
   const today = await env.DB.prepare(

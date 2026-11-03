@@ -19,8 +19,9 @@
   const stylesheetOf = (doc) => doc.querySelector('link[rel="stylesheet"][href^="/styles.css"]')?.getAttribute("href") ?? null;
   // Only the site's own scripts count: a host may add its own (analytics),
   // which the security policy blocks anyway.
+  // The report kit, loaded by this script (setUpKit), does not count.
   const ownScripts = (doc) =>
-    [...doc.querySelectorAll("script[src]")]
+    [...doc.querySelectorAll("script[src]:not([data-kit])")]
       .map((script) => script.getAttribute("src") || "")
       .filter((src) => src.startsWith("/") && !src.startsWith("//"));
   const onlyThisScript = (doc) => {
@@ -463,6 +464,27 @@
     setUpFollow();
     setUpAboutPicker();
     setUpLive();
+    setUpKit();
+  }
+
+  // La Fabrique tests itself (la-fabrique#211): the report and test kit
+  // it gives its projects, on its own pages, relayed by the person's
+  // session. Loaded once; the launcher comes back after each page (the
+  // body is swapped), and the Test panel with it when it was open.
+  let kitLoading = null;
+  function setUpKit() {
+    const endpoint = document.querySelector('meta[name="fabrique-kit"]')?.getAttribute("content");
+    if (!endpoint) return;
+    const launch = () => window.FabriqueReport?.launcher({ endpoint, lang: "en" });
+    if (window.FabriqueReport) return void launch();
+    if (kitLoading) return;
+    kitLoading = new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = "/kit/fabrique-report.js";
+      script.dataset.kit = "";
+      script.addEventListener("load", resolve);
+      document.head.append(script);
+    }).then(launch);
   }
 
   // Claude's job on a card, live: the page listens to the card's

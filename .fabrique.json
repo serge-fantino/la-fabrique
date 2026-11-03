@@ -6,7 +6,7 @@
     "travail": ["claude/*", "feature/*"]
   },
   "environnements": {
-    "production": { "url": "https://la-fabrique.serge-fantino.workers.dev", "version": "/api/version" }
+    "production": { "url": "https://la-fabrique.serge-fantino.workers.dev", "version": "/api/version", "type": "production", "signalement": "equipe" }
   },
   "workflows": {
     "ci": "ci.yml",

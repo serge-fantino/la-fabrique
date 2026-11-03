@@ -102,7 +102,7 @@ describe("setupChecklist", () => {
     );
     expect(item?.state).toBe("missing");
     expect(item?.found).toBe(
-      "Version read on `int`, `production`. `int` is declared `integration` but answers `production`. The project's app reports defects from `int`.",
+      "Version read on `int`, `production`. `int` is declared `integration` but answers `production`. Defects reported from `int` (any account that sees the repository). Stories tested on `int` (by default).",
     );
     const fine = setupChecklist({
       check: check(config),

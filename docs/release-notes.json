@@ -1,6 +1,20 @@
 [
   {
     "version": "next",
+    "date": "2026-11-03",
+    "titre": "Reporting and testing, two activities; La Fabrique tests itself",
+    "changements": [
+      "In .fabrique.json, signalement says who may report from each environment: the team (an account with a role) or any account that sees the repository (what true meant), production included; the app's own users are not open yet.",
+      "recette names the one environment where the stories are tested: int by default, else production for a project without an integration branch. Setup says, per environment, who may report and where the stories are tested.",
+      "Without int, the app's test panel lists the stories merged and still open, and those back in development after a feedback, to validate in production as To test does.",
+      "La Fabrique tests itself: its team has the report and test launcher on every page, relayed by the person's session; the Test panel follows the pages.",
+      "The report kit's component says its own version (1.8.0) and how a project without int reports and tests in production."
+    ],
+    "stories": [209, 210, 211],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-02",
     "titre": "Reality first: the sprint shows what is being worked on",
     "changements": [

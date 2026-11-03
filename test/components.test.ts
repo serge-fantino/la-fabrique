@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import kitComponent from "../components/report-and-test-kit/component.json";
 import notesComponent from "../components/release-notes/component.json";
 import { readComponentJson, resolvePath } from "../src/components";
+import { KIT_VERSION } from "../src/kit";
 import { validateFabriqueConfig } from "../src/fabrique-config";
 import { get, signIn } from "./helpers";
 
@@ -88,6 +89,9 @@ describe("A component.json", () => {
       const read = readComponentJson(typeof raw === "string" ? raw : JSON.stringify(raw), id, `components/${id}`, exists);
       expect("errors" in read ? read.errors : [], id).toEqual([]);
     }
+    // The kit's component says the kit's own version (la-fabrique#211).
+    const kit = (typeof kitComponent === "string" ? JSON.parse(kitComponent) : kitComponent) as { version: string };
+    expect(kit.version).toBe(KIT_VERSION);
   });
 });
 

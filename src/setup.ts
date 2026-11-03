@@ -1,3 +1,4 @@
+import { AUDIENCE_LABELS, reportersOf, testEnvironmentOf } from "./defects";
 import type { EnvironmentType } from "./fabrique-config";
 import { globToRegExp, type VersionState } from "./production";
 import type { ConfigCheck } from "./projects";
@@ -88,7 +89,12 @@ export function setupChecklist({ check, releases, stories, branches, versions, a
       ? [`\`${name}\` is declared \`${environment.type}\` but answers \`${answers}\``]
       : [];
   });
-  const reporting = environments.filter(([, environment]) => environment.signalement).map(([name]) => `\`${name}\``);
+  // Who reports from where, and where the stories are tested (la-fabrique#209).
+  const reporting = environments.flatMap(([name, environment]) => {
+    const audience = reportersOf(environment);
+    return audience ? [`\`${name}\` (${AUDIENCE_LABELS[audience]})`] : [];
+  });
+  const test = config ? testEnvironmentOf(config, config.environnements ?? {}) : null;
   items.push(
     item(
       "environments",
@@ -99,7 +105,8 @@ export function setupChecklist({ check, releases, stories, branches, versions, a
               ? `Version read on ${versioned.map((name) => `\`${name}\``).join(", ")}.`
               : `${environments.length} environment${environments.length > 1 ? "s" : ""}, none with a version path.`,
             ...mismatched.map((text) => `${text}.`),
-            reporting.length ? `The project's app reports defects from ${reporting.join(", ")}.` : "",
+            reporting.length ? `Defects reported from ${reporting.join(", ")}.` : "",
+            test ? `Stories tested on \`${test}\`${config?.recette ? "" : " (by default)"}.` : "",
           ]
             .filter(Boolean)
             .join(" ")
