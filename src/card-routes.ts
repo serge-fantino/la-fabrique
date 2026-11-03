@@ -8,7 +8,8 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
-import { refinementCards, refinementPage, withFeatureOrder } from "./refinement";
+import { validateFeature, validationOf } from "./feature-validation";
+import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
@@ -289,6 +290,8 @@ async function renderCard(
   // Its progress from those stories, and when it reached each stage.
   const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
   const progressHistory = await progressSince(env.DB, project.repo, card.id);
+  const storyNumbers = [...linked];
+  const step = nextStep(card, storyNumbers, storyStates as never);
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
@@ -305,6 +308,8 @@ async function renderCard(
       links,
       shown,
       canWrite: canWriteCards(viewer),
+      validation: validationOf(card, storyNumbers),
+      canValidate: step.step === "approve",
       created: params.get("created") === "1",
       notice: notice ? CARD_NOTICES[notice] : undefined,
       failure: extra.failure,
@@ -350,6 +355,18 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (!known.get(number)) return renderCard(request, env, viewer, project, card, { failure: `#${number} is not a story La Fabrique knows in this project.`, status: 404 });
     await linkStory(env.DB, card, viewer.login, number, `https://github.com/${project.repo}/issues/${number}`);
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story linked");
+    return redirect(to);
+  }
+  // The last step of a feature (la-fabrique#232).
+  if (action === "validate_feature") {
+    const back = String(form.get("back") ?? "");
+    const to = back.startsWith(`${projectUrl(project.repo)}/`) ? back : `${url}#validation`;
+    const numbers = (await cardLinks(env.DB, card.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
+    const known = await cardStories(env, project, numbers);
+    if (card.kind !== "feature" || card.archivedAt || nextStep(card, numbers, known).step !== "approve") {
+      return renderCard(request, env, viewer, project, card, { failure: "A feature can be validated once its spec is complete and all its stories are ready.", status: 409 });
+    }
+    await validateFeature(env.DB, card, numbers, viewer.login);
     return redirect(to);
   }
   if (action === "archive" || action === "restore") {

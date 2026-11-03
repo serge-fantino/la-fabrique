@@ -1,6 +1,7 @@
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { cardRef, cardUrl, statusPill } from "./card-views";
+import { validationOf, type ValidationState } from "./feature-validation";
 import { excerpt, KIND_LABELS, type Card } from "./cards";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -17,16 +18,20 @@ export type NextStep =
   | { step: "answer"; questions: number }
   | { step: "refine" }
   | { step: "validate"; stories: number[] }
+  | { step: "approve"; validation: ValidationState }
   | { step: "ready" };
 
 // Where a feature stands, from its spec and its stories.
-export function nextStep(card: Pick<Card, "data">, stories: number[], known: Map<number, CardStory>): NextStep {
+export function nextStep(card: Pick<Card, "title" | "body" | "data">, stories: number[], known: Map<number, CardStory>): NextStep {
   const spec = card.data.spec;
   if (!spec) return { step: "specify" };
   if (spec.questions.length) return { step: "answer", questions: spec.questions.length };
   if (!stories.length) return { step: "refine" };
   const lacking = stories.filter((number) => known.get(number)?.stage === "backlog");
-  return lacking.length ? { step: "validate", stories: lacking } : { step: "ready" };
+  if (lacking.length) return { step: "validate", stories: lacking };
+  // The last step (la-fabrique#232): a person says the feature is right.
+  const validation = validationOf(card, stories);
+  return validation.state === "valid" ? { step: "ready" } : { step: "approve", validation };
 }
 
 // The first lines of the text, or of the spec once there is one.
@@ -71,7 +76,7 @@ export function releaseProgress(features: Card[], links: StoryCards, known: Map<
     }
     const next = nextStep(card, numbers, known);
     if (next.step !== "specify" && next.step !== "answer") out.specified++;
-    if (next.step === "validate" || next.step === "ready") out.refined++;
+    if (next.step === "validate" || next.step === "approve" || next.step === "ready") out.refined++;
     if (next.step === "ready") {
       out.ready++;
       continue;
@@ -80,6 +85,7 @@ export function releaseProgress(features: Card[], links: StoryCards, known: Map<
       next.step === "specify" ? "no spec"
       : next.step === "answer" ? `${next.questions} question${next.questions === 1 ? "" : "s"} waiting`
       : next.step === "refine" ? "spec complete, no stories"
+      : next.step === "approve" ? (next.validation.state === "outdated" ? `to validate again: ${next.validation.why.join(", ")}` : "not validated")
       : `${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready`;
     out.blockers.push({ card, reason });
   }
@@ -136,8 +142,14 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
         return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Refine")}`;
       case "validate":
         return `<strong>Next:</strong> <a class="button quiet small" href="${escapeHtml(url)}#stories">Validate</a> <span class="muted small">${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready</span>`;
-      case "ready":
-        return `<span class="pill ok">Ready for the sprint</span>`;
+      case "approve":
+        return `<strong>Next:</strong> ${next.validation.state === "outdated" ? `<span class="muted small">Validated by @${escapeHtml(next.validation.by)}, but ${escapeHtml(next.validation.why.join(" and "))}.</span> ` : ""}${
+          data.canWrite ? form(url, { action: "validate_feature", back: `${base}/refinement#card-${card.id}` }, "Validate the feature", `Validate ${cardRef(card.id)}`) : `<span class="muted small">Waiting for a Product Engineer to validate it.</span>`
+        }`;
+      case "ready": {
+        const v = validationOf(card, data.links.order.get(card.id) ?? []);
+        return `<span class="pill ok">Ready for the sprint</span>${v.state === "valid" ? ` <span class="muted small">Validated by @${escapeHtml(v.by)} on <span class="mono">${escapeHtml(v.at.slice(0, 10))}</span></span>` : ""}`;
+      }
     }
   };
 

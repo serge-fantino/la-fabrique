@@ -1,3 +1,4 @@
+import { type ValidationState } from "./feature-validation";
 import {
   axisValues,
   CARD_KINDS,
@@ -561,6 +562,9 @@ export interface CardPageData {
   // The stories that name this card ("C5") without being linked to it
   // (la-fabrique#218): proposed, never linked by themselves.
   named?: { number: number; title: string; url: string }[];
+  // The feature's validation (la-fabrique#232), and whether it can be asked now.
+  validation?: ValidationState;
+  canValidate?: boolean;
 }
 
 // A story that names a card it is not linked to: the form that links it
@@ -657,6 +661,22 @@ function statusForm(viewer: Viewer, url: string, card: Pick<Card, "status" | "pr
       </select>
       <noscript><button type="submit" class="button quiet">Set</button></noscript>
     </form>`;
+}
+
+function validationHtml(viewer: Viewer, url: string, data: CardPageData): string {
+  const v = data.validation;
+  if (!v || data.shown || data.card.kind !== "feature") return "";
+  const who = (login: string) => (login === viewer.login ? "me" : `@${escapeHtml(login)}`);
+  const button = data.canValidate && data.canWrite
+    ? `<form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}<input type="hidden" name="action" value="validate_feature" /><button type="submit" class="button">Validate the feature</button></form>`
+    : "";
+  const body =
+    v.state === "valid"
+      ? `<p><span class="pill ok">Validated</span> by <span class="mono">${who(v.by)}</span> on <span class="mono">${formatDate(v.at)}</span>.</p>`
+      : v.state === "outdated"
+        ? `<p><span class="pill alert">To validate again</span> Validated by <span class="mono">${who(v.by)}</span> on <span class="mono">${formatDate(v.at)}</span>, but ${escapeHtml(v.why.join(" and "))}. ${button}</p>`
+        : `<p><span class="pill">Not validated</span> ${data.canValidate ? `Its stories are ready. ${button}` : `<span class="muted">It can be validated once its spec is complete and all its stories are ready.</span>`}</p>`;
+  return `<section class="card-validation" id="validation"><h2>Validation</h2>${body}</section>`;
 }
 
 export function cardPage(viewer: Viewer, project: Project, data: CardPageData): string {
@@ -850,6 +870,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
               .join("")}</ul>`
           : ""
       }
+      ${validationHtml(viewer, url, data)}
       ${
         data.named?.length && !shown
           ? `<section class="card-named" id="named"><h2>Stories that name ${cardRef(card.id)}</h2>
