@@ -83,3 +83,54 @@ describe("The Refinement tab", () => {
     expect((await logActions()).map((entry) => entry.action)).toContain("story_marked_ready");
   });
 });
+
+describe("Priority and order in Refinement", () => {
+  const CONFIG2 = { ...CONFIG, cycle: { ...CONFIG.cycle, priorites: ["P1", "P2"] } };
+  async function setup() {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(CONFIG2)),
+    ]);
+    const a = await card("Alpha", 1, {});
+    const idea = await card("An idea", 2, {}, "idea");
+    const b = await card("Beta", 3, {});
+    const c = await card("Gamma", 4, {});
+    await grantRole("pe", "product_engineer");
+    return { a, idea, b, c, ...(await signIn("pe")) };
+  }
+  const order = async () => (await env.DB.prepare("SELECT id FROM cards WHERE repo = ? ORDER BY position, id").bind(REPO).all<{ id: number }>()).results.map((r) => r.id);
+
+  it("saves a feature's priority, logged", async () => {
+    const { a, cookie, csrf } = await setup();
+    const page = await (await get(`/projects/${REPO}/refinement`, cookie)).text();
+    expect(page).toContain('name="priority"');
+    expect(page).toContain('data-sortable="card_order"');
+    const done = await post(`/projects/${REPO}/refinement`, { csrf, action: "card_priority", card: String(a), priority: "P1" }, cookie);
+    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement?notice=priority#card-${a}`);
+    expect((await env.DB.prepare("SELECT priority FROM cards WHERE id = ?").bind(a).first<{ priority: string }>())?.priority).toBe("P1");
+    expect((await logActions()).map((entry) => entry.action)).toContain("card_priority_set");
+    const refused = await post(`/projects/${REPO}/refinement`, { csrf, action: "card_priority", card: String(a), priority: "P9" }, cookie);
+    expect(refused.headers.get("location")).toBe(`/projects/${REPO}/refinement`);
+  });
+
+  it("saves the features' order, logged, and the board follows; arrows work without the script", async () => {
+    const { a, idea, b, c, cookie, csrf } = await setup();
+    const send = (fields: Record<string, string>) =>
+      post(`/projects/${REPO}/refinement`, { csrf, ...fields }, cookie, { accept: "application/json" });
+    const moved = await send({ action: "card_order", order: `${c},${a},${b}` });
+    expect(await moved.json()).toEqual({ ok: true, changed: true });
+    expect(await order()).toEqual([c, idea, a, b]);
+    expect(await (await send({ action: "card_order", order: `${c},${a},${b}` })).json()).toEqual({ ok: true, changed: false });
+    expect(await (await send({ action: "card_order", order: `${c},${a}` })).json()).toEqual({ ok: true, changed: false });
+    const down = await post(`/projects/${REPO}/refinement`, { csrf, action: "card_down", card: String(c) }, cookie);
+    expect(down.headers.get("location")).toBe(`/projects/${REPO}/refinement#card-${c}`);
+    const page = await (await get(`/projects/${REPO}/refinement`, cookie)).text();
+    expect(page.indexOf("Alpha")).toBeLessThan(page.indexOf("Gamma"));
+    expect(page.indexOf("Gamma")).toBeLessThan(page.indexOf("Beta"));
+    expect(page).toContain('aria-label="Move C' + a + ' down"');
+    const board = await (await get(`/projects/${REPO}/board?by=release`, cookie)).text();
+    expect(board.indexOf("Alpha")).toBeLessThan(board.indexOf("Gamma"));
+    expect(board.indexOf("Gamma")).toBeLessThan(board.indexOf("Beta"));
+    expect((await logActions()).filter((entry) => entry.action === "sprint_card_moved").length).toBe(2);
+  });
+});
