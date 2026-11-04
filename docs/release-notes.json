@@ -10,7 +10,8 @@
     ],
     "stories": [227],
     "liens": null
-  },  {
+  },
+  {
     "version": "next",
     "date": "2026-11-04",
     "titre": "Claude prepares several features at once, in a queue",
