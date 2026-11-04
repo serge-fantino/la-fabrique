@@ -542,6 +542,62 @@ describe("Split into stories", () => {
     expect(review).toContain("(story 2 sur 2)");
   });
 
+  const form = (pairs: [string, string][]) => pairs.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
+  const postPairs = (path: string, pairs: [string, string][], cookie: string) =>
+    SELF.fetch(`${BASE}${path}`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", cookie }, body: form(pairs) });
+
+  it("shows each story as a block: growing sections, criteria one per line, what GitHub will receive", async () => {
+    const { cookie, id } = await withSplit();
+    const page = await (await get(`/projects/${REPO}/cards/${id}/stories`, cookie)).text();
+    expect(page).toContain('name="s_0_besoin" rows="2" data-grow');
+    expect(page).toContain('name="c_0" rows="1" data-grow');
+    expect(page).toContain("Quand je touche « Reprendre », la liste se remplit.</textarea>");
+    expect(page).toContain('value="crit_down:0:0"');
+    expect(page).toContain("<summary>What GitHub will receive</summary>");
+  });
+
+  it("adds, moves and removes criteria without saving, and the preview follows what is kept", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const url = `/projects/${REPO}/cards/${id}/stories`;
+    const base: [string, string][] = [["csrf", csrf], ["keep_0", "1"], ["title_0", "A"], ["title_1", "B"], ["rows_0", "1"], ["c_0", "First"], ["c_0", "Second"], ["rows_1", "1"], ["c_1", "Other"]];
+    const added = await (await postPairs(url, [...base, ["action", "crit_add:0"]], cookie)).text();
+    expect(added.match(/name="c_0"/g)).toHaveLength(3);
+    const moved = await (await postPairs(url, [...base, ["action", "crit_down:0:0"]], cookie)).text();
+    expect(moved.indexOf("Second</textarea>")).toBeLessThan(moved.indexOf("First</textarea>"));
+    const removed = await (await postPairs(url, [...base, ["action", "crit_del:0:0"]], cookie)).text();
+    expect(removed).not.toContain("First</textarea>");
+    expect(removed).toContain("Second</textarea>");
+    // Left out: no preview for story 2, "- [ ] First" in the body of story 1.
+    expect(moved).toContain("Left out: nothing will be created for it.");
+    expect(moved).toMatch(/story-preview">[\s\S]*?<li>\[ \] Second<\/li>|story-preview">[\s\S]*?Second/);
+    // Nothing was saved.
+    expect(JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").split.stories[0].answers.criteres).toContain("Quand je touche");
+  });
+
+  it("creates only the kept stories with their criteria as edited", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const sent: Record<string, unknown>[] = [];
+    mockIssues(sent, [301]);
+    const response = await postPairs(
+      `/projects/${REPO}/cards/${id}/stories`,
+      [["csrf", csrf], ["action", "create"], ["keep_1", "1"], ["title_0", "A"], ["title_1", "B"], ["rows_1", "1"], ["c_1", "One"], ["c_1", "Two"]],
+      cookie,
+    );
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=stories&created=1#stories`);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.["title"]).toBe("B");
+    expect(String(sent[0]?.["body"])).toContain("- [ ] One\n- [ ] Two");
+  });
+
+  it("shows the same editor in the feature's card on Refinement", async () => {
+    const { cookie, id } = await withSplit();
+    await env.DB.prepare("UPDATE cards SET release = 'Next release' WHERE id = ?").bind(id).run();
+    const page = await (await get(`/projects/${REPO}/refinement`, cookie)).text();
+    expect(page).toContain(`action="/projects/${REPO}/cards/${id}/stories"`);
+    expect(page).toContain('name="c_1" rows="1" data-grow');
+    expect(page).toContain("What GitHub will receive");
+  });
+
   it("creates the checked stories, as edited, each linked to the card and its spec's version", async () => {
     const { cookie, csrf, id } = await withSplit();
     const sent: Record<string, unknown>[] = [];

@@ -1,5 +1,6 @@
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
+import { EDITOR_DEFAULT_BUTTON, storyBlocks, type StoryEditorData } from "./story-editor";
 import { cardRef, cardUrl, statusPill } from "./card-views";
 import { jobLabel, type Job } from "./jobs";
 import { formatUsd, type CallsLeft } from "./llm";
@@ -49,6 +50,9 @@ export interface RefinementData {
   calls?: CallsLeft | null;
   features: Card[];
   others: Card[];
+  // The stories Claude proposed for a feature, in the same editor as the
+  // card's stories page (la-fabrique#228).
+  editors?: Map<number, Omit<StoryEditorData, "repo" | "errors">>;
   links: StoryCards;
   stories: Map<number, CardStory>;
   canWrite: boolean;
@@ -200,8 +204,20 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
         return `<strong>Next:</strong> no spec. ${claude("spec_draft", "Specify")}`;
       case "answer":
         return questions(card);
-      case "refine":
+      case "refine": {
+        const editor = data.editors?.get(card.id);
+        if (editor && data.canWrite) {
+          return `<strong>Next:</strong> Claude proposed ${editor.split.stories.length} stor${editor.split.stories.length === 1 ? "y" : "ies"}: review them.
+            <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
+              ${storyBlocks({ ...editor, repo: project.repo, errors: {}, prefix: `r${card.id}-` })}
+              <div class="card-actions">
+                <button type="submit" class="button" name="action" value="create">Create the checked stories on GitHub</button>
+                <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>
+              </div>
+            </form>`;
+        }
         return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Then refine")}`;
+      }
       case "validate":
         return `<strong>Next:</strong> <a class="button quiet small" href="${escapeHtml(url)}#stories">Validate</a> <span class="muted small">${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready</span>`;
       case "approve":

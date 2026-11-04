@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Review the proposed stories in a proper editor",
+    "changements": [
+      "The stories Claude proposes are reviewed in a clearer editor: each story is a block with its title and each section in a multi-line field that grows with its text.",
+      "Acceptance criteria are one per line: add, remove, move up or down. Nice to have and Create this story update the preview of what GitHub will receive, as it will read.",
+      "The same editor is on the card's stories page and in the feature's card on Refinement. Only the stories kept are created, with your edits; what GitHub refuses stays proposed."
+    ],
+    "stories": [228]
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Answer Claude's questions on the Refinement page",
     "changements": [
       "A feature whose spec has questions waiting shows them in its card on Refinement, each with a multi-line answer field. Send my answers to Claude and Enough questions work as on the card's page; answers are kept with the spec.",
