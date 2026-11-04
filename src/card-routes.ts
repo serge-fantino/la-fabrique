@@ -80,7 +80,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
