@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "The next release's progress bars show the ratio",
+    "changements": [
+      "The bars of Next release (Specified, Refined, Ready) fill to their ratio again: the page's security policy had blocked them."
+    ],
+    "stories": [261],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Claude writes test cases for each story",
     "changements": [
       "A feature's card offers Write test cases with Claude, and Refinement Write test cases for all features: a Claude job per feature, counted in the daily quota and the budget.",

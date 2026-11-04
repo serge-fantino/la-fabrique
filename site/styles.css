@@ -3500,8 +3500,10 @@ pre.gherkin {
 /* Refinement: the release's progress (la-fabrique#225) */
 .release-meter { display: flex; align-items: center; gap: 0.6rem; min-height: 2rem; }
 .release-meter > .muted { min-width: 6rem; }
-.release-meter .bar { flex: 1; max-width: 22rem; height: 0.6rem; border-radius: 0.3rem; background: #dcdfd3; overflow: hidden; }
-.release-meter .bar > span { display: block; height: 100%; background: #1e5a43; }
+.release-meter progress { flex: 1; max-width: 22rem; height: 0.6rem; border-radius: 0.3rem; background: #dcdfd3; overflow: hidden; border: 0; appearance: none; -webkit-appearance: none; accent-color: #1e5a43; }
+.release-meter progress::-webkit-progress-bar { background: #dcdfd3; }
+.release-meter progress::-webkit-progress-value { background: #1e5a43; }
+.release-meter progress::-moz-progress-bar { background: #1e5a43; }
 .release-meter:focus-visible, .release-stories:focus-visible { outline: 2px solid #c23d17; outline-offset: 2px; }
 
 /* Several features at once, each followed live (la-fabrique#226) */

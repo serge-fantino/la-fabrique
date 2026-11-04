@@ -151,7 +151,7 @@ describe("Priority and order in Refinement", () => {
   });
 });
 
-import { releaseProgress } from "../src/refinement";
+import { refinementPage, releaseProgress } from "../src/refinement";
 describe("The release's progress", () => {
   const mk = (id: number, data: object) => ({ id, title: `F${id}`, body: "", data }) as never;
   const done = { spec: { answers: { a: "x" }, questions: [], source: "claude" } };
@@ -165,6 +165,18 @@ describe("The release's progress", () => {
     // Stories ready but not validated: blocks, and says so.
     const q = releaseProgress([mk(2, done)], links, known);
     expect(q.blockers[0]?.reason).toBe("not validated");
+  });
+
+  // The page's CSP has no 'unsafe-inline' for styles: an inline style="width"
+  // is dropped and the bar stays empty, so the meter uses <progress> instead.
+  it("is drawn without inline styles, so the bar shows the ratio", () => {
+    const links = { order: new Map([[2, [1, 2]]]), nice: new Set<string>() } as never;
+    const known = new Map([[1, { stage: "ready" }], [2, { stage: "ready" }]]) as never;
+    const features = [mk(1, {}), mk(2, validated)];
+    const data = { features, others: [], links, stories: known, canWrite: false, readyLabel: null, canClaude: false, priorities: [] };
+    const page = refinementPage({ login: "pe", role: "product_engineer", csrfToken: "t" }, { repo: "a/b" } as never, data as never);
+    expect(page.match(/style="width[^"]*"/g) ?? []).toEqual([]);
+    expect(page).toContain('<progress max="2" value="1"></progress>');
   });
 });
 
