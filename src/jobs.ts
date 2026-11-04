@@ -1,16 +1,16 @@
-import { advanceStatus, findCard, reopenStatus, saveSpec, saveSplit } from "./cards";
+import { advanceStatus, findCard, reopenStatus, saveSpec, saveSplit, saveTests } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
 import { liveFor, refinementLiveFor, type LiveEvent } from "./live";
 import { findProject } from "./projects";
-import { specRubriques, splitSpec, writeSpec, type Answer, type SpecReading } from "./specs";
+import { specRubriques, splitSpec, writeSpec, writeTests, type Answer, type SpecReading } from "./specs";
 
 // Claude works in the background (docs/decisions/0001-claude-in-the-background.md).
 // A request is saved as a job at once, with what the person wrote, and
 // put on a queue; the queue's consumer runs it, detached from the browser,
 // writes its log and tells the card's open pages (CardLive).
 
-export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split";
+export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split" | "spec_tests";
 // waiting: in La Fabrique's line, not yet given to the queue; queued: given
 // to it; cancelled: taken out before it started (la-fabrique#226).
 export type JobStatus = "waiting" | "queued" | "running" | "done" | "failed" | "cancelled";
@@ -55,6 +55,7 @@ const LABELS: Record<JobKind, string> = {
   spec_revise: "Claude is revising the spec",
   spec_answer: "Claude is reading your answers",
   spec_split: "Claude is working on the stories",
+  spec_tests: "Claude is writing the test cases",
 };
 
 export function ordinal(n: number): string {
@@ -325,6 +326,7 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
         pending.push(say(env, running, `Thinks: ${thought}`));
         return;
       }
+      if (job.kind === "spec_tests") return;
       if (job.kind === "spec_split") {
         // Each story's title, once written in full.
         const found = [...progress.text.matchAll(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1] ?? "");
@@ -359,6 +361,15 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
     await say(env, running, `Done: ${summary} Cost ${formatUsd(cost)}.`, "done");
     return "done" as const;
   };
+
+  if (job.kind === "spec_tests") {
+    const outcome = await writeTests(env, project, card, job.login, job.request.instruction, watch);
+    if (!outcome.ok) return failed(outcome);
+    const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
+    await saveTests(env.DB, current, job.login, outcome.tests, outcome.callId);
+    const count = outcome.tests.stories.length;
+    return finish(outcome.callId, `test cases written for ${count} stor${count === 1 ? "y" : "ies"}.`, outcome.costMicros);
+  }
 
   if (job.kind === "spec_split") {
     const outcome = await splitSpec(env, project, card, job.login, job.request.instruction, watch);

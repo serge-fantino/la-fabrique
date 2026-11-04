@@ -234,6 +234,10 @@ describe("The preparation document", () => {
     expect(renderHtml(buildDoc(input(2)))).toContain("It works");
     expect(renderHtml(buildDoc(input(2)))).not.toContain("Test cases");
     expect(renderHtml(buildDoc(input(3)))).toContain("Scenario: It works");
+    const withTests = input(3);
+    withTests.features[0] = { ...(feature(1, "First") as object), data: { spec, tests: { stories: [{ number: 7, title: "Story seven", gherkin: "Scenario: Written by Claude" }], specAt: "x", at: "x" } } } as never;
+    expect(renderHtml(buildDoc(withTests))).toContain("Scenario: Written by Claude");
+    expect(renderHtml(buildDoc({ ...withTests, level: 2 }))).not.toContain("Written by Claude");
     expect(readLevel("9")).toBe(1);
     expect(fileName(buildDoc(input(2)), "acme/widget", "pdf")).toBe("preparation-widget-1.5-level2.pdf");
     const pdf = await renderPdf(buildDoc(input(3)));

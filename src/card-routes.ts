@@ -54,6 +54,7 @@ import {
   restoreRevision,
   saveSpec,
   saveSplit,
+  saveTests,
   advanceStatus,
   setCardPriority,
   reopenStatus,
@@ -246,6 +247,7 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
 const CARD_NOTICES: Record<string, string> = {
   saved: "Saved.",
   unchanged: "Nothing changed.",
+  tests: "Test cases saved.",
   priority: "Priority set: on the card, and on GitHub for its stories (one level lower when nice to have).",
   archived: "Archived: it no longer shows on the board.",
   restored: "Back on the board.",
@@ -430,6 +432,22 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "spec_split", request: { instruction, answers: [] }, login: viewer.login });
     if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
     return redirect(`${url}#claude-job`);
+  }
+  if (action === "spec_tests") {
+    if (!card.data.spec) return redirect(`${url}#spec`);
+    const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "spec_tests", request: { instruction, answers: [] }, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
+  if (action === "tests_save") {
+    const tests = card.data.tests;
+    if (!tests || card.archivedAt) return redirect(`${url}#tests`);
+    const edited = tests.stories.map((story, i) => ({ ...story, gherkin: String(form.get(`gherkin_${i}`) ?? story.gherkin).replace(/\r\n/g, "\n").trim().slice(0, 20000) }));
+    await saveTests(env.DB, card, viewer.login, { ...tests, stories: edited, edited: true });
+    return redirect(`${url}?notice=tests#tests`);
   }
   if (action === "spec_enough") {
     if (!card.data.spec || isActive(await latestJob(env.DB, card.id))) return redirect(`${url}#spec`);
@@ -877,8 +895,9 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       return redirect(done ? `${base}?notice=revoked` : base);
     }
     // Several features at once, each a job in the line (la-fabrique#226).
-    if (action === "refine_launch") {
+    if (action === "refine_launch" || action === "tests_launch") {
       const wanted = new Set(form.getAll("card").map(Number).filter((n) => Number.isInteger(n) && n > 0));
+      const tests = action === "tests_launch";
       const [cards, links, jobs] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectJobs(env.DB, project.repo)]);
       const todo: { card: Card; kind: JobKind }[] = [];
       for (const card of refinementCards(cards, NEXT_RELEASE).features) {
@@ -886,6 +905,15 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
         const step = nextStep(card, links.order.get(card.id) ?? [], new Map()).step;
         if (step === "specify") todo.push({ card, kind: "spec_draft" });
         else if (step === "refine") todo.push({ card, kind: "spec_split" });
+      }
+      if (tests) {
+        // Test cases for every ticked feature that has stories (or proposed ones).
+        todo.length = 0;
+        for (const card of refinementCards(cards, NEXT_RELEASE).features) {
+          if ((!wanted.has(card.id) && form.get("all") !== "1") || isActive(jobs.get(card.id)?.job ?? null) || !card.data.spec) continue;
+          if ((links.order.get(card.id) ?? []).length || card.data.split?.stories.length) todo.push({ card, kind: "spec_tests" });
+        }
+        if (!todo.length) return redirect(`${base}?failure=${encodeURIComponent("Tick features with a spec and stories to write test cases for.")}`);
       }
       if (!todo.length) return redirect(`${base}?failure=${encodeURIComponent("Tick features without a spec, or with a complete spec and no stories.")}`);
       const left = await callsLeft(env, viewer.role, viewer.login);

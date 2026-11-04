@@ -542,6 +542,29 @@ describe("Split into stories", () => {
     expect(review).toContain("(story 2 sur 2)");
   });
 
+  it("has Claude write Gherkin test cases per story, editable on the card (la-fabrique#230)", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const asked = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_tests" }, cookie);
+    expect(asked.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}#claude-job`);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, {
+      stories: [
+        { number: 0, title: "Reprendre la semaine dernière", gherkin: "Feature: Reprise\n  Scenario: Reprendre\n    Given une liste\n    When je touche Reprendre\n    Then elle se remplit" },
+        { number: 0, title: "Choisir une autre semaine", gherkin: "Feature: Choix\n  Scenario: Choisir" },
+      ],
+      note: "Un scénario par critère.",
+    });
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
+    expect(((sent.body?.["messages"] as { content: string }[])[0]?.content ?? "")).toContain("in Gherkin");
+    expect(((await env.DB.prepare("SELECT COUNT(*) AS n FROM llm_calls WHERE purpose = 'spec_tests'").first<{ n: number }>())?.n ?? 0)).toBe(1);
+    const page = await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text();
+    expect(page).toContain('id="tests"');
+    expect(page).toContain("Scenario: Reprendre");
+    const saved = await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "tests_save", gherkin_0: "Scenario: Edited by hand", gherkin_1: "Scenario: Choisir" }, cookie);
+    expect(saved.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}?notice=tests#tests`);
+    expect(await (await get(`/projects/${REPO}/cards/${id}`, cookie)).text()).toContain("Scenario: Edited by hand");
+  });
+
   const form = (pairs: [string, string][]) => pairs.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`).join("&");
   const postPairs = (path: string, pairs: [string, string][], cookie: string) =>
     SELF.fetch(`${BASE}${path}`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", cookie }, body: form(pairs) });
