@@ -127,7 +127,14 @@ function versionInfo(viewer?: Viewer): string {
       <button type="button" class="version-i" aria-describedby="version-pop" aria-label="About this version">i</button>
       <span class="version-pop" id="version-pop" role="tooltip">
         <strong>${info.version ? `Version <span class="mono">${escapeHtml(info.version)}</span>` : "Version unknown"}</strong>
-        ${info.date ? `<span>Released <span class="mono">${escapeHtml(info.date)}${info.time ? ` ${escapeHtml(info.time)}` : ""}</span> (Paris)</span>` : ""}
+        ${
+          // Changes online since the release: when they were deployed first, then the release they follow.
+          info.waiting && info.deployedAt ? `<span>Deployed <span class="mono">${escapeHtml(info.deployedAt)}</span> (Paris)</span>` : ""
+        }${
+          info.date
+            ? `<span>${info.waiting ? `${escapeHtml(info.version?.split(" ")[0] ?? "")} released` : "Released"} <span class="mono">${escapeHtml(info.date)}${info.time ? ` ${escapeHtml(info.time)}` : ""}</span> (Paris)</span>`
+            : ""
+        }
         <span>Commit <code>${escapeHtml(short)}</code></span>
         <span class="version-actions">
           ${viewer ? `<a class="button quiet small" href="${WHATS_NEW_PATH}${info.version ? `#${releaseAnchor(info.version.split(" ")[0] ?? info.version)}` : ""}">What's new</a>` : ""}

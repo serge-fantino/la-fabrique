@@ -62,4 +62,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           npx wrangler deploy \
-            --var COMMIT_SHA:${{ github.sha }}
+            --var COMMIT_SHA:${{ github.sha }} \
+            --var "DEPLOYED_AT:$(TZ=Europe/Paris date '+%Y-%m-%d %H:%M')"

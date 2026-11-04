@@ -322,3 +322,26 @@ describe("Relaunching Claude on a card the run stopped (la-fabrique#239)", () =>
     expect((await post(`/projects/${REPO}/sprint`, { csrf: tester.csrf, action: "run_relaunch_card", card: String(id), story: "12" }, tester.cookie)).status).toBe(403);
   });
 });
+
+describe("Relaunching Claude from a story's row (la-fabrique#239)", () => {
+  it("offers it on a story in development without a pull request, Claude's run over, to a tech lead", async () => {
+    await seedSprint();
+    // #12 has a branch and no pull request: in development, nothing running.
+    const snapshot = (await env.DB.prepare("SELECT data FROM snapshots WHERE repo = ? AND kind = 'stories'").bind(REPO).first<{ data: string }>())?.data ?? "[]";
+    const stories = (JSON.parse(snapshot) as { number: number; branches: string[] }[]).map((one) => (one.number === 12 ? { ...one, branches: ["claude/12-story-12"] } : one));
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(JSON.stringify(stories), REPO).run();
+    await grantRole("lead", "tech_lead");
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github
+      .intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` })
+      .reply(200, JSON.stringify({ workflow_runs: [{ id: 1, status: "completed", conclusion: "success", display_title: "Claude #12", html_url: "https://github.com/run/1", created_at: NOW, updated_at: NOW }] }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, (await signIn("lead")).cookie)).text();
+    const row = page.match(/<li id="story-\d+-12"[\s\S]*?<\/li>/)?.[0] ?? "";
+    expect(row).toContain('name="action" value="launch"');
+    expect(row).toContain("Relaunch Claude");
+    // #13 is ready, not in development: nothing to relaunch.
+    expect(page.match(/<li id="story-\d+-13"[\s\S]*?<\/li>/)?.[0] ?? "").not.toContain("Relaunch Claude");
+  });
+});
+

@@ -2,6 +2,27 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Relaunch Claude from a story's row; its work is never lost",
+    "changements": [
+      "A story of the sprint in development without a pull request, Claude's last run over, offers Relaunch Claude on its row (tech lead and above): Claude works on it again, on its branch; a card of the sprint's run stopped there follows it again.",
+      "When Claude ends a run without a pull request, the work it left uncommitted is committed as it is and pushed to the story's branch, so a relaunch builds on it."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
+    "titre": "The (i) says when the version online was deployed",
+    "changements": [
+      "While changes wait for the sprint's release (\"0.82 + 7 changes\"), the (i) next to the name says when they were deployed, then when the release they follow came out, instead of only that release's date."
+    ],
+    "stories": [],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Relaunch Claude, also on a card stopped before",
     "changements": [
       "A card the sprint's run stopped on Claude's side before Relaunch Claude existed now offers it too, read from why it stopped."

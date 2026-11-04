@@ -538,7 +538,7 @@ export default {
   },
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    setCommit(env.COMMIT_SHA);
+    setCommit(env.COMMIT_SHA, env.DEPLOYED_AT);
     const oauthEnv: Env = { ...env, OAUTH_KV: d1KeyValue(env.DB) };
     const { pathname, origin } = new URL(request.url);
     const provider = providerFor(origin);
