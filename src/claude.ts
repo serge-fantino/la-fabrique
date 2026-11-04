@@ -19,6 +19,12 @@ export function canLaunchClaude(role: Role): boolean {
   return can(role, "launch_claude");
 }
 
+// Claude again on a story it worked on without a pull request: a Product
+// Engineer too, who runs the sprint (la-fabrique#239).
+export function canRelaunchClaude(role: Role): boolean {
+  return can(role, "relaunch_claude");
+}
+
 export function claudeWorkflow(project: Project): string | null {
   const file = project.check?.config?.workflows?.["claude"];
   return typeof file === "string" ? file : null;
