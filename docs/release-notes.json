@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Relaunch Claude, also on a card stopped before",
+    "changements": [
+      "A card the sprint's run stopped on Claude's side before Relaunch Claude existed now offers it too, read from why it stopped."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Claude finished without a change: said, and relaunched from the sprint",
     "changements": [
       "When Claude ends its run on a story without any change, the workflow says so on the issue with Claude's last words and the run's link, removes the empty branch so the story is ready again, and fails the run; commits left without a pull request are pushed and the comment asks for one.",

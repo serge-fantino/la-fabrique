@@ -1,6 +1,6 @@
 import { cardRef } from "./card-views";
 import type { Project } from "./projects";
-import { runLanes, type PlannedCard, type RunCard, type RunState } from "./sprint-run";
+import { relaunchable, runLanes, type PlannedCard, type RunCard, type RunState } from "./sprint-run";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, type Viewer } from "./views";
 
@@ -100,7 +100,7 @@ export function runSection(viewer: Viewer, project: Project, state: RunState | n
           card.step === "stopped" && canRun && state.status !== "stopped" && state.status !== "done" ? ` ${control("run_resume_card", "Resume this card", { card: card.id })}` : ""
         }${
           // Stopped on Claude's side: relaunched on the same story, on its branch if it has one (la-fabrique#239).
-          card.step === "stopped" && card.relaunch && story !== undefined && canLaunch && state.status !== "stopped" && state.status !== "done"
+          relaunchable(card) && story !== undefined && canLaunch && state.status !== "stopped" && state.status !== "done"
             ? ` ${control("run_relaunch_card", `Relaunch Claude on #${story}`, { card: card.id, story })}`
             : ""
         }</li>`;
