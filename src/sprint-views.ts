@@ -242,13 +242,21 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : ""
         }`
       : "";
+    // In development without a pull request, Claude's last run over (done
+    // without one, failed, or none): Claude relaunched on the story, on its
+    // branch, from its row (la-fabrique#239).
+    const lastRun = data.claude.runs.find((run) => run.issue === number);
+    const relaunch =
+      story && !story.rework && isInDevelopment(story) && !story.pulls.some((pull) => pull.state === "open") && !(lastRun && isRunning(lastRun)) && data.claude.canLaunch && data.claude.workflow
+        ? ` ${button({ action: "launch", story: number }, `Relaunch Claude on #${number}, on its branch: no pull request yet`, "Relaunch Claude", "quiet small claude")}`
+        : "";
     return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
         ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
           <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
             isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
-          }${rework}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
+          }${rework}${relaunch}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
             others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""
           }${readiness(number, controls)}</p>
         </div>

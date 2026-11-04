@@ -577,7 +577,13 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
       if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
       const outcome = await launchClaude(env, project, viewer.login, number);
-      if (outcome.ok) return redirect(`${base}?notice=launched&story=${number}`);
+      if (outcome.ok) {
+        // A card of the sprint's run stopped at this story follows it again (la-fabrique#239).
+        const run = sprintRunFor(env, project.repo);
+        const stopped = run ? (await run.state().catch(() => null))?.cards.find((candidate) => candidate.stories[candidate.at] === number && relaunchable(candidate)) : undefined;
+        if (run && stopped) await run.control(viewer.login, "relaunched", stopped.id);
+        return redirect(`${base}?notice=launched&story=${number}`);
+      }
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
     // A story back in development after feedbacks from testing: Claude

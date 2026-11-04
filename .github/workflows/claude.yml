@@ -135,8 +135,8 @@ jobs:
 
       # Claude finished without a change (la-fabrique#239): the branch it was given is empty. Say so on the issue, with
       # Claude's last words and the run's link; drop the empty branch, so the story is ready again rather than "in
-      # development by hand"; and fail the run, so La Fabrique says why. Commits made but not pushed are pushed, and
-      # the comment says a pull request is missing. A pull request being updated (`pr`) is never touched.
+      # development by hand"; and fail the run, so La Fabrique says why. Work left uncommitted or not pushed is
+      # committed and pushed, and the comment says a pull request is missing. A pull request being updated (`pr`) is never touched.
       - name: Nothing to merge
         if: ${{ success() && !inputs.pr }}
         env:
@@ -145,6 +145,11 @@ jobs:
           OUTPUT: ${{ steps.claude.outputs.execution_file }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # Work Claude left uncommitted is kept: committed as it is, then pushed below.
+          if [ "$(git branch --show-current)" = "$BRANCH" ] && [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -q -m "Work in progress left uncommitted by Claude's run on #$ISSUE" -m "Run: $RUN_URL" || true
+          fi
           git fetch -q origin main
           git fetch -q origin "$BRANCH" || true
           pushed=$(git rev-list --count origin/main.."origin/$BRANCH" 2>/dev/null || echo 0)
@@ -162,7 +167,7 @@ jobs:
             pushed=$local
           fi
           if [ "$pushed" -gt 0 ]; then
-            gh issue comment "$ISSUE" --body "Claude committed on \`$BRANCH\` but opened no pull request: open one, or relaunch Claude on this story from La Fabrique. Run: $RUN_URL$quote"
+            gh issue comment "$ISSUE" --body "Claude worked on \`$BRANCH\` but opened no pull request (work left uncommitted is committed as it is): relaunch Claude on this story from La Fabrique to finish it, or open the pull request. Run: $RUN_URL$quote"
             echo "::error::Claude left commits without a pull request."
           else
             gh issue comment "$ISSUE" --body "Claude finished on this story without any change (no commit, no pull request); its empty branch is removed, the story is ready to relaunch from La Fabrique. Run: $RUN_URL$quote"
