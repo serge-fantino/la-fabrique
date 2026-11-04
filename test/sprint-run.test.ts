@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { StoryCards } from "../src/card-groups";
 import type { CardStory } from "../src/card-stories";
 import type { ClaudeRun } from "../src/claude";
-import { advance, planRun, runLanes, sprintRunFor, type Moves, type PlannedCard, type RunState, type Seen } from "../src/sprint-run";
+import { advance, planRun, relaunchable, runLanes, sprintRunFor, type Moves, type PlannedCard, type RunState, type Seen } from "../src/sprint-run";
 import type { Card } from "../src/cards";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
@@ -136,6 +136,13 @@ describe("The sprint's run, card by card", () => {
     expect(done).toEqual([]);
     expect(run1.cards.map((one) => [one.step, one.relaunch])).toEqual([["stopped", true], ["stopped", false]]);
     expect(run1.cards[0]?.reason).toBe("#12 is in development by hand (a branch without a pull request): finish it or drop the branch");
+    // A card stopped before the flag existed: said by its reason.
+    const before = (reason: string) => relaunchable({ ...card(3, [16]), step: "stopped", reason } as unknown as Parameters<typeof relaunchable>[0]);
+    expect(before("Claude's run on #226 ended without a pull request: it may have asked a question on the issue")).toBe(true);
+    expect(before("#226 is in development by hand (a branch without a pull request): finish it or drop the branch")).toBe(true);
+    expect(before("Claude's run on #16 failed")).toBe(true);
+    expect(before("#16 is not ready: it lacks a priority")).toBe(false);
+    expect(before("the merge of #30 was refused: conflicts")).toBe(false);
   });
 
   it("has Claude update a pull request in conflict once, merges again, then stops if refused again", async () => {

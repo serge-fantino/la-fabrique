@@ -21,7 +21,7 @@ import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWo
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
 import { heldStories } from "./card-lock";
-import { loadPlan as loadRunPlan, newRun, planRun, runRefusal, sprintRunFor } from "./sprint-run";
+import { loadPlan as loadRunPlan, newRun, planRun, relaunchable, runRefusal, sprintRunFor } from "./sprint-run";
 import { runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
@@ -627,7 +627,7 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const run = sprintRunFor(env, project.repo);
       const state = run ? await run.state() : null;
       const card = Number(form.get("card"));
-      const subject = state?.cards.find((candidate) => candidate.id === card && candidate.step === "stopped" && candidate.relaunch);
+      const subject = state?.cards.find((candidate) => candidate.id === card && relaunchable(candidate));
       const number = subject?.stories[subject.at];
       if (!run || !state || !subject || number === undefined || number !== Number(form.get("story"))) return redirect(`${base}#sprint-work`);
       const outcome = await launchClaude(env, project, viewer.login, number);

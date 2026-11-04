@@ -511,7 +511,7 @@ export class SprintRun extends DurableObject<Env> {
       } else if (what === "relaunched") {
         // Claude relaunched on the story by a person (la-fabrique#239): the
         // card follows that run, as if the run had launched it.
-        const found = state.cards.find((candidate) => candidate.id === card && candidate.step === "stopped");
+        const found = state.cards.find((candidate) => candidate.id === card && relaunchable(candidate));
         if (!found || state.status === "stopped" || state.status === "done") return state;
         Object.assign(found, { step: "claude", reason: null, link: null, note: null, runs: 1, updated: false, pull: null, since: new Date().toISOString(), relaunch: false });
         if (state.status === "waiting") state.status = "running";
@@ -536,6 +536,16 @@ export class SprintRun extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
     });
   }
+}
+
+// Whether Claude can be relaunched on the story a stopped card is at
+// (la-fabrique#239). A card stopped before the flag existed says it by its
+// reason: a run of Claude failed, cancelled, without a pull request or not
+// started, or a branch left without one.
+export function relaunchable(card: RunCard): boolean {
+  if (card.step !== "stopped") return false;
+  if (card.relaunch !== undefined) return card.relaunch;
+  return /^Claude's run on #\d+ (failed|was cancelled|ended without a pull request)|^the Claude workflow did not start|Claude runs without a pull request|in development by hand/.test(card.reason ?? "");
 }
 
 // The story a card of the run is at.
