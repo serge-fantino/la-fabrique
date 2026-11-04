@@ -141,6 +141,39 @@ export async function allowance(env: Env, role: Role, login: string, now = new D
   return { ok: true };
 }
 
+// What a person can still ask today (la-fabrique#226): the daily quota
+// less the calls made and the jobs already launched and not yet counted,
+// and whether the monthly budget is spent. `reason` says what stops them.
+export interface CallsLeft {
+  left: number;
+  daily: number;
+  used: number;
+  pending: number;
+  reason: string | null;
+  budget: { spent: number; limit: number };
+}
+
+export async function callsLeft(env: Env, role: Role, login: string, now = new Date()): Promise<CallsLeft> {
+  const settings = claudeSettings(env);
+  const [today, month, pending] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM llm_calls WHERE login = ? AND at >= ? AND (outcome <> 'error' OR input_tokens > 0)")
+      .bind(login, startOfDay(now))
+      .first<{ n: number }>(),
+    env.DB.prepare("SELECT COALESCE(SUM(cost_micros), 0) AS micros FROM llm_calls WHERE at >= ?").bind(startOfMonth(now)).first<{ micros: number }>(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM claude_jobs WHERE login = ? AND status IN ('waiting', 'queued', 'running') AND created_at >= ?")
+      .bind(login, startOfDay(now))
+      .first<{ n: number }>(),
+  ]);
+  const used = today?.n ?? 0;
+  const waiting = pending?.n ?? 0;
+  const budget = { spent: month?.micros ?? 0, limit: settings.monthlyBudgetUsd * 1_000_000 };
+  const base = await allowance(env, role, login, now);
+  let reason: string | null = base.ok ? null : base.reason;
+  let left = reason ? 0 : Math.max(0, settings.dailyCalls - used - waiting);
+  if (!reason && left === 0) reason = `Your ${settings.dailyCalls} calls of today are taken (${used} made, ${waiting} launched). Back tomorrow (UTC).`;
+  return { left, daily: settings.dailyCalls, used, pending: waiting, reason, budget };
+}
+
 // ---- Calls ------------------------------------------------------------------
 
 export interface CallRecord {

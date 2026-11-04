@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Claude prepares several features at once, in a queue",
+    "changements": [
+      "On Refinement, tick features and launch their next step together: Specify for those without a spec, Refine for those with a complete spec and no stories. The page says how many calls it takes against your daily quota and the monthly budget, and launches nothing if it goes beyond.",
+      "The jobs wait their turn: Claude takes two at a time, the others wait in the order launched. Each waiting card says its place (\"2nd in line\"), which moves up as jobs end, and a job not started yet can be cancelled; a running job never is.",
+      "Each feature's card follows its own job live, without reloading the page: waiting, working, or failed with the reason and Try again; the other jobs go on. Leaving the page loses nothing."
+    ],
+    "stories": [226],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "A Product Engineer relaunches Claude; a run without a pull request says so",
     "changements": [
       "Relaunch Claude, on a story's row of the sprint and on a card the sprint's run stopped, is open to a Product Engineer, who runs the sprint, as well as a tech lead.",
