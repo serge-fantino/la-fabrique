@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Download the preparation document of the next release",
+    "changements": [
+      "Refinement offers Download the preparation document, at the level of detail you choose (features and specs; plus stories; plus test cases), in HTML (one self-contained file) or PDF (made by the server, a feature per page, pages numbered).",
+      "The document opens with La Fabrique's logo, the project's name and description, the version being prepared, the latest released, the date and who generated it, then the summary: the features in priority order with status and stories, and GO or NO-GO.",
+      "Each download is logged with its level and format; nothing is published."
+    ],
+    "stories": [229],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Review the proposed stories in a proper editor",
     "changements": [
       "The stories Claude proposes are reviewed in a clearer editor: each story is a block with its title and each section in a multi-line field that grows with its text.",

@@ -249,6 +249,15 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${meter("Ready", progress.ready, progress.features, "Features whose every needed story meets the Definition of Ready")}
       <p class="release-stories" tabindex="0" title="Stories of these features: needed ones hold the release back, nice to have ones never do"><span class="mono">${progress.needed + progress.nice}</span> stories: <span class="mono">${progress.needed}</span> needed, <span class="mono">${progress.nice}</span> nice to have</p>
       ${verdict}
+      <form method="get" action="${escapeHtml(base)}/refinement/preparation" class="inline preparation-form">
+        <label>Level of detail <select name="level">
+          <option value="1">1 · Features and their specs</option>
+          <option value="2">2 · Plus their stories</option>
+          <option value="3">3 · Plus their test cases</option>
+        </select></label>
+        <label>Format <select name="format"><option value="html">HTML (one file)</option><option value="pdf">PDF</option></select></label>
+        <button type="submit" class="button quiet">Download the preparation document</button>
+      </form>
     </section>`;
   const sortUrl = `${base}/refinement`;
   const priority = (card: Card) =>

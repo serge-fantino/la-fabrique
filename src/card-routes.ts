@@ -9,6 +9,8 @@ import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, ca
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { validateFeature, validationOf } from "./feature-validation";
+import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
+import { recordedByStory } from "./gherkin";
 import { criteriaOf, criteriaRubrique, criteriaText, moveCriterion } from "./story-editor";
 import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
@@ -79,7 +81,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -984,6 +986,46 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   );
 }
 
+// The preparation document of Next release (la-fabrique#229), generated on
+// demand at the chosen level and format; logged, never published.
+async function preparationRoute(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const level = readLevel(params.get("level"));
+  const format = readFormat(params.get("format"));
+  const cards = await listCards(env.DB, project.repo);
+  const [links, { releases }, running] = await Promise.all([storyCards(env.DB, project.repo), knownValues(env, project, cards), activeSprint(env.DB, project.repo)]);
+  const { features } = refinementCards(cards, NEXT_RELEASE);
+  const numbers = [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))];
+  const stories = await cardStories(env, project, numbers, "cache");
+  const recorded = level >= 3 ? await recordedByStory(env.DB, project.repo) : new Map();
+  const all = [...releases.values()];
+  const doc = buildDoc({
+    level,
+    projectName: project.check?.config?.nom || project.repo,
+    description: project.check?.config?.description ?? "",
+    preparing: running?.version ?? nextVersion(project.check?.config?.version?.forme, all),
+    releases: all,
+    by: viewer.login,
+    now: new Date(),
+    features,
+    links,
+    stories,
+    rubriques: specRubriques(project),
+    recorded,
+    sections: (card, title) => card.data.split?.stories.find((s) => s.title === title)?.answers ?? null,
+  });
+  await activityStatement(env.DB, {
+    actor: viewer.login,
+    action: "preparation_downloaded",
+    repo: project.repo,
+    details: { level, format, features: features.length, version: doc.preparing },
+  }).run();
+  const name = fileName(doc, project.repo, format);
+  const headers = { "content-disposition": `attachment; filename="${name}"`, "cache-control": "no-store" };
+  if (format === "pdf") return new Response(await renderPdf(doc), { headers: { ...headers, "content-type": "application/pdf" } });
+  return new Response(renderHtml(doc), { headers: { ...headers, "content-type": "text/html; charset=utf-8" } });
+}
+
 // The cards that joined the sprint by their work, said once (la-fabrique#205).
 function joinedNotice({ opened, joined }: JoinOutcome): string | undefined {
   const one = (entry: Joined) => `${cardRef(entry.card.id)} (${entry.stories.map((number) => `#${number}`).join(", ")})`;
@@ -1303,6 +1345,9 @@ export async function cardRoute(
     return data ? handler(data) : html(messagePage("Not allowed", "This form expired: reload the page.", viewer), { status: 403 });
   };
 
+  if (path === "refinement/preparation") {
+    return method === "GET" ? preparationRoute(request, env, viewer, project) : notAllowed();
+  }
   if (path === "refinement") {
     if (method === "GET") return refinementRoute(request, env, viewer, project, null);
     if (method === "POST") return withForm((data) => refinementRoute(request, env, viewer, project, data));
