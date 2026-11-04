@@ -1,6 +1,8 @@
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { cardRef, cardUrl, statusPill } from "./card-views";
+import { jobLabel, type Job } from "./jobs";
+import { formatUsd, type CallsLeft } from "./llm";
 import { validationOf, type ValidationState } from "./feature-validation";
 import { excerpt, KIND_LABELS, type Card } from "./cards";
 import { notice, projectContext, projectHeader } from "./project-views";
@@ -42,6 +44,9 @@ export function synopsisOf(card: Pick<Card, "body" | "data">): string {
 }
 
 export interface RefinementData {
+  // The latest job of each card, with its place when it waits (la-fabrique#226).
+  jobs?: Map<number, { job: Job; place: number | null }>;
+  calls?: CallsLeft | null;
   features: Card[];
   others: Card[];
   links: StoryCards;
@@ -129,8 +134,29 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       <span class="muted small">${escapeHtml(stage)}${missing.length ? ` (${escapeHtml(missing.join(", "))})` : ""}</span> ${fixes}</li>`;
   };
 
+  // What Claude does on a card: its place in the line, working, or why it failed.
+  const jobState = (card: Card) => {
+    const entry = data.jobs?.get(card.id);
+    const job = entry?.job;
+    const shown = job && (job.status === "waiting" || job.status === "queued" || job.status === "running" || job.status === "failed" || job.status === "cancelled") ? job : null;
+    const cancellable = shown && (shown.status === "waiting" || (shown.status === "queued" && shown.attempts === 0));
+    const body = shown
+      ? `<span class="claude-job-dot" aria-hidden="true"></span> <strong data-job-label>${escapeHtml(jobLabel(shown, entry?.place))}</strong>${
+          cancellable && data.canClaude ? " " + form(`${base}/refinement`, { action: "job_cancel", card: card.id }, "Cancel", `Cancel the job on ${cardRef(card.id)}`) : ""
+        }${
+          shown.status === "failed" && data.canClaude ? " " + form(`${base}/refinement`, { action: "job_retry", card: card.id }, "Try again", `Try the job again on ${cardRef(card.id)}`) : ""
+        }`
+      : "";
+    return `<p class="job-state${shown?.status === "failed" ? " failed" : ""}" data-job-state="${card.id}" aria-live="polite"${shown ? "" : " hidden"}>${body}</p>`;
+  };
+  const active = (card: Card) => {
+    const job = data.jobs?.get(card.id)?.job;
+    return Boolean(job && (job.status === "waiting" || job.status === "queued" || job.status === "running"));
+  };
+
   const step = (card: Card, next: NextStep) => {
     const url = cardUrl(project.repo, card.id);
+    if (active(card) && (next.step === "specify" || next.step === "refine")) return `<strong>Next:</strong> ${next.step === "specify" ? "no spec" : "spec complete, no stories"}. <span class="muted small">Claude has it.</span>`;
     const claude = (action: string, text: string) =>
       data.canClaude ? form(url, { action }, text, `${text}: ${card.title}`) : `<a class="button quiet small" href="${escapeHtml(url)}">${text}</a>`;
     switch (next.step) {
@@ -194,20 +220,39 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     return `<span class="sprint-controls">${index > 0 ? arrow("card_up", "↑", `Move ${cardRef(card.id)} up`) : ""}${index < total - 1 ? arrow("card_down", "↓", `Move ${cardRef(card.id)} down`) : ""}</span>`;
   };
 
+  const tickable = (card: Card, next: NextStep) => data.canClaude && !active(card) && (next.step === "specify" || next.step === "refine");
+
   const feature = (card: Card, index: number, total: number) => {
     const numbers = data.links.order.get(card.id) ?? [];
     const next = nextStep(card, numbers, data.stories);
     const sortable = data.canWrite && total > 1;
     return `<article class="card refinement-card" id="card-${card.id}"${sortable ? ` data-sort-id="${card.id}"` : ""}>
       ${sortable ? `<button type="button" class="sort-handle" data-sort-handle aria-label="Move ${cardRef(card.id)}: drag it, or use the up and down arrow keys" title="Drag to reorder">⠿</button>` : ""}
-      <h3><a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
+      <h3>${tickable(card, next) ? `<input type="checkbox" form="refine-launch" name="card" value="${card.id}" data-refine-tick aria-label="Select ${cardRef(card.id)} for Claude's next step" /> ` : ""}<a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
       <p>${priority(card)} ${order(card, index, total)}</p>
       <p class="muted">${escapeHtml(synopsisOf(card))}</p>
+      ${jobState(card)}
       ${numbers.length ? `<ul class="plain">${numbers.map((number) => story(card, number)).join("")}</ul>` : `<p class="muted small">No story yet.</p>`}
       <p>${step(card, next)}</p>
     </article>`;
   };
 
+  const eligible = data.features.filter((card) => tickable(card, nextStep(card, data.links.order.get(card.id) ?? [], data.stories)));
+  const calls = data.calls;
+  const launch =
+    data.canClaude && eligible.length
+      ? `<form method="post" action="${escapeHtml(base)}/refinement" id="refine-launch" class="card refine-launch" data-busy="Launching…">${csrfField(viewer)}${hidden({ action: "refine_launch" })}
+          <p><strong>Launch Claude on the ticked features</strong>: Specify for those without a spec, Refine for those with a complete spec and no stories. Each is one job; Claude takes ${2} at a time, the others wait their turn, in the order launched.</p>
+          <p class="muted small" data-refine-count data-calls-left="${calls ? calls.left : 0}">${
+            calls
+              ? calls.reason
+                ? escapeHtml(calls.reason)
+                : `<span data-refine-selected>0 ticked</span>: one call each. You have <span class="mono">${calls.left}</span> of today's <span class="mono">${calls.daily}</span> calls left; this month's budget is <span class="mono">${escapeHtml(formatUsd(calls.budget.spent))}</span> of <span class="mono">${escapeHtml(formatUsd(calls.budget.limit))}</span>. Beyond that nothing is launched.`
+              : ""
+          }</p>
+          <p><button type="submit" class="button claude"${calls?.reason ? " disabled data-reason" : ""}>Launch the next step</button></p>
+        </form>`
+      : "";
   const apart = data.others.length
     ? `<h2>Ideas and questions</h2>
       <ul class="plain">${data.others
@@ -220,8 +265,10 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     `${projectHeader(project, "refinement")}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
+      <div data-refinement-live="${escapeHtml(base)}/refinement/live" hidden></div>
       <p class="muted">The features of <a href="${escapeHtml(base)}/board?by=release">Next release</a>, in priority order, and what each needs before the <a href="${escapeHtml(base)}/sprint">sprint</a>. Nothing is read from GitHub here: the stories are as La Fabrique last saw them.</p>
       ${summary}
+      ${launch}
       ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
       ${apart}`,
     viewer,

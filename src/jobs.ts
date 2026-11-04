@@ -1,7 +1,7 @@
 import { advanceStatus, findCard, reopenStatus, saveSpec, saveSplit } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
-import { liveFor, type LiveEvent } from "./live";
+import { liveFor, refinementLiveFor, type LiveEvent } from "./live";
 import { findProject } from "./projects";
 import { specRubriques, splitSpec, writeSpec, type Answer, type SpecReading } from "./specs";
 
@@ -11,7 +11,9 @@ import { specRubriques, splitSpec, writeSpec, type Answer, type SpecReading } fr
 // writes its log and tells the card's open pages (CardLive).
 
 export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split";
-export type JobStatus = "queued" | "running" | "done" | "failed";
+// waiting: in La Fabrique's line, not yet given to the queue; queued: given
+// to it; cancelled: taken out before it started (la-fabrique#226).
+export type JobStatus = "waiting" | "queued" | "running" | "done" | "failed" | "cancelled";
 
 export interface JobRequest {
   instruction: string;
@@ -30,6 +32,7 @@ export interface Job {
   error: string | null;
   callId: number | null;
   createdAt: string;
+  queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
 }
@@ -40,6 +43,9 @@ export interface JobEvent {
 }
 
 export const MAX_ATTEMPTS = 3;
+// At most this many jobs run at once; the others wait their turn, in the
+// order they were launched (la-fabrique#226).
+export const MAX_RUNNING = 2;
 export const RETRY_DELAY_SECONDS = 30;
 // A job still running after this long has stopped (its consumer died).
 const STALE_MS = 15 * 60 * 1000;
@@ -51,7 +57,15 @@ const LABELS: Record<JobKind, string> = {
   spec_split: "Claude is working on the stories",
 };
 
-export function jobLabel(job: Pick<Job, "kind" | "status" | "error">): string {
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+export function jobLabel(job: Pick<Job, "kind" | "status" | "error">, place?: number | null): string {
+  if (job.status === "waiting") return place ? `Waiting for its turn: ${ordinal(place)} in line` : "Waiting for its turn";
+  if (job.status === "cancelled") return "Cancelled before it started";
   if (job.status === "queued") return "Waiting for Claude";
   if (job.status === "failed") return `Claude could not finish: ${job.error ?? "unknown error"}`;
   if (job.status === "done") return "Claude is done";
@@ -70,6 +84,7 @@ interface JobRow {
   error: string | null;
   call_id: number | null;
   created_at: string;
+  queued_at: string | null;
   started_at: string | null;
   finished_at: string | null;
 }
@@ -93,6 +108,7 @@ function toJob(row: JobRow): Job {
     error: row.error,
     callId: row.call_id,
     createdAt: row.created_at,
+    queuedAt: row.queued_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   };
@@ -108,8 +124,7 @@ export async function latestJob(db: D1Database, cardId: number, now = Date.now()
   const row = await db.prepare("SELECT * FROM claude_jobs WHERE card_id = ? ORDER BY id DESC LIMIT 1").bind(cardId).first<JobRow>();
   if (!row) return null;
   const job = toJob(row);
-  const since = Date.parse(job.startedAt ?? job.createdAt);
-  if ((job.status === "running" || job.status === "queued") && now - since > STALE_MS) {
+  if (isStale(job, now)) {
     const error = "it stopped without an answer";
     await db.prepare("UPDATE claude_jobs SET status = 'failed', error = ?, finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").bind(error, job.id).run();
     return { ...job, status: "failed", error };
@@ -117,8 +132,35 @@ export async function latestJob(db: D1Database, cardId: number, now = Date.now()
   return job;
 }
 
+// A job that left the line long ago and never answered: its consumer died.
+function isStale(job: Job, now: number): boolean {
+  if (job.status !== "running" && job.status !== "queued") return false;
+  return now - Date.parse(job.startedAt ?? job.queuedAt ?? job.createdAt) > STALE_MS;
+}
+
 export function isActive(job: Job | null): job is Job {
-  return Boolean(job && (job.status === "queued" || job.status === "running"));
+  return Boolean(job && (job.status === "waiting" || job.status === "queued" || job.status === "running"));
+}
+
+// The place of each waiting job in the line (1 = next), in the order launched.
+export async function waitingPlaces(db: D1Database): Promise<Map<number, number>> {
+  const { results } = await db.prepare("SELECT id FROM claude_jobs WHERE status = 'waiting' ORDER BY id").all<{ id: number }>();
+  return new Map(results.map((row, index) => [row.id, index + 1]));
+}
+
+// The latest job of each card of a project, with the place of the waiting ones.
+export async function projectJobs(db: D1Database, repo: string, now = Date.now()): Promise<Map<number, { job: Job; place: number | null }>> {
+  const [{ results }, places] = await Promise.all([
+    db.prepare("SELECT * FROM claude_jobs WHERE id IN (SELECT MAX(id) FROM claude_jobs WHERE repo = ? GROUP BY card_id)").bind(repo).all<JobRow>(),
+    waitingPlaces(db),
+  ]);
+  const out = new Map<number, { job: Job; place: number | null }>();
+  for (const row of results) {
+    let job = toJob(row);
+    if (isStale(job, now)) job = { ...job, status: "failed", error: "it stopped without an answer" };
+    out.set(job.cardId, { job, place: places.get(job.id) ?? null });
+  }
+  return out;
 }
 
 export async function jobEvents(db: D1Database, jobId: number): Promise<JobEvent[]> {
@@ -129,7 +171,7 @@ export async function jobEvents(db: D1Database, jobId: number): Promise<JobEvent
 // The cards of a project where Claude is working, for the board.
 export async function workingCards(db: D1Database, repo: string): Promise<Set<number>> {
   const { results } = await db
-    .prepare("SELECT DISTINCT card_id FROM claude_jobs WHERE repo = ? AND status IN ('queued', 'running')")
+    .prepare("SELECT DISTINCT card_id FROM claude_jobs WHERE repo = ? AND status IN ('waiting', 'queued', 'running')")
     .bind(repo)
     .all<{ card_id: number }>();
   return new Set(results.map((row) => row.card_id));
@@ -149,12 +191,63 @@ async function say(env: Env, job: Job, text: string | null, status?: JobStatus, 
   }
   if (statements.length) await env.DB.batch(statements);
   const now: Job = { ...job, ...(status ? { status } : {}), error: error ?? job.error };
-  const event: LiveEvent = { job: job.id, status: now.status, label: jobLabel(now), at: new Date().toISOString(), ...(text ? { text } : {}) };
+  const place = now.status === "waiting" ? ((await waitingPlaces(env.DB)).get(job.id) ?? null) : null;
+  const event: LiveEvent = { job: job.id, card: job.cardId, status: now.status, label: jobLabel(now, place), at: new Date().toISOString(), ...(place ? { place } : {}), ...(text ? { text } : {}) };
   try {
     await liveFor(env, job.cardId)?.notify(event);
+    await refinementLiveFor(env, job.repo)?.notify(event);
   } catch {
     // Pages learn it at their next load.
   }
+}
+
+// Gives the oldest waiting jobs to the queue while fewer than MAX_RUNNING
+// are on it or running, then tells the ones still waiting their new place.
+export async function dispatch(env: Env): Promise<void> {
+  if (!env.CLAUDE_QUEUE) return;
+  const busy = await env.DB.prepare("SELECT COUNT(*) AS n FROM claude_jobs WHERE status IN ('queued', 'running')").first<{ n: number }>();
+  const free = MAX_RUNNING - (busy?.n ?? 0);
+  if (free > 0) {
+    const { results } = await env.DB.prepare("SELECT * FROM claude_jobs WHERE status = 'waiting' ORDER BY id LIMIT ?").bind(free).all<JobRow>();
+    for (const row of results) {
+      const claimed = await env.DB.prepare(
+        "UPDATE claude_jobs SET status = 'queued', queued_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND status = 'waiting'",
+      )
+        .bind(row.id)
+        .run();
+      if (!claimed.meta.changes) continue;
+      const job = toJob({ ...row, status: "queued" });
+      try {
+        await env.CLAUDE_QUEUE.send({ job: job.id });
+        await say(env, job, "It is its turn: given to Claude.", "queued");
+      } catch {
+        await say(env, job, "Could not reach Claude's queue.", "failed", "the queue did not take it");
+      }
+    }
+  }
+  // The others move up.
+  const places = await waitingPlaces(env.DB);
+  if (!places.size) return;
+  const { results } = await env.DB.prepare(`SELECT * FROM claude_jobs WHERE status = 'waiting' ORDER BY id`).all<JobRow>();
+  for (const row of results) await say(env, toJob(row), null);
+}
+
+export type CancelOutcome = { ok: true; job: Job } | { ok: false; message: string };
+
+// Takes a job out of the line, if it has not started: a running job is
+// never cancelled.
+export async function cancelJob(env: Env, repo: string, cardId: number, login: string): Promise<CancelOutcome> {
+  const last = await latestJob(env.DB, cardId);
+  if (!last || last.repo.toLowerCase() !== repo.toLowerCase() || !isActive(last)) return { ok: false, message: "No job to cancel on this card." };
+  const changed = await env.DB.prepare(
+    "UPDATE claude_jobs SET status = 'cancelled', finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND (status = 'waiting' OR (status = 'queued' AND attempts = 0))",
+  )
+    .bind(last.id)
+    .run();
+  if (!changed.meta.changes) return { ok: false, message: "Claude already started this job: a running job is never cancelled." };
+  await say(env, last, `Cancelled by @${login} before it started.`, "cancelled");
+  await dispatch(env);
+  return { ok: true, job: { ...last, status: "cancelled" } };
 }
 
 export type EnqueueOutcome = { ok: true; job: Job } | { ok: false; message: string };
@@ -165,15 +258,19 @@ export async function enqueue(
 ): Promise<EnqueueOutcome> {
   if (!env.CLAUDE_QUEUE) return { ok: false, message: "Claude's queue is not set up in this deployment (CLAUDE_QUEUE)." };
   if (isActive(await latestJob(env.DB, data.cardId))) return { ok: false, message: "Claude is already working on this card: wait for it to finish." };
+  // A free place: straight to the queue. Otherwise it waits its turn.
+  const busy = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM claude_jobs WHERE status IN ('queued', 'running')) AS busy, (SELECT COUNT(*) FROM claude_jobs WHERE status = 'waiting') AS waiting").first<{ busy: number; waiting: number }>();
+  const direct = (busy?.busy ?? 0) < MAX_RUNNING && !busy?.waiting;
   const row = await env.DB.prepare(
-    "INSERT INTO claude_jobs (repo, card_id, kind, status, request, login) VALUES (?, ?, ?, 'queued', ?, ?) RETURNING *",
+    `INSERT INTO claude_jobs (repo, card_id, kind, status, request, login, queued_at) VALUES (?, ?, ?, ?, ?, ?, ${direct ? "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" : "NULL"}) RETURNING *`,
   )
-    .bind(data.repo, data.cardId, data.kind, JSON.stringify(data.request), data.login)
+    .bind(data.repo, data.cardId, data.kind, direct ? "queued" : "waiting", JSON.stringify(data.request), data.login)
     .first<JobRow>();
   if (!row) return { ok: false, message: "The request could not be saved." };
   const job = toJob(row);
   const answered = data.request.answers.length;
   await say(env, job, `Asked by @${data.login}${answered ? `, with ${answered} answer${answered > 1 ? "s" : ""}` : ""}.`);
+  if (!direct) return { ok: true, job };
   try {
     await env.CLAUDE_QUEUE.send({ job: job.id });
   } catch {
@@ -193,7 +290,7 @@ function tail(text: string): string {
 // Runs a job; "retry" when the queue should bring it back later.
 export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "failed"> {
   const job = await findJob(env.DB, id);
-  if (!job || job.status === "done" || job.status === "failed") return "done";
+  if (!job || job.status === "done" || job.status === "failed" || job.status === "cancelled" || job.status === "waiting") return "done";
   const [project, card] = await Promise.all([findProject(env.DB, job.repo), findCard(env.DB, job.repo, job.cardId)]);
   if (!project || !card) {
     await say(env, job, "The card is gone.", "failed", "the card is gone");
