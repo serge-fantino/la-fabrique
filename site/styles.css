@@ -3503,3 +3503,11 @@ pre.gherkin {
 .release-meter .bar { flex: 1; max-width: 22rem; height: 0.6rem; border-radius: 0.3rem; background: #dcdfd3; overflow: hidden; }
 .release-meter .bar > span { display: block; height: 100%; background: #1e5a43; }
 .release-meter:focus-visible, .release-stories:focus-visible { outline: 2px solid #c23d17; outline-offset: 2px; }
+
+/* Several features at once, each followed live (la-fabrique#226) */
+.job-state { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin: 0.25rem 0; }
+.job-state[hidden] { display: none; }
+.job-state .claude-job-dot { display: inline-block; flex: none; }
+.job-state.failed { color: var(--alert, #8a2a0f); }
+.job-state.failed .claude-job-dot { animation: none; background: var(--alert, #8a2a0f); }
+.refine-launch .over { color: var(--alert, #8a2a0f); }

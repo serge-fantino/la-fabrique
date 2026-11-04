@@ -398,6 +398,104 @@
     sprintLive = { stop };
   }
 
+  // Refinement (la-fabrique#226): the ticked features are counted against
+  // the calls left, and each card follows its own job, pushed by the
+  // project's connection: its place in the line moves up in place; when its
+  // state changes (working, done, failed, cancelled) the card is read again
+  // and replaced, the rest of the page untouched.
+  let refinementLive = null;
+  function setUpRefinementLive() {
+    if (refinementLive) refinementLive.stop();
+    refinementLive = null;
+    const holder = document.querySelector("[data-refinement-live]");
+    if (!holder) return;
+    let socket = null;
+    let stopped = false;
+    let tries = 0;
+    const known = new Map();
+    const refresh = async (card) => {
+      try {
+        const response = await fetch(location.pathname + location.search, { credentials: "same-origin", headers: { accept: "text/html" } });
+        if (!response.ok) return;
+        const fresh = new DOMParser().parseFromString(await response.text(), "text/html");
+        const article = document.getElementById(`card-${card}`);
+        const next = fresh.getElementById(`card-${card}`);
+        if (article && next) {
+          // What is being typed in this card stays.
+          const typed = [...article.querySelectorAll("textarea[data-keep]")].map((field) => [field.id, field.value]);
+          article.innerHTML = next.innerHTML;
+          for (const [id, value] of typed) {
+            const field = value ? document.getElementById(id) : null;
+            if (field) field.value = value;
+          }
+        }
+        for (const id of ["release-progress", "refine-launch"]) {
+          const now = document.getElementById(id);
+          const later = fresh.getElementById(id);
+          if (now && later && !(id === "refine-launch" && now.contains(document.activeElement))) now.replaceWith(later);
+        }
+        setUpRefinementTicks();
+      } catch {}
+    };
+    const setUpRefinementTicks = () => {
+      const f = document.getElementById("refine-launch");
+      if (!f) return;
+      const left = Number(f.querySelector("[data-calls-left]")?.getAttribute("data-calls-left") ?? "0");
+      const update = () => {
+        const ticked = document.querySelectorAll("[data-refine-tick]:checked").length;
+        const out = f.querySelector("[data-refine-selected]");
+        if (out) out.textContent = `${ticked} ticked`;
+        const submit = f.querySelector('button[type="submit"]');
+        if (submit && !f.querySelector("button[disabled][data-reason]")) submit.disabled = ticked === 0 || ticked > left;
+      };
+      for (const box of document.querySelectorAll("[data-refine-tick]")) box.addEventListener("change", update);
+    };
+    const connect = () => {
+      if (stopped) return;
+      const url = new URL(holder.getAttribute("data-refinement-live"), location.href);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url);
+      socket.addEventListener("open", () => {
+        tries = 0;
+      });
+      socket.addEventListener("message", (message) => {
+        let event = null;
+        try {
+          event = JSON.parse(message.data);
+        } catch {
+          return;
+        }
+        // What happened before the page was shown is already on it.
+        if (!event || event.replay || !event.card) return;
+        const state = document.querySelector(`[data-job-state="${event.card}"]`);
+        const before = known.get(event.card);
+        known.set(event.card, event.status);
+        const moved = before === event.status && event.status === "waiting";
+        if (moved && state) {
+          const label = state.querySelector("[data-job-label]");
+          if (label && event.label) label.textContent = event.label;
+          return;
+        }
+        if (before === event.status && event.text && state) return;
+        void refresh(event.card);
+      });
+      socket.addEventListener("close", () => {
+        if (stopped || !holder.isConnected) return;
+        tries++;
+        setTimeout(connect, Math.min(30000, 1000 * 2 ** tries));
+      });
+    };
+    const stop = () => {
+      stopped = true;
+      try {
+        socket?.close();
+      } catch {}
+    };
+    refinementLive = { stop };
+    setUpRefinementTicks();
+    if ("WebSocket" in window) connect();
+  }
+
   // The page is calm: nobody typing, dragging, sending a form, or with a
   // form opened in a details (la-fabrique#187). Then it may read itself
   // again without losing anything.
@@ -461,6 +559,7 @@
     setUpRefresh();
     setUpBranchMenu();
     setUpSprintLive();
+    setUpRefinementLive();
     setUpFollow();
     setUpAboutPicker();
     setUpLive();
@@ -540,7 +639,7 @@
           line.append(time, ` ${event.text}`);
           log.append(line);
         }
-        if (event.status === "done" || event.status === "failed") {
+        if (event.status === "done" || event.status === "failed" || event.status === "cancelled") {
           stop();
           // The spec (or what went wrong), as the server says it now.
           location.replace(`${location.pathname}${location.search}#${event.status === "done" ? "spec" : "claude-job"}`);

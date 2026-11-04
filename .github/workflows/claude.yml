@@ -113,6 +113,10 @@ jobs:
         id: claude
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          # The full test suite takes minutes: a command is waited for up to 15 minutes, never moved to the
+          # background, where the run would end without it (la-fabrique#239, #226: "I'll wait for it before committing").
+          BASH_DEFAULT_TIMEOUT_MS: "900000"
+          BASH_MAX_TIMEOUT_MS: "1800000"
         with:
           github_token: ${{ secrets.FABRIQUE_TOKEN }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -131,6 +135,7 @@ jobs:
             5. Release notes: if anything visible changes, this branch has one entry at the top of docs/release-notes.json with `"version": "next"`, today's date and no `heure`, in English, `"stories": [${{ inputs.issue }}]`. Never write a version number or a time: the merge workflow numbers and dates it when it merges, after main's newest.
             6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it (for a rework: each test feedback and how it is addressed), then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}
             7. Comment on the issue: the pull request, what is done, what is left or what made you hesitate.
+            You have one turn: the run ends as soon as you stop, and nothing wakes you up again. Run every command in the foreground and wait for it (the full test suite takes a few minutes), never in the background; commit, push and open the pull request before you finish, even if something is left (say it in the pull request).
             Never push to main; touch neither secrets nor workflows.
 
       # Claude finished without a change (la-fabrique#239): the branch it was given is empty. Say so on the issue, with

@@ -67,12 +67,12 @@ import {
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
-import { allowance, cardCalls, cardSpends } from "./llm";
+import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
 import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
 import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
-import { enqueue, isActive, jobEvents, latestJob, workingCards, type JobKind } from "./jobs";
-import { liveFor, sprintLiveFor } from "./live";
+import { cancelJob, enqueue, isActive, jobEvents, latestJob, projectJobs, workingCards, type JobKind } from "./jobs";
+import { liveFor, refinementLiveFor, sprintLiveFor } from "./live";
 import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
@@ -80,7 +80,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -854,6 +854,81 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       if ((request.headers.get("accept") ?? "").includes("application/json")) return json({ ok: true, changed });
       return redirect(`${base}#card-${id}`);
     }
+    // Several features at once, each a job in the line (la-fabrique#226).
+    if (action === "refine_launch") {
+      const wanted = new Set(form.getAll("card").map(Number).filter((n) => Number.isInteger(n) && n > 0));
+      const [cards, links, jobs] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectJobs(env.DB, project.repo)]);
+      const todo: { card: Card; kind: JobKind }[] = [];
+      for (const card of refinementCards(cards, NEXT_RELEASE).features) {
+        if (!wanted.has(card.id) || isActive(jobs.get(card.id)?.job ?? null)) continue;
+        const step = nextStep(card, links.order.get(card.id) ?? [], new Map()).step;
+        if (step === "specify") todo.push({ card, kind: "spec_draft" });
+        else if (step === "refine") todo.push({ card, kind: "spec_split" });
+      }
+      if (!todo.length) return redirect(`${base}?failure=${encodeURIComponent("Tick features without a spec, or with a complete spec and no stories.")}`);
+      const left = await callsLeft(env, viewer.role, viewer.login);
+      if (left.reason) return redirect(`${base}?failure=${encodeURIComponent(left.reason)}`);
+      if (todo.length > left.left) {
+        return redirect(`${base}?failure=${encodeURIComponent(`That takes ${todo.length} calls and you have ${left.left} left today (${left.daily} a day): nothing was launched. Tick fewer features.`)}`);
+      }
+      let launched = 0;
+      let refused = "";
+      for (const { card, kind } of todo) {
+        const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind, request: { instruction: "", answers: [] }, login: viewer.login });
+        if (!queued.ok) {
+          refused = queued.message;
+          continue;
+        }
+        launched++;
+        if (kind === "spec_draft") await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
+      }
+      if (!launched) return redirect(`${base}?failure=${encodeURIComponent(refused || "Nothing was launched.")}`);
+      return redirect(`${base}?notice=launched&n=${launched}#release-progress`);
+    }
+    if (action === "job_cancel" || action === "job_retry") {
+      const id = Number(form.get("card"));
+      const card = Number.isInteger(id) ? await findCard(env.DB, project.repo, id) : null;
+      if (!card) return redirect(base);
+      if (action === "job_cancel") {
+        const outcome = await cancelJob(env, project.repo, card.id, viewer.login);
+        if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(outcome.message)}#card-${id}`);
+        return redirect(`${base}?notice=cancelled#card-${id}`);
+      }
+      const last = await latestJob(env.DB, card.id);
+      if (!last || last.status !== "failed") return redirect(`${base}#card-${id}`);
+      const left = await callsLeft(env, viewer.role, viewer.login);
+      if (left.reason || left.left < 1) return redirect(`${base}?failure=${encodeURIComponent(left.reason ?? "No call left today.")}#card-${id}`);
+      const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: last.kind, request: last.request, login: viewer.login });
+      if (!queued.ok) return redirect(`${base}?failure=${encodeURIComponent(queued.message)}#card-${id}`);
+      return redirect(`${base}?notice=launched&n=1#card-${id}`);
+    }
+    // Claude's questions answered in the card (la-fabrique#227), as on its page.
+    if (action === "spec_answer" || action === "spec_enough") {
+      const id = Number(form.get("card"));
+      const found = Number.isInteger(id) ? await findCard(env.DB, project.repo, id) : null;
+      if (!found || found.archivedAt) return redirect(base);
+      const here = `#card-${id}`;
+      if (action === "spec_enough") {
+        if (!found.data.spec || isActive(await latestJob(env.DB, found.id))) return redirect(`${base}${here}`);
+        await saveSpec(env.DB, found, viewer.login, closeQuestions(found.data.spec));
+        await advanceStatus(env.DB, project.repo, found.id, viewer.login, "to_validate", "questions closed");
+        return redirect(`${base}?notice=enough${here}`);
+      }
+      const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+      const answers: Answer[] = [];
+      for (let index = 0; index < 10; index++) {
+        const question = String(form.get(`question_${index}`) ?? "").trim().slice(0, 1000);
+        const answer = String(form.get(`answer_${index}`) ?? "").trim().slice(0, 2000);
+        if (question && answer) answers.push({ question, answer });
+      }
+      if (!answers.length && !instruction) return redirect(`${base}?failure=${encodeURIComponent("Answer at least one of Claude's questions.")}${here}`);
+      const allowed = await allowance(env, viewer.role, viewer.login);
+      if (!allowed.ok) return redirect(`${base}?failure=${encodeURIComponent(allowed.reason)}${here}`);
+      const queued = await enqueue(env, { repo: project.repo, cardId: found.id, kind: "spec_answer", request: { instruction, answers }, login: viewer.login });
+      if (!queued.ok) return redirect(`${base}?failure=${encodeURIComponent(queued.message)}${here}`);
+      await advanceStatus(env.DB, project.repo, found.id, viewer.login, "shaping", "Claude asked");
+      return redirect(`${base}?notice=launched&n=1${here}`);
+    }
     if (action === "story_ready") {
       const story = Number(form.get("story"));
       const links = await storyCards(env.DB, project.repo);
@@ -870,8 +945,12 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
   const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
+  const [jobs, left] = await Promise.all([projectJobs(env.DB, project.repo), canWriteCards(viewer) ? callsLeft(env, viewer.role, viewer.login) : null]);
+  const notice = params.get("notice");
   return html(
     refinementPage(viewer, view, {
+      jobs,
+      calls: left,
       features,
       others,
       links,
@@ -881,7 +960,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       canClaude: canWriteCards(viewer),
       priorities: cycleRules(project.check?.config).priorities,
       sprint: running ? { label: sprintLabel(running) } : null,
-      notice: params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      notice: notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },
@@ -1249,6 +1328,12 @@ export async function cardRoute(
   if (path === "sprint/live") {
     if (method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("A WebSocket is expected.", { status: 426 });
     const live = sprintLiveFor(env, project.repo);
+    return live ? live.fetch(request) : new Response("Not found", { status: 404 });
+  }
+  // The Refinement page's live connection: every job of the project's cards.
+  if (path === "refinement/live") {
+    if (method !== "GET" || request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("A WebSocket is expected.", { status: 426 });
+    const live = refinementLiveFor(env, project.repo);
     return live ? live.fetch(request) : new Response("Not found", { status: 404 });
   }
   // What the run will do is in its card on the sprint page (la-fabrique#188).

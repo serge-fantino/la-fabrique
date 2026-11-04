@@ -4,7 +4,10 @@ import type { Env } from "./env";
 // What a job tells the card's open pages, as it goes.
 export interface LiveEvent {
   job: number;
-  status: "queued" | "running" | "done" | "failed";
+  // The card the job is on, and its place in the line when it waits.
+  card?: number;
+  place?: number;
+  status: "waiting" | "queued" | "running" | "done" | "failed" | "cancelled";
   // What the widget says it is doing ("Claude is writing the spec").
   label: string;
   // A line of its log, when there is one.
@@ -72,4 +75,9 @@ export function liveFor(env: Env, cardId: number): DurableObjectStub<CardLive> |
 // The same kind of object, one per project, for its sprint's open pages.
 export function sprintLiveFor(env: Env, repo: string): DurableObjectStub<CardLive> | null {
   return env.CARD_LIVE ? env.CARD_LIVE.get(env.CARD_LIVE.idFromName(`sprint:${repo.toLowerCase()}`)) : null;
+}
+
+// One per project, for the Refinement page: every job of its cards (la-fabrique#226).
+export function refinementLiveFor(env: Env, repo: string): DurableObjectStub<CardLive> | null {
+  return env.CARD_LIVE ? env.CARD_LIVE.get(env.CARD_LIVE.idFromName(`refinement:${repo.toLowerCase()}`)) : null;
 }
