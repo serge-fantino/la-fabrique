@@ -1,6 +1,17 @@
 [
   {
     "version": "next",
+    "date": "2026-11-04",
+    "titre": "Claude finished without a change: said, and relaunched from the sprint",
+    "changements": [
+      "When Claude ends its run on a story without any change, the workflow says so on the issue with Claude's last words and the run's link, removes the empty branch so the story is ready again, and fails the run; commits left without a pull request are pushed and the comment asks for one.",
+      "A card the sprint's run stopped on Claude's side (a run failed or ended without a pull request, a branch left without one) offers Relaunch Claude on #n to a tech lead and above: Claude works on the story again, on its branch if it has one, and the run follows it; logged."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-03",
     "titre": "Validate a feature, from Refinement or its page",
     "changements": [

@@ -68,7 +68,7 @@ const STATUS_LABELS: Record<RunState["status"], string> = {
   waiting: "The run waits for a person: a card stopped",
 };
 
-export function runSection(viewer: Viewer, project: Project, state: RunState | null, canRun: boolean, refusal: string | null, plan: PlannedCard[] = [], cap = 1): string {
+export function runSection(viewer: Viewer, project: Project, state: RunState | null, canRun: boolean, refusal: string | null, plan: PlannedCard[] = [], cap = 1, canLaunch = false): string {
   const base = projectUrl(project.repo);
   const control = (action: string, label: string, extra: Record<string, string | number> = {}, kind = "quiet small") =>
     `<form method="post" action="${escapeHtml(base)}/sprint" class="inline" data-busy="…">${csrfField(viewer)}<input type="hidden" name="action" value="${action}" />${Object.entries(extra)
@@ -98,6 +98,11 @@ export function runSection(viewer: Viewer, project: Project, state: RunState | n
           card.reason ? `<br /><span class="small">${escapeHtml(card.reason)}${card.link ? ` <a href="${escapeHtml(card.link)}">See it</a>` : ""}</span>` : ""
         }${card.note ? `<br /><span class="muted small">${escapeHtml(card.note)}</span>` : ""}${
           card.step === "stopped" && canRun && state.status !== "stopped" && state.status !== "done" ? ` ${control("run_resume_card", "Resume this card", { card: card.id })}` : ""
+        }${
+          // Stopped on Claude's side: relaunched on the same story, on its branch if it has one (la-fabrique#239).
+          card.step === "stopped" && card.relaunch && story !== undefined && canLaunch && state.status !== "stopped" && state.status !== "done"
+            ? ` ${control("run_relaunch_card", `Relaunch Claude on #${story}`, { card: card.id, story })}`
+            : ""
         }</li>`;
     })
     .join("");
