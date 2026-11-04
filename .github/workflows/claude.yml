@@ -110,6 +110,7 @@ jobs:
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
         with:
@@ -121,7 +122,7 @@ jobs:
           claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
           prompt: |
             ${{ inputs.pr && format('You bring pull request #{0} of story #{1} up to date ({2}), launched{3} from La Fabrique.', inputs.pr, inputs.issue, github.repository, inputs.par && format(' by @{0}', inputs.par) || '') || format('You work on story #{0} of this repository ({1}), launched{2} from La Fabrique.', inputs.issue, github.repository, inputs.par && format(' by @{0}', inputs.par) || '') }}
-            You are on branch `${{ env.BRANCH }}`${{ !inputs.pr && ', created from main and linked to the issue' || '' }}: work there, never on main.
+            You are on branch `${{ env.BRANCH }}`${{ !inputs.pr && ', linked to the issue (if it already holds commits of an earlier run on this story, build on them)' || '' }}: work there, never on main.
             ${{ inputs.pr && format('main is merged into it; files left in conflict: {0}.', env.CONFLICTS) || '' }}
             1. Read the story with its comments: `gh issue view ${{ inputs.issue }} --comments`${{ inputs.pr && format(', and the pull request with its reviews: `gh pr view {0} --comments`', inputs.pr) || '' }}. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
             2. Follow CLAUDE.md (principles, security, conventions, design).
@@ -131,3 +132,41 @@ jobs:
             6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it (for a rework: each test feedback and how it is addressed), then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}
             7. Comment on the issue: the pull request, what is done, what is left or what made you hesitate.
             Never push to main; touch neither secrets nor workflows.
+
+      # Claude finished without a change (la-fabrique#239): the branch it was given is empty. Say so on the issue, with
+      # Claude's last words and the run's link; drop the empty branch, so the story is ready again rather than "in
+      # development by hand"; and fail the run, so La Fabrique says why. Commits made but not pushed are pushed, and
+      # the comment says a pull request is missing. A pull request being updated (`pr`) is never touched.
+      - name: Nothing to merge
+        if: ${{ success() && !inputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          ISSUE: ${{ inputs.issue }}
+          OUTPUT: ${{ steps.claude.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git fetch -q origin main
+          git fetch -q origin "$BRANCH" || true
+          pushed=$(git rev-list --count origin/main.."origin/$BRANCH" 2>/dev/null || echo 0)
+          local=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+          pull=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          [ -n "$pull" ] && exit 0
+          last=""
+          if [ -n "$OUTPUT" ] && [ -f "$OUTPUT" ]; then
+            last=$(jq -r '[.[] | select(.type == "result")] | last | .result // empty' "$OUTPUT" 2>/dev/null | head -c 3000)
+          fi
+          quote=""
+          [ -n "$last" ] && quote=$'\n\nClaude\'s last words:\n\n'"$(printf '%s\n' "$last" | sed 's/^/> /')"
+          if [ "$pushed" -eq 0 ] && [ "$local" -gt 0 ] && [ "$(git branch --show-current)" = "$BRANCH" ]; then
+            git push origin "HEAD:$BRANCH"
+            pushed=$local
+          fi
+          if [ "$pushed" -gt 0 ]; then
+            gh issue comment "$ISSUE" --body "Claude committed on \`$BRANCH\` but opened no pull request: open one, or relaunch Claude on this story from La Fabrique. Run: $RUN_URL$quote"
+            echo "::error::Claude left commits without a pull request."
+          else
+            gh issue comment "$ISSUE" --body "Claude finished on this story without any change (no commit, no pull request); its empty branch is removed, the story is ready to relaunch from La Fabrique. Run: $RUN_URL$quote"
+            git push origin --delete "$BRANCH" || true
+            echo "::error::Claude finished without any change: nothing to merge."
+          fi
+          exit 1

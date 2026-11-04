@@ -160,6 +160,8 @@ export function describe(entry: LogEntry, repo: string): string {
       return "stopped the sprint's run";
     case "sprint_run_card_resumed":
       return `resumed card ${card(d["card"])} in the sprint's run`;
+    case "sprint_run_story_relaunched":
+      return `relaunched Claude on ${story}, stopped in the sprint's run (card ${card(d["card"])}): the run follows it again`;
     case "sprint_run_story_started":
       return `had the sprint's run launch Claude on ${story} (card ${card(d["card"])}, run by @${text(d["run_by"])})`;
     case "sprint_run_story_updating":

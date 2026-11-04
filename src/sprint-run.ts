@@ -41,6 +41,10 @@ export interface RunCard {
   reason: string | null;
   note: string | null;
   link: string | null;
+  // Stopped on Claude's side (a run failed, ended without a pull request, a
+  // branch left without one): Claude can be relaunched on the story from
+  // the sprint (la-fabrique#239). Absent on states saved before.
+  relaunch?: boolean;
 }
 
 export interface RunState {
@@ -210,11 +214,12 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
   if (state.status !== "running") return state;
   let claudeBusy = seen.runs.filter(isRunning).length;
   const merging = () => state.cards.some((card) => card.step === "merging");
-  const stop = async (card: RunCard, reason: string, link: string | null = null) => {
+  const stop = async (card: RunCard, reason: string, link: string | null = null, relaunch = false) => {
     card.step = "stopped";
     card.reason = reason;
     card.link = link;
     card.note = null;
+    card.relaunch = relaunch;
     await moves.log("sprint_run_card_stopped", { card: card.id, title: card.title, story: card.stories[card.at] ?? null, reason, link });
   };
   const nextStory = (card: RunCard) => {
@@ -226,6 +231,7 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
     card.updated = false;
     card.note = null;
     card.link = null;
+    card.relaunch = false;
   };
   const startMerge = async (card: RunCard, pull: number) => {
     if (merging()) {
@@ -276,11 +282,11 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
           continue;
         }
         if (!isReadyStage(story)) {
-          await stop(card, `#${number} is ${notLaunchable(story)}`);
+          await stop(card, `#${number} is ${notLaunchable(story)}`, null, Boolean(story && !story.rework && isInDevelopment(story)));
           break;
         }
         if (card.runs >= RUNS_PER_STORY) {
-          await stop(card, `#${number} has had ${card.runs} Claude runs without a pull request to merge`);
+          await stop(card, `#${number} has had ${card.runs} Claude runs without a pull request to merge`, null, true);
           break;
         }
         if (claudeBusy >= seen.cap) {
@@ -305,7 +311,7 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
       if (card.step === "claude" || card.step === "updating") {
         const run = runOf(seen, number, card.since);
         if (!run) {
-          if (ms(seen.now) - ms(card.since) > NOT_STARTED_MS) await stop(card, `the Claude workflow did not start on #${number}`);
+          if (ms(seen.now) - ms(card.since) > NOT_STARTED_MS) await stop(card, `the Claude workflow did not start on #${number}`, null, true);
           break;
         }
         if (isRunning(run)) {
@@ -313,7 +319,7 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
           break;
         }
         if (run.conclusion !== "success") {
-          await stop(card, `Claude's run on #${number} ${run.conclusion === "cancelled" ? "was cancelled" : "failed"}`, run.url);
+          await stop(card, `Claude's run on #${number} ${run.conclusion === "cancelled" ? "was cancelled" : "failed"}`, run.url, card.step === "claude");
           break;
         }
         if (card.step === "updating" && card.pull) {
@@ -322,7 +328,7 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
         }
         const pull = openPull(story);
         if (!pull) {
-          await stop(card, `Claude's run on #${number} ended without a pull request: it may have asked a question on the issue`, run.url);
+          await stop(card, `Claude's run on #${number} ended without a pull request: it may have asked a question on the issue`, run.url, true);
           break;
         }
         if (!(await startMerge(card, pull))) {
@@ -490,7 +496,7 @@ export class SprintRun extends DurableObject<Env> {
     });
   }
 
-  async control(login: string, what: "pause" | "resume" | "stop" | "resume_card", card?: number): Promise<RunState | null> {
+  async control(login: string, what: "pause" | "resume" | "stop" | "resume_card" | "relaunched", card?: number): Promise<RunState | null> {
     return this.serial(async () => {
       const state = await this.state();
       if (!state) return null;
@@ -500,14 +506,22 @@ export class SprintRun extends DurableObject<Env> {
       else if (what === "resume_card") {
         const found = state.cards.find((candidate) => candidate.id === card && candidate.step === "stopped");
         if (!found || state.status === "stopped" || state.status === "done") return state;
-        Object.assign(found, { step: "next", reason: null, link: null, note: null, runs: 0, updated: false, pull: null, since: null });
+        Object.assign(found, { step: "next", reason: null, link: null, note: null, runs: 0, updated: false, pull: null, since: null, relaunch: false });
+        if (state.status === "waiting") state.status = "running";
+      } else if (what === "relaunched") {
+        // Claude relaunched on the story by a person (la-fabrique#239): the
+        // card follows that run, as if the run had launched it.
+        const found = state.cards.find((candidate) => candidate.id === card && candidate.step === "stopped");
+        if (!found || state.status === "stopped" || state.status === "done") return state;
+        Object.assign(found, { step: "claude", reason: null, link: null, note: null, runs: 1, updated: false, pull: null, since: new Date().toISOString(), relaunch: false });
         if (state.status === "waiting") state.status = "running";
       } else return state;
       await activityStatement(this.env.DB, {
         actor: login,
-        action: what === "resume_card" ? "sprint_run_card_resumed" : `sprint_run_${what === "pause" ? "paused" : what === "stop" ? "stopped" : "resumed"}`,
+        action: what === "resume_card" ? "sprint_run_card_resumed" : what === "relaunched" ? "sprint_run_story_relaunched" : `sprint_run_${what === "pause" ? "paused" : what === "stop" ? "stopped" : "resumed"}`,
         repo: state.repo,
-        details: what === "resume_card" ? { card } : {},
+        ...(what === "relaunched" && storyAt(state, card) !== null ? { issueNumber: storyAt(state, card) as number } : {}),
+        details: what === "resume_card" || what === "relaunched" ? { card } : {},
       }).run();
       if (state.status === "running") return this.pass(state, true);
       await this.save(state);
@@ -522,6 +536,12 @@ export class SprintRun extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
     });
   }
+}
+
+// The story a card of the run is at.
+export function storyAt(state: RunState, card: number | undefined): number | null {
+  const found = state.cards.find((candidate) => candidate.id === card);
+  return found?.stories[found.at] ?? null;
 }
 
 export function sprintRunFor(env: Env, repo: string): DurableObjectStub<SprintRun> | null {

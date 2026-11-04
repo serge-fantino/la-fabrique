@@ -620,6 +620,21 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=merging&pull=${pull}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // A card of the run stopped on Claude's side (la-fabrique#239): Claude
+    // relaunched on its story by a tech lead and above, then followed again.
+    if (action === "run_relaunch_card") {
+      if (!canLaunchClaude(viewer.role)) return forbidden(viewer);
+      const run = sprintRunFor(env, project.repo);
+      const state = run ? await run.state() : null;
+      const card = Number(form.get("card"));
+      const subject = state?.cards.find((candidate) => candidate.id === card && candidate.step === "stopped" && candidate.relaunch);
+      const number = subject?.stories[subject.at];
+      if (!run || !state || !subject || number === undefined || number !== Number(form.get("story"))) return redirect(`${base}#sprint-work`);
+      const outcome = await launchClaude(env, project, viewer.login, number);
+      if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+      await run.control(viewer.login, "relaunched", card);
+      return redirect(`${base}?notice=launched&story=${number}#sprint-work`);
+    }
     // The sprint running by itself (la-fabrique#160): a Product Engineer or
     // the super admin, as it merges.
     if (action.startsWith("run_")) {
@@ -912,7 +927,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
-      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project)) : "",
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project), canLaunchClaude(viewer.role)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
