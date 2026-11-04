@@ -9,6 +9,7 @@ const projectPath = projectUrl;
 export type ProjectTab =
   | "overview"
   | "board"
+  | "refinement"
   | "sprint"
   | "stories"
   | "backlog"
@@ -28,6 +29,7 @@ export type ProjectTab =
 const TABS: { id: ProjectTab; label: string; path: string }[] = [
   { id: "overview", label: "Overview", path: "" },
   { id: "board", label: "Board", path: "/board" },
+  { id: "refinement", label: "Refinement", path: "/refinement" },
   { id: "sprint", label: "Sprint", path: "/sprint" },
   { id: "stories", label: "Stories", path: "/stories" },
   { id: "backlog", label: "Backlog", path: "/backlog" },
@@ -133,7 +135,7 @@ export function projectHeader(project: Project, active: ProjectTab, heading?: st
     .join("");
   const production = productionBranch(project) ?? "main";
   // The board, the cards and the sprint read no branch: no banner there.
-  const banner = view?.ref && active !== "board" && active !== "sprint"
+  const banner = view?.ref && active !== "board" && active !== "refinement" && active !== "sprint"
     ? `<p class="ref-banner" role="status">Reference branch <code>${escapeHtml(view.ref)}</code>; production is <code>${escapeHtml(production)}</code>.
         <a href="${escapeHtml(view.path)}?ref=">Back to production</a></p>`
     : "";

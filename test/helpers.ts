@@ -29,11 +29,11 @@ export function get(path: string, cookie?: string): Promise<Response> {
   });
 }
 
-export function post(path: string, fields: Record<string, string>, cookie?: string): Promise<Response> {
+export function post(path: string, fields: Record<string, string>, cookie?: string, headers: Record<string, string> = {}): Promise<Response> {
   return SELF.fetch(`${BASE}${path}`, {
     method: "POST",
     redirect: "manual",
-    headers: { "content-type": "application/x-www-form-urlencoded", ...(cookie ? { cookie } : {}) },
+    headers: { "content-type": "application/x-www-form-urlencoded", ...(cookie ? { cookie } : {}), ...headers },
     body: new URLSearchParams(fields).toString(),
   });
 }

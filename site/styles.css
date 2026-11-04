@@ -3496,3 +3496,10 @@ pre.gherkin {
   border-radius: 14px;
   padding: 0.75rem 1rem;
 }
+
+/* Refinement: the release's progress (la-fabrique#225) */
+.release-meter { display: flex; align-items: center; gap: 0.6rem; min-height: 2rem; }
+.release-meter > .muted { min-width: 6rem; }
+.release-meter .bar { flex: 1; max-width: 22rem; height: 0.6rem; border-radius: 0.3rem; background: #dcdfd3; overflow: hidden; }
+.release-meter .bar > span { display: block; height: 100%; background: #1e5a43; }
+.release-meter:focus-visible, .release-stories:focus-visible { outline: 2px solid #c23d17; outline-offset: 2px; }

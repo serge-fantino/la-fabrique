@@ -8,12 +8,14 @@ import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { validateFeature, validationOf } from "./feature-validation";
+import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
-import { activeSprint, latestSprint, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
+import { activeSprint, latestSprint, sprintLabel, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
 import { closeSprint, joinSprint, type JoinOutcome, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
@@ -76,7 +78,7 @@ import { projectView } from "./view-context";
 import { messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -288,6 +290,8 @@ async function renderCard(
   // Its progress from those stories, and when it reached each stage.
   const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
   const progressHistory = await progressSince(env.DB, project.repo, card.id);
+  const storyNumbers = [...linked];
+  const step = nextStep(card, storyNumbers, storyStates as never);
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
@@ -304,6 +308,8 @@ async function renderCard(
       links,
       shown,
       canWrite: canWriteCards(viewer),
+      validation: validationOf(card, storyNumbers),
+      canValidate: step.step === "approve",
       created: params.get("created") === "1",
       notice: notice ? CARD_NOTICES[notice] : undefined,
       failure: extra.failure,
@@ -349,6 +355,18 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (!known.get(number)) return renderCard(request, env, viewer, project, card, { failure: `#${number} is not a story La Fabrique knows in this project.`, status: 404 });
     await linkStory(env.DB, card, viewer.login, number, `https://github.com/${project.repo}/issues/${number}`);
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story linked");
+    return redirect(to);
+  }
+  // The last step of a feature (la-fabrique#232).
+  if (action === "validate_feature") {
+    const back = String(form.get("back") ?? "");
+    const to = back.startsWith(`${projectUrl(project.repo)}/`) ? back : `${url}#validation`;
+    const numbers = (await cardLinks(env.DB, card.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
+    const known = await cardStories(env, project, numbers);
+    if (card.kind !== "feature" || card.archivedAt || nextStep(card, numbers, known).step !== "approve") {
+      return renderCard(request, env, viewer, project, card, { failure: "A feature can be validated once its spec is complete and all its stories are ready.", status: 409 });
+    }
+    await validateFeature(env.DB, card, numbers, viewer.login);
     return redirect(to);
   }
   if (action === "archive" || action === "restore") {
@@ -762,6 +780,77 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
   return showSprint(request, env, viewer, project);
 }
 
+// The Refinement tab (la-fabrique#223): the features of Next release and
+// their next step. Reads La Fabrique's own data only.
+async function refinementRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
+  const base = `${projectUrl(project.repo)}/refinement`;
+  if (form) {
+    if (!canWriteCards(viewer)) return forbidden(viewer);
+    const action = String(form.get("action") ?? "");
+    // Priority and order of the features (la-fabrique#224), as in the sprint.
+    if (action === "card_priority" || action === "card_order" || action === "card_up" || action === "card_down") {
+      const all = (await listCards(env.DB, project.repo)).filter((c) => !c.archivedAt && c.release === NEXT_RELEASE && c.status !== "dropped").sort((a, b) => a.position - b.position || a.id - b.id);
+      const features = all.filter((c) => c.kind === "feature").map((c) => c.id);
+      const id = Number(form.get("card"));
+      if (action === "card_priority") {
+        const found = all.find((c) => c.id === id && c.kind === "feature");
+        const priority = String(form.get("priority") ?? "") || null;
+        if (!found || (priority && !cycleRules(project.check?.config).priorities.includes(priority))) return redirect(base);
+        if (!(await setCardPriority(env.DB, found, priority, viewer.login))) return redirect(`${base}?notice=unchanged#card-${id}`);
+        const failed = priority ? await applyCardPriority(env, project, { ...found, priority }, viewer.login) : [];
+        if (failed.length) return redirect(`${base}?failure=${encodeURIComponent(`Priority set on the card; GitHub refused it for ${failed.join("; ")}`.slice(0, 300))}#card-${id}`);
+        return redirect(`${base}?notice=priority#card-${id}`);
+      }
+      let wanted: number[] = [];
+      if (action === "card_order") {
+        wanted = String(form.get("order") ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 200);
+      } else {
+        const at = features.indexOf(id);
+        const to = action === "card_up" ? at - 1 : at + 1;
+        if (at >= 0 && to >= 0 && to < features.length) {
+          wanted = [...features];
+          [wanted[at], wanted[to]] = [wanted[to] as number, wanted[at] as number];
+        }
+      }
+      const full = withFeatureOrder(all.map((c) => c.id), features, wanted);
+      const changed = full ? await orderCardsInRelease(env.DB, project.repo, NEXT_RELEASE, full, viewer.login) : false;
+      if ((request.headers.get("accept") ?? "").includes("application/json")) return json({ ok: true, changed });
+      return redirect(`${base}#card-${id}`);
+    }
+    if (action === "story_ready") {
+      const story = Number(form.get("story"));
+      const links = await storyCards(env.DB, project.repo);
+      const inNext = (await listCards(env.DB, project.repo)).filter((card) => card.release === NEXT_RELEASE && !card.archivedAt);
+      if (!Number.isInteger(story) || !inNext.some((card) => (links.order.get(card.id) ?? []).includes(story))) return redirect(base);
+      const outcome = await markReady(env, project, story, viewer.login);
+      if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(outcome.message)}`);
+      return redirect(`${base}?notice=ready`);
+    }
+    return redirect(base);
+  }
+  const params = new URL(request.url).searchParams;
+  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const { features, others } = refinementCards(cards, NEXT_RELEASE);
+  const running = await activeSprint(env.DB, project.repo);
+  const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
+  return html(
+    refinementPage(viewer, view, {
+      features,
+      others,
+      links,
+      stories,
+      canWrite: canWriteCards(viewer),
+      readyLabel: project.check?.config?.demandes?.etiquettes?.["prete"] ?? null,
+      canClaude: canWriteCards(viewer),
+      priorities: cycleRules(project.check?.config).priorities,
+      sprint: running ? { label: sprintLabel(running) } : null,
+      notice: params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      failure: params.get("failure")?.slice(0, 300) ?? undefined,
+    }),
+    { cookies },
+  );
+}
+
 // The cards that joined the sprint by their work, said once (la-fabrique#205).
 function joinedNotice({ opened, joined }: JoinOutcome): string | undefined {
   const one = (entry: Joined) => `${cardRef(entry.card.id)} (${entry.stories.map((number) => `#${number}`).join(", ")})`;
@@ -1065,6 +1154,11 @@ export async function cardRoute(
     return data ? handler(data) : html(messagePage("Not allowed", "This form expired: reload the page.", viewer), { status: 403 });
   };
 
+  if (path === "refinement") {
+    if (method === "GET") return refinementRoute(request, env, viewer, project, null);
+    if (method === "POST") return withForm((data) => refinementRoute(request, env, viewer, project, data));
+    return notAllowed();
+  }
   if (path === "board") {
     if (method === "GET") return showBoard(request, env, viewer, project);
     if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));

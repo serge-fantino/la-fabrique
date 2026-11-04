@@ -2,263 +2,46 @@
   {
     "version": "next",
     "date": "2026-11-03",
-    "titre": "Testing, lighter",
+    "titre": "Validate a feature, from Refinement or its page",
     "changements": [
-      "To test shows the stories not validated yet; the validated ones are folded away, one tap to see them, and the count says how many are left to test.",
-      "Report kit 1.9.0: the app's test panel goes through the stories not validated yet; a button shows the validated ones, and the choice stays on the device.",
-      "A small turning ring shows while a tick or a validation is being saved, in To test and in the app's panel."
+      "A person validates each feature before the sprint: once its stories are ready, its card on Refinement and its page propose Validate the feature (Product Engineer and above); who validated and when are shown, and logged.",
+      "A feature changed after (its text, its spec, a story added or removed) needs validating again, and its card says why; GO / NO-GO lists any feature not validated as blocking. A tester sees who validated, without the button."
     ],
-    "stories": [220],
+    "stories": [232],
     "liens": null
   },
   {
     "version": "next",
     "date": "2026-11-03",
-    "titre": "No work on int without a sprint; a shipped feature comes back; a story linked to the card it names",
+    "titre": "The release's progress and GO / NO-GO in Refinement",
     "changements": [
-      "On a project with int, when int holds work production does not and no sprint runs, La Fabrique opens the sprint itself, with the next version, and says why; the cards being worked on join it.",
-      "A shipped feature comes back to the sprint when a new story of it, or a nice to have taken up, is developed or tested; its shipped versions stay said, and taking it out again is by hand.",
-      "A story that names a card in its title or text (C5) without being linked to it is proposed to be linked, on the card's page and in To test."
+      "Refinement opens with how far Next release is prepared: features, specified, refined and ready, and the stories (needed and nice to have); each part says what it counts on hover or focus.",
+      "GO when every feature is ready, leading to Start the sprint; otherwise NO-GO, listing what blocks each feature, linked to its card on the page. When a sprint already runs, the page says so and links to it."
     ],
-    "stories": [216, 217, 218],
+    "stories": [225],
     "liens": null
   },
   {
     "version": "next",
     "date": "2026-11-03",
-    "titre": "Reporting and testing, two activities; La Fabrique tests itself",
+    "titre": "Priority and order in Refinement",
     "changements": [
-      "In .fabrique.json, signalement says who may report from each environment: the team (an account with a role) or any account that sees the repository (what true meant), production included; the app's own users are not open yet.",
-      "recette names the one environment where the stories are tested: int by default, else production for a project without an integration branch. Setup says, per environment, who may report and where the stories are tested.",
-      "Without int, the app's test panel lists the stories merged and still open, and those back in development after a feedback, to validate in production as To test does.",
-      "La Fabrique tests itself: its team has the report and test launcher on every page, relayed by the person's session; the Test panel follows the pages.",
-      "The report kit's component says its own version (1.8.0) and how a project without int reports and tests in production."
+      "Each feature's card in Refinement has its priority in a list (the project's priority labels): saved at once, given to its stories on GitHub (one level lower for nice to have) and logged, as from the card's page.",
+      "Features are reordered by drag and drop on a handle or with the arrow keys, as in the sprint; up and down arrows remain without the page's script. The order is the board's, which the sprint takes, and is logged."
     ],
-    "stories": [209, 210, 211],
+    "stories": [224],
     "liens": null
   },
   {
     "version": "next",
-    "date": "2026-11-02",
-    "titre": "Reality first: the sprint shows what is being worked on",
+    "date": "2026-11-03",
+    "titre": "A Refinement tab for the next release",
     "changements": [
-      "While a sprint runs, a card whose story is being developed, back in development after feedbacks, or tested joins the sprint by itself, wherever it was placed (Next release, not set); the sprint says so once, and the card's history keeps the reason. A card already out, carrying its own version, dropped or archived stays where it is.",
-      "To test says each story's feature, with a link to the card and to the story's steps; in an app's test panel, the feature is a link to the card in La Fabrique.",
-      "The board's search finds a card by one of its stories: #170 (or 170). The MCP's board takes a story too.",
-      "Report kit 1.8.0: the test panel stays open from one page of the app to the next, at the same story, with the feedback being written; closed, it stays closed."
+      "A Refinement tab, between Board and Sprint (Product and All perspectives), lists the features of Next release in priority order, each with its status, synopsis, stories and next step: Specify, Answer, Refine, Validate (with what each story lacks and Mark ready) or Ready for the sprint.",
+      "Ideas and questions of Next release are listed apart, below. The page reads only what La Fabrique already holds: no call to GitHub or Claude.",
+      "Linked from the board's Next release lane and from the sprint page when no sprint runs."
     ],
-    "stories": [205, 206, 207],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-02",
-    "titre": "Rework a story with its test feedbacks",
-    "changements": [
-      "A story back in development after feedbacks says so in the sprint (Back in development, with its feedbacks) and on its page, where the feedbacks are listed; nothing starts by itself.",
-      "Rework with Claude (tech lead and above) launches the project's Claude workflow on the same story with rework: a new branch of the story, the feedbacks to take into account, a pull request that refers to the story.",
-      "When that pull request is merged, the rework label goes, the story is to test again, and its issue says so. The sprint running by itself stops at a story with feedbacks instead of launching it."
-    ],
-    "stories": [202],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-02",
-    "titre": "Testing from the app, the next round: a discreet launcher, a floating panel, a criterion that fails",
-    "changements": [
-      "Report kit 1.7.0: one small round La Fabrique button in the app instead of two pills; a tap unfolds Report a defect and Test; drag it anywhere, it stays there.",
-      "The Test panel floats above the app without blocking it: move it by its head, fold it into a bar with the story and how many criteria are ticked, close it; on a phone it takes half the screen at most. Previous and Next go through the stories on the same screen, then each criterion is a box and its text.",
-      "Fail on a criterion: a feedback written in the panel, with a screenshot of the page if wanted. It is not a new issue: a comment on the story in the tester's name, quoting the criterion. The story goes back to development (the rework label), the criterion stays unticked and shows Failed, and the story cannot be validated until its code changed and it is tested again, in the app as in To test, where its feedbacks are listed."
-    ],
-    "stories": [199, 200, 201],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-02",
-    "titre": "A project's components",
-    "changements": [
-      "A project declares the folder of its components in .fabrique.json (composants), and each component is a folder of its repository that describes itself: component.json (what it brings, what it asks of the project, its implementations per stack, its personal data, where it was taken from), with its README, spec, Gherkin scenarios and changelog.",
-      "A new Components tab lists them, filtered by nature (product, library, design system) and by stack; a component's page shows its contract, its implementations on GitHub, its README, spec, scenarios, personal data and changelog. An invalid component.json is listed with its reasons.",
-      "La Fabrique's own first two components: the report kit (Report a defect and test from the app) and the release notes with What's new. The format is in the .fabrique.json guide."
-    ],
-    "stories": [197],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-02",
-    "titre": "A generic relay for the report kit",
-    "changements": [
-      "Report kit 1.6.0 speaks a second relay protocol: a relay written once that passes each call of the kit to La Fabrique's project API (?path=…), with the person's token and three headers only the project's server can say (environment, version, deployment). A new kit version then needs no new code in the project, only the update proposed by Setup.",
-      "La Fabrique trusts those headers over the body on a defect, and reads the environment from them for the stories to test.",
-      "An older relay, a route per call, keeps working: the kit speaks its protocol until the relay says \"relay\": 2. docs/report-kit.md describes both, with a generic relay for a Cloudflare Worker.",
-      "The consent page now says what stories:test really allows: show the stories to test and, in your name, tick a criterion, validate a story and keep the steps recorded; never in production."
-    ],
-    "stories": [195],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A feature in production says which versions ship it",
-    "changements": [
-      "Once one of its stories is out, a feature says which versions shipped it (those whose release notes declare its stories, oldest first), on its page, on the board and in the sprint.",
-      "Next to them: Complete, Complete with the nice to have left, or the number of stories still to ship."
-    ],
-    "stories": [189],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Run the sprint from its card, lane by lane",
-    "changements": [
-      "The Running by itself card of the sprint shows what the run will do, without a page of its own: the features in lanes (as many as Claude runs may go at once), each with its stories waiting, in order, and where it would stop; the features with nothing to run are listed apart, with why.",
-      "One button confirms; the order is the sprint's, set below. After a run, the same card shows what a new run would do.",
-      "The old Run the sprint page leads to that card."
-    ],
-    "stories": [188],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint page follows each step without a reload",
-    "changements": [
-      "While something is in progress in the sprint (Claude working, a pull request open, the sprint running by itself, the release), the page reads itself again every minute, and at once when GitHub reports a run, a pull request or a story that moved.",
-      "It waits for a calm moment: never while you type, drag a story, send a form or have a form open; a page in the background catches up when you come back.",
-      "During a sprint, the stories are read from GitHub again after a minute at most, so a pull request's link to its story, late on GitHub's side, shows up without a manual refresh."
-    ],
-    "stories": [187],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "One status per story; a story stays open until validated",
-    "changements": [
-      "A validated story shows one status, Validated by whom, instead of To validate (or On int) next to Validated: on the card, the sprint and the story's page.",
-      "When GitHub closes a story of a card by itself, at the merge of its pull request, before anyone validated it, La Fabrique opens it again, says why on the issue in the project's language, and logs it (story reopened). A story closed by a person, or not planned, is left closed."
-    ],
-    "stories": [186],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A recorded test becomes a Gherkin scenario",
-    "changements": [
-      "A story's page and To test show each recorded criterion as a Gherkin scenario (Given the first page, When the steps, Then the criterion), with Copy.",
-      "\"Propose to the project\" opens a pull request in your name adding features/story-<n>.feature on the integration branch (production without one); never written directly on a branch, logged as feature_proposed."
-    ],
-    "stories": [168],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Record what the tester does for a criterion",
-    "changements": [
-      "Report kit 1.5.0: Record on a criterion keeps the pages visited, buttons and links pressed and fields filled (by name, never what is typed) until Stop; the steps can be edited or dropped before they are sent with the tick.",
-      "POST …/to-test/{story}/criteria accepts steps; La Fabrique keeps them in the log with the criterion, the story, the version tested and the tester (story_test_recorded).",
-      "The relay must pass steps on POST ?to-test={story}/criteria (docs/report-kit.md)."
-    ],
-    "stories": [167],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Tick, validate and report from the app",
-    "changements": [
-      "Tick a story's criteria, validate it or report a defect from the app on int: the kit's panel (1.4.0) shows checkboxes, a Validate button and Report a defect on this story.",
-      "POST /api/projects/{project}/to-test/{story}/criteria and /validate (scope stories:test) write in the issue and the log as To test does; validating is refused until every criterion is ticked.",
-      "The relay must add POST ?to-test={story}/criteria and /validate (docs/report-kit.md)."
-    ],
-    "stories": [166],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The stories to test, in the project's app on int",
-    "changements": [
-      "A project's app can ask for the new scope stories:test next to defects:report; the consent page says what it allows and Connected apps shows it.",
-      "GET /api/projects/{project}/to-test answers the stories on int to test (card, acceptance criteria ticked or not, who validated), for a tester and above; never in production.",
-      "Report kit 1.3.0: a Test button next to Report a defect, and a read-only panel listing the stories to test one at a time with their criteria. The relay must add GET ?to-test=1 and can_test (docs/report-kit.md)."
-    ],
-    "stories": [165],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Reorder the sprint by drag and drop",
-    "changements": [
-      "In the sprint, features and their stories are reordered by dragging their handle (mouse or touch), or with the up and down arrow keys on it; the new order is saved at once and logged.",
-      "Without the page's script, the up and down arrows remain."
-    ],
-    "stories": [181],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A story of the sprint is a row; nice to have is a priority",
-    "changements": [
-      "In the sprint, a story is a row: its number and title on top, where it stands below (stage, testing, nice to have, pull request, Claude), its priority and order at the end; no more table of columns.",
-      "A story's priority list offers Nice to have: choosing it marks the story so (one level below its card's priority on GitHub), choosing a priority makes it needed again.",
-      "No more Launch Claude button per story: Claude is launched in order from the Implementation card (Launch the next story, Running by itself); a story waiting for another of its card still says so."
-    ],
-    "stories": [180],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint page in cards, wide and responsive",
-    "changements": [
-      "The sprint page is in cards: the sprint's status (version, state, closing, go) and its implementation (running by itself, Claude's runs, the next story, open pull requests) stand beside the features and their stories on a wide screen, and stack on a phone with nothing scrolling sideways.",
-      "The features of the sprint are cards again, the width of the page's main part."
-    ],
-    "stories": [179],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "Closing the sprint is a step you can follow",
-    "changements": [
-      "Once its release is started, the sprint says Closing: a card follows the release step by step (started by whom, the project's workflow with its link, then out); the close button and the version change wait meanwhile.",
-      "A release that fails says why on the same card, and the sprint is open again to close once fixed.",
-      "The sprint's automatic run is in its own card, \"Running by itself\", shown only while the sprint runs: not while it closes, nor once it is closed."
-    ],
-    "stories": [175],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "A sprint gets its version when it starts",
-    "changements": [
-      "Starting a sprint is a card: the version it will release (the next minor or major proposed, or one you type, 1.0 included) and a name if you want; the sprint page and the board then say \"Sprint 0.82\".",
-      "The sprint's version and name can be changed while it runs; a version not ahead of the newest release is refused, saying why.",
-      "Closing the sprint releases its version: the close is a card showing what the release takes, asking only its title, with a \"Close the sprint and release 0.82\" button."
-    ],
-    "stories": [174],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-01",
-    "titre": "The sprint page shows the sprint only",
-    "changements": [
-      "The sprint page no longer lists Next release, which stays on the board; without a sprint, it says how many cards the next sprint would take, with a link to the board.",
-      "The board by release no longer shows a \"next\" lane for the release-note entries not released yet: they are the sprint's work, online without a version."
-    ],
-    "stories": [173],
+    "stories": [223],
     "liens": null
   },
   {
@@ -270,6 +53,80 @@
       "A tick undone by another written at the same moment (another tab, another person) is written again on the issue's current text."
     ],
     "stories": [58],
+    "liens": null
+  },
+  {
+    "version": "0.82",
+    "date": "2026-11-03",
+    "heure": "20:20",
+    "titre": "Improved in-app testing, sprint synchronisation with gitHub status, and first component view",
+    "changements": [
+      "To test shows the stories not validated yet; the validated ones are folded away, one tap to see them, and the count says how many are left to test.",
+      "Report kit 1.9.0: the app's test panel goes through the stories not validated yet; a button shows the validated ones, and the choice stays on the device.",
+      "A small turning ring shows while a tick or a validation is being saved, in To test and in the app's panel.",
+      "On a project with int, when int holds work production does not and no sprint runs, La Fabrique opens the sprint itself, with the next version, and says why; the cards being worked on join it.",
+      "A shipped feature comes back to the sprint when a new story of it, or a nice to have taken up, is developed or tested; its shipped versions stay said, and taking it out again is by hand.",
+      "A story that names a card in its title or text (C5) without being linked to it is proposed to be linked, on the card's page and in To test.",
+      "In .fabrique.json, signalement says who may report from each environment: the team (an account with a role) or any account that sees the repository (what true meant), production included; the app's own users are not open yet.",
+      "recette names the one environment where the stories are tested: int by default, else production for a project without an integration branch. Setup says, per environment, who may report and where the stories are tested.",
+      "Without int, the app's test panel lists the stories merged and still open, and those back in development after a feedback, to validate in production as To test does.",
+      "La Fabrique tests itself: its team has the report and test launcher on every page, relayed by the person's session; the Test panel follows the pages.",
+      "The report kit's component says its own version (1.8.0) and how a project without int reports and tests in production.",
+      "While a sprint runs, a card whose story is being developed, back in development after feedbacks, or tested joins the sprint by itself, wherever it was placed (Next release, not set); the sprint says so once, and the card's history keeps the reason. A card already out, carrying its own version, dropped or archived stays where it is.",
+      "To test says each story's feature, with a link to the card and to the story's steps; in an app's test panel, the feature is a link to the card in La Fabrique.",
+      "The board's search finds a card by one of its stories: #170 (or 170). The MCP's board takes a story too.",
+      "Report kit 1.8.0: the test panel stays open from one page of the app to the next, at the same story, with the feedback being written; closed, it stays closed.",
+      "A story back in development after feedbacks says so in the sprint (Back in development, with its feedbacks) and on its page, where the feedbacks are listed; nothing starts by itself.",
+      "Rework with Claude (tech lead and above) launches the project's Claude workflow on the same story with rework: a new branch of the story, the feedbacks to take into account, a pull request that refers to the story.",
+      "When that pull request is merged, the rework label goes, the story is to test again, and its issue says so. The sprint running by itself stops at a story with feedbacks instead of launching it.",
+      "Report kit 1.7.0: one small round La Fabrique button in the app instead of two pills; a tap unfolds Report a defect and Test; drag it anywhere, it stays there.",
+      "The Test panel floats above the app without blocking it: move it by its head, fold it into a bar with the story and how many criteria are ticked, close it; on a phone it takes half the screen at most. Previous and Next go through the stories on the same screen, then each criterion is a box and its text.",
+      "Fail on a criterion: a feedback written in the panel, with a screenshot of the page if wanted. It is not a new issue: a comment on the story in the tester's name, quoting the criterion. The story goes back to development (the rework label), the criterion stays unticked and shows Failed, and the story cannot be validated until its code changed and it is tested again, in the app as in To test, where its feedbacks are listed.",
+      "A project declares the folder of its components in .fabrique.json (composants), and each component is a folder of its repository that describes itself: component.json (what it brings, what it asks of the project, its implementations per stack, its personal data, where it was taken from), with its README, spec, Gherkin scenarios and changelog.",
+      "A new Components tab lists them, filtered by nature (product, library, design system) and by stack; a component's page shows its contract, its implementations on GitHub, its README, spec, scenarios, personal data and changelog. An invalid component.json is listed with its reasons.",
+      "La Fabrique's own first two components: the report kit (Report a defect and test from the app) and the release notes with What's new. The format is in the .fabrique.json guide.",
+      "Report kit 1.6.0 speaks a second relay protocol: a relay written once that passes each call of the kit to La Fabrique's project API (?path=…), with the person's token and three headers only the project's server can say (environment, version, deployment). A new kit version then needs no new code in the project, only the update proposed by Setup.",
+      "La Fabrique trusts those headers over the body on a defect, and reads the environment from them for the stories to test.",
+      "An older relay, a route per call, keeps working: the kit speaks its protocol until the relay says \"relay\": 2. docs/report-kit.md describes both, with a generic relay for a Cloudflare Worker.",
+      "The consent page now says what stories:test really allows: show the stories to test and, in your name, tick a criterion, validate a story and keep the steps recorded; never in production.",
+      "Once one of its stories is out, a feature says which versions shipped it (those whose release notes declare its stories, oldest first), on its page, on the board and in the sprint.",
+      "Next to them: Complete, Complete with the nice to have left, or the number of stories still to ship.",
+      "The Running by itself card of the sprint shows what the run will do, without a page of its own: the features in lanes (as many as Claude runs may go at once), each with its stories waiting, in order, and where it would stop; the features with nothing to run are listed apart, with why.",
+      "One button confirms; the order is the sprint's, set below. After a run, the same card shows what a new run would do.",
+      "The old Run the sprint page leads to that card.",
+      "While something is in progress in the sprint (Claude working, a pull request open, the sprint running by itself, the release), the page reads itself again every minute, and at once when GitHub reports a run, a pull request or a story that moved.",
+      "It waits for a calm moment: never while you type, drag a story, send a form or have a form open; a page in the background catches up when you come back.",
+      "During a sprint, the stories are read from GitHub again after a minute at most, so a pull request's link to its story, late on GitHub's side, shows up without a manual refresh.",
+      "A validated story shows one status, Validated by whom, instead of To validate (or On int) next to Validated: on the card, the sprint and the story's page.",
+      "When GitHub closes a story of a card by itself, at the merge of its pull request, before anyone validated it, La Fabrique opens it again, says why on the issue in the project's language, and logs it (story reopened). A story closed by a person, or not planned, is left closed.",
+      "A story's page and To test show each recorded criterion as a Gherkin scenario (Given the first page, When the steps, Then the criterion), with Copy.",
+      "\"Propose to the project\" opens a pull request in your name adding features/story-<n>.feature on the integration branch (production without one); never written directly on a branch, logged as feature_proposed.",
+      "Report kit 1.5.0: Record on a criterion keeps the pages visited, buttons and links pressed and fields filled (by name, never what is typed) until Stop; the steps can be edited or dropped before they are sent with the tick.",
+      "POST …/to-test/{story}/criteria accepts steps; La Fabrique keeps them in the log with the criterion, the story, the version tested and the tester (story_test_recorded).",
+      "The relay must pass steps on POST ?to-test={story}/criteria (docs/report-kit.md).",
+      "Tick a story's criteria, validate it or report a defect from the app on int: the kit's panel (1.4.0) shows checkboxes, a Validate button and Report a defect on this story.",
+      "POST /api/projects/{project}/to-test/{story}/criteria and /validate (scope stories:test) write in the issue and the log as To test does; validating is refused until every criterion is ticked.",
+      "The relay must add POST ?to-test={story}/criteria and /validate (docs/report-kit.md).",
+      "A project's app can ask for the new scope stories:test next to defects:report; the consent page says what it allows and Connected apps shows it.",
+      "GET /api/projects/{project}/to-test answers the stories on int to test (card, acceptance criteria ticked or not, who validated), for a tester and above; never in production.",
+      "Report kit 1.3.0: a Test button next to Report a defect, and a read-only panel listing the stories to test one at a time with their criteria. The relay must add GET ?to-test=1 and can_test (docs/report-kit.md).",
+      "In the sprint, features and their stories are reordered by dragging their handle (mouse or touch), or with the up and down arrow keys on it; the new order is saved at once and logged.",
+      "Without the page's script, the up and down arrows remain.",
+      "In the sprint, a story is a row: its number and title on top, where it stands below (stage, testing, nice to have, pull request, Claude), its priority and order at the end; no more table of columns.",
+      "A story's priority list offers Nice to have: choosing it marks the story so (one level below its card's priority on GitHub), choosing a priority makes it needed again.",
+      "No more Launch Claude button per story: Claude is launched in order from the Implementation card (Launch the next story, Running by itself); a story waiting for another of its card still says so.",
+      "The sprint page is in cards: the sprint's status (version, state, closing, go) and its implementation (running by itself, Claude's runs, the next story, open pull requests) stand beside the features and their stories on a wide screen, and stack on a phone with nothing scrolling sideways.",
+      "The features of the sprint are cards again, the width of the page's main part.",
+      "Once its release is started, the sprint says Closing: a card follows the release step by step (started by whom, the project's workflow with its link, then out); the close button and the version change wait meanwhile.",
+      "A release that fails says why on the same card, and the sprint is open again to close once fixed.",
+      "The sprint's automatic run is in its own card, \"Running by itself\", shown only while the sprint runs: not while it closes, nor once it is closed.",
+      "Starting a sprint is a card: the version it will release (the next minor or major proposed, or one you type, 1.0 included) and a name if you want; the sprint page and the board then say \"Sprint 0.82\".",
+      "The sprint's version and name can be changed while it runs; a version not ahead of the newest release is refused, saying why.",
+      "Closing the sprint releases its version: the close is a card showing what the release takes, asking only its title, with a \"Close the sprint and release 0.82\" button.",
+      "The sprint page no longer lists Next release, which stays on the board; without a sprint, it says how many cards the next sprint would take, with a link to the board.",
+      "The board by release no longer shows a \"next\" lane for the release-note entries not released yet: they are the sprint's work, online without a version."
+    ],
+    "stories": [165, 166, 167, 168, 173, 174, 175, 179, 180, 181, 186, 187, 188, 189, 195, 197, 199, 200, 201, 202, 205, 206, 207, 209, 210, 211, 216, 217, 218, 220],
     "liens": null
   },
   {

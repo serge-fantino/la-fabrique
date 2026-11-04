@@ -393,7 +393,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const choices = [versions?.minor ? { value: versions.minor, label: `${versions.minor} <span class="muted small">next minor</span>` } : null, versions?.major ? { value: versions.major, label: `${versions.major} <span class="muted small">next major</span>` } : null].filter(
       (choice): choice is { value: string; label: string } => choice !== null,
     );
-    return `<form method="post" action="${escapeHtml(action)}" class="sprint-form-card sprint-start-card" data-busy="Starting…">${csrfField(viewer)}
+    return `<form method="post" action="${escapeHtml(action)}" id="start-sprint" class="sprint-form-card sprint-start-card" data-busy="Starting…">${csrfField(viewer)}
         <input type="hidden" name="action" value="start" />
         <h3>Start the next sprint</h3>
         <fieldset class="sprint-versions"><legend>The version it will release${versions?.newest ? ` <span class="muted small">(newest: <span class="mono">${escapeHtml(versions.newest)}</span>)</span>` : ""}</legend>
@@ -474,7 +474,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
               ]
                 .filter(Boolean)
                 .join(" and ")} on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
-            : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
+            : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>, and get them ready in <a href="${escapeHtml(base)}/refinement">Refinement</a>.`
         }</p>
         ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? startCard() : ""}
       </section>`;
