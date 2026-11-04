@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "A Product Engineer relaunches Claude; a run without a pull request says so",
+    "changements": [
+      "Relaunch Claude, on a story's row of the sprint and on a card the sprint's run stopped, is open to a Product Engineer, who runs the sprint, as well as a tech lead.",
+      "A story in development whose last Claude run ended without a pull request shows Claude done: no pull request (or failed, cancelled), in amber, instead of Claude done."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Relaunch Claude from a story's row; its work is never lost",
     "changements": [
       "A story of the sprint in development without a pull request, Claude's last run over, offers Relaunch Claude on its row (tech lead and above): Claude works on it again, on its branch; a card of the sprint's run stopped there follows it again.",

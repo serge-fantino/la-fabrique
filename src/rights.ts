@@ -10,6 +10,9 @@ export type Action =
   | "validate"
   // Write and refine requests, prioritize the backlog.
   | "request"
+  // Relaunch Claude on a story it already worked on, left without a pull
+  // request (la-fabrique#239): a Product Engineer and above.
+  | "relaunch_claude"
   // Launch Claude, review, change the project's setup.
   | "launch_claude"
   // Roles, projects, apps.
@@ -20,7 +23,7 @@ export type Action =
 
 const RANK: Record<Role, number> = { tester: 1, product_engineer: 2, tech_lead: 3, super_admin: 4 };
 
-const NEEDS: Record<Action, number> = { report_defect: 0, validate: 1, request: 2, launch_claude: 3, go: 4, promote: 2 };
+const NEEDS: Record<Action, number> = { report_defect: 0, validate: 1, request: 2, relaunch_claude: 2, launch_claude: 3, go: 4, promote: 2 };
 
 const PROMOTERS: Role[] = ["product_engineer", "super_admin"];
 

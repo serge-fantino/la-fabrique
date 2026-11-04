@@ -336,12 +336,35 @@ describe("Relaunching Claude from a story's row (la-fabrique#239)", () => {
     github
       .intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` })
       .reply(200, JSON.stringify({ workflow_runs: [{ id: 1, status: "completed", conclusion: "success", display_title: "Claude #12", html_url: "https://github.com/run/1", created_at: NOW, updated_at: NOW }] }), JSON_HEADERS);
-    const page = await (await get(`/projects/${REPO}/sprint`, (await signIn("lead")).cookie)).text();
+    // A Product Engineer relaunches too (la-fabrique#239).
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
     const row = page.match(/<li id="story-\d+-12"[\s\S]*?<\/li>/)?.[0] ?? "";
-    expect(row).toContain('name="action" value="launch"');
+    expect(row).toContain('name="action" value="relaunch"');
     expect(row).toContain("Relaunch Claude");
+    // Claude's run is over, and the story has no pull request: said.
+    expect(row).toContain("Claude done: no pull request");
     // #13 is ready, not in development: nothing to relaunch.
     expect(page.match(/<li id="story-\d+-13"[\s\S]*?<\/li>/)?.[0] ?? "").not.toContain("Relaunch Claude");
+
+    // Relaunched: the workflow on #12; #13 (ready, not in development) is refused.
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    let dispatched: unknown = null;
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, (options) => {
+      dispatched = JSON.parse(String(options.body));
+      return "";
+    });
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/12/comments` }).reply(201, "{}", JSON_HEADERS);
+    const relaunched = await post(`/projects/${REPO}/sprint`, { csrf, action: "relaunch", story: "12" }, cookie);
+    expect(relaunched.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=launched&story=12`);
+    expect(dispatched).toEqual({ ref: "main", inputs: { issue: "12", par: "pe" } });
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "relaunch", story: "13" }, cookie)).status).toBe(409);
+    // A tester cannot.
+    await grantRole("tester", "tester");
+    const tester = await signIn("tester");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: tester.csrf, action: "relaunch", story: "12" }, tester.cookie)).status).toBe(403);
   });
 });
 
