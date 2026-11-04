@@ -3,6 +3,9 @@ import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 export interface Env {
   DB: D1Database;
   COMMIT_SHA: string;
+  // When this Worker was deployed, Paris time ("2026-11-04 16:48"), set by
+  // the deploy workflow: what the (i) says while changes wait for a release.
+  DEPLOYED_AT?: string;
   // The environment this Worker is, as its version path answers it
   // (`environnement`); absent: production (la-fabrique#211).
   ENVIRONNEMENT?: string;

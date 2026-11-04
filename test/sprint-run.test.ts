@@ -1,9 +1,9 @@
-import { env, fetchMock } from "cloudflare:test";
+import { env, fetchMock, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { StoryCards } from "../src/card-groups";
 import type { CardStory } from "../src/card-stories";
 import type { ClaudeRun } from "../src/claude";
-import { advance, planRun, runLanes, type Moves, type PlannedCard, type RunState, type Seen } from "../src/sprint-run";
+import { advance, planRun, relaunchable, runLanes, sprintRunFor, type Moves, type PlannedCard, type RunState, type Seen } from "../src/sprint-run";
 import type { Card } from "../src/cards";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
@@ -123,8 +123,26 @@ describe("The sprint's run, card by card", () => {
       "#18 is not ready: it lacks a priority",
     ]);
     expect(run1.cards[0]?.link).toBe("https://github.com/run/12");
+    // Stopped on Claude's side: Claude can be relaunched on the story (la-fabrique#239).
+    expect(run1.cards.map((one) => one.relaunch)).toEqual([true, true, false, false]);
     expect(run1.status).toBe("waiting");
     expect(logged.filter((entry) => entry.action === "sprint_run_card_stopped")).toHaveLength(4);
+  });
+
+  it("offers to relaunch Claude on a story left on a branch without a pull request, not on one to rework (la-fabrique#239)", async () => {
+    const run1 = state([card(1, [12]), card(2, [14])]);
+    const { moves, done } = fakeMoves();
+    await advance(run1, seen([story(12, { stage: "in_dev" }), story(14, { stage: "in_dev", rework: true })]), moves);
+    expect(done).toEqual([]);
+    expect(run1.cards.map((one) => [one.step, one.relaunch])).toEqual([["stopped", true], ["stopped", false]]);
+    expect(run1.cards[0]?.reason).toBe("#12 is in development by hand (a branch without a pull request): finish it or drop the branch");
+    // A card stopped before the flag existed: said by its reason.
+    const before = (reason: string) => relaunchable({ ...card(3, [16]), step: "stopped", reason } as unknown as Parameters<typeof relaunchable>[0]);
+    expect(before("Claude's run on #226 ended without a pull request: it may have asked a question on the issue")).toBe(true);
+    expect(before("#226 is in development by hand (a branch without a pull request): finish it or drop the branch")).toBe(true);
+    expect(before("Claude's run on #16 failed")).toBe(true);
+    expect(before("#16 is not ready: it lacks a priority")).toBe(false);
+    expect(before("the merge of #30 was refused: conflicts")).toBe(false);
   });
 
   it("has Claude update a pull request in conflict once, merges again, then stops if refused again", async () => {
@@ -260,3 +278,93 @@ describe("Running the sprint from its page", () => {
     expect((await post(`/projects/${REPO}/sprint`, { csrf: (await signIn("lead")).csrf, action: "run_start" }, (await signIn("lead")).cookie)).status).toBe(403);
   });
 });
+
+describe("Relaunching Claude on a card the run stopped (la-fabrique#239)", () => {
+  it("offers it to a tech lead, launches Claude on the story and has the run follow it again", async () => {
+    const id = await seedSprint();
+    const stub = sprintRunFor(env, REPO);
+    if (!stub) throw new Error("no SPRINT_RUN binding");
+    const stopped = state([{ ...card(id, [12, 13]), step: "stopped", reason: "Claude's run on #12 ended without a pull request", link: "https://github.com/run/12", runs: 1, relaunch: true } as unknown as ReturnType<typeof card>]);
+    await runInDurableObject(stub, async (_instance, durable) => {
+      await durable.storage.put("run", { ...stopped, status: "paused" });
+    });
+    await grantRole("lead", "tech_lead");
+    const { cookie, csrf } = await signIn("lead");
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(page).toMatch(new RegExp(`id="run-card-${id}".*value="run_relaunch_card".*Relaunch Claude on #12`, "s"));
+    // A tech lead resumes nothing else of the run.
+    expect(page).not.toContain('value="run_resume_card"');
+
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    let dispatched: unknown = null;
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, (options) => {
+      dispatched = JSON.parse(String(options.body));
+      return "";
+    });
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/12/comments` }).reply(201, "{}", JSON_HEADERS);
+    // Another story than the one the card is at: refused without a launch.
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "run_relaunch_card", card: String(id), story: "13" }, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint#sprint-work`);
+    expect(dispatched).toBeNull();
+    const relaunched = await post(`/projects/${REPO}/sprint`, { csrf, action: "run_relaunch_card", card: String(id), story: "12" }, cookie);
+    expect(relaunched.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=launched&story=12#sprint-work`);
+    expect(dispatched).toEqual({ ref: "main", inputs: { issue: "12", par: "lead" } });
+    const after = await stub.state();
+    expect(after?.cards[0]).toMatchObject({ step: "claude", reason: null, runs: 1, relaunch: false });
+    expect((await logActions()).map((entry) => entry.action)).toEqual(expect.arrayContaining(["claude_launched", "sprint_run_story_relaunched"]));
+
+    // A tester cannot.
+    await grantRole("tester", "tester");
+    const tester = await signIn("tester");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: tester.csrf, action: "run_relaunch_card", card: String(id), story: "12" }, tester.cookie)).status).toBe(403);
+  });
+});
+
+describe("Relaunching Claude from a story's row (la-fabrique#239)", () => {
+  it("offers it on a story in development without a pull request, Claude's run over, to a tech lead", async () => {
+    await seedSprint();
+    // #12 has a branch and no pull request: in development, nothing running.
+    const snapshot = (await env.DB.prepare("SELECT data FROM snapshots WHERE repo = ? AND kind = 'stories'").bind(REPO).first<{ data: string }>())?.data ?? "[]";
+    const stories = (JSON.parse(snapshot) as { number: number; branches: string[] }[]).map((one) => (one.number === 12 ? { ...one, branches: ["claude/12-story-12"] } : one));
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(JSON.stringify(stories), REPO).run();
+    await grantRole("lead", "tech_lead");
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github
+      .intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` })
+      .reply(200, JSON.stringify({ workflow_runs: [{ id: 1, status: "completed", conclusion: "success", display_title: "Claude #12", html_url: "https://github.com/run/1", created_at: NOW, updated_at: NOW }] }), JSON_HEADERS);
+    // A Product Engineer relaunches too (la-fabrique#239).
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    const row = page.match(/<li id="story-\d+-12"[\s\S]*?<\/li>/)?.[0] ?? "";
+    expect(row).toContain('name="action" value="relaunch"');
+    expect(row).toContain("Relaunch Claude");
+    // Claude's run is over, and the story has no pull request: said.
+    expect(row).toContain("Claude done: no pull request");
+    // #13 is ready, not in development: nothing to relaunch.
+    expect(page.match(/<li id="story-\d+-13"[\s\S]*?<\/li>/)?.[0] ?? "").not.toContain("Relaunch Claude");
+
+    // Relaunched: the workflow on #12; #13 (ready, not in development) is refused.
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    let dispatched: unknown = null;
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, (options) => {
+      dispatched = JSON.parse(String(options.body));
+      return "";
+    });
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/12/comments` }).reply(201, "{}", JSON_HEADERS);
+    const relaunched = await post(`/projects/${REPO}/sprint`, { csrf, action: "relaunch", story: "12" }, cookie);
+    expect(relaunched.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=launched&story=12`);
+    expect(dispatched).toEqual({ ref: "main", inputs: { issue: "12", par: "pe" } });
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "relaunch", story: "13" }, cookie)).status).toBe(409);
+    // A tester cannot.
+    await grantRole("tester", "tester");
+    const tester = await signIn("tester");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: tester.csrf, action: "relaunch", story: "12" }, tester.cookie)).status).toBe(403);
+  });
+});
+

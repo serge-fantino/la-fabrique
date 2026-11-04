@@ -19,13 +19,13 @@ import { activeSprint, latestSprint, sprintLabel, moveCardInRelease, moveStoryIn
 import { closeSprint, joinSprint, type JoinOutcome, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
 import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWorkflow, startRelease, type ReleaseKind } from "./sprint-release";
 import { loadReleases } from "./roadmap";
-import { canLaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
+import { canLaunchClaude, canRelaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
 import { heldStories } from "./card-lock";
-import { loadPlan as loadRunPlan, newRun, planRun, runRefusal, sprintRunFor } from "./sprint-run";
+import { loadPlan as loadRunPlan, newRun, planRun, relaunchable, runRefusal, sprintRunFor } from "./sprint-run";
 import { runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
-import { cycleRules, isReadyStage, projectRules } from "./lifecycle";
+import { cycleRules, isInDevelopment, isReadyStage, projectRules } from "./lifecycle";
 import {
   addValue,
   archiveCard,
@@ -580,6 +580,26 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=launched&story=${number}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // A story Claude worked on, in development without a pull request:
+    // Claude again, on its branch, by a Product Engineer and above; a card
+    // of the sprint's run stopped there follows it again (la-fabrique#239).
+    if (action === "relaunch") {
+      if (!canRelaunchClaude(viewer.role)) return forbidden(viewer);
+      const number = Number(form.get("story"));
+      const links = await storyCards(env.DB, project.repo);
+      const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
+      if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
+      const story = (await cardStories(env, project, [number])).get(number);
+      if (!story || story.rework || !isInDevelopment(story) || story.pulls.some((pull) => pull.state === "open")) {
+        return showSprint(request, env, viewer, project, `#${number} is not in development without a pull request: nothing to relaunch.`, 409);
+      }
+      const outcome = await launchClaude(env, project, viewer.login, number);
+      if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+      const run = sprintRunFor(env, project.repo);
+      const stopped = run ? (await run.state().catch(() => null))?.cards.find((candidate) => candidate.stories[candidate.at] === number && relaunchable(candidate)) : undefined;
+      if (run && stopped) await run.control(viewer.login, "relaunched", stopped.id);
+      return redirect(`${base}?notice=launched&story=${number}`);
+    }
     // A story back in development after feedbacks from testing: Claude
     // reworks its code with them, by a person's choice (la-fabrique#202).
     if (action === "rework") {
@@ -619,6 +639,21 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const outcome = await mergePull(env, project, viewer.login, pull);
       if (outcome.ok) return redirect(`${base}?notice=merging&pull=${pull}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
+    // A card of the run stopped on Claude's side (la-fabrique#239): Claude
+    // relaunched on its story by a tech lead and above, then followed again.
+    if (action === "run_relaunch_card") {
+      if (!canRelaunchClaude(viewer.role)) return forbidden(viewer);
+      const run = sprintRunFor(env, project.repo);
+      const state = run ? await run.state() : null;
+      const card = Number(form.get("card"));
+      const subject = state?.cards.find((candidate) => candidate.id === card && relaunchable(candidate));
+      const number = subject?.stories[subject.at];
+      if (!run || !state || !subject || number === undefined || number !== Number(form.get("story"))) return redirect(`${base}#sprint-work`);
+      const outcome = await launchClaude(env, project, viewer.login, number);
+      if (!outcome.ok) return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+      await run.control(viewer.login, "relaunched", card);
+      return redirect(`${base}?notice=launched&story=${number}#sprint-work`);
     }
     // The sprint running by itself (la-fabrique#160): a Product Engineer or
     // the super admin, as it merges.
@@ -964,7 +999,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
-      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project)) : "",
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
@@ -991,6 +1026,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,
       claude: {
         canLaunch: canLaunchClaude(viewer.role),
+        canRelaunch: canRelaunchClaude(viewer.role),
         workflow: claudeWorkflow(project),
         cap: claudeCap(project),
         launches,

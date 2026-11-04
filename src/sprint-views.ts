@@ -59,6 +59,8 @@ export interface SprintData {
   // the project's own workflow; null when the project declares none.
   claude: {
     canLaunch: boolean;
+    // Claude again on a story left without a pull request (la-fabrique#239).
+    canRelaunch?: boolean;
     workflow: string | null;
     cap: number;
     launches: Map<number, { by: string; at: string }>;
@@ -79,8 +81,16 @@ export interface SprintData {
   versions?: { newest: string | null; minor: string | null; major: string | null };
 }
 
-// A run's state: queued, working (since when), done, failed; its link.
-function runPill(run: ClaudeRun): string {
+// A run's state: queued, working (since when), done, failed; its link. Done
+// while the story is still in development without a pull request: Claude
+// left no pull request to merge, said as such (la-fabrique#239).
+function runPill(run: ClaudeRun, story?: CardStory): string {
+  const noPull = run.status === "completed" && Boolean(story) && !story?.rework && isInDevelopment(story) && !story?.pulls.some((pull) => pull.state === "open");
+  if (noPull) {
+    return `<a class="pill warn small" href="${escapeHtml(run.url)}" title="Claude's last run (${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC) ${
+      run.conclusion === "success" ? "ended" : run.conclusion === "cancelled" ? "was cancelled" : "failed"
+    } without a pull request: see its comment on the issue, then relaunch it">${run.conclusion === "success" ? "Claude done" : run.conclusion === "cancelled" ? "Claude cancelled" : "Claude failed"}: no pull request</a>`;
+  }
   const [label, tone] =
     run.status !== "completed"
       ? [run.status === "in_progress" ? "Claude working" : "Claude queued", "warn"]
@@ -120,7 +130,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const story = data.stories.get(number);
     const launched = data.claude.launches.get(number);
     const run = data.claude.runs.find((candidate) => candidate.issue === number);
-    const last = `${run ? runPill(run) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
+    const last = `${run ? runPill(run, story) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
     // Claude is launched in order from the implementation card (la-fabrique#180):
     // here, where the story stands for it.
     const busy = data.claude.held.get(number);
@@ -242,13 +252,21 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : ""
         }`
       : "";
+    // In development without a pull request, Claude's last run over (done
+    // without one, failed, or none): Claude relaunched on the story, on its
+    // branch, from its row (la-fabrique#239).
+    const lastRun = data.claude.runs.find((run) => run.issue === number);
+    const relaunch =
+      story && !story.rework && isInDevelopment(story) && !story.pulls.some((pull) => pull.state === "open") && !(lastRun && isRunning(lastRun)) && data.claude.canRelaunch && data.claude.workflow
+        ? ` ${button({ action: "relaunch", story: number }, `Relaunch Claude on #${number}, on its branch: no pull request yet`, "Relaunch Claude", "quiet small claude")}`
+        : "";
     return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
         ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
           <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
             isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
-          }${rework}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
+          }${rework}${relaunch}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
             others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""
           }${readiness(number, controls)}</p>
         </div>

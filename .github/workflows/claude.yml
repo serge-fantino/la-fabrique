@@ -110,8 +110,13 @@ jobs:
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          # The full test suite takes minutes: a command is waited for up to 15 minutes, never moved to the
+          # background, where the run would end without it (la-fabrique#239, #226: "I'll wait for it before committing").
+          BASH_DEFAULT_TIMEOUT_MS: "900000"
+          BASH_MAX_TIMEOUT_MS: "1800000"
         with:
           github_token: ${{ secrets.FABRIQUE_TOKEN }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -121,7 +126,7 @@ jobs:
           claude_args: --max-turns 150 --allowedTools Bash,Read,Edit,Write,Glob,Grep
           prompt: |
             ${{ inputs.pr && format('You bring pull request #{0} of story #{1} up to date ({2}), launched{3} from La Fabrique.', inputs.pr, inputs.issue, github.repository, inputs.par && format(' by @{0}', inputs.par) || '') || format('You work on story #{0} of this repository ({1}), launched{2} from La Fabrique.', inputs.issue, github.repository, inputs.par && format(' by @{0}', inputs.par) || '') }}
-            You are on branch `${{ env.BRANCH }}`${{ !inputs.pr && ', created from main and linked to the issue' || '' }}: work there, never on main.
+            You are on branch `${{ env.BRANCH }}`${{ !inputs.pr && ', linked to the issue (if it already holds commits of an earlier run on this story, build on them)' || '' }}: work there, never on main.
             ${{ inputs.pr && format('main is merged into it; files left in conflict: {0}.', env.CONFLICTS) || '' }}
             1. Read the story with its comments: `gh issue view ${{ inputs.issue }} --comments`${{ inputs.pr && format(', and the pull request with its reviews: `gh pr view {0} --comments`', inputs.pr) || '' }}. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
             2. Follow CLAUDE.md (principles, security, conventions, design).
@@ -130,4 +135,48 @@ jobs:
             5. Release notes: if anything visible changes, this branch has one entry at the top of docs/release-notes.json with `"version": "next"`, today's date and no `heure`, in English, `"stories": [${{ inputs.issue }}]`. Never write a version number or a time: the merge workflow numbers and dates it when it merges, after main's newest.
             6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it (for a rework: each test feedback and how it is addressed), then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}
             7. Comment on the issue: the pull request, what is done, what is left or what made you hesitate.
+            You have one turn: the run ends as soon as you stop, and nothing wakes you up again. Run every command in the foreground and wait for it (the full test suite takes a few minutes), never in the background; commit, push and open the pull request before you finish, even if something is left (say it in the pull request).
             Never push to main; touch neither secrets nor workflows.
+
+      # Claude finished without a change (la-fabrique#239): the branch it was given is empty. Say so on the issue, with
+      # Claude's last words and the run's link; drop the empty branch, so the story is ready again rather than "in
+      # development by hand"; and fail the run, so La Fabrique says why. Work left uncommitted or not pushed is
+      # committed and pushed, and the comment says a pull request is missing. A pull request being updated (`pr`) is never touched.
+      - name: Nothing to merge
+        if: ${{ success() && !inputs.pr }}
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          ISSUE: ${{ inputs.issue }}
+          OUTPUT: ${{ steps.claude.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Work Claude left uncommitted is kept: committed as it is, then pushed below.
+          if [ "$(git branch --show-current)" = "$BRANCH" ] && [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -q -m "Work in progress left uncommitted by Claude's run on #$ISSUE" -m "Run: $RUN_URL" || true
+          fi
+          git fetch -q origin main
+          git fetch -q origin "$BRANCH" || true
+          pushed=$(git rev-list --count origin/main.."origin/$BRANCH" 2>/dev/null || echo 0)
+          local=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+          pull=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          [ -n "$pull" ] && exit 0
+          last=""
+          if [ -n "$OUTPUT" ] && [ -f "$OUTPUT" ]; then
+            last=$(jq -r '[.[] | select(.type == "result")] | last | .result // empty' "$OUTPUT" 2>/dev/null | head -c 3000)
+          fi
+          quote=""
+          [ -n "$last" ] && quote=$'\n\nClaude\'s last words:\n\n'"$(printf '%s\n' "$last" | sed 's/^/> /')"
+          if [ "$pushed" -eq 0 ] && [ "$local" -gt 0 ] && [ "$(git branch --show-current)" = "$BRANCH" ]; then
+            git push origin "HEAD:$BRANCH"
+            pushed=$local
+          fi
+          if [ "$pushed" -gt 0 ]; then
+            gh issue comment "$ISSUE" --body "Claude worked on \`$BRANCH\` but opened no pull request (work left uncommitted is committed as it is): relaunch Claude on this story from La Fabrique to finish it, or open the pull request. Run: $RUN_URL$quote"
+            echo "::error::Claude left commits without a pull request."
+          else
+            gh issue comment "$ISSUE" --body "Claude finished on this story without any change (no commit, no pull request); its empty branch is removed, the story is ready to relaunch from La Fabrique. Run: $RUN_URL$quote"
+            git push origin --delete "$BRANCH" || true
+            echo "::error::Claude finished without any change: nothing to merge."
+          fi
+          exit 1

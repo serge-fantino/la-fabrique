@@ -13,6 +13,59 @@
   },
   {
     "version": "next",
+    "date": "2026-11-04",
+    "titre": "A Product Engineer relaunches Claude; a run without a pull request says so",
+    "changements": [
+      "Relaunch Claude, on a story's row of the sprint and on a card the sprint's run stopped, is open to a Product Engineer, who runs the sprint, as well as a tech lead.",
+      "A story in development whose last Claude run ended without a pull request shows Claude done: no pull request (or failed, cancelled), in amber, instead of Claude done."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
+    "titre": "Relaunch Claude from a story's row; its work is never lost",
+    "changements": [
+      "A story of the sprint in development without a pull request, Claude's last run over, offers Relaunch Claude on its row (tech lead and above): Claude works on it again, on its branch; a card of the sprint's run stopped there follows it again.",
+      "When Claude ends a run without a pull request, the work it left uncommitted is committed as it is and pushed to the story's branch, so a relaunch builds on it."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
+    "titre": "The (i) says when the version online was deployed",
+    "changements": [
+      "While changes wait for the sprint's release (\"0.82 + 7 changes\"), the (i) next to the name says when they were deployed, then when the release they follow came out, instead of only that release's date."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
+    "titre": "Relaunch Claude, also on a card stopped before",
+    "changements": [
+      "A card the sprint's run stopped on Claude's side before Relaunch Claude existed now offers it too, read from why it stopped."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
+    "titre": "Claude finished without a change: said, and relaunched from the sprint",
+    "changements": [
+      "When Claude ends its run on a story without any change, the workflow says so on the issue with Claude's last words and the run's link, removes the empty branch so the story is ready again, and fails the run; commits left without a pull request are pushed and the comment asks for one.",
+      "A card the sprint's run stopped on Claude's side (a run failed or ended without a pull request, a branch left without one) offers Relaunch Claude on #n to a tech lead and above: Claude works on the story again, on its branch if it has one, and the run follows it; logged."
+    ],
+    "stories": [239],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-03",
     "titre": "Validate a feature, from Refinement or its page",
     "changements": [
