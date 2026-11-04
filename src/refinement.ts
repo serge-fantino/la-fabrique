@@ -28,9 +28,14 @@ export type NextStep =
 // Where a feature stands, from its spec and its stories.
 export function nextStep(card: Pick<Card, "title" | "body" | "data">, stories: number[], known: Map<number, CardStory>): NextStep {
   const spec = card.data.spec;
-  if (!spec) return { step: "specify" };
+  if (!spec && !stories.length) return { step: "specify" };
+  if (!spec) return stepOfStories(card, stories, known);
   if (spec.questions.length) return { step: "answer", questions: spec.questions.length };
   if (!stories.length) return { step: "refine" };
+  return stepOfStories(card, stories, known);
+}
+
+function stepOfStories(card: Pick<Card, "title" | "body" | "data">, stories: number[], known: Map<number, CardStory>): NextStep {
   const lacking = stories.filter((number) => known.get(number)?.stage === "backlog");
   if (lacking.length) return { step: "validate", stories: lacking };
   // The last step (la-fabrique#232): a person says the feature is right.
@@ -200,8 +205,8 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
   const step = (card: Card, next: NextStep) => {
     const url = cardUrl(project.repo, card.id);
     if (active(card) && (next.step === "specify" || next.step === "refine")) return `<strong>Next:</strong> ${next.step === "specify" ? "no spec" : "spec complete, no stories"}. <span class="muted small">Claude has it.</span>`;
-    const claude = (action: string, text: string) =>
-      data.canClaude ? form(url, { action }, text, `${text}: ${card.title}`) : `<a class="button quiet small" href="${escapeHtml(url)}">${text}</a>`;
+    const claude = (_action: string, text: string) =>
+      data.canClaude ? form(`${base}/refinement#card-${card.id}`, { action: "refine_launch", card: card.id }, text, `${text}: ${card.title}`) : `<a class="button quiet small" href="${escapeHtml(url)}">${text}</a>`;
     switch (next.step) {
       case "specify":
         return `<strong>Next:</strong> no spec. ${claude("spec_draft", "Specify")}`;
@@ -312,8 +317,10 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     const next = nextStep(card, numbers, data.stories);
     const sortable = data.canWrite && total > 1;
     return `<article class="card refinement-card" id="card-${card.id}"${sortable ? ` data-sort-id="${card.id}"` : ""}>
+      <div class="refinement-head">
       ${sortable ? `<button type="button" class="sort-handle" data-sort-handle aria-label="Move ${cardRef(card.id)}: drag it, or use the up and down arrow keys" title="Drag to reorder">⠿</button>` : ""}
       <h3>${tickable(card, next) ? `<input type="checkbox" form="refine-launch" name="card" value="${card.id}" data-refine-tick aria-label="Select ${cardRef(card.id)} for Claude's next step" /> ` : ""}<a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
+      </div>
       <p>${priority(card)} ${order(card, index, total)}</p>
       <p class="muted">${escapeHtml(synopsisOf(card))}</p>
       ${jobState(card)}
