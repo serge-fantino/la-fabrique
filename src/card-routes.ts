@@ -9,6 +9,7 @@ import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, ca
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { validateFeature, validationOf } from "./feature-validation";
+import { criteriaOf, criteriaRubrique, criteriaText, moveCriterion } from "./story-editor";
 import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
 import { isNice, storyCards } from "./card-groups";
@@ -945,8 +946,26 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
   const [jobs, left] = await Promise.all([projectJobs(env.DB, project.repo), canWriteCards(viewer) ? callsLeft(env, viewer.role, viewer.login) : null]);
   const notice = params.get("notice");
+  const rubriques = specRubriques(project);
+  const words = wordingFor(project);
+  const editors = new Map<number, { split: CardSplit; rubriques: Rubrique[]; kept: Set<number>; bodies: string[] }>();
+  for (const card of features) {
+    const split = card.data.split;
+    if (!split || split.review || !split.stories.length || (links.order.get(card.id) ?? []).length) continue;
+    const kept = split.stories.map((_story, index) => index);
+    const permalink = new URL(cardPermalink(card.id, card.rev), request.url).toString();
+    editors.set(card.id, {
+      split,
+      rubriques,
+      kept: new Set(kept),
+      bodies: split.stories.map((story, index) =>
+        issueBody({ title: story.title, answers: story.answers }, rubriques, viewer.login, words, words.fromCard(cardRef(card.id), permalink, card.rev, kept.length > 1 ? { index: index + 1, total: kept.length } : undefined)),
+      ),
+    });
+  }
   return html(
     refinementPage(viewer, view, {
+      editors,
       jobs,
       calls: left,
       features,
@@ -1105,8 +1124,10 @@ function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]):
   const stories = split.stories.map((story, index) => {
     if (form.get(`keep_${index}`) === "1") kept.push(index);
     const title = String(form.get(`title_${index}`) ?? story.title).replace(/\s+/g, " ").trim().slice(0, 200);
+    const criteria = criteriaRubrique(rubriques)?.cle;
+    const lines = form.getAll(`c_${index}`).map(String);
     const answers = Object.fromEntries(
-      rubriques.map((rubrique) => [rubrique.cle, String(form.get(`s_${index}_${rubrique.cle}`) ?? story.answers[rubrique.cle] ?? "").replace(/\r\n/g, "\n").trim().slice(0, 20_000)]),
+      rubriques.map((rubrique) => [rubrique.cle, rubrique.cle === criteria && form.get(`rows_${index}`) === "1" ? criteriaText(lines).slice(0, 20_000) : String(form.get(`s_${index}_${rubrique.cle}`) ?? story.answers[rubrique.cle] ?? "").replace(/\r\n/g, "\n").trim().slice(0, 20_000)]),
     );
     return { title, answers, nice: form.get(`nice_${index}`) === "1" };
   });
@@ -1139,7 +1160,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const originOf = (position: number, kept: number, rev: number) =>
     words.fromCard(cardRef(card.id), permalink(rev), rev, made + kept > 1 ? { index: made + position, total: made + kept } : undefined);
   const commentOf = (comment: string, rev: number) => `${comment}\n\n${words.storyReview(cardRef(card.id), permalink(rev), rev, viewer.login)}`;
-  const page = async (shown: CardSplit, data: { kept?: number[]; commented?: number[]; errors?: Record<number, string>; error?: string; status?: number } = {}) => {
+  const page = async (shown: CardSplit, data: { kept?: number[]; commented?: number[]; errors?: Record<number, string>; error?: string; status?: number; blank?: number } = {}) => {
     const { view, cookies } = await projectView(request, env, project, viewer);
     const kept = data.kept ?? shown.stories.map((_story, index) => index);
     const commented = data.commented ?? (shown.review ?? []).filter((story) => story.verdict === "change").map((story) => story.number);
@@ -1157,6 +1178,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
         comments: new Map((shown.review ?? []).map((story) => [story.number, commentOf(story.comment, card.rev)])),
         outdated: card.data.spec?.at !== shown.specAt,
         errors: data.errors ?? {},
+        blank: data.blank,
         error: data.error,
       }),
       { cookies, status: data.status ?? 200 },
@@ -1182,7 +1204,19 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     await saveSplit(env.DB, card, viewer.login, edited.split);
     return redirect(`${url}/stories?notice=saved`);
   }
-  if (action !== "create") return redirect(`${url}/stories`);
+  // A move of a criterion, or a change of what is kept: the edits come
+  // back as they are, the preview following them; nothing is saved.
+  if (action.startsWith("crit_")) {
+    const lists = edited.split.stories.map((story) => criteriaOf(story.answers[criteriaRubrique(rubriques)?.cle ?? ""] ?? ""));
+    const moved = moveCriterion(action, lists);
+    const key = criteriaRubrique(rubriques)?.cle;
+    if (moved && key) {
+      const story = edited.split.stories[moved.index];
+      if (story) story.answers[key] = criteriaText(moved.list);
+    }
+    return page(edited.split, { kept: edited.kept, commented: edited.commented, ...(moved?.blank ? { blank: moved.index } : {}) });
+  }
+  if (action !== "create") return page(edited.split, { kept: edited.kept, commented: edited.commented });
 
   // Every kept story needs a title and the project's required sections;
   // every comment sent, a text.
