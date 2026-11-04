@@ -106,9 +106,21 @@ export interface StoryReview {
   comment: string;
 }
 
+// Gherkin test cases Claude wrote for each story of the card (la-fabrique#230),
+// kept here and not on GitHub; the person edits them. `number` is the story's
+// issue when it exists, else null (a story still only proposed, by title).
+export interface CardTests {
+  stories: { number: number | null; title: string; gherkin: string }[];
+  note?: string;
+  specAt: string;
+  at: string;
+  edited?: boolean;
+}
+
 export interface CardData {
   spec?: CardSpec;
   split?: CardSplit;
+  tests?: CardTests;
   // Who validated the feature, and what it was then (src/feature-validation.ts).
   validation?: import("./feature-validation").FeatureValidation;
 }
@@ -484,6 +496,24 @@ export async function saveSplit(db: D1Database, card: Card, author: string, spli
           }),
         ]
       : []),
+  ]);
+}
+
+// Test cases written (callId set) or edited by hand: a new version of the card.
+export async function saveTests(db: D1Database, card: Card, author: string, tests: CardTests, callId: number | null = null): Promise<void> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data, tests };
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    activityStatement(db, {
+      actor: author,
+      action: callId ? "card_tests_written" : "card_tests_edited",
+      repo: card.repo,
+      details: { card: card.id, title: card.title, stories: tests.stories.length, ...(callId ? { call: callId } : {}) },
+    }),
   ]);
 }
 

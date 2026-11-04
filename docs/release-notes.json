@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Claude writes test cases for each story",
+    "changements": [
+      "A feature's card offers Write test cases with Claude, and Refinement Write test cases for all features: a Claude job per feature, counted in the daily quota and the budget.",
+      "Claude writes Gherkin scenarios for each story from its criteria and the spec; they are kept in La Fabrique (not on GitHub), shown in the feature's card, and editable there.",
+      "The preparation document, at level 3, shows each story's test cases."
+    ],
+    "stories": [230],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Share the preparation document by a secret link",
     "changements": [
       "Refinement offers Create a share link: pick the level of detail and the expiry (1, 7 or 30 days), and copy the secret link, shown once.",

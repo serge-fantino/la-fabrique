@@ -26,7 +26,7 @@ import {
   type CardLink,
   type CardRevision,
   type CardSpec,
-  type CardSplit,
+  type CardSplit, type CardTests,
   type StoryReview,
   type CardTags,
   type FreeDimension,
@@ -398,10 +398,28 @@ export function renderCardText(body: string, repo: string, imageUrl?: (src: stri
   return html.replace(TOKEN, (_all, index: string) => pieces[Number(index)] ?? "");
 }
 
+// The test cases Claude wrote for the feature's stories, each editable.
+function testsHtml(viewer: Viewer, url: string, tests: CardTests | undefined, canEdit: boolean): string {
+  if (!tests) return "";
+  const body = tests.stories
+    .map((story, i) => {
+      const label = `${story.number ? `#${story.number} ` : ""}${story.title}`;
+      return canEdit
+        ? `<div class="field"><label for="gherkin_${i}">${escapeHtml(label)}</label><textarea id="gherkin_${i}" name="gherkin_${i}" class="mono" rows="${Math.min(24, Math.max(6, story.gherkin.split("\n").length + 1))}" maxlength="20000">${escapeHtml(story.gherkin)}</textarea></div>`
+        : `<h3>${escapeHtml(label)}</h3><pre>${escapeHtml(story.gherkin)}</pre>`;
+    })
+    .join("");
+  const head = `<h2 id="tests">Test cases</h2><p class="muted small">Written ${tests.edited ? "and edited " : ""}by Claude on <span class="mono">${escapeHtml(tests.at.slice(0, 10))}</span>, kept in La Fabrique, not on GitHub.${tests.note ? ` ${escapeHtml(tests.note)}` : ""}</p>`;
+  return canEdit
+    ? `<section class="card-tests">${head}<form method="post" action="${escapeHtml(url)}#tests" data-busy="Saving…">${csrfField(viewer)}${body}<div class="card-actions"><button type="submit" class="button" name="action" value="tests_save">Save the test cases</button></div></form></section>`
+    : `<section class="card-tests">${head}${body}</section>`;
+}
+
 const PURPOSES: Record<string, string> = {
   spec_draft: "Spec written",
   spec_revise: "Spec revised",
   spec_split: "Stories proposed",
+  spec_tests: "Test cases written",
   key_check: "Key checked",
 };
 
@@ -788,6 +806,20 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
             </div>`,
           )
         : "";
+    const tests =
+      usable && spec && (made || data.split)
+        ? panel(
+            "spec_tests",
+            data.card.data.tests ? "Rewrite the test cases with Claude" : "Write test cases with Claude",
+            false,
+            false,
+            `<p class="help">Claude writes Gherkin scenarios for each story of the feature, from its criteria and the spec. They are kept here, not on GitHub; you can edit them, and they go in the preparation document. It counts as one Claude call.</p>
+            <div class="field">
+              <label for="tests">Anything about the test cases? <span class="muted">(optional)</span></label>
+              <textarea id="tests" name="instruction" rows="2" maxlength="4000"></textarea>
+            </div>`,
+          )
+        : "";
     const change =
       usable && spec
         ? panel(
@@ -805,7 +837,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     const story = spec && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
     work = `${data.split ? proposalHtml(url, data.split, spec) : ""}
       <div class="spec-actions">
-        ${draft}${split}${story}${change}
+        ${draft}${split}${tests}${story}${change}
         <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
       ${
@@ -871,6 +903,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
               .join("")}</ul>`
           : ""
       }
+      ${testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
       ${validationHtml(viewer, url, data)}
       ${
         data.named?.length && !shown

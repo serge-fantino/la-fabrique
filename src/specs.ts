@@ -1,6 +1,6 @@
 import { cardRef } from "./card-views";
 import { cardStories, type CardStory } from "./card-stories";
-import { cardLinks, DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type StoryReview } from "./cards";
+import { cardLinks, DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type CardTests, type StoryReview } from "./cards";
 import { readMarkdown } from "./docs";
 import type { Env } from "./env";
 import { STAGES } from "./lifecycle";
@@ -382,6 +382,90 @@ Split this specification into stories. Each story can be built, tested on int an
   return {
     ok: true,
     split: { stories, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: spec.at, at: new Date().toISOString() },
+    callId: outcome.callId,
+    costMicros: outcome.costMicros,
+  };
+}
+
+interface TestsAnswer {
+  stories: { number: number; title: string; gherkin: string }[];
+  note: string;
+}
+
+const TESTS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["stories", "note"],
+  properties: {
+    stories: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["number", "title", "gherkin"],
+        properties: { number: { type: "integer" }, title: { type: "string" }, gherkin: { type: "string" } },
+      },
+    },
+    note: { type: "string" },
+  },
+};
+
+export type TestsOutcome =
+  | { ok: true; tests: CardTests; callId: number; costMicros: number | null }
+  | { ok: false; message: string; retryable: boolean };
+
+// Claude writes Gherkin scenarios for each story of a feature, from its
+// criteria and the spec (la-fabrique#230). The stories are those made on
+// GitHub (`number` > 0) or, before any exists, the ones proposed (number 0).
+export async function writeTests(
+  env: Env,
+  project: Project,
+  card: Card,
+  login: string,
+  instruction: string,
+  watch: { read?: (reading: SpecReading) => void; progress?: (progress: Progress) => void } = {},
+): Promise<TestsOutcome> {
+  const spec = card.data.spec;
+  if (!spec) return { ok: false, message: "There is no spec to write test cases from.", retryable: false };
+  const rubriques = specRubriques(project);
+  const numbers = (await cardLinks(env.DB, card.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
+  const [document, read, made] = await Promise.all([projectDocument(env, project), cardContext(env, project, card), cardStories(env, project, numbers)]);
+  const existing = [...made.values()];
+  const proposed = existing.length ? [] : (card.data.split?.stories ?? []);
+  if (!existing.length && !proposed.length) return { ok: false, message: "The feature has no story yet: refine it into stories first.", retryable: false };
+  watch.read?.({ document: document ? `${document.path} (${Math.round(document.text.length / 1000)}k characters)` : null, cards: read.cards, stories: read.stories });
+  const list = existing.length
+    ? existing.map(storyForClaude).join("\n\n")
+    : proposed
+        .map((story) => `#0 “${story.title}”\n${rubriques.map((rubrique) => (story.answers[rubrique.cle]?.trim() ? `  ${rubrique.titre}: ${story.answers[rubrique.cle]?.trim().replace(/\n/g, "\n    ")}` : "")).filter(Boolean).join("\n")}`)
+        .join("\n\n");
+  const ask = `${read.text}
+The specification:
+<spec>
+${currentSpec(spec, rubriques)}
+</spec>
+
+The stories of this feature${existing.length ? ", on GitHub" : ", only proposed (number 0), not made yet"}:
+<stories>
+${list}
+</stories>
+${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+Write the test cases of each story, in Gherkin (Feature, then Scenario blocks with Given / When / Then), in the language of the specification. One entry per story above, with its "number" (0 for a proposed story) and "title" as given. At least one scenario per acceptance criterion of the story, plus the edge cases worth testing; short, concrete, checkable by a tester. "note": one sentence on what the scenarios cover.`;
+  const outcome: CallOutcome<TestsAnswer> = await askJson<TestsAnswer>(
+    env,
+    { login, repo: project.repo, cardId: card.id, purpose: "spec_tests" },
+    { system: systemPrompt(project, rubriques, document), user: ask, schema: TESTS_SCHEMA, ...(watch.progress ? { progress: watch.progress } : {}) },
+  );
+  if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
+  const said = Array.isArray(outcome.value.stories) ? outcome.value.stories : [];
+  const stories: CardTests["stories"] = (existing.length ? existing.map((s) => ({ number: s.number as number | null, title: s.title })) : proposed.map((s) => ({ number: null, title: s.title }))).map((story) => {
+    const entry = said.find((candidate) => (story.number ? Number(candidate.number) === story.number : String(candidate.title ?? "").trim() === story.title));
+    return { number: story.number, title: story.title, gherkin: String(entry?.gherkin ?? "").trim().slice(0, 20000) };
+  });
+  if (!stories.some((story) => story.gherkin)) return { ok: false, message: "Claude wrote no test case. Try again.", retryable: false };
+  return {
+    ok: true,
+    tests: { stories, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: spec.at, at: new Date().toISOString() },
     callId: outcome.callId,
     costMicros: outcome.costMicros,
   };

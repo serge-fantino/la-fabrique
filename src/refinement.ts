@@ -338,6 +338,13 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
           <p><button type="submit" class="button claude"${calls?.reason ? " disabled data-reason" : ""}>Launch the next step</button></p>
         </form>`
       : "";
+  const writable = data.canClaude && data.features.some((card) => card.data.spec && ((data.links.order.get(card.id) ?? []).length || card.data.split?.stories.length));
+  const testsForm = writable
+    ? `<form method="post" action="${escapeHtml(base)}/refinement" class="card refine-tests" data-busy="Launching…">${csrfField(viewer)}${hidden({ action: "tests_launch", all: "1" })}
+          <p><strong>Test cases</strong>: Claude writes Gherkin scenarios for each story of every feature that has a spec and stories (a job per feature, one call each). They show in each feature's card and in the preparation document (level 3).</p>
+          <p><button type="submit" class="button claude">Write test cases for all features</button></p>
+        </form>`
+    : "";
   const apart = data.others.length
     ? `<h2>Ideas and questions</h2>
       <ul class="plain">${data.others
@@ -354,6 +361,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       <p class="muted">The features of <a href="${escapeHtml(base)}/board?by=release">Next release</a>, in priority order, and what each needs before the <a href="${escapeHtml(base)}/sprint">sprint</a>. Nothing is read from GitHub here: the stories are as La Fabrique last saw them.</p>
       ${summary}
       ${launch}
+      ${testsForm}
       ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
       ${apart}`,
     viewer,

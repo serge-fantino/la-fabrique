@@ -145,6 +145,12 @@ export function buildDoc(input: DocInput): Doc {
           if (story?.criteria.length || scenarios.length) blocks.push({ t: "muted", text: "Test cases" });
           for (const criterion of story?.criteria ?? []) blocks.push({ t: "li", text: `[${criterion.done ? "x" : " "}] ${criterion.text}` });
           for (const scenario of scenarios) blocks.push({ t: "pre", text: scenarioText(scenario) });
+          // The test cases Claude wrote for this story (la-fabrique#230).
+          const written = card.data.tests?.stories.find((t) => (t.number ? t.number === number : t.title === story?.title))?.gherkin;
+          if (written) {
+            if (!story?.criteria.length && !scenarios.length) blocks.push({ t: "muted", text: "Test cases" });
+            blocks.push({ t: "pre", text: written });
+          }
         }
       }
     }
