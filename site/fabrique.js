@@ -420,7 +420,15 @@
         const fresh = new DOMParser().parseFromString(await response.text(), "text/html");
         const article = document.getElementById(`card-${card}`);
         const next = fresh.getElementById(`card-${card}`);
-        if (article && next) article.innerHTML = next.innerHTML;
+        if (article && next) {
+          // What is being typed in this card stays.
+          const typed = [...article.querySelectorAll("textarea[data-keep]")].map((field) => [field.id, field.value]);
+          article.innerHTML = next.innerHTML;
+          for (const [id, value] of typed) {
+            const field = value ? document.getElementById(id) : null;
+            if (field) field.value = value;
+          }
+        }
         for (const id of ["release-progress", "refine-launch"]) {
           const now = document.getElementById(id);
           const later = fresh.getElementById(id);

@@ -900,6 +900,33 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       if (!queued.ok) return redirect(`${base}?failure=${encodeURIComponent(queued.message)}#card-${id}`);
       return redirect(`${base}?notice=launched&n=1#card-${id}`);
     }
+    // Claude's questions answered in the card (la-fabrique#227), as on its page.
+    if (action === "spec_answer" || action === "spec_enough") {
+      const id = Number(form.get("card"));
+      const found = Number.isInteger(id) ? await findCard(env.DB, project.repo, id) : null;
+      if (!found || found.archivedAt) return redirect(base);
+      const here = `#card-${id}`;
+      if (action === "spec_enough") {
+        if (!found.data.spec || isActive(await latestJob(env.DB, found.id))) return redirect(`${base}${here}`);
+        await saveSpec(env.DB, found, viewer.login, closeQuestions(found.data.spec));
+        await advanceStatus(env.DB, project.repo, found.id, viewer.login, "to_validate", "questions closed");
+        return redirect(`${base}?notice=enough${here}`);
+      }
+      const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+      const answers: Answer[] = [];
+      for (let index = 0; index < 10; index++) {
+        const question = String(form.get(`question_${index}`) ?? "").trim().slice(0, 1000);
+        const answer = String(form.get(`answer_${index}`) ?? "").trim().slice(0, 2000);
+        if (question && answer) answers.push({ question, answer });
+      }
+      if (!answers.length && !instruction) return redirect(`${base}?failure=${encodeURIComponent("Answer at least one of Claude's questions.")}${here}`);
+      const allowed = await allowance(env, viewer.role, viewer.login);
+      if (!allowed.ok) return redirect(`${base}?failure=${encodeURIComponent(allowed.reason)}${here}`);
+      const queued = await enqueue(env, { repo: project.repo, cardId: found.id, kind: "spec_answer", request: { instruction, answers }, login: viewer.login });
+      if (!queued.ok) return redirect(`${base}?failure=${encodeURIComponent(queued.message)}${here}`);
+      await advanceStatus(env.DB, project.repo, found.id, viewer.login, "shaping", "Claude asked");
+      return redirect(`${base}?notice=launched&n=1${here}`);
+    }
     if (action === "story_ready") {
       const story = Number(form.get("story"));
       const links = await storyCards(env.DB, project.repo);
@@ -931,7 +958,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       canClaude: canWriteCards(viewer),
       priorities: cycleRules(project.check?.config).priorities,
       sprint: running ? { label: sprintLabel(running) } : null,
-      notice: notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      notice: notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },

@@ -77,8 +77,8 @@ describe("The Refinement tab", () => {
     expect(page.indexOf("First")).toBeLessThan(page.indexOf("Second"));
     expect(page).toContain("Body of the card");
     expect(page).toContain(">Specify</button>");
-    expect(page).toContain("Answer (2)");
-    expect(page).toContain(">Refine</button>");
+    expect(page).toContain("Claude asks");
+    expect(page).toContain(">Then refine</button>");
     expect(page).toContain(">Validate</a>");
     expect(page).toContain("Not ready (not labelled ready)");
     expect(page).toContain('aria-label="Mark #21 ready">Mark ready</button>');
@@ -205,5 +205,38 @@ describe("Validating a feature", () => {
     expect(page).toContain("its text changed");
     expect(page).toContain("NO-GO");
     expect(page).toContain("to validate again: its text changed");
+  });
+});
+
+describe("Claude's questions in the Refinement card (la-fabrique#227)", () => {
+  it("shows each card's questions with fields, queues the answers, closes the questions", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(CONFIG)),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', '[]', '2000-01-01T00:00:00.000Z')").bind(REPO),
+    ]);
+    const a = await card("Alpha", 1, { spec: { answers: { a: "x" }, questions: ["Who?", "When?"], source: "claude" } });
+    const b = await card("Beta", 2, { spec: { answers: { a: "x" }, questions: ["Why?"], source: "claude" } });
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    const page = await (await get(`/projects/${REPO}/refinement`, cookie)).text();
+    expect(page).toContain(`id="answer-${a}-1"`);
+    expect(page).toContain(`id="answer-${b}-0"`);
+    expect(page).toContain("Enough questions");
+
+    const sent = await post(`/projects/${REPO}/refinement`, { csrf, action: "spec_answer", card: String(a), question_0: "Who?", answer_0: "Cooks" }, cookie);
+    expect(sent.headers.get("location")).toContain("notice=launched");
+    const job = await env.DB.prepare("SELECT kind, request FROM claude_jobs WHERE card_id = ?").bind(a).first<{ kind: string; request: string }>();
+    expect(job?.kind).toBe("spec_answer");
+    expect(job?.request).toContain("Cooks");
+
+    const empty = await post(`/projects/${REPO}/refinement`, { csrf, action: "spec_answer", card: String(b) }, cookie);
+    expect(empty.headers.get("location")).toContain("failure=");
+
+    const closed = await post(`/projects/${REPO}/refinement`, { csrf, action: "spec_enough", card: String(b) }, cookie);
+    expect(closed.headers.get("location")).toContain("notice=enough");
+    const row = await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(b).first<{ data: string }>();
+    expect(JSON.parse(row!.data).spec.questions).toEqual([]);
+    expect(JSON.parse(row!.data).spec.closed).toBe(true);
   });
 });
