@@ -241,6 +241,18 @@
     visit(url.href, true);
   });
 
+  // A text area that grows with its text.
+  const grow = (field) => {
+    field.style.height = "auto";
+    field.style.height = field.scrollHeight + 2 + "px";
+  };
+  const growAll = () => document.querySelectorAll("textarea[data-grow]").forEach(grow);
+  document.addEventListener("input", (event) => {
+    if (event.target instanceof HTMLTextAreaElement && event.target.hasAttribute("data-grow")) grow(event.target);
+  });
+  growAll();
+  window.addEventListener("load", growAll);
+
   // A select that sends its form when changed (the button is for pages
   // without this script).
   document.addEventListener("change", (event) => {
@@ -292,6 +304,8 @@
   document.addEventListener("submit", (event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-busy") || event.defaultPrevented) return;
+    // A button that only edits the page (a criterion moved) is not a send.
+    if (event.submitter instanceof HTMLElement && event.submitter.hasAttribute("data-plain")) return;
     if (form.dataset.sent) {
       event.preventDefault();
       return;

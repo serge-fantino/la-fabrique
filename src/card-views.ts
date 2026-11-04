@@ -38,6 +38,7 @@ import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shipped
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { renderMarkdown } from "./markdown";
+import { EDITOR_DEFAULT_BUTTON, storyBlocks } from "./story-editor";
 import type { Rubrique } from "./requests";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
@@ -1080,41 +1081,14 @@ export function splitPage(
     comments: Map<number, string>;
     outdated: boolean;
     errors: Record<number, string>;
+    // A blank criterion to fill in, for this story.
+    blank?: number | undefined;
     error?: string | undefined;
   },
 ): string {
   const { card, split } = data;
   const url = cardUrl(project.repo, card.id);
-  const stories = split.stories
-    .map((story, index) => {
-      const fields = data.rubriques
-        .map(
-          (rubrique) => `<div class="field">
-              <label for="s_${index}_${rubrique.cle}">${escapeHtml(rubrique.titre)}${rubrique.obligatoire ? ` <span class="muted">(required)</span>` : ""}</label>
-              <textarea id="s_${index}_${rubrique.cle}" name="s_${index}_${rubrique.cle}" rows="4">${escapeHtml(story.answers[rubrique.cle] ?? "")}</textarea>
-            </div>`,
-        )
-        .join("");
-      return `<fieldset class="split-story${data.errors[index] ? " invalid" : ""}">
-          <legend class="visually-hidden">Story ${index + 1}</legend>
-          <label class="check split-keep"><input type="checkbox" name="keep_${index}" value="1"${data.kept.has(index) ? " checked" : ""} /> Create this story</label>
-          <label class="check split-keep"><input type="checkbox" name="nice_${index}" value="1"${story.nice ? " checked" : ""} /> Nice to have <span class="muted small">(its priority one level below the card's)</span></label>
-          ${data.errors[index] ? `<p class="notice error" role="alert">${escapeHtml(data.errors[index] ?? "")}</p>` : ""}
-          <div class="field">
-            <label for="title_${index}">Title</label>
-            <input id="title_${index}" name="title_${index}" maxlength="200" value="${escapeHtml(story.title)}" />
-          </div>
-          <details${data.errors[index] ? " open" : ""}>
-            <summary>Its sections</summary>
-            ${fields}
-          </details>
-          <details>
-            <summary>What GitHub will receive</summary>
-            <article class="markdown story-preview">${renderCardText(data.bodies[index] ?? "", project.repo)}</article>
-          </details>
-        </fieldset>`;
-    })
-    .join("");
+  const stories = storyBlocks({ repo: project.repo, split, rubriques: data.rubriques, kept: data.kept, bodies: data.bodies, errors: data.errors, blank: data.blank });
   const review = split.review;
   const reviewed = (review ?? [])
     .map((story) =>
@@ -1148,7 +1122,7 @@ export function splitPage(
       ${notice(data.error, "error")}
       ${data.outdated ? `<p class="notice error">The spec changed since Claude proposed this.</p>` : ""}
       ${intro}
-      <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}
+      <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
         ${review ? `<h2>The stories already made</h2>${reviewed}${split.stories.length ? `<h2>New stories</h2>` : ""}` : ""}
         ${stories}
         <div class="card-actions">
