@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Download the preparation document of the next release",
+    "changements": [
+      "Refinement offers Download the preparation document, at the level of detail you choose (features and specs; plus stories; plus test cases), in HTML (one self-contained file) or PDF (made by the server, a feature per page, pages numbered).",
+      "The document opens with La Fabrique's logo, the project's name and description, the version being prepared, the latest released, the date and who generated it, then the summary: the features in priority order with status and stories, and GO or NO-GO.",
+      "Each download is logged with its level and format; nothing is published."
+    ],
+    "stories": [229],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "A Product Engineer relaunches Claude; a run without a pull request says so",
     "changements": [
       "Relaunch Claude, on a story's row of the sprint and on a card the sprint's run stopped, is open to a Product Engineer, who runs the sprint, as well as a tech lead.",

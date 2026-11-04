@@ -207,3 +207,60 @@ describe("Validating a feature", () => {
     expect(page).toContain("to validate again: its text changed");
   });
 });
+
+describe("The preparation document", () => {
+  it("is built at each level, as HTML and as a numbered PDF, and logged", async () => {
+    const { buildDoc, renderHtml, renderPdf, readLevel, fileName } = await import("../src/preparation");
+    const spec = { answers: { objectif: "Sell more\n- fast\n- cheap ünï €" }, questions: [], source: "person" as const, at: "2026-01-01" };
+    const feature = (id: number, title: string) => ({ id, title, body: "b", data: { spec }, status: "validated", progress: null, priority: "high", kind: "feature" }) as never;
+    const links = { order: new Map([[1, [7]]]), nice: new Map() } as never;
+    const stories = new Map([[7, { number: 7, title: "Story seven", stage: "ready", closed: false, criteria: [{ text: "It works", done: true }], priority: null, missing: [], pulls: [] }]]) as never;
+    const input = (level: 1 | 2 | 3) => ({
+      level, projectName: "Widget", description: "Makes widgets", preparing: "1.5", releases: [{ version: "1.4", title: null, state: "shipped" }, { version: "1.3", title: null, state: "shipped" }] as never,
+      by: "pe", now: new Date("2026-11-04T10:00:00Z"), features: [feature(1, "First"), feature(2, "Second")], links, stories,
+      rubriques: [{ cle: "objectif", titre: "Goal" }] as never, recorded: new Map([[7, [{ index: 0, text: "It works", steps: [] }]]]), sections: () => null,
+    });
+    const one = renderHtml(buildDoc(input(1)));
+    expect(one).toContain("Widget");
+    expect(one).toContain("Makes widgets");
+    expect(one).toContain("1.5");
+    expect(one).toContain("<svg");
+    expect(one).toContain("NO-GO");
+    expect(one).toContain("Goal");
+    expect(one).toContain("<li>fast</li>");
+    expect(one).not.toContain("Story seven");
+    expect(one).not.toMatch(/<script|https?:\/\/(?!www\.w3\.org)/);
+    expect(buildDoc(input(1)).latest).toBe("1.4");
+    expect(renderHtml(buildDoc(input(2)))).toContain("It works");
+    expect(renderHtml(buildDoc(input(2)))).not.toContain("Test cases");
+    expect(renderHtml(buildDoc(input(3)))).toContain("Scenario: It works");
+    expect(readLevel("9")).toBe(1);
+    expect(fileName(buildDoc(input(2)), "acme/widget", "pdf")).toBe("preparation-widget-1.5-level2.pdf");
+    const pdf = await renderPdf(buildDoc(input(3)));
+    const text = new TextDecoder("latin1").decode(pdf);
+    expect(text.startsWith("%PDF-")).toBe(true);
+    // cover, summary, one page per feature
+    const { PDFDocument } = await import("pdf-lib");
+    expect((await PDFDocument.load(pdf)).getPageCount()).toBe(4);
+  });
+
+  it("downloads from the Refinement tab and logs the level and format", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(CONFIG)),
+    ]);
+    await card("Alpha", 1, { spec: { answers: { a: "x" }, questions: [], source: "person", at: "2026-01-01" } });
+    await grantRole("pe", "product_engineer");
+    const { cookie } = await signIn("pe");
+    const pdf = await get(`/projects/${REPO}/refinement/preparation?level=3&format=pdf`, cookie);
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    expect(pdf.headers.get("content-disposition")).toContain("attachment");
+    expect(new TextDecoder().decode((await pdf.arrayBuffer()).slice(0, 5))).toBe("%PDF-");
+    const page = await get(`/projects/${REPO}/refinement/preparation?level=1&format=html`, cookie);
+    expect(page.headers.get("content-type")).toContain("text/html");
+    expect(await page.text()).toContain("Alpha");
+    const log = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'preparation_downloaded' ORDER BY id").all<{ details: string }>();
+    expect(log.results.map((r) => JSON.parse(r.details))).toMatchObject([{ level: 3, format: "pdf" }, { level: 1, format: "html" }]);
+  });
+});

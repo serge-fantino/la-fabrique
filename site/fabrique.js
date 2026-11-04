@@ -33,7 +33,7 @@
   let pending = null;
 
   const followable = (url) =>
-    url.origin === location.origin && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/api/");
+    url.origin === location.origin && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/api/") && !url.pathname.endsWith("/refinement/preparation");
 
   const visit = async (href, push) => {
     if (!scriptSrc || !onlyThisScript(document)) return location.assign(href);
