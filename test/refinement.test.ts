@@ -297,3 +297,44 @@ describe("Claude's questions in the Refinement card (la-fabrique#227)", () => {
     expect(JSON.parse(row!.data).spec.closed).toBe(true);
   });
 });
+
+describe("Share links of the preparation document (la-fabrique#233)", () => {
+  it("creates, serves frozen, counts, expires and revokes", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(CONFIG)),
+    ]);
+    await card("Alpha", 1, { spec: { answers: { a: "x" }, questions: [], source: "person", at: "2026-01-01" } });
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = (await signIn("pe")) as { cookie: string; csrf?: string };
+    const { createShareLink, showSharedDocument, listShareLinks, revokeShareLink } = await import("../src/share-links");
+    const { buildDoc } = await import("../src/preparation");
+    const doc = buildDoc({
+      level: 1, projectName: "Widget", description: "", preparing: "1.5", releases: [], by: "pe", now: new Date(), features: [],
+      links: { order: new Map(), nice: new Map() } as never, stories: new Map(), rubriques: [], recorded: new Map(), sections: () => null,
+    });
+    const made = await createShareLink(env.DB, { repo: REPO, doc, by: "pe", days: 7 });
+    const open = await showSharedDocument(env.DB, made.token);
+    expect(open.status).toBe(200);
+    expect(open.headers.get("x-robots-tag")).toContain("noindex");
+    expect(await open.text()).toContain("Widget");
+    const via = await get(`/shared/${made.token}`);
+    expect(via.status).toBe(200);
+    expect((await listShareLinks(env.DB, REPO))[0]).toMatchObject({ level: 1, createdBy: "pe", openings: 2 });
+    const later = await showSharedDocument(env.DB, made.token, new Date(Date.now() + 8 * 86_400_000));
+    expect(later.status).toBe(410);
+    expect(await later.text()).toContain("expired");
+    expect(await revokeShareLink(env.DB, REPO, made.id, "pe")).toBe(true);
+    const gone = await showSharedDocument(env.DB, made.token);
+    expect(gone.status).toBe(410);
+    const text = await gone.text();
+    expect(text).toContain("revoked");
+    expect(text).not.toContain("Widget");
+    expect((await showSharedDocument(env.DB, "x".repeat(43))).status).toBe(404);
+    const log = await env.DB.prepare("SELECT action FROM activity_log WHERE action LIKE 'share_link_%' ORDER BY id").all<{ action: string }>();
+    expect(log.results.map((r) => r.action)).toEqual(["share_link_created", "share_link_revoked"]);
+    const page = await get(`/projects/${REPO}/refinement`, cookie);
+    expect(await page.text()).toContain("Share links");
+    expect(csrf ?? "").toBeDefined();
+  });
+});

@@ -10,6 +10,7 @@ import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, layout, type Viewer } from "./views";
+import { EXPIRY_DAYS, DEFAULT_EXPIRY_DAYS, linkState, type ShareLink } from "./share-links";
 
 // The Refinement tab (la-fabrique#223): the features of Next release, each
 // with its next step toward the sprint. Read from what La Fabrique already
@@ -60,6 +61,8 @@ export interface RefinementData {
   canClaude: boolean;
   priorities: string[];
   sprint?: { label: string } | null;
+  // Secret share links of the preparation document (la-fabrique#233).
+  shares?: ShareLink[];
   notice?: string | undefined;
   failure?: string | undefined;
 }
@@ -231,6 +234,30 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     }
   };
 
+  const shareSection = () => {
+    const links = data.shares ?? [];
+    const create = data.canWrite
+      ? `<form method="post" action="${escapeHtml(base)}/refinement" class="inline share-form" data-busy="Creating…">${csrfField(viewer)}<input type="hidden" name="action" value="share_create" />
+        <label>Level of detail <select name="level"><option value="1">1 · Features and their specs</option><option value="2">2 · Plus their stories</option><option value="3">3 · Plus their test cases</option></select></label>
+        <label>Expires after <select name="days">${EXPIRY_DAYS.map((d) => `<option value="${d}"${d === DEFAULT_EXPIRY_DAYS ? " selected" : ""}>${d} day${d === 1 ? "" : "s"}</option>`).join("")}</select></label>
+        <button type="submit" class="button quiet">Create a share link</button></form>`
+      : "";
+    const rows = links
+      .map((l) => {
+        const state = linkState(l);
+        return `<tr><td class="mono">${l.level}</td><td><span class="mono">${escapeHtml(l.createdAt.slice(0, 10))}</span> by @${escapeHtml(l.createdBy)}</td><td class="mono">${escapeHtml(l.expiresAt.slice(0, 10))}</td><td class="mono">${l.openings}</td><td>${state === "active" ? '<span class="pill ok">Active</span>' : `<span class="pill">${state === "revoked" ? "Revoked" : "Expired"}</span>`}</td><td>${
+          state === "active" && data.canWrite
+            ? `<form method="post" action="${escapeHtml(base)}/refinement" class="inline" data-busy="…">${csrfField(viewer)}<input type="hidden" name="action" value="share_revoke" /><input type="hidden" name="link" value="${l.id}" /><button type="submit" class="button quiet small" aria-label="Revoke the share link ${l.id}">Revoke</button></form>`
+            : ""
+        }</td></tr>`;
+      })
+      .join("");
+    return `<div class="share-links"><h3>Share links</h3>
+      <p class="muted small">A secret link to a frozen copy of the document as it is now: it expires, can be revoked, is never indexed, and each opening is counted (the date, never who).</p>
+      ${create}
+      ${rows ? `<table><thead><tr><th>Level</th><th>Created</th><th>Expires</th><th>Openings</th><th>State</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<p class="muted small">No share link yet.</p>`}</div>`;
+  };
+
   const progress = releaseProgress(data.features, data.links, data.stories);
   const meter = (label: string, value: number, total: number, tip: string) =>
     `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <span class="bar"><span style="width:${total ? Math.round((value / total) * 100) : 0}%"></span></span></div>`;
@@ -258,6 +285,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
         <label>Format <select name="format"><option value="html">HTML (one file)</option><option value="pdf">PDF</option></select></label>
         <button type="submit" class="button quiet">Download the preparation document</button>
       </form>
+      ${shareSection()}
     </section>`;
   const sortUrl = `${base}/refinement`;
   const priority = (card: Card) =>
