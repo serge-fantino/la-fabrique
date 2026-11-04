@@ -121,6 +121,11 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
       .join("")}<button type="submit" class="button quiet small" aria-label="${escapeHtml(aria)}">${text}</button></form>`;
 
+  const hidden = (fields: Record<string, string | number>) =>
+    Object.entries(fields)
+      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
+      .join("");
+
   const story = (card: Card, number: number) => {
     const known = data.stories.get(number);
     const nice = isNice(data.links, card.id, number);
@@ -154,6 +159,37 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     return Boolean(job && (job.status === "waiting" || job.status === "queued" || job.status === "running"));
   };
 
+  // Claude's questions, each with its own field, answered here as on the card's page.
+  const questions = (card: Card) => {
+    const list = card.data.spec?.questions ?? [];
+    const url = cardUrl(project.repo, card.id);
+    const head = `<strong>Next:</strong> ${list.length} question${list.length === 1 ? "" : "s"} waiting.`;
+    if (!data.canClaude) return `${head} <a class="button quiet small" href="${escapeHtml(url)}#spec">Answer (${list.length})</a>`;
+    if (active(card)) return `${head} <span class="muted small">Claude has it.</span>`;
+    const fields = list
+      .map(
+        (question, index) => `<div class="field">
+          <label for="answer-${card.id}-${index}">${escapeHtml(question)}</label>
+          <input type="hidden" name="question_${index}" value="${escapeHtml(question)}" />
+          <textarea id="answer-${card.id}-${index}" name="answer_${index}" rows="2" maxlength="2000" data-keep></textarea>
+        </div>`,
+      )
+      .join("");
+    return `${head}
+      <form method="post" action="${escapeHtml(base)}/refinement#card-${card.id}" class="spec-questions" data-busy="Sending…">${csrfField(viewer)}${hidden({ card: card.id })}
+        <h4>Claude asks</h4>
+        ${fields}
+        <div class="field">
+          <label for="answer-${card.id}-more">Anything else? <span class="muted">(optional)</span></label>
+          <textarea id="answer-${card.id}-more" name="instruction" rows="2" maxlength="4000" data-keep></textarea>
+        </div>
+        <div class="card-actions">
+          <button type="submit" class="button claude small" name="action" value="spec_answer">Send my answers to Claude</button>
+          <button type="submit" class="button quiet small" name="action" value="spec_enough" formnovalidate>Enough questions</button>
+        </div>
+      </form>`;
+  };
+
   const step = (card: Card, next: NextStep) => {
     const url = cardUrl(project.repo, card.id);
     if (active(card) && (next.step === "specify" || next.step === "refine")) return `<strong>Next:</strong> ${next.step === "specify" ? "no spec" : "spec complete, no stories"}. <span class="muted small">Claude has it.</span>`;
@@ -163,9 +199,9 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       case "specify":
         return `<strong>Next:</strong> no spec. ${claude("spec_draft", "Specify")}`;
       case "answer":
-        return `<strong>Next:</strong> ${next.questions} question${next.questions === 1 ? "" : "s"} waiting. <a class="button quiet small" href="${escapeHtml(url)}#spec">Answer (${next.questions})</a>`;
+        return questions(card);
       case "refine":
-        return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Refine")}`;
+        return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Then refine")}`;
       case "validate":
         return `<strong>Next:</strong> <a class="button quiet small" href="${escapeHtml(url)}#stories">Validate</a> <span class="muted small">${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready</span>`;
       case "approve":
@@ -199,10 +235,6 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${verdict}
     </section>`;
   const sortUrl = `${base}/refinement`;
-  const hidden = (fields: Record<string, string | number>) =>
-    Object.entries(fields)
-      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
-      .join("");
   const priority = (card: Card) =>
     data.priorities.length
       ? data.canWrite

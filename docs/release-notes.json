@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Answer Claude's questions on the Refinement page",
+    "changements": [
+      "A feature whose spec has questions waiting shows them in its card on Refinement, each with a multi-line answer field. Send my answers to Claude and Enough questions work as on the card's page; answers are kept with the spec.",
+      "Each card keeps the answers being typed in it, even when another card's job ends and the page updates.",
+      "Once the spec is complete the card proposes Then refine; nothing starts by itself."
+    ],
+    "stories": [227],
+    "liens": null
+  },  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Claude prepares several features at once, in a queue",
     "changements": [
       "On Refinement, tick features and launch their next step together: Specify for those without a spec, Refine for those with a complete spec and no stories. The page says how many calls it takes against your daily quota and the monthly budget, and launches nothing if it goes beyond.",
