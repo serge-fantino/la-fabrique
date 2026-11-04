@@ -250,7 +250,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       story && !story.rework && isInDevelopment(story) && !story.pulls.some((pull) => pull.state === "open") && !(lastRun && isRunning(lastRun)) && data.claude.canLaunch && data.claude.workflow
         ? ` ${button({ action: "launch", story: number }, `Relaunch Claude on #${number}, on its branch: no pull request yet`, "Relaunch Claude", "quiet small claude")}`
         : "";
-    return `<li id="story-${card}-${number}" class="sprint-story"${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
+    return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
         ${controls ? handle(`#${number}`) : ""}
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
