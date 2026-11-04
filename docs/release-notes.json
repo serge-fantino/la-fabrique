@@ -2,6 +2,19 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Share the preparation document by a secret link",
+    "changements": [
+      "Refinement offers Create a share link: pick the level of detail and the expiry (1, 7 or 30 days), and copy the secret link, shown once.",
+      "Anyone with the link reads, without an account, the document as it was when the link was made; the page asks not to be indexed.",
+      "An expired or revoked link says so and shows nothing. Links can be revoked at any time; creation and revocation are logged.",
+      "Refinement lists the project's links with their level, creation, expiry and number of openings (counted by date only, never who)."
+    ],
+    "stories": [233],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Download the preparation document of the next release",
     "changements": [
       "Refinement offers Download the preparation document, at the level of detail you choose (features and specs; plus stories; plus test cases), in HTML (one self-contained file) or PDF (made by the server, a feature per page, pages numbered).",

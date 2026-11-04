@@ -43,6 +43,7 @@ import claudeExample from "../docs/exemples/claude.yml";
 import { renderMarkdown } from "./markdown";
 import { GUIDE_PATH, guidePage } from "./setup-views";
 
+import { SHARE_PATH, showSharedDocument } from "./share-links";
 const GUIDE_EXAMPLE_PATH = "/guide/epicerie.fabrique.json";
 
 // La Fabrique's own format documentation, so a project's Setup tab links
@@ -135,6 +136,9 @@ const app = {
         return form ? changeApps(form, env, person) : html(messagePage("Not allowed", "This form expired: reload the page."), { status: 403 });
       }
     }
+
+    const shared = SHARE_PATH.exec(pathname);
+    if (shared) return method === "GET" ? showSharedDocument(env.DB, shared[1] ?? "") : methodNotAllowed();
 
     const screenshot = SCREENSHOT_ROUTE.exec(pathname);
     if (screenshot) {

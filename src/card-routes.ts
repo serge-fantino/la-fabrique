@@ -11,6 +11,7 @@ import { cardStories } from "./card-stories";
 import { validateFeature, validationOf } from "./feature-validation";
 import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
 import { recordedByStory } from "./gherkin";
+import { createShareLink, listShareLinks, readExpiry, revokeShareLink } from "./share-links";
 import { criteriaOf, criteriaRubrique, criteriaText, moveCriterion } from "./story-editor";
 import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS } from "./stories";
@@ -78,7 +79,7 @@ import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
 import { projectView } from "./view-context";
-import { messagePage, type Viewer } from "./views";
+import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
 export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
@@ -855,6 +856,26 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       if ((request.headers.get("accept") ?? "").includes("application/json")) return json({ ok: true, changed });
       return redirect(`${base}#card-${id}`);
     }
+    // Secret share links of the preparation document (la-fabrique#233).
+    if (action === "share_create") {
+      const { doc } = await preparationDoc(env, viewer, project, readLevel(String(form.get("level") ?? "")));
+      const created = await createShareLink(env.DB, { repo: project.repo, doc, by: viewer.login, days: readExpiry(form.get("days")) });
+      const link = new URL(`/shared/${created.token}`, request.url).toString();
+      return html(
+        layout(
+          "Share link · La Fabrique extraordinaire",
+          `<h1>Share link</h1>
+          <p>Copy it now: it is not shown again. Anyone with this link can read the document as it is today, until <span class="mono">${escapeHtml(created.expiresAt.slice(0, 10))}</span> or until you revoke it.</p>
+          <p><input type="text" readonly value="${escapeHtml(link)}" class="mono" size="70" aria-label="Share link" /></p>
+          <p><a href="${escapeHtml(base)}">Back to Refinement</a></p>`,
+          viewer,
+        ),
+      );
+    }
+    if (action === "share_revoke") {
+      const done = await revokeShareLink(env.DB, project.repo, Number(form.get("link")), viewer.login);
+      return redirect(done ? `${base}?notice=revoked` : base);
+    }
     // Several features at once, each a job in the line (la-fabrique#226).
     if (action === "refine_launch") {
       const wanted = new Set(form.getAll("card").map(Number).filter((n) => Number.isInteger(n) && n > 0));
@@ -979,7 +1000,8 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       canClaude: canWriteCards(viewer),
       priorities: cycleRules(project.check?.config).priorities,
       sprint: running ? { label: sprintLabel(running) } : null,
-      notice: notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      shares: await listShareLinks(env.DB, project.repo),
+      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },
@@ -988,10 +1010,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
 
 // The preparation document of Next release (la-fabrique#229), generated on
 // demand at the chosen level and format; logged, never published.
-async function preparationRoute(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
-  const params = new URL(request.url).searchParams;
-  const level = readLevel(params.get("level"));
-  const format = readFormat(params.get("format"));
+async function preparationDoc(env: Env, viewer: Viewer, project: Project, level: ReturnType<typeof readLevel>) {
   const cards = await listCards(env.DB, project.repo);
   const [links, { releases }, running] = await Promise.all([storyCards(env.DB, project.repo), knownValues(env, project, cards), activeSprint(env.DB, project.repo)]);
   const { features } = refinementCards(cards, NEXT_RELEASE);
@@ -1014,6 +1033,14 @@ async function preparationRoute(request: Request, env: Env, viewer: Viewer, proj
     recorded,
     sections: (card, title) => card.data.split?.stories.find((s) => s.title === title)?.answers ?? null,
   });
+  return { doc, features };
+}
+
+async function preparationRoute(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const level = readLevel(params.get("level"));
+  const format = readFormat(params.get("format"));
+  const { doc, features } = await preparationDoc(env, viewer, project, level);
   await activityStatement(env.DB, {
     actor: viewer.login,
     action: "preparation_downloaded",
