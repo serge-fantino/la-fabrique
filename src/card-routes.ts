@@ -933,7 +933,8 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
         if (kind === "spec_draft") await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
       }
       if (!launched) return redirect(`${base}?failure=${encodeURIComponent(refused || "Nothing was launched.")}`);
-      return redirect(`${base}?notice=launched&n=${launched}#release-progress`);
+      const only = wanted.size === 1 ? [...wanted][0] : null;
+      return redirect(`${base}?notice=launched&n=${launched}#${only && !tests ? `card-${only}` : "release-progress"}`);
     }
     if (action === "job_cancel" || action === "job_retry") {
       const id = Number(form.get("card"));
