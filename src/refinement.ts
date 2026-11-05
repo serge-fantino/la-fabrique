@@ -260,7 +260,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
 
   const progress = releaseProgress(data.features, data.links, data.stories);
   const meter = (label: string, value: number, total: number, tip: string) =>
-    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <span class="bar"><span style="width:${total ? Math.round((value / total) * 100) : 0}%"></span></span></div>`;
+    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <progress max="${total}" value="${value}"></progress></div>`;
   const go = progress.features > 0 && progress.blockers.length === 0;
   const verdict = data.sprint
     ? `<p><span class="pill">Sprint running</span> ${escapeHtml(data.sprint.label)} is in progress: <a href="${escapeHtml(base)}/sprint">go to the sprint</a>.</p>`
