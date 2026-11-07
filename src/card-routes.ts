@@ -6,6 +6,7 @@ import { loadProduction } from "./production";
 import { goSection } from "./production-views";
 import { storyChecks } from "./validation";
 import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { validateFeature, validationOf } from "./feature-validation";
@@ -1051,7 +1052,8 @@ async function preparationDoc(env: Env, viewer: Viewer, project: Project, level:
     level,
     projectName: project.check?.config?.nom || project.repo,
     description: project.check?.config?.description ?? "",
-    preparing: running?.version ?? nextVersion(project.check?.config?.version?.forme, all),
+    // Next release is the version after the running sprint's, not the sprint itself.
+    preparing: (running?.version ? sprintNextVersion(running.version, "minor") : null) ?? nextVersion(project.check?.config?.version?.forme, all),
     releases: all,
     by: viewer.login,
     now: new Date(),

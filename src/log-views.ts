@@ -97,6 +97,8 @@ export function describe(entry: LogEntry, repo: string): string {
       const count = Number(d["total"]) ? ` (${text(d["done"])}/${text(d["total"])})` : "";
       return `saw card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} go from ${label(d["from"])} to ${label(d["to"])}${count}, from its stories`;
     }
+    case "preparation_downloaded":
+      return `downloaded the preparation document (level ${text(d["level"])}, ${text(d["format"]).toUpperCase()}${d["version"] ? `, for ${text(d["version"])}` : ""}, ${text(d["features"])} cards)`;
     case "card_priority_set":
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
     case "story_marked_ready":

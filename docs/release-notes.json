@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Preparation document: right version and readable log",
+    "changements": [
+      "The preparation document names the release after the running sprint as the version being prepared, not the sprint itself.",
+      "The Log says the level and format of each preparation download."
+    ],
+    "stories": [229],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Help: the Product Engineer's user guide and reference",
     "changements": [
       "The Product Engineer's help has two entries that point at each other: a user guide of 22 use cases, grouped by moment (shape a feature, refine in batch, plan the next sprint, run it, test and ship, keep the board in order, work from Claude), and a reference of 12 pages (getting around, cards, the board, specs with Claude, stories, Refinement, the sprint, testing, defects, releases and the go, Claude, words).",
