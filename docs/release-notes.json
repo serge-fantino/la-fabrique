@@ -1,6 +1,18 @@
 [
   {
     "version": "next",
+    "date": "2026-11-07",
+    "titre": "Help: the Product Engineer's onboarding guide",
+    "changements": [
+      "A Help page, open without an account from the home page and in the menu once signed in, lists the guides by profile: Product Engineer first, the tester, tech lead and super admin guides to come.",
+      "The Product Engineer's guide walks from a need to the version in production: your role and rights, your first visit, the life of a card from Draft to In production, nine real use cases step by step, good habits and the words used.",
+      "Signed in, its links open the tabs of your project (choose it when you have several); signed out, they go through sign-in."
+    ],
+    "stories": [265],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-04",
     "titre": "Refinement: real cards, and Specify / Refine without leaving the page",
     "changements": [
