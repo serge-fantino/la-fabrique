@@ -34,6 +34,7 @@ describe("The next step of a feature", () => {
   const known = (stage: CardStory["stage"]) => new Map([[1, { stage } as CardStory]]);
   it("goes from Specify to Ready", () => {
     expect(nextStep({ title: "T", body: "B", data: {} }, [], new Map())).toEqual({ step: "specify" });
+    expect(nextStep({ title: "T", body: "B", data: {} }, [1], known("backlog"))).toEqual({ step: "validate", stories: [1] });
     expect(nextStep(spec(["Who?"]), [], new Map())).toEqual({ step: "answer", questions: 1 });
     expect(nextStep(spec([]), [], new Map())).toEqual({ step: "refine" });
     expect(nextStep(spec([]), [1], known("backlog"))).toEqual({ step: "validate", stories: [1] });
