@@ -3578,3 +3578,362 @@ pre.gherkin {
 .refinement-card .refinement-head h3 {
   margin: 0;
 }
+
+/* Help: the onboarding guides (la-fabrique#264). */
+.help-crumbs {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.help-profiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+}
+
+.help-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid #d8dacf;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--encre);
+  text-decoration: none;
+  min-height: 44px;
+}
+
+a.help-profile:hover,
+a.help-profile:focus-visible {
+  border-color: var(--accent);
+  color: var(--encre);
+}
+
+.help-profile strong {
+  font-size: 1.15rem;
+}
+
+.help-profile .eyebrow {
+  margin: 0;
+}
+
+.help-profile.coming {
+  background: transparent;
+  border-style: dashed;
+}
+
+.help-profile.coming .eyebrow {
+  color: var(--encre-faint);
+}
+
+.help-profile-go {
+  margin-top: auto;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.help-circuit {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  counter-reset: help-step;
+}
+
+.help-step {
+  counter-increment: help-step;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #d8dacf;
+  font-size: 0.92rem;
+}
+
+.help-step strong::before {
+  content: counter(help-step) " · ";
+  font-family: var(--mono);
+  color: var(--encre-faint);
+  font-weight: 400;
+}
+
+.help-step.claude {
+  border-color: color-mix(in srgb, var(--bon) 45%, transparent);
+}
+
+.help-step .pill {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.help-note {
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--moyen) 18%, var(--fond));
+}
+
+.help-note p {
+  margin: 0.25rem 0;
+}
+
+.help-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.help-picker select {
+  min-height: 44px;
+  font: inherit;
+  padding: 0 0.6rem;
+  border-radius: 10px;
+  border: 1px solid #d8dacf;
+  background: #fff;
+}
+
+.help-toc {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0 -1.25rem;
+  padding: 0.4rem 1.25rem;
+  background: var(--fond);
+  border-bottom: 1px solid var(--rule);
+}
+
+.help-toc a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.help-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.help-columns h3,
+#role h3 {
+  font-size: 1.02rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.help-plain {
+  padding-left: 1.25rem;
+}
+
+.help-rights {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.help-rights li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.help-rights .pill {
+  flex: 0 0 auto;
+  min-width: 6.5rem;
+  text-align: center;
+}
+
+.help-rights li.no {
+  color: var(--encre-faint);
+}
+
+.help-steps {
+  padding-left: 1.4rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.help-steps li::marker {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.help-tabs {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.help-tabs dt {
+  font-weight: 600;
+}
+
+.help-tabs dd {
+  margin: 0;
+}
+
+.help-life {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  border-left: 2px solid var(--rule);
+}
+
+.help-life li {
+  display: grid;
+  grid-template-columns: 11rem 1fr auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.45rem 0 0.45rem 1rem;
+  position: relative;
+}
+
+.help-life li::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 0.95rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fond);
+  border: 2px solid var(--encre-faint);
+}
+
+.help-life li.you::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.help-life li.claude::before {
+  border-color: var(--bon);
+  background: var(--bon);
+}
+
+.help-life .pill {
+  justify-self: start;
+}
+
+.help-who {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--encre-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.help-case {
+  margin: 0.75rem 0;
+  border: 1px solid #d8dacf;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.help-case summary {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem 1.25rem;
+  min-height: 44px;
+  list-style: none;
+}
+
+.help-case summary::-webkit-details-marker {
+  display: none;
+}
+
+.help-case summary .eyebrow {
+  margin: 0;
+}
+
+.help-case summary strong {
+  font-size: 1.08rem;
+}
+
+.help-case summary strong::after {
+  content: " +";
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.help-case[open] summary strong::after {
+  content: " −";
+}
+
+.help-case .help-steps,
+.help-case .help-after {
+  margin: 0 1.25rem 1rem;
+}
+
+.help-after {
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bon) 9%, #fff);
+}
+
+.help-app {
+  font-weight: 600;
+}
+
+.help-habits {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.help-words {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.25rem;
+}
+
+.help-words dt {
+  font-weight: 600;
+}
+
+.help-words dd {
+  margin: 0;
+}
+
+.help-next {
+  border-top: 1px solid var(--rule);
+  margin-top: 2.5rem;
+}
+
+@media (max-width: 640px) {
+  .help-toc {
+    position: static;
+  }
+
+  .help-life li {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
+  .help-tabs,
+  .help-words {
+    grid-template-columns: 1fr;
+  }
+
+  .help-tabs dd,
+  .help-words dd {
+    margin-bottom: 0.5rem;
+  }
+
+  .help-rights li {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+}

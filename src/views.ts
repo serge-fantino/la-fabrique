@@ -71,11 +71,15 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
         <a href="/projects">Projects</a>
         ${viewer.role === "super_admin" ? `<a href="/people">People</a>` : ""}
         <a href="/settings">Settings</a>
+        <a href="/help">Help</a>
         <form method="post" action="/auth/logout">${csrfField(viewer)}
           <button type="submit" class="button quiet">Sign out</button>
         </form>
       </nav>`
-    : "";
+    : `<nav class="nav">
+        <a href="/help">Help</a>
+        <a class="button quiet" href="/auth/login">Sign in</a>
+      </nav>`;
   const subbar = viewer
     ? `<div class="subbar">
         <div class="subbar-context">${externalLinks(context)}</div>
@@ -159,6 +163,11 @@ export function homePage(): string {
       <section>
         <p>Access is by invitation: a super admin grants a role to your GitHub account.</p>
         <p><a class="button" href="/auth/login">Sign in with GitHub</a></p>
+      </section>
+      <section>
+        <h2>New here?</h2>
+        <p>Read what La Fabrique does for you, profile by profile, with real use cases: start with the
+          <a href="/help/product-engineer">Product Engineer's guide</a>, or see <a href="/help">all the guides</a>.</p>
       </section>`,
   );
 }
