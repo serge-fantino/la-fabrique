@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Help: the chosen project is kept from page to page",
+    "changements": [
+      "The project you pick in the guides is remembered on this device, so every page of the guides keeps it, even when you reach a page without the choice in its address.",
+      "Coming from a project's page, the guides' links open that project by default instead of the first one."
+    ],
+    "stories": [267],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Refinement: NO-GO stays visible while a sprint runs, and the progress bars show",
     "changements": [
       "While a sprint runs, Refinement still says NO-GO or GO and lists what blocks, each linked to its card; only the Start the sprint button is replaced by a link to the sprint.",

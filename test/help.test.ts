@@ -134,4 +134,22 @@ describe("The Product Engineer's guide: user guide and reference (la-fabrique#26
     expect(chosen).not.toContain('href="/projects/acme/alpha/board"');
     expect(chosen).toContain('href="/help/product-engineer/reference/cards?project=acme%2Fshop#create"');
   });
+
+  it("keeps the chosen project in a cookie, and defaults to the project the reader came from", async () => {
+    await grantRole("pe-three", "product_engineer");
+    await addProjects("acme/alpha", "acme/shop");
+    const { cookie } = await signIn("pe-three");
+    const path = "/help/product-engineer/use-cases/new-feature";
+
+    const chosen = await get(`${path}?project=acme%2Fshop`, cookie);
+    const set = chosen.headers.get("set-cookie") ?? "";
+    expect(set).toContain("__Host-help-project=acme%2Fshop");
+    const kept = (set.split(";")[0] ?? "");
+
+    const next = await (await get(path, `${cookie}; ${kept}`)).text();
+    expect(next).toContain('href="/projects/acme/shop/board"');
+
+    const referred = await get("/help/product-engineer", cookie, { referer: "https://x.test/projects/acme/shop/sprint" });
+    expect(await referred.text()).toContain('href="/projects/acme/shop/board"');
+  });
 });
