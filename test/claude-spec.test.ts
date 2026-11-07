@@ -815,3 +815,12 @@ describe("Settings: Claude", () => {
     expect(page).toContain("npx wrangler secret put ANTHROPIC_API_KEY");
   });
 });
+
+describe("kept answers (#227)", () => {
+  it("fabrique.js keeps textarea[data-keep] drafts across a reload", async () => {
+    const js = (await import("../site/fabrique.js")).default as string;
+    expect(js).toContain("setUpKeptAnswers");
+    expect(js).toContain("textarea[data-keep]");
+    expect(js).toContain("localStorage.setItem(keepKey(field)");
+  });
+});
