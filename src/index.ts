@@ -162,7 +162,7 @@ const app = {
     const help = HELP_ROUTE.exec(pathname);
     if (help) {
       if (method !== "GET") return methodNotAllowed();
-      const page = await showHelp(env.DB, viewer, help[1], new URL(request.url).searchParams);
+      const page = await showHelp(env.DB, viewer, help, new URL(request.url).searchParams);
       return html(page.body, { status: page.status });
     }
 
