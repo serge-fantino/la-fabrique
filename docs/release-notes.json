@@ -2,67 +2,12 @@
   {
     "version": "next",
     "date": "2026-11-07",
-    "titre": "Story editor: the preview follows Nice to have",
-    "changements": [
-      "The preview of what GitHub will receive says whether the story is nice to have and the priority it will get (one level below the card's when nice to have), so ticking Nice to have changes it.",
-      "Create the checked stories is disabled when no story is checked."
-    ],
-    "stories": [228],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
-    "titre": "Refinement: answers being typed survive a reload",
-    "changements": [
-      "Answers typed in a card on Refinement are kept on the device per field, so sending another card's answers (which reloads the page) no longer loses them; a field's draft goes once its form is sent."
-    ],
-    "stories": [227],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
-    "titre": "Preparation document: right version and readable log",
-    "changements": [
-      "The preparation document names the release after the running sprint as the version being prepared, not the sprint itself.",
-      "The Log says the level and format of each preparation download."
-    ],
-    "stories": [229],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [
       "Every pull request writes its entry at the top of the release notes, so once one is merged the others show In conflict. The sprint still offers Merge on them when the project declares its merge workflow: the workflow brings main in and rebuilds the release notes.",
       "A conflict in any other file stops the merge, which says which files; Merge is then no longer offered, only Update with Claude. The In conflict pill says this on hover."
     ],
     "stories": [113],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
-    "titre": "Specify queue: waiting jobs start when a place is free",
-    "changements": [
-      "When a Claude job ends, the next waiting job is given to Claude right away (it only moved when someone cancelled a job); opening Refinement also gives a turn to jobs left waiting.",
-      "A job whose consumer died no longer holds a place in the line.",
-      "A job that has to wait now says so in its log."
-    ],
-    "stories": [226],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
-    "titre": "Help: the chosen project is kept from page to page",
-    "changements": [
-      "The project you pick in the guides is remembered on this device, so every page of the guides keeps it, even when you reach a page without the choice in its address.",
-      "Coming from a project's page, the guides' links open that project by default instead of the first one."
-    ],
-    "stories": [267],
     "liens": null
   },
   {
@@ -77,223 +22,6 @@
   },
   {
     "version": "next",
-    "date": "2026-11-07",
-    "titre": "Refinement: NO-GO stays visible while a sprint runs, and the progress bars show",
-    "changements": [
-      "While a sprint runs, Refinement still says NO-GO or GO and lists what blocks, each linked to its card; only the Start the sprint button is replaced by a link to the sprint.",
-      "The progress bars at the top of Refinement now show their fill (it had no height)."
-    ],
-    "stories": [225],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
-    "titre": "Help: the Product Engineer's user guide and reference",
-    "changements": [
-      "The Product Engineer's help has two entries that point at each other: a user guide of 22 use cases, grouped by moment (shape a feature, refine in batch, plan the next sprint, run it, test and ship, keep the board in order, work from Claude), and a reference of 12 pages (getting around, cards, the board, specs with Claude, stories, Refinement, the sprint, testing, defects, releases and the go, Claude, words).",
-      "Each step of a use case leads to the reference section that explains it; each reference section lists the use cases that use it.",
-      "The guide's menu is beside every page (folded on a phone), with previous and next; the project you chose for the links follows you from page to page."
-    ],
-    "stories": [267],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-07",
-    "titre": "Help: the Product Engineer's onboarding guide",
-    "changements": [
-      "A Help page, open without an account from the home page and in the menu once signed in, lists the guides by profile: Product Engineer first, the tester, tech lead and super admin guides to come.",
-      "The Product Engineer's guide walks from a need to the version in production: your role and rights, your first visit, the life of a card from Draft to In production, nine real use cases step by step, good habits and the words used.",
-      "Signed in, its links open the tabs of your project (choose it when you have several); signed out, they go through sign-in."
-    ],
-    "stories": [265],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Refinement: real cards, and Specify / Refine without leaving the page",
-    "changements": [
-      "Each feature of Refinement is a white card with rounded corners, its drag handle beside the title.",
-      "Specify and Refine start Claude from the Refinement page itself (the job shows on the card) instead of opening the feature's page.",
-      "A feature that already has stories no longer offers Specify."
-    ],
-    "stories": [223],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Claude writes test cases for each story",
-    "changements": [
-      "A feature's card offers Write test cases with Claude, and Refinement Write test cases for all features: a Claude job per feature, counted in the daily quota and the budget.",
-      "Claude writes Gherkin scenarios for each story from its criteria and the spec; they are kept in La Fabrique (not on GitHub), shown in the feature's card, and editable there.",
-      "The preparation document, at level 3, shows each story's test cases."
-    ],
-    "stories": [230],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Share the preparation document by a secret link",
-    "changements": [
-      "Refinement offers Create a share link: pick the level of detail and the expiry (1, 7 or 30 days), and copy the secret link, shown once.",
-      "Anyone with the link reads, without an account, the document as it was when the link was made; the page asks not to be indexed.",
-      "An expired or revoked link says so and shows nothing. Links can be revoked at any time; creation and revocation are logged.",
-      "Refinement lists the project's links with their level, creation, expiry and number of openings (counted by date only, never who)."
-    ],
-    "stories": [233],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Download the preparation document of the next release",
-    "changements": [
-      "Refinement offers Download the preparation document, at the level of detail you choose (features and specs; plus stories; plus test cases), in HTML (one self-contained file) or PDF (made by the server, a feature per page, pages numbered).",
-      "The document opens with La Fabrique's logo, the project's name and description, the version being prepared, the latest released, the date and who generated it, then the summary: the features in priority order with status and stories, and GO or NO-GO.",
-      "Each download is logged with its level and format; nothing is published."
-    ],
-    "stories": [229],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Review the proposed stories in a proper editor",
-    "changements": [
-      "The stories Claude proposes are reviewed in a clearer editor: each story is a block with its title and each section in a multi-line field that grows with its text.",
-      "Acceptance criteria are one per line: add, remove, move up or down. Nice to have and Create this story update the preview of what GitHub will receive, as it will read.",
-      "The same editor is on the card's stories page and in the feature's card on Refinement. Only the stories kept are created, with your edits; what GitHub refuses stays proposed."
-    ],
-    "stories": [228]
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Answer Claude's questions on the Refinement page",
-    "changements": [
-      "A feature whose spec has questions waiting shows them in its card on Refinement, each with a multi-line answer field. Send my answers to Claude and Enough questions work as on the card's page; answers are kept with the spec.",
-      "Each card keeps the answers being typed in it, even when another card's job ends and the page updates.",
-      "Once the spec is complete the card proposes Then refine; nothing starts by itself."
-    ],
-    "stories": [227],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Claude prepares several features at once, in a queue",
-    "changements": [
-      "On Refinement, tick features and launch their next step together: Specify for those without a spec, Refine for those with a complete spec and no stories. The page says how many calls it takes against your daily quota and the monthly budget, and launches nothing if it goes beyond.",
-      "The jobs wait their turn: Claude takes two at a time, the others wait in the order launched. Each waiting card says its place (\"2nd in line\"), which moves up as jobs end, and a job not started yet can be cancelled; a running job never is.",
-      "Each feature's card follows its own job live, without reloading the page: waiting, working, or failed with the reason and Try again; the other jobs go on. Leaving the page loses nothing."
-    ],
-    "stories": [226],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "A Product Engineer relaunches Claude; a run without a pull request says so",
-    "changements": [
-      "Relaunch Claude, on a story's row of the sprint and on a card the sprint's run stopped, is open to a Product Engineer, who runs the sprint, as well as a tech lead.",
-      "A story in development whose last Claude run ended without a pull request shows Claude done: no pull request (or failed, cancelled), in amber, instead of Claude done."
-    ],
-    "stories": [239],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Relaunch Claude from a story's row; its work is never lost",
-    "changements": [
-      "A story of the sprint in development without a pull request, Claude's last run over, offers Relaunch Claude on its row (tech lead and above): Claude works on it again, on its branch; a card of the sprint's run stopped there follows it again.",
-      "When Claude ends a run without a pull request, the work it left uncommitted is committed as it is and pushed to the story's branch, so a relaunch builds on it."
-    ],
-    "stories": [239],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "The (i) says when the version online was deployed",
-    "changements": [
-      "While changes wait for the sprint's release (\"0.82 + 7 changes\"), the (i) next to the name says when they were deployed, then when the release they follow came out, instead of only that release's date."
-    ],
-    "stories": [239],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Relaunch Claude, also on a card stopped before",
-    "changements": [
-      "A card the sprint's run stopped on Claude's side before Relaunch Claude existed now offers it too, read from why it stopped."
-    ],
-    "stories": [239],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-04",
-    "titre": "Claude finished without a change: said, and relaunched from the sprint",
-    "changements": [
-      "When Claude ends its run on a story without any change, the workflow says so on the issue with Claude's last words and the run's link, removes the empty branch so the story is ready again, and fails the run; commits left without a pull request are pushed and the comment asks for one.",
-      "A card the sprint's run stopped on Claude's side (a run failed or ended without a pull request, a branch left without one) offers Relaunch Claude on #n to a tech lead and above: Claude works on the story again, on its branch if it has one, and the run follows it; logged."
-    ],
-    "stories": [239],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-03",
-    "titre": "Validate a feature, from Refinement or its page",
-    "changements": [
-      "A person validates each feature before the sprint: once its stories are ready, its card on Refinement and its page propose Validate the feature (Product Engineer and above); who validated and when are shown, and logged.",
-      "A feature changed after (its text, its spec, a story added or removed) needs validating again, and its card says why; GO / NO-GO lists any feature not validated as blocking. A tester sees who validated, without the button."
-    ],
-    "stories": [232],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-03",
-    "titre": "The release's progress and GO / NO-GO in Refinement",
-    "changements": [
-      "Refinement opens with how far Next release is prepared: features, specified, refined and ready, and the stories (needed and nice to have); each part says what it counts on hover or focus.",
-      "GO when every feature is ready, leading to Start the sprint; otherwise NO-GO, listing what blocks each feature, linked to its card on the page. When a sprint already runs, the page says so and links to it."
-    ],
-    "stories": [225],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-03",
-    "titre": "Priority and order in Refinement",
-    "changements": [
-      "Each feature's card in Refinement has its priority in a list (the project's priority labels): saved at once, given to its stories on GitHub (one level lower for nice to have) and logged, as from the card's page.",
-      "Features are reordered by drag and drop on a handle or with the arrow keys, as in the sprint; up and down arrows remain without the page's script. The order is the board's, which the sprint takes, and is logged."
-    ],
-    "stories": [224],
-    "liens": null
-  },
-  {
-    "version": "next",
-    "date": "2026-11-03",
-    "titre": "A Refinement tab for the next release",
-    "changements": [
-      "A Refinement tab, between Board and Sprint (Product and All perspectives), lists the features of Next release in priority order, each with its status, synopsis, stories and next step: Specify, Answer, Refine, Validate (with what each story lacks and Mark ready) or Ready for the sprint.",
-      "Ideas and questions of Next release are listed apart, below. The page reads only what La Fabrique already holds: no call to GitHub or Claude.",
-      "Linked from the board's Next release lane and from the sprint page when no sprint runs."
-    ],
-    "stories": [223],
-    "liens": null
-  },
-  {
-    "version": "next",
     "date": "2026-11-01",
     "titre": "Ticking criteria quickly keeps every tick",
     "changements": [
@@ -301,6 +29,73 @@
       "A tick undone by another written at the same moment (another tab, another person) is written again on the issue's current text."
     ],
     "stories": [58],
+    "liens": null
+  },
+  {
+    "version": "0.83",
+    "date": "2026-11-07",
+    "heure": "23:41",
+    "titre": "Refinement: prepare the next release, feature by feature, up to GO / NO-GO, Refinement with Claude: several features...",
+    "changements": [
+      "The preview of what GitHub will receive says whether the story is nice to have and the priority it will get (one level below the card's when nice to have), so ticking Nice to have changes it.",
+      "Create the checked stories is disabled when no story is checked.",
+      "Answers typed in a card on Refinement are kept on the device per field, so sending another card's answers (which reloads the page) no longer loses them; a field's draft goes once its form is sent.",
+      "The preparation document names the release after the running sprint as the version being prepared, not the sprint itself.",
+      "The Log says the level and format of each preparation download.",
+      "When a Claude job ends, the next waiting job is given to Claude right away (it only moved when someone cancelled a job); opening Refinement also gives a turn to jobs left waiting.",
+      "A job whose consumer died no longer holds a place in the line.",
+      "A job that has to wait now says so in its log.",
+      "The project you pick in the guides is remembered on this device, so every page of the guides keeps it, even when you reach a page without the choice in its address.",
+      "Coming from a project's page, the guides' links open that project by default instead of the first one.",
+      "While a sprint runs, Refinement still says NO-GO or GO and lists what blocks, each linked to its card; only the Start the sprint button is replaced by a link to the sprint.",
+      "The progress bars at the top of Refinement now show their fill (it had no height).",
+      "The Product Engineer's help has two entries that point at each other: a user guide of 22 use cases, grouped by moment (shape a feature, refine in batch, plan the next sprint, run it, test and ship, keep the board in order, work from Claude), and a reference of 12 pages (getting around, cards, the board, specs with Claude, stories, Refinement, the sprint, testing, defects, releases and the go, Claude, words).",
+      "Each step of a use case leads to the reference section that explains it; each reference section lists the use cases that use it.",
+      "The guide's menu is beside every page (folded on a phone), with previous and next; the project you chose for the links follows you from page to page.",
+      "A Help page, open without an account from the home page and in the menu once signed in, lists the guides by profile: Product Engineer first, the tester, tech lead and super admin guides to come.",
+      "The Product Engineer's guide walks from a need to the version in production: your role and rights, your first visit, the life of a card from Draft to In production, nine real use cases step by step, good habits and the words used.",
+      "Signed in, its links open the tabs of your project (choose it when you have several); signed out, they go through sign-in.",
+      "Each feature of Refinement is a white card with rounded corners, its drag handle beside the title.",
+      "Specify and Refine start Claude from the Refinement page itself (the job shows on the card) instead of opening the feature's page.",
+      "A feature that already has stories no longer offers Specify.",
+      "A feature's card offers Write test cases with Claude, and Refinement Write test cases for all features: a Claude job per feature, counted in the daily quota and the budget.",
+      "Claude writes Gherkin scenarios for each story from its criteria and the spec; they are kept in La Fabrique (not on GitHub), shown in the feature's card, and editable there.",
+      "The preparation document, at level 3, shows each story's test cases.",
+      "Refinement offers Create a share link: pick the level of detail and the expiry (1, 7 or 30 days), and copy the secret link, shown once.",
+      "Anyone with the link reads, without an account, the document as it was when the link was made; the page asks not to be indexed.",
+      "An expired or revoked link says so and shows nothing. Links can be revoked at any time; creation and revocation are logged.",
+      "Refinement lists the project's links with their level, creation, expiry and number of openings (counted by date only, never who).",
+      "Refinement offers Download the preparation document, at the level of detail you choose (features and specs; plus stories; plus test cases), in HTML (one self-contained file) or PDF (made by the server, a feature per page, pages numbered).",
+      "The document opens with La Fabrique's logo, the project's name and description, the version being prepared, the latest released, the date and who generated it, then the summary: the features in priority order with status and stories, and GO or NO-GO.",
+      "Each download is logged with its level and format; nothing is published.",
+      "The stories Claude proposes are reviewed in a clearer editor: each story is a block with its title and each section in a multi-line field that grows with its text.",
+      "Acceptance criteria are one per line: add, remove, move up or down. Nice to have and Create this story update the preview of what GitHub will receive, as it will read.",
+      "The same editor is on the card's stories page and in the feature's card on Refinement. Only the stories kept are created, with your edits; what GitHub refuses stays proposed.",
+      "A feature whose spec has questions waiting shows them in its card on Refinement, each with a multi-line answer field. Send my answers to Claude and Enough questions work as on the card's page; answers are kept with the spec.",
+      "Each card keeps the answers being typed in it, even when another card's job ends and the page updates.",
+      "Once the spec is complete the card proposes Then refine; nothing starts by itself.",
+      "On Refinement, tick features and launch their next step together: Specify for those without a spec, Refine for those with a complete spec and no stories. The page says how many calls it takes against your daily quota and the monthly budget, and launches nothing if it goes beyond.",
+      "The jobs wait their turn: Claude takes two at a time, the others wait in the order launched. Each waiting card says its place (\"2nd in line\"), which moves up as jobs end, and a job not started yet can be cancelled; a running job never is.",
+      "Each feature's card follows its own job live, without reloading the page: waiting, working, or failed with the reason and Try again; the other jobs go on. Leaving the page loses nothing.",
+      "Relaunch Claude, on a story's row of the sprint and on a card the sprint's run stopped, is open to a Product Engineer, who runs the sprint, as well as a tech lead.",
+      "A story in development whose last Claude run ended without a pull request shows Claude done: no pull request (or failed, cancelled), in amber, instead of Claude done.",
+      "A story of the sprint in development without a pull request, Claude's last run over, offers Relaunch Claude on its row (tech lead and above): Claude works on it again, on its branch; a card of the sprint's run stopped there follows it again.",
+      "When Claude ends a run without a pull request, the work it left uncommitted is committed as it is and pushed to the story's branch, so a relaunch builds on it.",
+      "While changes wait for the sprint's release (\"0.82 + 7 changes\"), the (i) next to the name says when they were deployed, then when the release they follow came out, instead of only that release's date.",
+      "A card the sprint's run stopped on Claude's side before Relaunch Claude existed now offers it too, read from why it stopped.",
+      "When Claude ends its run on a story without any change, the workflow says so on the issue with Claude's last words and the run's link, removes the empty branch so the story is ready again, and fails the run; commits left without a pull request are pushed and the comment asks for one.",
+      "A card the sprint's run stopped on Claude's side (a run failed or ended without a pull request, a branch left without one) offers Relaunch Claude on #n to a tech lead and above: Claude works on the story again, on its branch if it has one, and the run follows it; logged.",
+      "A person validates each feature before the sprint: once its stories are ready, its card on Refinement and its page propose Validate the feature (Product Engineer and above); who validated and when are shown, and logged.",
+      "A feature changed after (its text, its spec, a story added or removed) needs validating again, and its card says why; GO / NO-GO lists any feature not validated as blocking. A tester sees who validated, without the button.",
+      "Refinement opens with how far Next release is prepared: features, specified, refined and ready, and the stories (needed and nice to have); each part says what it counts on hover or focus.",
+      "GO when every feature is ready, leading to Start the sprint; otherwise NO-GO, listing what blocks each feature, linked to its card on the page. When a sprint already runs, the page says so and links to it.",
+      "Each feature's card in Refinement has its priority in a list (the project's priority labels): saved at once, given to its stories on GitHub (one level lower for nice to have) and logged, as from the card's page.",
+      "Features are reordered by drag and drop on a handle or with the arrow keys, as in the sprint; up and down arrows remain without the page's script. The order is the board's, which the sprint takes, and is logged.",
+      "A Refinement tab, between Board and Sprint (Product and All perspectives), lists the features of Next release in priority order, each with its status, synopsis, stories and next step: Specify, Answer, Refine, Validate (with what each story lacks and Mark ready) or Ready for the sprint.",
+      "Ideas and questions of Next release are listed apart, below. The page reads only what La Fabrique already holds: no call to GitHub or Claude.",
+      "Linked from the board's Next release lane and from the sprint page when no sprint runs."
+    ],
+    "stories": [223, 224, 225, 226, 227, 228, 229, 230, 232, 233, 239, 265, 267],
     "liens": null
   },
   {
