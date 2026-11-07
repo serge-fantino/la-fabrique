@@ -75,7 +75,7 @@ import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
 import { findProject, type Project } from "./projects";
 import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
 import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
-import { cancelJob, enqueue, isActive, jobEvents, latestJob, projectJobs, workingCards, type JobKind } from "./jobs";
+import { cancelJob, dispatch, enqueue, isActive, jobEvents, latestJob, projectJobs, workingCards, type JobKind } from "./jobs";
 import { liveFor, refinementLiveFor, sprintLiveFor } from "./live";
 import { wordingFor } from "./wording";
 import { can } from "./rights";
@@ -997,6 +997,8 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
   const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
+  // A waiting job with room free (a lost wake-up) gets its turn now.
+  await dispatch(env).catch(() => undefined);
   const [jobs, left] = await Promise.all([projectJobs(env.DB, project.repo), canWriteCards(viewer) ? callsLeft(env, viewer.role, viewer.login) : null]);
   const notice = params.get("notice");
   const rubriques = specRubriques(project);

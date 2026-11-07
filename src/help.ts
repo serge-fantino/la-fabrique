@@ -1,4 +1,5 @@
 import { PRODUCT_ENGINEER } from "./help-pe";
+import { hostCookie } from "./http";
 import { listProjects, type Project } from "./projects";
 import { escapeHtml, layout, type Viewer } from "./views";
 
@@ -103,6 +104,8 @@ export const GUIDES: Guide[] = [
 // Where the links lead: the chosen project's pages, the list of projects
 // when there is none, sign-in first when signed out. The project chosen by
 // hand follows the reader from page to page (`?project=`).
+export const HELP_PROJECT_COOKIE = "__Host-help-project";
+
 interface Links {
   project: Project | null;
   signedIn: boolean;
@@ -173,7 +176,8 @@ export async function showHelp(
   viewer: Viewer | undefined,
   match: RegExpExecArray,
   search: URLSearchParams,
-): Promise<{ status: number; body: string }> {
+  remembered: { cookie?: string | undefined; referer?: string | null } = {},
+): Promise<{ status: number; body: string; cookie?: string }> {
   const [, slug, kind, page] = match;
   if (!slug) return { status: 200, body: helpIndex(viewer) };
   const guide = GUIDES.find((candidate) => candidate.slug === slug);
@@ -181,16 +185,22 @@ export async function showHelp(
   if (!guide.ready) return { status: 200, body: comingSoon(viewer, guide) };
   // Signed out, nothing about the projects is shown.
   const projects = viewer ? await listProjects(db) : [];
-  const wanted = search.get("project");
-  const chosen = projects.find((candidate) => candidate.repo === wanted);
-  const links: Links = { project: chosen ?? projects[0] ?? null, signedIn: !!viewer, chosen: !!chosen };
-  if (!kind) return { status: 200, body: guideHome(viewer, guide, projects, links) };
+  const asked = projects.find((candidate) => candidate.repo === search.get("project"));
+  // Otherwise the project chosen earlier (cookie), then the one the reader
+  // came from (a page of /projects/{owner}/{repo}), then the first.
+  const earlier = projects.find((candidate) => candidate.repo === decodeURIComponent(remembered.cookie ?? ""));
+  const origin = projects.find((candidate) => (remembered.referer ?? "").includes(`/projects/${candidate.repo}`));
+  const chosen = asked ?? earlier;
+  const links: Links = { project: chosen ?? origin ?? projects[0] ?? null, signedIn: !!viewer, chosen: !!(chosen ?? origin) };
+  const cookie = asked ? hostCookie(HELP_PROJECT_COOKIE, encodeURIComponent(asked.repo), 60 * 60 * 24 * 365) : undefined;
+  const done = (page: { status: number; body: string }): { status: number; body: string; cookie?: string } => (cookie ? { ...page, cookie } : page);
+  if (!kind) return done({ status: 200, body: guideHome(viewer, guide, projects, links) });
   if (kind === "use-cases") {
     const useCase = guide.useCases?.find((candidate) => candidate.slug === page);
-    return useCase ? { status: 200, body: useCasePage(viewer, guide, useCase, projects, links) } : { status: 404, body: notFound(viewer, guide) };
+    return done(useCase ? { status: 200, body: useCasePage(viewer, guide, useCase, projects, links) } : { status: 404, body: notFound(viewer, guide) });
   }
   const reference = guide.reference?.find((candidate) => candidate.slug === page);
-  return reference ? { status: 200, body: referencePage(viewer, guide, reference, projects, links) } : { status: 404, body: notFound(viewer, guide) };
+  return done(reference ? { status: 200, body: referencePage(viewer, guide, reference, projects, links) } : { status: 404, body: notFound(viewer, guide) });
 }
 
 export function helpIndex(viewer: Viewer | undefined): string {

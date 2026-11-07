@@ -4,7 +4,7 @@ import { APPS_PATH, changeApps, showApps } from "./apps";
 import { finishLogin, startLogin } from "./auth";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
-import { html, json, redirect, svg, text } from "./http";
+import { html, json, readCookie, redirect, svg, text } from "./http";
 import { LOGO_SVG } from "./logo";
 import { isAsset, serveAsset } from "./assets";
 import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
@@ -42,7 +42,7 @@ import promotionExample from "../docs/exemples/promouvoir.yml";
 import claudeExample from "../docs/exemples/claude.yml";
 import { renderMarkdown } from "./markdown";
 import { GUIDE_PATH, guidePage } from "./setup-views";
-import { HELP_ROUTE, showHelp } from "./help";
+import { HELP_PROJECT_COOKIE, HELP_ROUTE, showHelp } from "./help";
 
 import { SHARE_PATH, showSharedDocument } from "./share-links";
 const GUIDE_EXAMPLE_PATH = "/guide/epicerie.fabrique.json";
@@ -162,8 +162,11 @@ const app = {
     const help = HELP_ROUTE.exec(pathname);
     if (help) {
       if (method !== "GET") return methodNotAllowed();
-      const page = await showHelp(env.DB, viewer, help, new URL(request.url).searchParams);
-      return html(page.body, { status: page.status });
+      const page = await showHelp(env.DB, viewer, help, new URL(request.url).searchParams, {
+        cookie: readCookie(request, HELP_PROJECT_COOKIE),
+        referer: request.headers.get("referer"),
+      });
+      return html(page.body, { status: page.status, cookies: page.cookie ? [page.cookie] : [] });
     }
 
     const docRoute = DOC_ROUTE.exec(pathname);

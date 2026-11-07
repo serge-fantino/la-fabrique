@@ -267,12 +267,17 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
   const meter = (label: string, value: number, total: number, tip: string) =>
     `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <span class="bar"><span style="width:${total ? Math.round((value / total) * 100) : 0}%"></span></span></div>`;
   const go = progress.features > 0 && progress.blockers.length === 0;
-  const verdict = data.sprint
+  const blockersList = progress.blockers.length
+    ? `<ul class="plain">${progress.blockers.map((b) => `<li><a href="#card-${b.card.id}"><span class="mono">${cardRef(b.card.id)}</span> ${escapeHtml(b.card.title)}</a>: ${escapeHtml(b.reason)}</li>`).join("")}</ul>`
+    : "";
+  const running = data.sprint
     ? `<p><span class="pill">Sprint running</span> ${escapeHtml(data.sprint.label)} is in progress: <a href="${escapeHtml(base)}/sprint">go to the sprint</a>.</p>`
-    : go
-      ? `<p><span class="pill ok">GO</span> Every feature of Next release is ready. <a class="button" href="${escapeHtml(base)}/sprint#start-sprint">Start the sprint</a></p>`
-      : `<p><span class="pill alert">NO-GO</span> ${progress.features ? "What blocks:" : "No feature in Next release."}</p>
-        ${progress.blockers.length ? `<ul class="plain">${progress.blockers.map((b) => `<li><a href="#card-${b.card.id}"><span class="mono">${cardRef(b.card.id)}</span> ${escapeHtml(b.card.title)}</a>: ${escapeHtml(b.reason)}</li>`).join("")}</ul>` : ""}`;
+    : "";
+  const verdict = go
+    ? data.sprint
+      ? `<p><span class="pill ok">GO</span> Every feature of Next release is ready.</p>${running}`
+      : `<p><span class="pill ok">GO</span> Every feature of Next release is ready. <a class="button" href="${escapeHtml(base)}/sprint#start-sprint">Start the sprint</a></p>`
+    : `<p><span class="pill alert">NO-GO</span> ${progress.features ? "What blocks:" : "No feature in Next release."}</p>${blockersList}${running}`;
   const summary = `<section class="card release-progress" id="release-progress" aria-label="Progress of the next release">
       <h2>Next release</h2>
       ${meter("Features", progress.features, progress.features, "The features in Next release")}

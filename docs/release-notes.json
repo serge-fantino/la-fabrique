@@ -13,6 +13,61 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Merge stays offered on a pull request in conflict",
+    "changements": [
+      "Every pull request writes its entry at the top of the release notes, so once one is merged the others show In conflict. The sprint still offers Merge on them when the project declares its merge workflow: the workflow brings main in and rebuilds the release notes.",
+      "A conflict in any other file stops the merge, which says which files; Merge is then no longer offered, only Update with Claude. The In conflict pill says this on hover."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
+    "titre": "Specify queue: waiting jobs start when a place is free",
+    "changements": [
+      "When a Claude job ends, the next waiting job is given to Claude right away (it only moved when someone cancelled a job); opening Refinement also gives a turn to jobs left waiting.",
+      "A job whose consumer died no longer holds a place in the line.",
+      "A job that has to wait now says so in its log."
+    ],
+    "stories": [226],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
+    "titre": "Help: the chosen project is kept from page to page",
+    "changements": [
+      "The project you pick in the guides is remembered on this device, so every page of the guides keeps it, even when you reach a page without the choice in its address.",
+      "Coming from a project's page, the guides' links open that project by default instead of the first one."
+    ],
+    "stories": [267],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
+    "titre": "A reworked story is to test again on a project without integration",
+    "changements": [
+      "When the pull request of a rework is merged on a project without an integration branch, such as La Fabrique, the rework label now goes and the story is to test again, as on a project with integration. Before, GitHub closed the story at the merge, La Fabrique opened it again, and the rework stayed marked in development."
+    ],
+    "stories": [202],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
+    "titre": "Refinement: NO-GO stays visible while a sprint runs, and the progress bars show",
+    "changements": [
+      "While a sprint runs, Refinement still says NO-GO or GO and lists what blocks, each linked to its card; only the Start the sprint button is replaced by a link to the sprint.",
+      "The progress bars at the top of Refinement now show their fill (it had no height)."
+    ],
+    "stories": [225],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Help: the Product Engineer's user guide and reference",
     "changements": [
       "The Product Engineer's help has two entries that point at each other: a user guide of 22 use cases, grouped by moment (shape a feature, refine in batch, plan the next sprint, run it, test and ship, keep the board in order, work from Claude), and a reference of 12 pages (getting around, cards, the board, specs with Claude, stories, Refinement, the sprint, testing, defects, releases and the go, Claude, words).",
