@@ -42,6 +42,7 @@ import promotionExample from "../docs/exemples/promouvoir.yml";
 import claudeExample from "../docs/exemples/claude.yml";
 import { renderMarkdown } from "./markdown";
 import { GUIDE_PATH, guidePage } from "./setup-views";
+import { HELP_ROUTE, showHelp } from "./help";
 
 import { SHARE_PATH, showSharedDocument } from "./share-links";
 const GUIDE_EXAMPLE_PATH = "/guide/epicerie.fabrique.json";
@@ -156,6 +157,14 @@ const app = {
     // La Fabrique's own report and test kit, relayed by the session
     // (la-fabrique#211).
     if (pathname === SELF_RELAY_PATH) return selfRelay(request, env, viewer);
+
+    // The onboarding guides, open without an account (la-fabrique#264).
+    const help = HELP_ROUTE.exec(pathname);
+    if (help) {
+      if (method !== "GET") return methodNotAllowed();
+      const page = await showHelp(env.DB, viewer, help, new URL(request.url).searchParams);
+      return html(page.body, { status: page.status });
+    }
 
     const docRoute = DOC_ROUTE.exec(pathname);
     if (docRoute) {
