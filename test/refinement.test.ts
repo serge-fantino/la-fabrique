@@ -206,6 +206,15 @@ describe("Validating a feature", () => {
     expect(page).toContain("its text changed");
     expect(page).toContain("NO-GO");
     expect(page).toContain("to validate again: its text changed");
+
+    // While a sprint runs, the verdict and what blocks stay; only Start the sprint goes.
+    await env.DB.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, 'Sprint', 'pe')").bind(REPO).run();
+    page = await (await get(`/projects/${REPO}/refinement`, pe.cookie)).text();
+    expect(page).toContain("Sprint running");
+    expect(page).toContain("NO-GO");
+    expect(page).toContain("to validate again: its text changed");
+    expect(page).not.toContain("Start the sprint");
+    await env.DB.prepare("DELETE FROM sprints WHERE repo = ?").bind(REPO).run();
   });
 });
 
