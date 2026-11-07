@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Merge stays offered on a pull request in conflict",
+    "changements": [
+      "Every pull request writes its entry at the top of the release notes, so once one is merged the others show In conflict. The sprint still offers Merge on them when the project declares its merge workflow: the workflow brings main in and rebuilds the release notes.",
+      "A conflict in any other file stops the merge, which says which files; Merge is then no longer offered, only Update with Claude. The In conflict pill says this on hover."
+    ],
+    "stories": [113],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Specify queue: waiting jobs start when a place is free",
     "changements": [
       "When a Claude job ends, the next waiting job is given to Claude right away (it only moved when someone cancelled a job); opening Refinement also gives a turn to jobs left waiting.",

@@ -414,6 +414,24 @@ describe("Merging a pull request from the sprint", () => {
     expect(dispatched).toEqual({ ref: "main", inputs: { pr: "30", par: "admin-one" } });
     expect((await logActions()).map((entry) => entry.action)).toContain("pull_merge_launched");
   });
+
+  // Every pull request writes its entry at the top of the release notes: once
+  // one is merged, the others are in conflict there, which the merge workflow
+  // resolves. Merge stays offered.
+  it("still offers Merge on a pull request in conflict, the merge workflow resolving the release notes", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", fusionner: "merge.yml" }, claude: { plafond: 1 } });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]), REPO)
+      .run();
+    const detail = JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "dirty", base: { ref: "main" } });
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    const page = await (await get(`/projects/${REPO}/sprint`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain('title="Merge brings main in and rebuilds the release notes; a conflict in any other file stops it and says which.">In conflict with <code>main</code></span>');
+    expect(page).toContain('aria-label="Merge pull request #30">Merge</button>');
+    expect(page).toContain(">Update with Claude</button>");
+  });
 });
 
 describe("A merged story in the sprint", () => {
@@ -467,6 +485,8 @@ describe("A merge refused", () => {
     const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
     expect(page).toContain('<span class="pill alert small">Merge refused</span> <span class="small">Conflicts with main in: CLAUDE.md src/rights.ts.');
     expect(page).toMatch(/<a [^>]*class="small" href="https:\/\/github.com\/run\/77">the run<\/a>/);
+    // Refused for files in conflict: only Claude's update is offered, not Merge again.
+    expect(page).not.toContain("Merge pull request #30");
     const log = await (await get(`/projects/${REPO}/log`, cookie)).text();
     expect(log).toContain("refused: Conflicts with main in: CLAUDE.md src/rights.ts.");
   });
