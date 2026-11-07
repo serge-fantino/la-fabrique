@@ -57,12 +57,23 @@ export interface StoryEditorData {
   errors: Record<number, string>;
   // A blank criterion to fill in, for this story.
   blank?: number | undefined;
+  // The priority the story will get on GitHub, from its card's (one level
+  // lower when nice to have); null when the card has none.
+  priorityOf?: ((nice: boolean) => string | null) | undefined;
   // Unique ids when several editors share a page.
   prefix?: string;
 }
 
 const button = (name: string, label: string, aria: string, disabled = false) =>
   `<button type="submit" class="button quiet small" name="action" value="${escapeHtml(name)}" data-plain aria-label="${escapeHtml(aria)}" formnovalidate${disabled ? " disabled" : ""}>${label}</button>`;
+
+// The marks that go with the issue and not in its text: nice to have, and
+// the priority label.
+export function priorityLine(nice: boolean, priorityOf?: (nice: boolean) => string | null): string {
+  const priority = priorityOf?.(nice) ?? null;
+  const parts = [nice ? "Nice to have" : "Needed by the feature", priority ? `priority: ${escapeHtml(priority)}` : "no priority (the card has none)"];
+  return parts.join(" · ");
+}
 
 export function storyBlocks(data: StoryEditorData): string {
   const prefix = data.prefix ?? "";
@@ -114,6 +125,7 @@ export function storyBlocks(data: StoryEditorData): string {
             kept
               ? `<details open>
             <summary>What GitHub will receive</summary>
+            <p class="small story-marks">${priorityLine(story.nice === true, data.priorityOf)}</p>
             <article class="markdown story-preview">${renderCardText(data.bodies[index] ?? "", data.repo)}</article>
           </details>`
               : `<p class="muted small">Left out: nothing will be created for it.</p>`

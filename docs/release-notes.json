@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Story editor: the preview follows Nice to have",
+    "changements": [
+      "The preview of what GitHub will receive says whether the story is nice to have and the priority it will get (one level below the card's when nice to have), so ticking Nice to have changes it.",
+      "Create the checked stories is disabled when no story is checked."
+    ],
+    "stories": [228],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Refinement: answers being typed survive a reload",
     "changements": [
       "Answers typed in a card on Refinement are kept on the device per field, so sending another card's answers (which reloads the page) no longer loses them; a field's draft goes once its form is sent."

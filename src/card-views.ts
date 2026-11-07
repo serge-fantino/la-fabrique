@@ -1117,11 +1117,12 @@ export function splitPage(
     // A blank criterion to fill in, for this story.
     blank?: number | undefined;
     error?: string | undefined;
+    priorityOf?: ((nice: boolean) => string | null) | undefined;
   },
 ): string {
   const { card, split } = data;
   const url = cardUrl(project.repo, card.id);
-  const stories = storyBlocks({ repo: project.repo, split, rubriques: data.rubriques, kept: data.kept, bodies: data.bodies, errors: data.errors, blank: data.blank });
+  const stories = storyBlocks({ repo: project.repo, split, rubriques: data.rubriques, kept: data.kept, bodies: data.bodies, errors: data.errors, blank: data.blank, priorityOf: data.priorityOf });
   const review = split.review;
   const reviewed = (review ?? [])
     .map((story) =>
@@ -1159,7 +1160,7 @@ export function splitPage(
         ${review ? `<h2>The stories already made</h2>${reviewed}${split.stories.length ? `<h2>New stories</h2>` : ""}` : ""}
         ${stories}
         <div class="card-actions">
-          <button type="submit" class="button" name="action" value="create">${submit}</button>
+          <button type="submit" class="button" name="action" value="create"${!review && !data.kept.size ? " disabled" : ""}>${submit}</button>
           <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>
           <button type="submit" class="button quiet" name="action" value="discard" formnovalidate>Discard the proposal</button>
         </div>

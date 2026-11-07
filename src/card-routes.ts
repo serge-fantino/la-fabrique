@@ -1003,7 +1003,8 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
   const notice = params.get("notice");
   const rubriques = specRubriques(project);
   const words = wordingFor(project);
-  const editors = new Map<number, { split: CardSplit; rubriques: Rubrique[]; kept: Set<number>; bodies: string[] }>();
+  const rules = await projectRules(env.DB, project);
+  const editors = new Map<number, { split: CardSplit; rubriques: Rubrique[]; kept: Set<number>; bodies: string[]; priorityOf: (nice: boolean) => string | null }>();
   for (const card of features) {
     const split = card.data.split;
     if (!split || split.review || !split.stories.length || (links.order.get(card.id) ?? []).length) continue;
@@ -1013,6 +1014,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       split,
       rubriques,
       kept: new Set(kept),
+      priorityOf: (nice) => storyPriority(rules, card.priority, nice),
       bodies: split.stories.map((story, index) =>
         issueBody({ title: story.title, answers: story.answers }, rubriques, viewer.login, words, words.fromCard(cardRef(card.id), permalink, card.rev, kept.length > 1 ? { index: index + 1, total: kept.length } : undefined)),
       ),
@@ -1262,6 +1264,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const originOf = (position: number, kept: number, rev: number) =>
     words.fromCard(cardRef(card.id), permalink(rev), rev, made + kept > 1 ? { index: made + position, total: made + kept } : undefined);
   const commentOf = (comment: string, rev: number) => `${comment}\n\n${words.storyReview(cardRef(card.id), permalink(rev), rev, viewer.login)}`;
+  const cycle = await projectRules(env.DB, project);
   const page = async (shown: CardSplit, data: { kept?: number[]; commented?: number[]; errors?: Record<number, string>; error?: string; status?: number; blank?: number } = {}) => {
     const { view, cookies } = await projectView(request, env, project, viewer);
     const kept = data.kept ?? shown.stories.map((_story, index) => index);
@@ -1282,6 +1285,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
         errors: data.errors ?? {},
         blank: data.blank,
         error: data.error,
+        priorityOf: (nice) => storyPriority(cycle, card.priority, nice),
       }),
       { cookies, status: data.status ?? 200 },
     );
