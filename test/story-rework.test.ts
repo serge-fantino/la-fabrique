@@ -111,4 +111,36 @@ describe("Rework a story with its feedbacks (la-fabrique#202)", () => {
     // A pull request closed without merging changes nothing.
     expect((await webhook("pull_request", { action: "closed", repository: { full_name: REPO }, pull_request: { ...pull, merged_at: null } })).status).toBe(200);
   });
+
+  // Without an integration branch the merge reaches main: GitHub has already
+  // closed the story when this webhook comes, before La Fabrique reopens it.
+  it("puts the story to test again even when the merge closed it first", async () => {
+    await seed();
+    const issue = { number: 12, title: "Plan the week", state: "closed", state_reason: "completed", html_url: "", labels: [{ name: "rework" }], user: null, created_at: "", updated_at: "", closed_at: "2026-11-02T18:00:00Z", body: "" };
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), J).times(2);
+    github().intercept({ path: `/repos/${REPO}/issues/12` }).reply(200, JSON.stringify(issue), J);
+    let removed = false;
+    github().intercept({ method: "DELETE", path: `/repos/${REPO}/issues/12/labels/rework` }).reply(200, () => {
+      removed = true;
+      return "[]";
+    }, J);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/issues/12/comments` }).reply(201, "{}", J);
+    const pull = { number: 41, merged_at: "2026-11-02T18:00:00Z", title: "Rework: save the week (#12)", body: "Refs #12", head: { ref: "claude/12-rework-7" } };
+    expect((await webhook("pull_request", { action: "closed", repository: { full_name: REPO }, pull_request: pull })).status).toBe(200);
+    expect(removed).toBe(true);
+    expect((await logActions()).map((entry) => entry.action)).toContain("story_rework_merged");
+    // The snapshot is not written as closed: the reopen that follows keeps it open.
+    const row = await env.DB.prepare("SELECT data FROM snapshots WHERE repo = ? AND kind = 'stories'").bind(REPO).first<{ data: string }>();
+    expect((JSON.parse(row?.data ?? "[]") as Story[]).find((entry) => entry.number === 12)?.state).toBe("open");
+  });
+
+  it("leaves a story closed as not planned as it is", async () => {
+    await seed();
+    const issue = { number: 12, title: "Plan the week", state: "closed", state_reason: "not_planned", html_url: "", labels: [{ name: "rework" }], user: null, created_at: "", updated_at: "", closed_at: "2026-11-02T18:00:00Z", body: "" };
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), J);
+    github().intercept({ path: `/repos/${REPO}/issues/12` }).reply(200, JSON.stringify(issue), J);
+    const pull = { number: 41, merged_at: "2026-11-02T18:00:00Z", title: "Rework: save the week", body: "Refs #12", head: { ref: "claude/12-rework-7" } };
+    expect((await webhook("pull_request", { action: "closed", repository: { full_name: REPO }, pull_request: pull })).status).toBe(200);
+    expect((await logActions()).map((entry) => entry.action)).not.toContain("story_rework_merged");
+  });
 });
