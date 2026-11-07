@@ -195,14 +195,25 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         const stale = pull.state === "open" && (detail?.mergeable === "dirty" || detail?.mergeable === "behind");
         const against = detail?.base ? ` <code>${escapeHtml(detail.base)}</code>` : " its base";
         const mergeState = stale
-          ? ` <span class="pill ${detail?.mergeable === "dirty" ? "alert" : "warn"} small">${detail?.mergeable === "dirty" ? `In conflict with${against}` : `Behind${against}`}</span>`
+          ? ` <span class="pill ${detail?.mergeable === "dirty" ? "alert" : "warn"} small"${
+              detail?.mergeable === "dirty" && data.merge?.workflow
+                ? ` title="Merge brings ${escapeHtml(detail?.base ?? "the base")} in and rebuilds the release notes; a conflict in any other file stops it and says which."`
+                : ""
+            }>${detail?.mergeable === "dirty" ? `In conflict with${against}` : `Behind${against}`}</span>`
           : "";
         const running = data.claude.runs.some((run) => run.issue === number && isRunning(run));
         const update =
           stale && controls && data.claude.canLaunch && data.claude.workflow && !running
             ? button({ action: "update", story: number, pull: pull.number }, `Bring pull request #${pull.number} up to date with Claude`, "Update with Claude", "quiet small claude")
             : "";
-        const mergeable = pull.state === "open" && !detail?.draft && detail && detail.mergeable !== "dirty" && !running;
+        // In conflict, the project's merge workflow may still merge it: La
+        // Fabrique's rebuilds the release notes every pull request writes in,
+        // and refuses any other conflict, naming the files. Once refused for
+        // that, only Claude's update is offered.
+        const lastAttempt = pull.state === "open" ? data.merges?.get(pull.number) : undefined;
+        const filesInConflict = Boolean(lastAttempt && lastAttempt.conclusion !== "success" && /^Conflicts with /.test(lastAttempt.reason ?? ""));
+        const mergeableAsIs = detail?.mergeable !== "dirty" || (Boolean(data.merge?.workflow) && !filesInConflict);
+        const mergeable = pull.state === "open" && !detail?.draft && detail && mergeableAsIs && !running;
         const merge =
           mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
             ? button({ action: "merge", pull: pull.number }, `Merge pull request #${pull.number}`, "Merge", "small")
