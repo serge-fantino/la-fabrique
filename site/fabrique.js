@@ -565,8 +565,43 @@
     }, 5000);
   }
 
+  // Answers being typed (textarea[data-keep]) are kept on this device, per
+  // field, so sending another card's answers (a page reload) loses nothing.
+  // A field's draft goes when its form is sent.
+  const keepKey = (field) => `fabrique-keep:${location.pathname}:${field.id}`;
+  let keepListening = false;
+  function setUpKeptAnswers() {
+    for (const field of document.querySelectorAll("textarea[data-keep]")) {
+      if (!field.id || field.value) continue;
+      try {
+        const saved = localStorage.getItem(keepKey(field));
+        if (saved) field.value = saved;
+      } catch {}
+    }
+    if (keepListening) return;
+    keepListening = true;
+    document.addEventListener("input", (event) => {
+      const field = event.target;
+      if (!(field instanceof HTMLTextAreaElement) || !field.hasAttribute("data-keep") || !field.id) return;
+      try {
+        if (field.value) localStorage.setItem(keepKey(field), field.value);
+        else localStorage.removeItem(keepKey(field));
+      } catch {}
+    });
+    document.addEventListener("submit", (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement) || event.defaultPrevented) return;
+      for (const field of form.querySelectorAll("textarea[data-keep]")) {
+        try {
+          localStorage.removeItem(keepKey(field));
+        } catch {}
+      }
+    });
+  }
+
   // What each page needs once it is shown.
   function setUp() {
+    setUpKeptAnswers();
     document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
     setUpFragments();
     setUpDiagnostic();
