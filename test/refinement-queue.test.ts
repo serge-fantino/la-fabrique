@@ -77,6 +77,15 @@ describe("The queue of Claude's jobs", () => {
     expect(await places()).toEqual([null, null, null, 1, 2]);
   });
 
+  it("gives a turn to waiting jobs left behind when Refinement is opened, and logs the wait", async () => {
+    const { cookie, ids } = await setUp(3);
+    const insert = (cardId: number, status: string) =>
+      env.DB.prepare("INSERT INTO claude_jobs (repo, card_id, kind, status, request, login) VALUES (?, ?, 'spec_draft', ?, '{\"answers\":[]}', 'pe')").bind(REPO, cardId, status);
+    await env.DB.batch([insert(ids[0]!, "done"), insert(ids[1]!, "waiting"), insert(ids[2]!, "waiting")]);
+    await get(`/projects/${REPO}/refinement`, cookie);
+    expect(await statuses()).toEqual(["done", "queued", "queued"]);
+  });
+
   it("cancels a job that has not started, never a running one", async () => {
     const { cookie, csrf, ids } = await setUp(3);
     for (const id of ids) await post(`/projects/${REPO}/refinement`, { csrf, action: "refine_launch", card: String(id) }, cookie);

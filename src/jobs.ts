@@ -206,6 +206,13 @@ async function say(env: Env, job: Job, text: string | null, status?: JobStatus, 
 // are on it or running, then tells the ones still waiting their new place.
 export async function dispatch(env: Env): Promise<void> {
   if (!env.CLAUDE_QUEUE) return;
+  // A job whose consumer died must not hold a place for ever.
+  const staleBefore = new Date(Date.now() - STALE_MS).toISOString();
+  await env.DB.prepare(
+    "UPDATE claude_jobs SET status = 'failed', error = 'it stopped without an answer', finished_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE status IN ('queued', 'running') AND COALESCE(started_at, queued_at, created_at) < ?",
+  )
+    .bind(staleBefore)
+    .run();
   const busy = await env.DB.prepare("SELECT COUNT(*) AS n FROM claude_jobs WHERE status IN ('queued', 'running')").first<{ n: number }>();
   const free = MAX_RUNNING - (busy?.n ?? 0);
   if (free > 0) {
@@ -271,6 +278,7 @@ export async function enqueue(
   const job = toJob(row);
   const answered = data.request.answers.length;
   await say(env, job, `Asked by @${data.login}${answered ? `, with ${answered} answer${answered > 1 ? "s" : ""}` : ""}.`);
+  if (!direct) await say(env, job, "Claude is busy: waiting for its turn.", "waiting");
   if (!direct) return { ok: true, job };
   try {
     await env.CLAUDE_QUEUE.send({ job: job.id });
@@ -420,6 +428,12 @@ export async function consumeJobs(batch: MessageBatch<{ job: number }>, env: Env
     } catch (error) {
       console.error("claude job", message.body.job, error);
       message.retry({ delaySeconds: RETRY_DELAY_SECONDS });
+    }
+    // A place is free (or soon): the next waiting job gets its turn.
+    try {
+      await dispatch(env);
+    } catch (error) {
+      console.error("claude dispatch", error);
     }
   }
 }
