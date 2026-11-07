@@ -8,7 +8,7 @@ import { developmentLinks, pullStories } from "./pull-links";
 import { applyIssueEvent, STORIES, type RestIssue } from "./stories";
 import { storyCards } from "./card-groups";
 import { heldStories, waitReason } from "./card-lock";
-import { cardStories } from "./card-stories";
+import { cardStories, type CardStory } from "./card-stories";
 import { sprintLiveFor } from "./live";
 import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
 import { wordingFor } from "./wording";
@@ -60,6 +60,20 @@ async function waitingFor(env: Env, project: Project, number: number, running: S
   const stories = await cardStories(env, project, siblings);
   const busy = heldStories(links, stories, running, cards).get(number);
   return busy ? waitReason(number, busy) : null;
+}
+
+// Rework or not (la-fabrique#202): a story back in development with
+// feedbacks from testing (the rework label) is reworked with them, never
+// developed again from scratch; not while a pull request of it is open.
+// The sprint's "Rework with Claude" and the MCP's launch_claude decide here.
+export function isRework(story: CardStory | undefined): boolean {
+  return Boolean(story?.rework);
+}
+
+export function reworkRefusal(number: number, story: CardStory | undefined): string | null {
+  if (!isRework(story)) return `#${number} has no feedback to take into account.`;
+  if (story?.pulls.some((pull) => pull.state === "open")) return `#${number} already has a pull request open: update or merge it first.`;
+  return null;
 }
 
 export type LaunchOutcome = { ok: true; running: number } | { ok: false; message: string; status: 409 | 422 | 502 };

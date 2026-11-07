@@ -26,7 +26,7 @@ import {
   updateCard,
   type Card,
 } from "./cards";
-import { canLaunchClaude, launchClaude } from "./claude";
+import { canLaunchClaude, isRework, launchClaude, reworkRefusal } from "./claude";
 import type { Env } from "./env";
 import { installationToken } from "./github-app";
 import { cycleRules, projectRules } from "./lifecycle";
@@ -60,7 +60,8 @@ const INSTRUCTIONS =
   "code is branches and pull requests); La Fabrique holds the upstream: cards (features, ideas, questions) on a board, their functional " +
   "spec, and the sprint. The cycle: a card (draft) gets a spec in the project's sections (card_spec), is validated, becomes stories on " +
   "GitHub (stories_create, each linked to its card), goes into Next release, then into the sprint (sprint_start); Claude Code is launched " +
-  "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested, and the go to production is given by a " +
+  "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested; a story sent back by testing is " +
+  "reworked with its feedbacks by the same launch_claude, and the go to production is given by a " +
   "person on La Fabrique's sprint page (never through this server). A card's status follows its stories once validated. Read before " +
   "writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
   "write is in the person's name and in La Fabrique's log.";
@@ -663,7 +664,10 @@ const TOOLS: Tool[] = [
   {
     name: "launch_claude",
     title: "Launch Claude Code on a story",
-    description: "Start the project's Claude workflow on a ready story of the sprint: a branch linked to the issue, then a pull request. Within the project's cap of runs at once.",
+    description:
+      "Start the project's Claude workflow on a ready story of the sprint: a branch linked to the issue, then a pull request. A story sent back by testing " +
+      "(back in development with feedbacks, the rework label) is reworked instead, as the sprint's Rework with Claude does: its feedbacks in Claude's prompt, " +
+      "a new branch claude/<n>-rework-<run>; refused while a pull request of it is open. Within the project's cap of runs at once, one story at a time per card.",
     inputSchema: { type: "object", properties: { ...PROJECT, story: { type: "integer" } }, required: ["project", "story"] },
     needs: "launch_claude",
     write: true,
@@ -671,8 +675,15 @@ const TOOLS: Tool[] = [
       const project = await projectOf(ctx, args);
       const number = integer(args, "story");
       if (!canLaunchClaude(ctx.role)) fail("Launching Claude is for tech leads and super admins.");
-      const outcome = await launchClaude(ctx.env, project, ctx.login, number);
-      return outcome.ok ? { launched: number, sprint: absolute(ctx, `${projectUrl(project.repo)}/sprint`) } : fail(outcome.message);
+      // Back from testing (la-fabrique#202): reworked with its feedbacks.
+      const story = (await cardStories(ctx.env, project, [number])).get(number);
+      const rework = isRework(story);
+      if (rework) {
+        const refused = reworkRefusal(number, story);
+        if (refused) fail(refused);
+      }
+      const outcome = await launchClaude(ctx.env, project, ctx.login, number, { rework });
+      return outcome.ok ? { launched: number, rework, sprint: absolute(ctx, `${projectUrl(project.repo)}/sprint`) } : fail(outcome.message);
     },
   },
   {

@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Claude through MCP reworks a story sent back by testing",
+    "changements": [
+      "launch_claude, La Fabrique's MCP tool, reworks a story back in development with feedbacks from testing, as Rework with Claude does on the sprint: the feedbacks in Claude's prompt, a new rework branch, logged as a rework. Refused while a pull request of the story is open; a ready story is launched as before."
+    ],
+    "stories": [202],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Refinement: answers being typed survive a reload",
     "changements": [
       "Answers typed in a card on Refinement are kept on the device per field, so sending another card's answers (which reloads the page) no longer loses them; a field's draft goes once its form is sent."

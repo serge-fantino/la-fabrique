@@ -1,5 +1,7 @@
 import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { activityStatement } from "../src/activity-log";
+import type { Story } from "../src/stories";
 import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
 import { challenge, connect, me, token, VERIFIER, type Tokens } from "./oauth-helpers";
 
@@ -230,5 +232,64 @@ describe("La Fabrique's MCP server", () => {
     const app = await connect("mona");
     const response = await SELF.fetch(`${BASE}/mcp`, { method: "POST", headers: { authorization: `Bearer ${app.tokens.access_token}` }, body: "{}" });
     expect(response.status).toBe(403);
+  });
+
+  // A story sent back by testing is reworked with its feedbacks, as the
+  // sprint's "Rework with Claude" does; a ready story is launched as before.
+  it("reworks with Claude a story sent back by testing, and launches a ready one as before", async () => {
+    const story = (number: number, title: string, extra: Partial<Story> = {}): Story => ({
+      number, title, state: "open", url: `https://github.com/${REPO}/issues/${number}`, author: null, labels: [], parent: 1,
+      subTotal: 0, subCompleted: 0, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", closedAt: null,
+      pullRequests: [], branches: [], criteria: [{ text: "Works", done: false }], ...extra,
+    });
+    const merged = (number: number) => ({ number, url: `https://github.com/${REPO}/pull/${number}`, state: "merged" as const });
+    // Its own installation: the first test's token stays intercepted.
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 98, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(
+        REPO,
+        JSON.stringify({ nom: "Widget", langue: "en", workflows: { claude: "claude.yml" }, claude: { plafond: 2 } }),
+      ),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2099-01-01T00:00:00.000Z')").bind(
+        REPO,
+        JSON.stringify([
+          story(1, "Epic", { parent: null, subTotal: 3 }),
+          story(12, "Plan the week", { labels: ["rework"], pullRequests: [merged(30)] }),
+          story(13, "Print the week"),
+          story(14, "Share the week", { labels: ["rework"], pullRequests: [merged(31), { number: 32, url: `https://github.com/${REPO}/pull/32`, state: "open" }] }),
+        ]),
+      ),
+      activityStatement(env.DB, { actor: "tess", action: "story_feedback", repo: REPO, issueNumber: 12, details: { criterion: 0, criterion_text: "Works", text: "Nothing is saved" } }),
+    ]);
+    await grantRole("lead", "tech_lead");
+    const { access_token: access } = await connectClaude("lead");
+
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/98/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS).times(2);
+    const dispatched: unknown[] = [];
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, (options) => {
+      dispatched.push(JSON.parse(String(options.body)));
+      return "";
+    }).times(2);
+    github.intercept({ method: "POST", path: /\/repos\/acme\/widget\/issues\/1[23]\/comments/ }).reply(201, "{}", JSON_HEADERS).times(2);
+
+    const reworked = await call(access, "launch_claude", { project: REPO, story: 12 });
+    expect(reworked.isError).toBe(false);
+    expect(reworked.data).toMatchObject({ launched: 12, rework: true });
+    const ready = await call(access, "launch_claude", { project: REPO, story: 13 });
+    expect(ready.data).toMatchObject({ launched: 13, rework: false });
+    expect(dispatched).toEqual([
+      { ref: "main", inputs: { issue: "12", par: "lead", rework: "true" } },
+      { ref: "main", inputs: { issue: "13", par: "lead" } },
+    ]);
+    // Not while a pull request of the story is open: nothing dispatched.
+    expect((await call(access, "launch_claude", { project: REPO, story: 14 })).data["error"]).toContain("already has a pull request open");
+
+    const { results } = await env.DB.prepare("SELECT action, issue_number FROM activity_log WHERE action IN ('story_rework_launched', 'claude_launched') ORDER BY id").all<{ action: string; issue_number: number }>();
+    expect(results).toEqual([
+      { action: "story_rework_launched", issue_number: 12 },
+      { action: "claude_launched", issue_number: 13 },
+    ]);
   });
 });
