@@ -165,7 +165,7 @@ function storyCard(story: Story, actions: CardActions): string {
       ${criteriaList(story, actions)}
       ${feedbackList(story, actions)}
       ${validation(story, actions)}
-      ${scenarioBlock(actions.viewer, actions.base, story.number, story.title, actions.scenarios?.get(story.number) ?? [], actions.canValidate, "to-test")}
+      ${scenarioBlock(actions.viewer, actions.base, story.number, story.title, actions.scenarios?.get(story.number) ?? [], actions.canValidate, "to-test", story.scenarioPulls ?? [])}
     </article>`;
 }
 

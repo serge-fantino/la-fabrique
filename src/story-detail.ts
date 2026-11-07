@@ -199,7 +199,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
               ? notice(FEATURE_FAILURES[feature.failed] ?? "The scenario could not be proposed.", "error")
               : ""
         }
-        ${scenarioBlock(viewer, base, detail.number, title, detail.scenarios, canValidate(viewer.role), "story")}
+        ${scenarioBlock(viewer, base, detail.number, title, detail.scenarios, canValidate(viewer.role), "story", detail.story?.scenarioPulls ?? [])}
         ${isToTest(state) ? `<p><a class="button quiet" href="${escapeHtml(base)}/to-test#story-${detail.number}">Test it in To test</a></p>` : ""}
         <h2>Pull requests</h2>
         ${pulls}

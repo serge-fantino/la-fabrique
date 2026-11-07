@@ -1,7 +1,7 @@
 import { groupByCard, type CardHead, type StoryCards } from "./card-groups";
 import type { Env } from "./env";
 import { githubAll, installationToken } from "./github-app";
-import { branchIssue, developmentLinks, pullStories } from "./pull-links";
+import { branchIssue, developmentLinks, isFabriqueBranch, pullStories } from "./pull-links";
 import { describeFailure, type Project } from "./projects";
 import { isFresh, markStale, readSnapshot, writeSnapshot } from "./snapshots";
 
@@ -29,8 +29,13 @@ export interface Story {
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
+  // Its development: La Fabrique's own pull requests are not in it.
   pullRequests: LinkedPull[];
   branches: string[];
+  // The scenarios La Fabrique proposed for it (`fabrique/feature-<n>-…`,
+  // la-fabrique#168): shown on its page, never counted as development.
+  // Missing from snapshots written before.
+  scenarioPulls?: LinkedPull[];
   // Missing from snapshots written before acceptance criteria were read.
   criteria?: Criterion[];
   // The cards its title or text names ("C5"), linked or not: La Fabrique
@@ -140,7 +145,7 @@ export function setCriterion(body: string, index: number, text: string, done: bo
   return lines.join("\n");
 }
 
-export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "branches">): Story {
+export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "branches" | "scenarioPulls">): Story {
   return {
     number: issue.number,
     title: issue.title,
@@ -158,6 +163,7 @@ export function toStory(issue: RestIssue, links?: Pick<Story, "pullRequests" | "
     closedAt: issue.closed_at,
     pullRequests: links?.pullRequests ?? [],
     branches: links?.branches ?? [],
+    scenarioPulls: links?.scenarioPulls ?? [],
     criteria: acceptanceCriteria(issue.body),
     mentions: cardMentions(issue.title, issue.body),
   };
@@ -174,18 +180,22 @@ async function fetchStories(env: Env, project: Project): Promise<Story[]> {
   ]);
 
   const pullsByIssue = new Map<number, LinkedPull[]>();
+  const scenariosByIssue = new Map<number, LinkedPull[]>();
   for (const pull of pulls) {
-    const { stories, guessed } = pullStories(pull, links);
+    const { stories, guessed, scenario } = pullStories(pull, links);
     const linked: LinkedPull = {
       number: pull.number,
       url: pull.html_url,
       state: pull.merged_at ? "merged" : pull.state === "closed" ? "closed" : "open",
       ...(guessed ? { guessed: true } : {}),
     };
-    for (const ref of stories) pullsByIssue.set(ref, [...(pullsByIssue.get(ref) ?? []), linked]);
+    const into = scenario ? scenariosByIssue : pullsByIssue;
+    for (const ref of stories) into.set(ref, [...(into.get(ref) ?? []), linked]);
   }
   const branchesByIssue = new Map<number, string[]>();
   for (const branch of branches) {
+    // La Fabrique's own branches (a scenario proposed) develop nothing.
+    if (isFabriqueBranch(branch.name)) continue;
     const ref = links.branches.get(branch.name) ?? branchIssue(branch.name);
     if (ref !== null) branchesByIssue.set(ref, [...(branchesByIssue.get(ref) ?? []), branch.name]);
   }
@@ -196,6 +206,7 @@ async function fetchStories(env: Env, project: Project): Promise<Story[]> {
       toStory(issue, {
         pullRequests: pullsByIssue.get(issue.number) ?? [],
         branches: branchesByIssue.get(issue.number) ?? [],
+        scenarioPulls: scenariosByIssue.get(issue.number) ?? [],
       }),
     );
 }

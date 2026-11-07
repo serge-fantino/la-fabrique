@@ -54,6 +54,20 @@ export async function developmentLinks(token: string, repo: string): Promise<Dev
   }
 }
 
+// La Fabrique's own branches (`fabrique/feature-12-…`, `fabrique/kit-…`,
+// `fabrique/cycle-…`): the pull requests it opens in a project to propose a
+// file (a story's tested scenario, the kit, the cycle), never development.
+export function isFabriqueBranch(name: string): boolean {
+  return name.startsWith("fabrique/");
+}
+
+// The story a scenario pull request proposes a feature file for
+// (`fabrique/feature-12-20261107…`, src/gherkin.ts), if it is one.
+export function scenarioStory(name: string): number | null {
+  const match = /^fabrique\/feature-(\d+)-/.exec(name);
+  return match ? Number(match[1]) : null;
+}
+
 // A working branch's issue number (`.fabrique.json`, branches.travail).
 export function branchIssue(name: string): number | null {
   const match = /(?:^|[/_-])(\d+)(?=$|[/_-])/.exec(name);
@@ -73,9 +87,18 @@ export interface PullStories {
   stories: number[];
   // Only the text says so.
   guessed: boolean;
+  // A scenario La Fabrique proposed for the story (la-fabrique#168): shown with
+  // it, never its development.
+  scenario?: true;
 }
 
 export function pullStories(pull: { number: number; title: string; body: string | null; head: { ref: string } }, links: DevelopmentLinks): PullStories {
+  // La Fabrique's own pull requests develop nothing: a scenario stays with its
+  // story, apart from its pull requests; the others belong to no story.
+  if (isFabriqueBranch(pull.head.ref)) {
+    const story = scenarioStory(pull.head.ref);
+    return story === null ? { stories: [], guessed: false } : { stories: [story], guessed: false, scenario: true };
+  }
   const sure = new Set<number>(links.closes.get(pull.number) ?? []);
   const linked = links.branches.get(pull.head.ref);
   if (linked !== undefined) sure.add(linked);

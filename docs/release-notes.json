@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "A proposed scenario no longer puts its story back in development",
+    "changements": [
+      "The pull request that Propose to the project opens for a story's tested scenario no longer counts as the story's development: a story to validate stays To validate, and its card is not held by the one-story-at-a-time rule, while the scenario's pull request is open.",
+      "The sprint, its run and its Merge button leave that pull request aside; merging it does not end a rework either.",
+      "The scenario's pull request is shown under the recorded scenario, on the story's page and in To test, marked as not the story's development."
+    ],
+    "stories": [168],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Help: the chosen project is kept from page to page",
     "changements": [
       "The project you pick in the guides is remembered on this device, so every page of the guides keeps it, even when you reach a page without the choice in its address.",

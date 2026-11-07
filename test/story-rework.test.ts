@@ -143,4 +143,12 @@ describe("Rework a story with its feedbacks (la-fabrique#202)", () => {
     expect((await webhook("pull_request", { action: "closed", repository: { full_name: REPO }, pull_request: pull })).status).toBe(200);
     expect((await logActions()).map((entry) => entry.action)).not.toContain("story_rework_merged");
   });
+
+  // Propose to the project (la-fabrique#168) changes no code of the story.
+  it("does not end a rework when a scenario La Fabrique proposed is merged", async () => {
+    await seed();
+    const pull = { number: 42, merged_at: "2026-11-02T18:00:00Z", title: "La Fabrique: tested scenario for #12", body: "Refs #12", head: { ref: "fabrique/feature-12-20261102180000" } };
+    expect((await webhook("pull_request", { action: "closed", repository: { full_name: REPO }, pull_request: pull })).status).toBe(200);
+    expect((await logActions()).map((entry) => entry.action)).not.toContain("story_rework_merged");
+  });
 });

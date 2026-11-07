@@ -3,7 +3,7 @@ import type { Env } from "./env";
 import { githubDelete, githubPost, installationToken } from "./github-app";
 import { reworkLabelOf } from "./lifecycle";
 import type { Project } from "./projects";
-import { branchIssue, namedStories } from "./pull-links";
+import { branchIssue, isFabriqueBranch, namedStories } from "./pull-links";
 import { applyIssueEvent } from "./stories";
 import { readIssue } from "./validation";
 import { wordingFor } from "./wording";
@@ -23,7 +23,8 @@ export interface MergedPull {
 }
 
 export async function reworkMerged(env: Env, project: Project, pull: MergedPull): Promise<number[]> {
-  if (!pull.merged_at) return [];
+  // A scenario La Fabrique proposed (la-fabrique#168) changes no code of the story.
+  if (!pull.merged_at || isFabriqueBranch(pull.head.ref)) return [];
   const stories = [...new Set([branchIssue(pull.head.ref), ...namedStories(`${pull.title ?? ""}\n${pull.body ?? ""}`)].filter((number): number is number => number !== null))];
   if (!stories.length) return [];
   const label = reworkLabelOf(project.check?.config);
