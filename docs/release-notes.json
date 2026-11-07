@@ -13,6 +13,29 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Specify queue: waiting jobs start when a place is free",
+    "changements": [
+      "When a Claude job ends, the next waiting job is given to Claude right away (it only moved when someone cancelled a job); opening Refinement also gives a turn to jobs left waiting.",
+      "A job whose consumer died no longer holds a place in the line.",
+      "A job that has to wait now says so in its log."
+    ],
+    "stories": [226],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
+    "titre": "Help: the chosen project is kept from page to page",
+    "changements": [
+      "The project you pick in the guides is remembered on this device, so every page of the guides keeps it, even when you reach a page without the choice in its address.",
+      "Coming from a project's page, the guides' links open that project by default instead of the first one."
+    ],
+    "stories": [267],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "A reworked story is to test again on a project without integration",
     "changements": [
       "When the pull request of a rework is merged on a project without an integration branch, such as La Fabrique, the rework label now goes and the story is to test again, as on a project with integration. Before, GitHub closed the story at the merge, La Fabrique opened it again, and the rework stayed marked in development."

@@ -22,10 +22,10 @@ export async function signIn(
   return { cookie: session.cookie.split(";")[0] ?? "", csrf: session.csrfToken };
 }
 
-export function get(path: string, cookie?: string): Promise<Response> {
+export function get(path: string, cookie?: string, headers: Record<string, string> = {}): Promise<Response> {
   return SELF.fetch(`${BASE}${path}`, {
     redirect: "manual",
-    headers: cookie ? { cookie } : {},
+    headers: cookie ? { cookie, ...headers } : headers,
   });
 }
 
