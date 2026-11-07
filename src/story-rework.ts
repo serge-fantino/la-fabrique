@@ -30,14 +30,23 @@ export async function reworkMerged(env: Env, project: Project, pull: MergedPull)
   const done: number[] = [];
   for (const number of stories) {
     const issue = await readIssue(env, project, number).catch(() => null);
-    if (!issue || issue.state !== "open") continue;
+    if (!issue || issue.pull_request) continue;
+    // On a project without an integration branch, the merge reaches the
+    // default branch: GitHub closes the story at that moment, and La Fabrique
+    // opens it again (story-reopen.ts), on another webhook that may come
+    // after this one. A story closed that way is still reworked; one closed
+    // by a person as not planned or duplicate is left as it is.
+    const closed = issue.state !== "open";
+    if (closed && (issue.state_reason === "not_planned" || issue.state_reason === "duplicate")) continue;
     const names = issue.labels.map((entry) => (typeof entry === "string" ? entry : (entry.name ?? "")));
     if (!names.includes(label)) continue;
     const token = await installationToken(env, project.installationId);
     const removed = await githubDelete(token, `/repos/${project.repo}/issues/${number}/labels/${encodeURIComponent(label)}`);
     if (!removed.ok && removed.status !== 404) continue;
     await githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, { body: wordingFor(project).reworkMerged(pull.number) });
-    await applyIssueEvent(env, project.repo, "unlabeled", { ...issue, labels: names.filter((name) => name !== label).map((name) => ({ name })) });
+    // Closed, its state in the snapshot is left to the webhooks that follow
+    // (reopened, unlabeled): writing it here could put back a close already undone.
+    if (!closed) await applyIssueEvent(env, project.repo, "unlabeled", { ...issue, labels: names.filter((name) => name !== label).map((name) => ({ name })) });
     await activityStatement(env.DB, { actor: "github", action: "story_rework_merged", repo: project.repo, issueNumber: number, details: { pull: pull.number } }).run();
     done.push(number);
   }
