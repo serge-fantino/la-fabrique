@@ -219,7 +219,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
             <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
               ${storyBlocks({ ...editor, repo: project.repo, errors: {}, prefix: `r${card.id}-` })}
               <div class="card-actions">
-                <button type="submit" class="button" name="action" value="create">Create the checked stories on GitHub</button>
+                <button type="submit" class="button" name="action" value="create"${editor.kept.size ? "" : " disabled"}>Create the checked stories on GitHub</button>
                 <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>
               </div>
             </form>`;
