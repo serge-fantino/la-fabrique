@@ -4,6 +4,14 @@ November 7, 2026 · draft for the owner · number to confirm · from card C52 (*
 
 > Status: **scoping**. The epic format is still being defined; this document gathers the need, the decisions to take, and the stories to write. Once the decisions are taken, the stories become cards (then issues), and C52 becomes the epic's card.
 
+## Owner's answers (November 7, 2026)
+
+1. **A neutral project id**, mapped to its GitHub repository: tomorrow the sources may be GitLab, Bitbucket or any git hosting reachable through MCP. Existing projects keep their repository's name as their id (`owner/name`), which makes the migration trivial. → D1.
+2. **Start simple**: the repository may be a prerequisite for now, created by the person, with the App added to it. Creating it from La Fabrique (as Lovable does) is for later. → D4.
+3. **Secrets**: to think about, later. → D6 stays as proposed (guided), the in-browser form is parked.
+4. **Two environment types only for now**: `production` and `integration`. A pre-production (same data as production) may come later; a dev environment is not useful now. → D10.
+5. **Templates are part of the project**: configuration as code. Where templates come from: probably both a folder and a repository, to be seen. → D3.
+
 ## Why
 
 Today La Fabrique pilots a project only once it exists: a GitHub repository, the App installed on it, a `.fabrique.json`, workflows, a hosting that answers `/api/version`. Everything before that is done by hand, outside La Fabrique, and La Fabrique's own setup (`docs/owner-setup.md`) shows how long it is: Cloudflare resources, secrets, GitHub App, webhooks, first deploy.
@@ -38,7 +46,7 @@ A project goes through stages. Each one is visible on its page and in its log; i
 0. Canvas        name, description, language · board and cards work · nothing else
 1. Architecture  a template chosen: stack, branches, workflows, components (editable)
 2. Environments  at least one: name, type, branch, address (deduced)
-3. Repository    created on GitHub, App installed, linked to the project
+3. Repository    created by the person on GitHub, App installed, linked (D4)
 4. Bootstrap     a pull request with the skeleton; merged by the person
 5. Secrets       set by the person, checked by a workflow of the project
 6. First deploy  the project's workflow creates the Worker(s); /api/version answers
@@ -55,7 +63,7 @@ sequenceDiagram
   participant W as Project workflows
   participant C as Cloudflare
   P->>F: create the project (canvas), choose a template, environments
-  P->>G: create the repository (guided link, or by La Fabrique: decision D4)
+  P->>G: create the repository (prefilled link, D4)
   P->>G: install the App on it
   G-->>F: webhook installation_repositories: project linked
   F->>G: bootstrap pull request (skeleton from the template)
@@ -70,21 +78,29 @@ sequenceDiagram
 
 Each decision is a proposal for the owner; the stories depend on them.
 
-### D1. A project exists before its repository
+### D1. A neutral project id, mapped to its sources *(decided)*
 
-**Proposal:** keep `owner/name` as the project's key, chosen at creation as the **intended** repository; `installation_id` becomes optional and the project has a `state` (`canvas`, `linked`). Until the repository is created, the name can change (a rename rewrites the key in every table: little data at that stage, done in one transaction and logged). Once linked, it is the repository's name, as today.
+A project has its **own id**, independent of where its code lives. Its sources are a mapping: provider (`github` today; GitLab, Bitbucket or any git hosting reachable through MCP tomorrow), repository (`owner/name`), the provider's stable id of the repository (GitHub's numeric id: a renamed repository is found again), and the installation. A canvas has no mapping yet; linking a repository adds it.
 
-Alternative: a project id independent of the repository (a slug), with `repo` as an attribute. Cleaner in the long run (a repository moved or renamed, another provider than GitHub), but it touches every table, route and the MCP. To weigh against F6's "another provider" horizon; not needed for this epic.
+- **Existing projects**: id = their repository's name (`serge-fantino/la-fabrique`). No data moves: the `repo` column of every table already holds that value, it is read as the project id. The migration only adds the mapping table (`project_sources`) filled from `projects`, and makes `installation_id` optional.
+- **New projects**: a short slug chosen at creation (`mon-projet`), unique, never reused, shown in the addresses (`/projects/mon-projet`). Routes accept both forms (one segment: a slug; two: a legacy id). Renaming the repository later changes the mapping, not the id.
+- **What reads the mapping instead of the id**: every GitHub call (`githubFetch`, installation tokens), webhooks (from the repository to the project), links to GitHub, the MCP's `project` argument (which keeps accepting `owner/repo` or the repository's name).
+- Not in this epic: adapters for another provider (F6: describe first, adapters only when asked). The id only stops tying the project to GitHub.
 
 ### D2. The blueprint lives in La Fabrique until the repository exists
 
 Principle 2 says a project describes itself in its own repository. Before there is one, La Fabrique keeps a **draft `.fabrique.json`** (with its `stack`, environments, workflows) in its own base, versioned like a card. It is checked with the same validator (`validateFabriqueConfig`), so what will be committed is already valid. At stage 4 it is committed by the bootstrap pull request; from then on La Fabrique reads the repository's file and the draft is kept read-only in the history. Nothing project-specific enters La Fabrique's code.
 
-### D3. Templates
+### D3. Templates: configuration as code
 
-A template is a starting point, not a framework: once the project is created, its files are the project's own.
+A template is a starting point, not a framework. **Once applied, it is part of the project** *(decided)*: its result is the project's own configuration as code, versioned in the project's repository (`.fabrique.json` with its `stack`, workflows, `wrangler.jsonc`, the skeleton, the components with their `origine`). The project also keeps which template it came from and at which version (`.fabrique.json` > `modele`: source, version, commit), as a component keeps its `origine`: Setup can later show what changed in the template since, and propose it by a pull request, like a kit update.
 
-**Proposal:** templates are folders of La Fabrique's own repository, `templates/<id>/`, described by a `template.json` and read like components (F6.3): what it is for, the `stack` values it writes (C26), its environment layout, its workflows, its components, and the skeleton files (with placeholders: name, URLs, language). Two templates at first, taken from what exists:
+**Where templates come from** *(to decide, probably both)*: the same contract, a `template.json` (what it is for, the `stack` values it writes, its environment layout, its workflows, its components, its skeleton files with placeholders: name, URLs, language), found either
+
+- in a **folder**: `templates/<id>/` of La Fabrique's own repository for the first ones, or of any piloted project, read like components (F6.3) and shared through git;
+- or as a **repository** of its own (a GitHub template repository, or any repository with a `template.json` at its root), for a team that maintains its stack apart.
+
+First version: folders in La Fabrique's repository only. Two templates at first, taken from what exists:
 
 | | **Single environment** (like La Fabrique) | **Integration and production** (like the épicerie) |
 |---|---|---|
@@ -111,7 +127,9 @@ The App has no *Administration* permission, on purpose. Three levels:
 - **L1, created by La Fabrique in the person's name.** `POST /user/repos` or `/orgs/{org}/repos` with the person's user token: needs the App's *Administration: write* permission (to verify), and the App installed on *all repositories* of the account, or an extra step to add the new one to the installation. The person still needs the right to create repositories in that owner.
 - **L2, from a template repository** (`POST /repos/{template}/generate`): GitHub copies a template repository. Would make La Fabrique's templates GitHub repositories, not folders (contradicts D3), same permission question.
 
-**Proposal:** L0 first (one story), L1 behind an explicit decision on the App's permissions, after a spike that checks on a test account what each endpoint really requires.
+**Decided: L0 first; the repository may be a prerequisite.** For the first version the person creates the repository (La Fabrique gives the prefilled link and says what to tick), installs the App on it, and links it to the canvas. The canvas exists before (D1), so nothing waits for GitHub.
+
+**Later, L1, as Lovable does.** A service that creates repositories for its users relies on its GitHub App being installed on **all repositories** of the account (or organisation) with *Administration: write*: it creates the repository with the person's user token (or the installation's token, in an organisation), and the new repository is covered by the installation at once, with no extra step. The cost: the App then sees every repository of the account, and may administer them. For La Fabrique that means trading the "only selected repositories, minimum permissions" stance for comfort; a spike on a test account should confirm what each endpoint requires before deciding.
 
 Options offered at creation (L0 prefills what GitHub accepts in the link, the rest becomes a checklist; L1 sets them all):
 
@@ -134,7 +152,7 @@ Principle 3: La Fabrique never holds a deployment token. A new project needs, as
 
 - Setup shows the list for the template, why each is needed, how to create it (the exact scopes, see "Minimum security") and the `gh secret set` commands to run, as the *Connected app* page does for its secret.
 - La Fabrique cannot read secret names without the *Secrets* permission. A `setup-check` workflow of the project (dispatched by La Fabrique, *Actions: write*, which it has) checks that each expected secret is set and usable (Cloudflare: `wrangler whoami`; never printing a value) and writes the result as the run's summary, that La Fabrique reads.
-- Later, as an option: a form in La Fabrique that encrypts each secret **in the browser** with the repository's public key (sealed box) and posts only the ciphertext. La Fabrique would never see the value, but the App would need *Secrets: write*. To decide with D4.
+- Parked *(owner: to think about later)*: a form in La Fabrique that encrypts each secret **in the browser** with the repository's public key (sealed box) and posts only the ciphertext. La Fabrique would never see the value, but the App would need *Secrets: write*. To decide with L1 (D4).
 
 ### D7. Cloudflare is created by the project's own workflow
 
@@ -151,6 +169,18 @@ Without a domain name, each environment's address is deduced: `https://<worker>.
 
 - Creating a project is managing projects: **super admin**, as *Add a project* today. With F4.9 (#84, roles per project) the creator becomes the project's first Product Engineer or tech lead, and C8 (invite a user on a project with a role) completes it. Until then, roles stay global.
 - **Done** = stage 7: the repository is linked, `.fabrique.json` is valid, the expected secrets are checked, each environment answers `/api/version` with its type, the workflows La Fabrique triggers are declared. Setup says it, step by step; the log keeps who did each step and when.
+
+### D10. Environments: production and integration *(decided)*
+
+Two types only, as today: `production` and `integration`. A project has **one or two** environments:
+
+- **one, `production`**: the single-environment template (like La Fabrique); testing happens there;
+- **one, `integration`**: nothing is public yet. Valid on its own: testing happens there, there is no go (no production to promote to), and adding the production later is the move to the two-environment layout (a story of its own, out of this epic);
+- **two, `integration` and `production`**: like the épicerie.
+
+Later, not now:
+- a **pre-production** (`preproduction`): the version about to ship, **on production's data**. That constraint makes it a production in all but name for personal data and security: same access rules, same secrets policy, no defect report open wider than production's, never a test environment for people outside the team. Its rules (and whether it shares production's resources or a copy) are to write when it is asked for;
+- a **dev** environment: not useful while local development (`wrangler dev`) covers it.
 
 ## Minimum security of a new project
 
@@ -175,19 +205,20 @@ What the template and the checklist bring from day one. Each line is either **in
 
 ## Stories (proposed)
 
-To be written as cards once the decisions are taken. Suggested order: F8.1 → F8.5 gives a project that exists on GitHub with its files; F8.6 → F8.8 makes it run; F8.9 is the automation step.
+To be written as cards once the decisions are taken. Suggested order: F8.0 first (it changes nothing visible but everything else rests on it); F8.1 → F8.5 gives a project that exists on GitHub with its files; F8.6 → F8.8 makes it run; F8.9 is for later.
 
 | | Story | Depends on | Related |
 |---|---|---|---|
-| F8.1 | **A project before its repository**: create a canvas (name, intended `owner/name`, description, language); board, cards, Claude on cards work; rename while not linked; the projects list shows its stage | D1 | C52, F4.9 #84 |
+| F8.0 | **A neutral project id**: `project_sources` (provider, repository, its stable id, installation); existing projects keep `owner/name` as id; GitHub calls, webhooks, links and the MCP read the mapping; routes take a slug or `owner/name`. No visible change | D1 | F6 (#194: another provider) |
+| F8.1 | **A project before its repository**: create a canvas (slug, name, description, language); board, cards, Claude on cards work; the projects list shows its stage | D1, F8.0 | C52, F4.9 #84 |
 | F8.2 | **Choose a template**: the two templates, what each brings; the blueprint (draft `.fabrique.json`) checked by the validator; change it while not linked | D2, D3, F6.1 | C26, C27, F6.3 #197 |
-| F8.3 | **Declare the environments**: one at least, not necessarily production; name, type, branch, testing environment, who may report; format: a project whose only environment is `integration` stays valid (no go until a production exists) | D2 | `docs/fabrique-json.md`, F6.6 #209, F6.7 #210 |
-| F8.4 | **Create the repository, guided (L0)**: prefilled GitHub link, App installation link, linked by the `installation_repositories` webhook; the circuit's labels created | D4 | C50 (same App explanation and installation table) |
+| F8.3 | **Declare the environments**: one or two, `production` and/or `integration`; name, branch, testing environment, who may report; format: a project whose only environment is `integration` stays valid (no go until a production exists) | D2, D10 | `docs/fabrique-json.md`, F6.6 #209, F6.7 #210 |
+| F8.4 | **Link a repository (L0)**: the person creates it from a prefilled GitHub link (or picks an existing empty one), installs the App on it; linked to the canvas by the `installation_repositories` webhook or by hand; the circuit's labels created | D4 | C50 (same App explanation and installation table) |
 | F8.5 | **The bootstrap pull request**: the template's skeleton filled in, components copied with their `origine`, `CLAUDE.md` seeded; opened in the person's name on `main` | D3, D5, D8 | F6.3, C29 |
 | F8.6 | **Secrets, guided and checked**: the list per template with scopes and commands; the `setup-check` workflow and its summary in Setup | D6 | `docs/owner-setup.md` §2, §10 |
 | F8.7 | **First deploy**: La Fabrique dispatches the project's `deploy`; the Worker(s) created on `workers.dev`; addresses proposed by PR; Setup shows each environment answering | D7 | Setup, Production |
 | F8.8 | **Minimum security, step by step**: the checklist above in Setup, each line done, to do (with how) or not applicable | — | C46 (webhooks in Setup) |
-| F8.9 | **Repository created by La Fabrique (L1)**, and optionally secrets encrypted in the browser: only if the owner extends the App's permissions | D4, D6 | — |
+| F8.9 | *Later.* **Repository created by La Fabrique (L1)**, as Lovable does, and maybe secrets encrypted in the browser: only if the owner extends the App's permissions | D4, D6 | — |
 
 ### Links with existing work
 
@@ -211,12 +242,14 @@ To be written as cards once the decisions are taken. Suggested order: F8.1 → F
 
 ## Open questions for the owner
 
-1. **D1**: keep `owner/name` as the key from the canvas on (renamable until linked), or introduce a project id now?
-2. **D4**: is L0 (guided links, no new permission) enough for a first version? Is extending the App with *Administration: write* acceptable later, or do we stay guided for good?
-3. **D6**: secrets set by the person with commands, or worth the *Secrets: write* permission for an in-browser encrypted form?
-4. **Single environment that is not production**: type `integration` (no go, no production yet), or a new type (`preview`, `staging`)? What happens the day a production is added: a story of its own?
-5. **Templates**: folders in La Fabrique's repository (proposal), or GitHub template repositories? Who maintains them, and does a template carry a version so Setup can propose updates like the kit?
-6. **Data by default**: D1 opt-in, or the single-environment template with D1 like La Fabrique?
-7. **Owners**: personal accounts only at first, or organisations too (the App installed on the organisation)?
-8. **Who** may create a project: super admin only, or a Product Engineer once roles are per project?
-9. **Claude before the repository**: should Claude in La Fabrique write the first `CLAUDE.md` and the vision card (La Fabrique's key and quotas), or is that the project's first story?
+Answered on November 7: the project id (D1), the repository as a prerequisite (D4), the environment types (D10), templates as configuration as code (D3). Parked: secrets (D6).
+
+Still open:
+
+1. **Where templates come from** (D3): folders first, repositories next, both with the same `template.json`? Who maintains La Fabrique's two templates, and does Setup propose a template's updates to the projects made from it, like the kit?
+2. **The slug of a new project** (D1): chosen by the person, or deduced from the name? Can it change once the project has stories (addresses in issues would break: probably never)?
+3. **Data by default**: D1 (the database) opt-in, or the single-environment template with a base like La Fabrique?
+4. **Owners**: personal accounts only at first, or organisations too (the App installed on the organisation)?
+5. **Who** may create a project: super admin only, or a Product Engineer once roles are per project?
+6. **Claude before the repository**: should Claude in La Fabrique write the first `CLAUDE.md` and the vision card (La Fabrique's key and quotas), or is that the project's first story?
+7. **An existing non-empty repository** linked to a canvas: is it C50's path (analyse the code), or refused here?
