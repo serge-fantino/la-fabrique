@@ -193,6 +193,14 @@ describe("Validating a feature", () => {
     page = await (await get(`/projects/${REPO}/refinement`, pe.cookie)).text();
     expect(page).toContain("Validated by @pe");
     expect(page).toContain("GO");
+    expect(page).toContain("Start the sprint");
+    // GO while a sprint runs: the verdict stays, Start the sprint goes.
+    await env.DB.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, 'Sprint', 'pe')").bind(REPO).run();
+    const running = await (await get(`/projects/${REPO}/refinement`, pe.cookie)).text();
+    expect(running).toContain("Sprint running");
+    expect(running).toContain(">GO<");
+    expect(running).not.toContain("Start the sprint");
+    await env.DB.prepare("DELETE FROM sprints WHERE repo = ?").bind(REPO).run();
     expect(await (await get(`/projects/${REPO}/cards/${id}`, pe.cookie)).text()).toContain("by <span class=\"mono\">me</span>");
 
     const tester = await signIn("tess");
