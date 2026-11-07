@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-07",
+    "titre": "Help: the Product Engineer's user guide and reference",
+    "changements": [
+      "The Product Engineer's help has two entries that point at each other: a user guide of 22 use cases, grouped by moment (shape a feature, refine in batch, plan the next sprint, run it, test and ship, keep the board in order, work from Claude), and a reference of 12 pages (getting around, cards, the board, specs with Claude, stories, Refinement, the sprint, testing, defects, releases and the go, Claude, words).",
+      "Each step of a use case leads to the reference section that explains it; each reference section lists the use cases that use it.",
+      "The guide's menu is beside every page (folded on a phone), with previous and next; the project you chose for the links follows you from page to page."
+    ],
+    "stories": [267],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-07",
     "titre": "Help: the Product Engineer's onboarding guide",
     "changements": [
       "A Help page, open without an account from the home page and in the menu once signed in, lists the guides by profile: Product Engineer first, the tester, tech lead and super admin guides to come.",
