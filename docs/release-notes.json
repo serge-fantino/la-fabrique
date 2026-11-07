@@ -12,6 +12,18 @@
   {
     "version": "next",
     "date": "2026-11-04",
+    "titre": "Refinement: real cards, and Specify / Refine without leaving the page",
+    "changements": [
+      "Each feature of Refinement is a white card with rounded corners, its drag handle beside the title.",
+      "Specify and Refine start Claude from the Refinement page itself (the job shows on the card) instead of opening the feature's page.",
+      "A feature that already has stories no longer offers Specify."
+    ],
+    "stories": [223],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-04",
     "titre": "Claude writes test cases for each story",
     "changements": [
       "A feature's card offers Write test cases with Claude, and Refinement Write test cases for all features: a Claude job per feature, counted in the daily quota and the budget.",

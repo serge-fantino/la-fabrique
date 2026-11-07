@@ -3554,3 +3554,29 @@ pre.gherkin {
   display: flex;
   gap: 0.25rem;
 }
+
+/* Refinement: one white card per feature, the drag handle beside its title (la-fabrique#223). */
+.refinement-cards {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.refinement-card {
+  position: relative;
+  padding: 1rem 1.25rem;
+  border: 1px solid #d8dacf;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(24, 33, 27, 0.08);
+}
+
+.refinement-card .refinement-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.refinement-card .refinement-head h3 {
+  margin: 0;
+}
