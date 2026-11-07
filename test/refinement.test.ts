@@ -360,3 +360,13 @@ describe("Share links of the preparation document (la-fabrique#233)", () => {
     expect(csrf ?? "").toBeDefined();
   });
 });
+
+describe("preparation in the Log (la-fabrique#229)", () => {
+  it("says the level and the format of a download", async () => {
+    const { describe: line } = await import("../src/log-views");
+    const said = line({ id: 1, at: "2026-11-07T10:00:00Z", actor: "pe", action: "preparation_downloaded", issue: null, details: { level: 2, format: "pdf", features: 3, version: "0.84" } }, REPO);
+    expect(said).toContain("level 2");
+    expect(said).toContain("PDF");
+    expect(said).toContain("0.84");
+  });
+});
