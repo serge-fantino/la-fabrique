@@ -10,7 +10,16 @@
     ],
     "stories": [226],
     "liens": null
-  },  {
+  },
+  {
+    "titre": "A reworked story is to test again on a project without integration",
+    "changements": [
+      "When the pull request of a rework is merged on a project without an integration branch, such as La Fabrique, the rework label now goes and the story is to test again, as on a project with integration. Before, GitHub closed the story at the merge, La Fabrique opened it again, and the rework stayed marked in development."
+    ],
+    "stories": [202],
+    "liens": null
+  },
+  {
     "version": "next",
     "date": "2026-11-07",
     "titre": "Refinement: NO-GO stays visible while a sprint runs, and the progress bars show",
