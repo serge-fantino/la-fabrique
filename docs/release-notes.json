@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Epic values typed on cards can become epic cards",
+    "changements": [
+      "The board offers, to Product Engineers and above, to turn the Epic values already typed on features into epic cards. A review shows each value, its features and what will happen (attach to an epic card of the same title, or create a draft epic); nothing changes until you confirm, the features keep their value so lanes and filters group the same features, and each epic created and feature attached is in the activity log. Once converted, the offer is gone."
+    ],
+    "stories": [295],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude reviews an epic against its features",
     "changements": [
       "On an epic with features, Review with Claude reports what the document asks that no feature covers, features that overlap, a feature that goes against a decision, and missing dependencies, in the background and within the quotas.",
