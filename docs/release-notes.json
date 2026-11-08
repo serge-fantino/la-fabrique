@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Epic cards stay out of the features on the board",
+    "changements": [
+      "The board no longer mixes epic cards with features; set the Type filter to Epic to see them."
+    ],
+    "stories": [297],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Naming a feature in an epic attaches it",
     "changements": [
       "Saving an epic whose text newly names a feature (\"C57\") attaches it to the epic; removing the name detaches it; restoring an older version does the same. A feature belongs to one epic only: if it already belongs to another, it stays there and you get a warning.",
