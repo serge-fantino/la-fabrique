@@ -245,6 +245,14 @@ const ISSUE = /(^|[\s(])#(\d{1,7})\b/g;
 const PERSON = /(^|[\s(])@([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\b/gi;
 const TERM = /\[\[([^[\]\n]{1,60})\]\]/g;
 
+// "C57" in a text: a card of the project, unless it sits in a longer word or
+// identifier ("C570", "ABC57", "#C57", "a/C57").
+export const CARD_MENTION = /(?<![\w/#-])C(\d{1,6})(?![\w-])/g;
+
+export function mentionedCards(text: string): number[] {
+  return [...new Set([...text.matchAll(CARD_MENTION)].map((match) => Number(match[1])))].slice(0, 50);
+}
+
 export function annotations(body: string): Partial<Record<FreeDimension, string | null>> {
   const found: Partial<Record<FreeDimension, string | null>> = {};
   for (const match of body.matchAll(ANNOTATION)) {

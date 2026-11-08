@@ -5,7 +5,7 @@ import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
 import { goSection } from "./production-views";
 import { storyChecks } from "./validation";
-import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, epicConversionPage, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, epicConversionPage, importPage, specFormPage, splitPage, statusPill, storyPage, type StoryState } from "./card-views";
 import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
@@ -46,6 +46,7 @@ import {
   importCards,
   filterCards,
   findCard,
+  mentionedCards,
   isFreeDimension,
   isKind,
   isStatus,
@@ -311,6 +312,23 @@ const CARD_NOTICES: Record<string, string> = {
   status: "Status changed.",
 };
 
+// The cards a text names ("C57"), those of this project only: each one's
+// link with its status as the board shows it.
+async function mentionedLinks(env: Env, project: Project, text: string): Promise<Map<number, string>> {
+  const ids = mentionedCards(text);
+  const found = new Map<number, string>();
+  if (!ids.length) return found;
+  const cards = (await listCards(env.DB, project.repo)).filter((other) => ids.includes(other.id));
+  if (!cards.length) return found;
+  const progress = await cardProgress(env, project, cards);
+  for (const other of cards)
+    found.set(
+      other.id,
+      `<a class="card-mention mono" href="${escapeHtml(cardUrl(project.repo, other.id))}" title="${escapeHtml(other.title)}">${cardRef(other.id)}</a> ${statusPill(other, progress.get(other.id))}`,
+    );
+  return found;
+}
+
 // The card's page, also after a failed call to Claude (`failure`, with
 // what the person had typed).
 async function renderCard(
@@ -357,6 +375,8 @@ async function renderCard(
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
   const asked = params.get("ask");
+  const version = shown ?? card;
+  const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"));
   const rubriques = rubriquesFor(project, card);
   const spend = calls.reduce(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
@@ -392,6 +412,7 @@ async function renderCard(
       progress,
       progressHistory,
       named,
+      mentioned,
       dependencies,
       dependencyOptions,
       dependencyLog,
