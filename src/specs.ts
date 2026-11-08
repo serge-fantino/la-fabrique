@@ -56,7 +56,7 @@ export function missingSections(spec: CardSpec | undefined, rubriques: Rubrique[
 // commit, like its documentation pages.
 const MAX_DOCUMENT = 300_000;
 
-async function projectDocument(env: Env, project: Project): Promise<{ path: string; text: string; cut: boolean } | null> {
+export async function projectDocument(env: Env, project: Project): Promise<{ path: string; text: string; cut: boolean } | null> {
   const check = project.check;
   const pages = check?.docPages ?? [];
   if (!check || !pages.length) return null;
@@ -158,7 +158,7 @@ export function epicFeatures(cards: Card[], epic: Card): Card[] {
   return cards.filter((other) => other.id !== epic.id && other.kind !== "epic" && !other.archivedAt && (other.epic ?? "").trim().toLowerCase() === wanted);
 }
 
-async function epicContext(env: Env, project: Project, card: Card): Promise<{ text: string; cards: number; stories: number }> {
+export async function epicContext(env: Env, project: Project, card: Card): Promise<{ text: string; cards: number; stories: number }> {
   const cards = await listCards(env.DB, project.repo);
   const features = epicFeatures(cards, card).slice(0, 80);
   const lines = features.map((feature) => `- ${cardRef(feature.id)} ${feature.title} (${STATUS_LABELS[feature.status]}): ${excerpt(feature.body, 200) || "(no text)"}`);
@@ -193,7 +193,7 @@ ${others.length ? `\nThe project's other cards, to spot overlaps:\n${others.join
   return { text, cards: others.length, stories: open.length };
 }
 
-function currentSpec(spec: CardSpec, rubriques: Rubrique[]): string {
+export function currentSpec(spec: CardSpec, rubriques: Rubrique[]): string {
   return rubriques.map((rubrique) => `## ${rubrique.titre} ("${rubrique.cle}")\n${spec.answers[rubrique.cle] || "(empty)"}`).join("\n\n");
 }
 

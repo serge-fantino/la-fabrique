@@ -1,3 +1,4 @@
+import type { PendingEpic } from "./epic-conversion";
 import type { Dependencies, dependencyHistory } from "./card-dependencies";
 import { type ValidationState } from "./feature-validation";
 import {
@@ -41,6 +42,7 @@ import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { epicActions, epicHistoryHtml, epicStatusPill } from "./epics-views";
 import type { EpicHistoryEntry, EpicState } from "./epic-status";
+import { notesHtml, reviewHtml } from "./epic-review";
 import { EPIC_REST_FIELD, epicFieldName, epicSections, parseEpicBody } from "./epic-sections";
 import { renderMarkdown } from "./markdown";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks } from "./story-editor";
@@ -245,6 +247,8 @@ export interface BoardData {
   // The project's releases, shipped, in progress or planned, by version.
   releases: Map<string, BoardRelease>;
   nextRelease: string | null;
+  // Distinct typed Epic values waiting to become epic cards (Product Engineer and above).
+  toConvert?: number;
   // Each card's progress, from its stories.
   progress?: Map<number, Progress>;
 }
@@ -347,6 +351,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
     `${projectHeader(project, "board")}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
+      ${data.toConvert ? `<p class="notice"><a href="${escapeHtml(base)}/cards/epics">${data.toConvert} epic${data.toConvert === 1 ? "" : "s"} to create from the Epic values</a>: review, then confirm.</p>` : ""}
       <div class="board-bar">
         ${filterBar(base, board, known)}
         <div class="board-bar-end">
@@ -434,6 +439,7 @@ const PURPOSES: Record<string, string> = {
   spec_split: "Stories proposed",
   spec_tests: "Test cases written",
   epic_features: "Features proposed",
+  epic_review: "Epic reviewed",
   key_check: "Key checked",
 };
 
@@ -993,10 +999,24 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     const proposedLink = proposed && isEpic
       ? `<p class="notice" role="status">Claude proposed ${proposed.features.length} feature${proposed.features.length === 1 ? "" : "s"}. <a class="button" href="${escapeHtml(url)}/features">Review the proposed features</a></p>`
       : "";
+    const review =
+      usable && isEpic && (spec || card.body.trim()) && (data.epicFeatures ?? []).length
+        ? panel(
+            "epic_review",
+            "Review with Claude",
+            false,
+            false,
+            `<p class="help">Claude reads the epic's document and its features, and reports what no feature covers, features that overlap, a feature that goes against a decision, and missing dependencies. Nothing is changed: you apply each finding yourself. It counts as one Claude call.</p>
+            <div class="field">
+              <label for="epic_review">Anything to look at? <span class="muted">(optional)</span></label>
+              <textarea id="epic_review" name="instruction" rows="2" maxlength="4000"></textarea>
+            </div>`,
+          )
+        : "";
     const story = spec && !isEpic && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
     work = `${data.split ? proposalHtml(url, data.split, spec) : ""}${proposedLink}
       <div class="spec-actions">
-        ${draft}${split}${tests}${features}${story}${change}
+        ${draft}${split}${tests}${features}${review}${story}${change}
         <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${isEpic ? (spec ? "Edit the document by hand" : "Write the document by hand") : spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
       ${
@@ -1046,6 +1066,7 @@ ${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned) : 
       </article>
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
+      ${isEpic && !shown ? reviewHtml(viewer, project, card, data.canWrite, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title]))) + notesHtml(card, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title])), project.repo) : ""}
       ${isEpic && !shown ? epicHistoryHtml(data.epicHistory ?? []) : ""}
       <section class="card-spec" id="spec">
         <h2>${isEpic ? "Document" : "Spec"}</h2>
@@ -1231,6 +1252,39 @@ export function importPage(viewer: Viewer, project: Project, data: { error?: str
           <a href="${escapeHtml(base)}/board">Cancel</a>
         </div>
       </form>`,
+    viewer,
+    [],
+    projectContext(project, false),
+  );
+}
+
+// The review before the conversion: each value, its features, what happens.
+export function epicConversionPage(viewer: Viewer, project: Project, pending: PendingEpic[]): string {
+  const base = projectUrl(project.repo);
+  const rows = pending
+    .map((item, index) => {
+      const features = `<ul class="card-stories">${item.features.map((f) => `<li><a href="${escapeHtml(cardUrl(project.repo, f.id))}"><span class="mono">${cardRef(f.id)}</span> ${escapeHtml(f.title)}</a></li>`).join("")}</ul>`;
+      const what = item.existing
+        ? `<fieldset><legend>${escapeHtml(item.value)} matches the epic <a href="${escapeHtml(cardUrl(project.repo, item.existing.id))}"><span class="mono">${cardRef(item.existing.id)}</span> ${escapeHtml(item.existing.title)}</a></legend>
+            <label><input type="radio" name="choice_${index}" value="attach" checked /> Attach the features to ${cardRef(item.existing.id)}</label>
+            <label><input type="radio" name="choice_${index}" value="create" /> Create a new draft epic “${escapeHtml(item.value)}”</label></fieldset>`
+        : `<p>A new draft epic “${escapeHtml(item.value)}” is created, with these features attached.</p>`;
+      return `<section><h2>${escapeHtml(item.value)}</h2>${features}${what}</section>`;
+    })
+    .join("");
+  return layout(
+    title(project, "Epic values"),
+    `${projectHeader(project, "board", "Epic values")}
+      <p class="crumbs"><a href="${escapeHtml(base)}/board">Board</a> <span aria-hidden="true">›</span> Epic values</p>
+      ${
+        pending.length
+          ? `<p>Nothing changes until you confirm. The features keep their Epic value, so lanes and filters group the same features.</p>
+      <form method="post" action="${escapeHtml(base)}/cards/epics" data-busy>${csrfField(viewer)}
+        ${rows}
+        <div class="card-actions"><button type="submit" class="button">Confirm</button><a href="${escapeHtml(base)}/board">Cancel</a></div>
+      </form>`
+          : `<p class="muted">No Epic value to convert.</p>`
+      }`,
     viewer,
     [],
     projectContext(project, false),
