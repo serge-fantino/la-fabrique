@@ -12,6 +12,26 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "The dashboard shows each project's epics",
+    "changements": [
+      "Under each project, the dashboard lists its epics with how many of their features are to do, in refinement (Next release), in the sprint and in production. Epics with no feature are left out; dropped and archived ones too; an epic whose features are all in production stays listed."
+    ],
+    "stories": [306],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "The sprint launches a dependency first",
+    "changements": [
+      "In a sprint, a feature's dependency is now launched first (by the run and by \"Launch the next story\") and the feature says \"After C74\", while both can still be developed side by side. A stopped dependency shows \"C74 stopped\" on the feature, and a feature placed above its dependency shows a warning; the manual order never changes."
+    ],
+    "stories": [301],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The preparation document shows epics with their features in place",
     "changements": [
       "The release preparation document, downloaded (HTML or PDF) or shared by link, now includes each epic of Next release: its text with every feature named alone on a line shown in place (title, status, synopsis), frozen at the date of the download or sharing, each with a link to its card in La Fabrique."

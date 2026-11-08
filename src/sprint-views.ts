@@ -1,3 +1,4 @@
+import type { DependencyNote } from "./sprint-dependencies";
 import { RELEASE_STATE_LABELS, type BoardRelease } from "./card-releases";
 import { cardGroupHead, isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
@@ -23,6 +24,8 @@ export interface SprintData {
   // The last sprint, once ended.
   last: Sprint | null;
   sprintCards: Card[];
+  // After C74 / C74 stopped / order warning, by card (la-fabrique#301).
+  dependencyNotes?: Map<number, DependencyNote>;
   nextCards: Card[];
   keptCards: Card[];
   // Without a sprint: the release in progress on the integration branch.
@@ -297,6 +300,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       : "";
   };
 
+  const dependencyLines = (id: number) => {
+    const note = data.dependencyNotes?.get(id);
+    if (!note) return "";
+    const named = (ids: number[]) => ids.map(cardRef).join(", ");
+    return `<p class="small sprint-dependencies"><span class="pill small">After ${escapeHtml(named(note.after))}</span>${
+      note.stopped.length ? ` <span class="pill warn small">${escapeHtml(named(note.stopped))} stopped</span>` : ""
+    }${note.below.length ? ` <span class="pill warn small">Placed above ${escapeHtml(named(note.below))}, which it depends on</span>` : ""}</p>`;
+  };
+
   // Cards with their stories; with controls, in an order one can change.
   // Claude is launched from the sprint only.
   const cardsSection = (cards: Card[], controls: boolean, claude = false, foldDone = false) => {
@@ -324,6 +336,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           mine.length,
           data.progress?.get(card.id),
         )}${priority}${order}</div>
+          ${dependencyLines(card.id)}
           ${shippedNote(data.progress?.get(card.id)?.shipped, "sprint-shipped small")}
           ${foldedDone(card.id, foldDone)}
           ${
