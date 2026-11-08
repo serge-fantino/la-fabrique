@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "The preparation document shows epics with their features in place",
+    "changements": [
+      "The release preparation document, downloaded (HTML or PDF) or shared by link, now includes each epic of Next release: its text with every feature named alone on a line shown in place (title, status, synopsis), frozen at the date of the download or sharing, each with a link to its card in La Fabrique."
+    ],
+    "stories": [293],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "An epic's page shows its features' dependencies",
     "changements": [
       "An epic's page has a Dependencies section: each feature with what it depends on and the status of each, features of other epics included. The Epics tab has a \"Depends on\" column naming the epics each epic depends on, derived from its features' dependencies on features of other epics and on whole epics."
