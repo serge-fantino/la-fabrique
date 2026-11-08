@@ -1,16 +1,17 @@
-import { advanceStatus, findCard, reopenStatus, saveSpec, saveSplit, saveTests } from "./cards";
+import { advanceStatus, findCard, reopenStatus, saveEpicReview, saveFeaturesProposal, saveSpec, saveSplit, saveTests } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
 import { liveFor, refinementLiveFor, type LiveEvent } from "./live";
 import { findProject } from "./projects";
-import { specRubriques, splitSpec, writeSpec, writeTests, type Answer, type SpecReading } from "./specs";
+import { reviewEpic } from "./epic-review";
+import { proposeFeatures, rubriquesFor, splitSpec, writeSpec, writeTests, type Answer, type SpecReading } from "./specs";
 
 // Claude works in the background (docs/decisions/0001-claude-in-the-background.md).
 // A request is saved as a job at once, with what the person wrote, and
 // put on a queue; the queue's consumer runs it, detached from the browser,
 // writes its log and tells the card's open pages (CardLive).
 
-export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split" | "spec_tests";
+export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split" | "spec_tests" | "epic_features" | "epic_review";
 // waiting: in La Fabrique's line, not yet given to the queue; queued: given
 // to it; cancelled: taken out before it started (la-fabrique#226).
 export type JobStatus = "waiting" | "queued" | "running" | "done" | "failed" | "cancelled";
@@ -56,6 +57,8 @@ const LABELS: Record<JobKind, string> = {
   spec_answer: "Claude is reading your answers",
   spec_split: "Claude is working on the stories",
   spec_tests: "Claude is writing the test cases",
+  epic_features: "Claude is proposing the epic's features",
+  epic_review: "Claude is reviewing the epic against its features",
 };
 
 export function ordinal(n: number): string {
@@ -314,7 +317,7 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   await say(env, running, job.attempts ? `Trying again (attempt ${job.attempts + 1}).` : "Claude starts.", "running");
 
   // What Claude does, a line every few seconds at most.
-  const rubriques = specRubriques(project);
+  const rubriques = rubriquesFor(project, card);
   const pending: Promise<void>[] = [];
   let lastThought = "";
   let lastAt = 0;
@@ -335,10 +338,10 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
         return;
       }
       if (job.kind === "spec_tests") return;
-      if (job.kind === "spec_split") {
+      if (job.kind === "spec_split" || job.kind === "epic_features") {
         // Each story's title, once written in full.
         const found = [...progress.text.matchAll(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1] ?? "");
-        for (; titles < found.length; titles++) pending.push(say(env, running, `Story ${titles + 1}: ${found[titles]}`));
+        for (; titles < found.length; titles++) pending.push(say(env, running, `${job.kind === "epic_features" ? "Feature" : "Story"} ${titles + 1}: ${found[titles]}`));
         return;
       }
       for (const rubrique of rubriques) {
@@ -377,6 +380,24 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
     await saveTests(env.DB, current, job.login, outcome.tests, outcome.callId);
     const count = outcome.tests.stories.length;
     return finish(outcome.callId, `test cases written for ${count} stor${count === 1 ? "y" : "ies"}.`, outcome.costMicros);
+  }
+
+  if (job.kind === "epic_review") {
+    const outcome = await reviewEpic(env, project, card, job.login, job.request.instruction, watch);
+    if (!outcome.ok) return failed(outcome);
+    const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
+    await saveEpicReview(env.DB, current, job.login, outcome.review, { callId: outcome.callId });
+    const count = outcome.review.findings.length;
+    return finish(outcome.callId, count ? `${count} finding${count === 1 ? "" : "s"}, to apply or dismiss one by one; nothing is changed.` : "nothing to report.", outcome.costMicros);
+  }
+
+  if (job.kind === "epic_features") {
+    const outcome = await proposeFeatures(env, project, card, job.login, job.request.instruction, watch);
+    if (!outcome.ok) return failed(outcome);
+    const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
+    await saveFeaturesProposal(env.DB, current, job.login, outcome.proposal, outcome.callId);
+    const count = outcome.proposal.features.length;
+    return finish(outcome.callId, `${count} feature${count === 1 ? "" : "s"} proposed, to review before any card is created.`, outcome.costMicros);
   }
 
   if (job.kind === "spec_split") {

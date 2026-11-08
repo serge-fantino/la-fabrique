@@ -1,4 +1,4 @@
-import { epicFeatures, epicProgress, type EpicProgress } from "./epic-progress";
+import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
 import { loadStoryDetail, storyDetailPage } from "./story-detail";
@@ -6,10 +6,12 @@ import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
 import { goSection } from "./production-views";
 import { storyChecks } from "./validation";
-import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, epicConversionPage, importPage, specFormPage, splitPage, statusPill, storyPage, type StoryState } from "./card-views";
 import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { convertEpics, pendingEpics, type EpicChoice } from "./epic-conversion";
+import { epicCardsOf, epicFeatures, featureEpicTitles, setFeatureEpic, syncEpicLink } from "./card-epics";
 import { validateFeature, validationOf } from "./feature-validation";
 import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
 import { recordedByStory } from "./gherkin";
@@ -45,6 +47,7 @@ import {
   importCards,
   filterCards,
   findCard,
+  mentionedCards,
   isFreeDimension,
   isKind,
   isStatus,
@@ -52,10 +55,14 @@ import {
   moveCard,
   readBoardQuery,
   readCardForm,
+  MAX_BODY,
   linkStory,
   restoreRevision,
   saveSpec,
+  saveFeaturesProposal,
+  saveEpicReview,
   saveSplit,
+  type EpicFeaturesProposal,
   saveTests,
   advanceStatus,
   setCardPriority,
@@ -70,12 +77,18 @@ import {
   type FreeDimension,
 } from "./cards";
 import { activityStatement } from "./activity-log";
+import { addDependency, dependenciesOf, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
+import { epicSections, readEpicForm } from "./epic-sections";
+import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
+import { epicsPage } from "./epics-views";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
-import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
+import { allowance, callsLeft, cardCalls, cardSpends, epicSpendOf } from "./llm";
 import { findProject, type Project } from "./projects";
 import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
-import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
+import { applyFinding } from "./epic-review";
+import { createFeatures, featuresPage, readFeaturesForm } from "./epic-features";
+import { closeQuestions, missingSections, readSpecForm, rubriquesFor, specRubriques, type Answer } from "./specs";
 import { cancelJob, dispatch, enqueue, isActive, jobEvents, latestJob, projectJobs, workingCards, type JobKind } from "./jobs";
 import { liveFor, refinementLiveFor, sprintLiveFor } from "./live";
 import { wordingFor } from "./wording";
@@ -85,7 +98,7 @@ import { projectView } from "./view-context";
 import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|epics|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/epics|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/features|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -114,7 +127,8 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   const url = new URL(request.url);
   const board = readBoardQuery(url.searchParams);
   const [cards, { view, cookies }, spends, working] = await Promise.all([
-    listCards(env.DB, project.repo),
+    // Epic cards are documents, not on the board.
+    listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")),
     projectView(request, env, project, viewer),
     cardSpends(env.DB, project.repo),
     workingCards(env.DB, project.repo),
@@ -128,18 +142,41 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
   return html(
     boardPage(viewer, view, {
-      cards: filterCards(cards, board.filters, (await storyCards(env.DB, project.repo)).order),
+      cards: filterCards(cards, board.filters, (await storyCards(env.DB, project.repo)).order, await featureEpicTitles(env.DB, project.repo)),
       total: cards.filter((card) => !card.archivedAt).length,
       known,
       board,
       canWrite: canWriteCards(viewer),
       spends,
       working,
-      notice: notice === "imported" ? importedNotice(url.searchParams) : notice ? BOARD_NOTICES[notice] : undefined,
+      toConvert: canWriteCards(viewer) ? (await pendingEpics(env.DB, project.repo)).length : 0,
+      notice: notice === "epics" ? `${Number(url.searchParams.get("created")) || 0} epic cards created, ${Number(url.searchParams.get("attached")) || 0} features attached.` : notice === "imported" ? importedNotice(url.searchParams) : notice ? BOARD_NOTICES[notice] : undefined,
       failure: refused ? (planningProblem(project, refused, [...releases.values()]) ?? undefined) : undefined,
       releases,
       nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
       progress,
+    }),
+    { cookies },
+  );
+}
+
+// The Epics tab: the project's epic cards with their status (la-fabrique#286).
+async function showEpics(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const archived = params.get("archived") === "1";
+  const [cards, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const epics = cards.filter((card) => card.kind === "epic" && Boolean(card.archivedAt) === archived);
+  const states = await epicStates(env, project, epics);
+  const notice = params.get("notice");
+  return html(
+    epicsPage(viewer, view, {
+      epics: epics.flatMap((epic) => {
+        const state = states.get(epic.id);
+        return state ? [{ epic, state }] : [];
+      }),
+      archived,
+      canWrite: canWriteCards(viewer),
+      notice: notice ? CARD_NOTICES[notice] : undefined,
     }),
     { cookies },
   );
@@ -190,7 +227,7 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   for (const dimension of DIMENSIONS) {
     const value = form.get(`set_${dimension}`);
     if (typeof value !== "string") continue;
-    if (dimension === "kind" && !isKind(value)) continue;
+    if (dimension === "kind" && (!isKind(value) || value === "epic" || card.kind === "epic")) continue;
     if (dimension === "status" && !isStatus(value)) continue;
     set[dimension] = value || null;
   }
@@ -201,6 +238,7 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const moved = await moveCard(env.DB, card, viewer.login, { set, before: neighbour("before"), after: neighbour("after") }, known);
+  if (moved.epic !== card.epic) await syncEpicLink(env.DB, moved, viewer.login);
   const [spends, working, progress] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo), cardProgress(env, project, [moved])]);
   return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id)) });
 }
@@ -238,6 +276,7 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const input = readCardForm(form, known);
+  if (input.tags.kind === "epic") input.body = readEpicForm(form, epicSections(project)).slice(0, MAX_BODY);
   if (!input.title) {
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card: null, input, known, error: "A card needs a title." }), { status: 422, cookies });
@@ -252,6 +291,16 @@ const CARD_NOTICES: Record<string, string> = {
   tests: "Test cases saved.",
   priority: "Priority set: on the card, and on GitHub for its stories (one level lower when nice to have).",
   archived: "Archived: it no longer shows on the board.",
+  epic_dropped: "The epic is dropped.",
+  epic_archived: "The epic is archived. Show archived epics to see it again.",
+  epic_unarchived: "The epic is back in the list.",
+  epic_refused: "That is not possible with this epic's status.",
+  features_created: "The features are created as draft cards attached to the epic.",
+  features_skipped: "The features are created, but some dependencies could not be set (a loop, or a feature left out): check each feature's Dependencies.",
+  review_applied: "Done: only the change that finding names is made. See it below.",
+  review_dismissed: "The finding is dismissed; nothing else changed.",
+  review_discarded: "The review is discarded.",
+  features_discarded: "The proposal is discarded.",
   restored: "Back on the board.",
   version_restored: "That version is back, as the newest one.",
   spec: "Spec written. Read it, then revise it with Claude or by hand.",
@@ -263,6 +312,23 @@ const CARD_NOTICES: Record<string, string> = {
   reviewed: "Stories reviewed: the comments are on GitHub, the new stories linked to this card.",
   status: "Status changed.",
 };
+
+// The cards a text names ("C57"), those of this project only: each one's
+// link with its status as the board shows it.
+async function mentionedLinks(env: Env, project: Project, text: string): Promise<Map<number, string>> {
+  const ids = mentionedCards(text);
+  const found = new Map<number, string>();
+  if (!ids.length) return found;
+  const cards = (await listCards(env.DB, project.repo)).filter((other) => ids.includes(other.id));
+  if (!cards.length) return found;
+  const progress = await cardProgress(env, project, cards);
+  for (const other of cards)
+    found.set(
+      other.id,
+      `<a class="card-mention mono" href="${escapeHtml(cardUrl(project.repo, other.id))}" title="${escapeHtml(other.title)}">${cardRef(other.id)}</a> ${statusPill(other, progress.get(other.id))}`,
+    );
+  return found;
+}
 
 // The card's page, also after a failed call to Claude (`failure`, with
 // what the person had typed).
@@ -286,11 +352,16 @@ async function renderCard(
   // An epic: its progress, from its features' statuses (la-fabrique#303).
   let epic: EpicProgress | undefined;
   if (card.kind === "epic") {
-    const features = epicFeatures(card, await listCards(env.DB, project.repo));
+    const features = featuresOfEpic(card, await listCards(env.DB, project.repo));
     await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
     epic = epicProgress(card, features);
   }
   const events = job ? await jobEvents(env.DB, job.id) : [];
+  const [dependencies, dependencyOptions, dependencyLog] = await Promise.all([
+    dependenciesOf(env.DB, project.repo, card.id),
+    dependencyChoices(env.DB, project.repo, card),
+    dependencyHistory(env.DB, project.repo, card.id),
+  ]);
   // The card's stories as GitHub has them (the stories' snapshot).
   const storyStates: Map<number, StoryState> = await cardStories(
     env,
@@ -305,17 +376,22 @@ async function renderCard(
   // Its progress from those stories, and when it reached each stage.
   const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
   const progressHistory = await progressSince(env.DB, project.repo, card.id);
+  const attachedTitles = card.kind === "epic" ? await featureEpicTitles(env.DB, project.repo) : new Map<number, string>();
   const storyNumbers = [...linked];
   const step = nextStep(card, storyNumbers, storyStates as never);
   const wanted = Number(params.get("rev"));
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
   const asked = params.get("ask");
-  const rubriques = specRubriques(project);
+  const version = shown ?? card;
+  const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"));
+  const rubriques = rubriquesFor(project, card);
   const spend = calls.reduce(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
     { calls: 0, micros: 0, unknown: 0 },
   );
+  const epicSpend = card.kind === "epic" ? await epicSpendOf(env.DB, project.repo, card, spend) : undefined;
+  const allCards = await listCards(env.DB, project.repo);
   return html(
     cardPage(viewer, view, {
       card,
@@ -334,16 +410,27 @@ async function renderCard(
       claude: { usable: claude.ok, reason: claude.ok ? null : claude.reason },
       calls,
       spend,
+      ...(epicSpend ? { epicSpend } : {}),
       missing: missingSections(card.data.spec, rubriques),
       job,
       events,
       split: card.data.split,
       storyStates,
-      priorities: cycleRules(project.check?.config).priorities,
+      priorities: card.kind === "epic" ? [] : cycleRules(project.check?.config).priorities,
       progress,
       progressHistory,
       named,
       ...(epic ? { epic } : {}),
+      mentioned,
+      dependencies,
+      dependencyOptions,
+      dependencyLog,
+      canDepend: viewer.role !== null,
+      epics: epicCardsOf(allCards),
+      epicState: card.kind === "epic" ? (await epicStates(env, project, [card])).get(card.id) : undefined,
+      epicHistory: card.kind === "epic" ? await epicHistory(env.DB, project.repo, card.id) : undefined,
+      epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
+      attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && attachedTitles.get(c.id) !== card.title) : [],
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -356,11 +443,28 @@ export async function showCardPage(request: Request, env: Env, viewer: Viewer, p
 }
 
 export async function changeCard(request: Request, form: FormData, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
+  const action = String(form.get("action") ?? "");
+  // Anyone with a role on the project says what a feature depends on.
+  if (action === "depend_add" || action === "depend_remove") {
+    if (viewer.role === null) return forbidden(viewer);
+    const mine = await findCard(env.DB, project.repo, id);
+    if (!mine) return notFound(viewer, "There is no such card in this project.");
+    const back = `${projectUrl(project.repo)}/cards/${mine.id}`;
+    const choice = String(form.get("on") ?? "").trim();
+    const target = choice.startsWith("epic:") ? { epic: choice.slice(5) } : /^C?\d{1,9}$/i.test(choice) ? { card: Number(choice.replace(/^C/i, "")) } : null;
+    if (!target) return renderCard(request, env, viewer, project, mine, { failure: "Choose a feature or an epic of this project.", status: 422 });
+    if (action === "depend_remove") {
+      await removeDependency(env.DB, project.repo, mine, target, viewer.login);
+      return redirect(`${back}#dependencies`);
+    }
+    const outcome = await addDependency(env.DB, project.repo, mine, target, viewer.login);
+    if (!outcome.ok) return renderCard(request, env, viewer, project, mine, { failure: outcome.reason, status: 409 });
+    return redirect(`${back}#dependencies`);
+  }
   if (!canWriteCards(viewer)) return forbidden(viewer);
   const card = await findCard(env.DB, project.repo, id);
   if (!card) return notFound(viewer, "There is no such card in this project.");
   const url = `${projectUrl(project.repo)}/cards/${card.id}`;
-  const action = String(form.get("action") ?? "");
   // A story that names the card, linked by a person (la-fabrique#218).
   if (action === "link_story") {
     const number = Number(form.get("story"));
@@ -384,6 +488,27 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     }
     await validateFeature(env.DB, card, numbers, viewer.login);
     return redirect(to);
+  }
+  // A feature's epic, and the epic's document: one link (la-fabrique#294).
+  if (action === "set_epic" || action === "attach_feature" || action === "detach_feature") {
+    const name = action === "set_epic" ? String(form.get("epic") ?? "") : null;
+    const feature = action === "set_epic" ? card : await findCard(env.DB, project.repo, Number(form.get("feature")));
+    if (!feature || feature.kind !== "feature" || (action !== "set_epic" && card.kind !== "epic")) {
+      return renderCard(request, env, viewer, project, card, { failure: "That is not a feature of this project.", status: 404 });
+    }
+    if (action === "set_epic") await setFeatureEpic(env.DB, feature, name, viewer.login);
+    else if (action === "attach_feature") await setFeatureEpic(env.DB, feature, card.title, viewer.login, "document");
+    else if ((await featureEpicTitles(env.DB, project.repo)).get(feature.id) === card.title) await setFeatureEpic(env.DB, feature, null, viewer.login, "document");
+    return redirect(`${url}#${action === "set_epic" ? "epic" : "features"}`);
+  }
+  if (card.kind === "epic" && (action === "archive" || action === "restore" || action === "epic_drop" || action === "epic_archive" || action === "epic_unarchive")) {
+    if (!canWriteCards(viewer)) return redirect(url);
+    const refusal =
+      action === "epic_drop"
+        ? await dropEpic(env, project, card, viewer.login)
+        : await archiveEpic(env, project, card, viewer.login, action === "archive" || action === "epic_archive");
+    const notice = refusal ? "epic_refused" : action === "epic_drop" ? "epic_dropped" : action === "archive" || action === "epic_archive" ? "epic_archived" : "epic_unarchived";
+    return redirect(String(form.get("back")) === "epics" ? `${projectUrl(project.repo)}/epics?notice=${notice}` : `${url}?notice=${notice}`);
   }
   if (action === "archive" || action === "restore") {
     if (Boolean(card.archivedAt) !== (action === "restore")) return redirect(url);
@@ -434,6 +559,39 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
     return redirect(`${url}#claude-job`);
   }
+  if (action === "epic_features") {
+    if (card.kind !== "epic" || (!card.data.spec && !card.body.trim())) return redirect(`${url}#spec`);
+    const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "epic_features", request: { instruction, answers: [] }, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
+  if (action === "epic_review") {
+    if (card.kind !== "epic" || (!card.data.spec && !card.body.trim())) return redirect(`${url}#spec`);
+    const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "epic_review", request: { instruction, answers: [] }, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
+  if (action === "review_discard" && card.kind === "epic") {
+    if (card.data.review) await saveEpicReview(env.DB, card, viewer.login, null);
+    return redirect(`${url}?notice=review_discarded#features`);
+  }
+  if ((action === "review_apply" || action === "review_dismiss") && card.kind === "epic") {
+    if (card.archivedAt) return renderCard(request, env, viewer, project, card, { failure: "The epic is archived.", status: 409 });
+    const outcome = await applyFinding(env.DB, project, card, viewer.login, Number(form.get("finding")), action === "review_dismiss");
+    if (!outcome.ok) return renderCard(request, env, viewer, project, card, { failure: outcome.reason, status: 409 });
+    if (outcome.preview) return redirect(`${url}/features`);
+    return redirect(`${url}?notice=${action === "review_dismiss" ? "review_dismissed" : "review_applied"}#review`);
+  }
+  if (card.kind === "epic" && (action === "spec_split" || action === "spec_tests" || action === "split_save" || action === "split_stories")) {
+    // An epic has no stories or test cases of its own: its features do.
+    return redirect(url);
+  }
   if (action === "spec_split") {
     if (!card.data.spec) return redirect(`${url}#spec`);
     const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
@@ -483,7 +641,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (Number(form.get("rev")) !== card.rev) {
       return renderCard(request, env, viewer, project, card, { failure: "The card changed while you were editing its spec: your text was not saved. Open the spec again.", status: 409 });
     }
-    const spec = readSpecForm(form, specRubriques(project), card.data.spec);
+    const spec = readSpecForm(form, rubriquesFor(project, card), card.data.spec);
     await saveSpec(env.DB, card, viewer.login, spec);
     if (JSON.stringify(spec.answers) !== JSON.stringify(card.data.spec?.answers ?? {})) {
       await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the spec changed");
@@ -493,6 +651,9 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const input = readCardForm(form, known);
+  // The type is fixed at creation: a feature never becomes an epic, nor the other way.
+  input.tags.kind = card.kind;
+  if (card.kind === "epic") input.body = readEpicForm(form, epicSections(project)).slice(0, MAX_BODY);
   if (!input.title) {
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card, input, known, error: "A card needs a title." }), { status: 422, cookies });
@@ -503,6 +664,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card, input, known, conflict: current }), { status: 409, cookies });
   }
+  if (outcome === "saved" && input.tags.epic !== card.epic) await syncEpicLink(env.DB, { ...card, epic: input.tags.epic, kind: input.tags.kind }, viewer.login);
   // The feature changed, its status left as it was: to validate again.
   if (outcome === "saved" && (input.title !== card.title || input.body !== card.body) && input.tags.status === card.status) {
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the card changed");
@@ -515,7 +677,7 @@ export async function showSpecForm(request: Request, env: Env, viewer: Viewer, p
   const card = await findCard(env.DB, project.repo, id);
   if (!card) return notFound(viewer, "There is no such card in this project.");
   const { view, cookies } = await projectView(request, env, project, viewer);
-  return html(specFormPage(viewer, view, { card, rubriques: specRubriques(project), spec: card.data.spec }), { cookies });
+  return html(specFormPage(viewer, view, { card, rubriques: rubriquesFor(project, card), spec: card.data.spec }), { cookies });
 }
 
 function storyDraft(request: Request, project: Project, card: Card, login: string, title: string): { draft: RequestDraft; origin: string; body: string } {
@@ -580,6 +742,20 @@ export async function importRoute(request: Request, env: Env, viewer: Viewer, pr
     return page({ error: "No card found: the JSON has no list of cards with a title.", text: uploaded ? "" : text, status: 422 });
   }
   return redirect(`${projectUrl(project.repo)}/board?notice=imported&created=${outcome.created.length}&skipped=${outcome.skipped.length}`);
+}
+
+// The typed Epic values, turned into epic cards after a review (la-fabrique#295).
+async function epicsRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const pending = await pendingEpics(env.DB, project.repo);
+  if (!form) {
+    const { view, cookies } = await projectView(request, env, project, viewer);
+    return html(epicConversionPage(viewer, view, pending), { cookies });
+  }
+  const choices = new Map<string, EpicChoice>();
+  for (const [index, item] of pending.entries()) choices.set(item.key, form.get(`choice_${index}`) === "create" ? "create" : "attach");
+  const done = pending.length ? await convertEpics(env.DB, project.repo, viewer.login, choices) : { created: 0, attached: 0 };
+  return redirect(`${projectUrl(project.repo)}/board?notice=epics&created=${done.created}&attached=${done.attached}`);
 }
 
 const SPRINT_NOTICES: Record<string, string> = {
@@ -1002,7 +1178,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
     return redirect(base);
   }
   const params = new URL(request.url).searchParams;
-  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
   const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
@@ -1254,6 +1430,53 @@ function readSplitForm(form: FormData, split: CardSplit, rubriques: Rubrique[]):
   return { split: { ...split, stories, ...(review ? { review } : {}) }, kept, commented };
 }
 
+// The features Claude proposed for an epic: review, edit, then create the
+// kept ones as draft cards attached to the epic (la-fabrique#282).
+export async function featuresRoute(_request: Request, env: Env, viewer: Viewer, project: Project, id: number, form: FormData | null): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const card = await findCard(env.DB, project.repo, id);
+  if (!card || card.kind !== "epic") return notFound(viewer, "There is no such epic in this project.");
+  const url = cardUrl(project.repo, card.id);
+  const proposal = card.data.featuresProposal;
+  if (!proposal) return redirect(url);
+  const cards = await listCards(env.DB, project.repo);
+  const known = new Set(cards.filter((other) => other.kind !== "epic" && !other.archivedAt).map((other) => other.id));
+  const priorities = cycleRules(project.check?.config).priorities;
+  const page = async (shown: EpicFeaturesProposal, kept: number[], error?: string, status = 200) => {
+    const { view, cookies } = await projectView(_request, env, project, viewer);
+    return html(
+      featuresPage(viewer, view, {
+        epic: card,
+        proposal: shown,
+        kept: new Set(kept),
+        priorities,
+        titles: new Map(cards.map((other) => [other.id, other.title])),
+        outdated: (card.data.spec?.at ?? "") !== shown.specAt,
+        error,
+      }),
+      { cookies, status },
+    );
+  };
+  if (!form) return page(proposal, proposal.features.map((_f, index) => index));
+  const action = String(form.get("action") ?? "");
+  if (action === "discard") {
+    await saveFeaturesProposal(env.DB, card, viewer.login, null);
+    return redirect(`${url}?notice=features_discarded#features`);
+  }
+  const edited = readFeaturesForm(form, proposal, known);
+  if (action === "save") {
+    await saveFeaturesProposal(env.DB, card, viewer.login, edited.proposal);
+    return redirect(`${url}/features?notice=saved`);
+  }
+  if (action !== "create") return page(edited.proposal, edited.kept);
+  if (card.archivedAt) return page(edited.proposal, edited.kept, "The epic is archived.", 409);
+  if (!edited.kept.length) return page(edited.proposal, edited.kept, "Keep at least one feature, or discard the proposal.", 422);
+  const blank = edited.kept.filter((index) => !edited.proposal.features[index]?.title);
+  if (blank.length) return page(edited.proposal, edited.kept, `Give a title to ${blank.map((index) => `P${index + 1}`).join(", ")}.`, 422);
+  const made = await createFeatures(env.DB, project, card, viewer.login, edited.proposal, edited.kept);
+  return redirect(`${url}?notice=${made.skipped.length ? "features_skipped" : "features_created"}#features`);
+}
+
 // Review what Claude proposes, edit it, then create the stories on GitHub
 // (and, after a review, comment on the stories to change); nothing goes
 // there before.
@@ -1264,7 +1487,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const url = cardUrl(project.repo, card.id);
   const split = card.data.split;
   if (!split) return redirect(`${url}#spec`);
-  const rubriques = specRubriques(project);
+  const rubriques = rubriquesFor(project, card);
   const words = wordingFor(project);
   const label = project.check?.config?.demandes?.etiquettes?.["demande"] ?? null;
   // After a review, new stories are numbered after those already made.
@@ -1426,6 +1649,7 @@ export async function cardRoute(
     if (method === "POST") return withForm((data) => refinementRoute(request, env, viewer, project, data));
     return notAllowed();
   }
+  if (path === "epics") return method === "GET" ? showEpics(request, env, viewer, project) : notAllowed();
   if (path === "board") {
     if (method === "GET") return showBoard(request, env, viewer, project);
     if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));
@@ -1470,6 +1694,11 @@ export async function cardRoute(
   }
   if (path === "cards/new") return method === "GET" ? showCardForm(request, env, viewer, project, null) : notAllowed();
   if (path === "cards/export") return method === "GET" ? downloadCards(env, project) : notAllowed();
+  if (path === "cards/epics") {
+    if (method === "GET") return epicsRoute(request, env, viewer, project, null);
+    if (method === "POST") return withForm((data) => epicsRoute(request, env, viewer, project, data));
+    return notAllowed();
+  }
   if (path === "cards/import") {
     if (method === "GET") return importRoute(request, env, viewer, project, null);
     if (method === "POST") return withForm((data) => importRoute(request, env, viewer, project, data));
@@ -1489,6 +1718,11 @@ export async function cardRoute(
   if (id && match[4] === "/stories") {
     if (method === "GET") return splitRoute(request, env, viewer, project, id, null);
     if (method === "POST") return withForm((data) => splitRoute(request, env, viewer, project, id, data));
+    return notAllowed();
+  }
+  if (id && match[4] === "/features") {
+    if (method === "GET") return featuresRoute(request, env, viewer, project, id, null);
+    if (method === "POST") return withForm((data) => featuresRoute(request, env, viewer, project, id, data));
     return notAllowed();
   }
   if (id && match[4] === "/story") {

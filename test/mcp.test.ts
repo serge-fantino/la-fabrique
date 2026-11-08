@@ -217,6 +217,38 @@ describe("La Fabrique's MCP server", () => {
     expect(log).toContain("through Claude");
   });
 
+  it("reads an epic with its features, by number or by name, and filters the board by epic", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const make = async (title: string, body: string) => ((await call(access, "card_create", { project: REPO, title, body })).data["created"] as { id: number }).id;
+    const epic = await make("F9 Epics", "The epic's document.");
+    const a = await make("Read an epic", `{epic: F9 Epics}`);
+    const b = await make("Filter the board", `{epic: C${epic}}`);
+    const plain = await make("Unrelated", "");
+
+    expect((await call(access, "projects", {})).data["projects"]).toMatchObject([{ epics: 1 }]);
+
+    const byNumber = await call(access, "epic", { project: REPO, epic });
+    expect(byNumber.isError).toBe(false);
+    expect(byNumber.data).toMatchObject({ id: epic, title: "F9 Epics", document: "The epic's document.", revision: 1, github_issue: null });
+    expect((byNumber.data["features"] as { number: number; title: string; status: string; progress: string }[]).map((f) => f.number).sort()).toEqual([a, b].sort());
+    expect(Object.values(byNumber.data["features_per_status"] as Record<string, number>).reduce((x, y) => x + y, 0)).toBe(2);
+
+    const byName = await call(access, "epic", { project: REPO, epic: "F9 Epics" });
+    expect(byName.data).toEqual(byNumber.data);
+
+    const notEpic = await call(access, "epic", { project: REPO, epic: plain });
+    expect(notEpic.isError).toBe(true);
+    expect(notEpic.data["error"]).toContain("not an epic");
+    expect(notEpic.data["features"]).toBeUndefined();
+
+    const board = await call(access, "board", { project: REPO, epic: "F9 Epics" });
+    expect((board.data["cards"] as { id: number }[]).map((card) => card.id).sort()).toEqual([a, b].sort());
+    const boardByNumber = await call(access, "board", { project: REPO, epic });
+    expect((boardByNumber.data["cards"] as { id: number }[]).length).toBe(2);
+  });
+
   it("keeps an assistant's token and a project app's apart, and follows the role at each call", async () => {
     await grantRole("lead", "tech_lead");
     const { access_token: access } = await connectClaude("lead");

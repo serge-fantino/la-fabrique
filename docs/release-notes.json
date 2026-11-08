@@ -13,6 +13,127 @@
   },
   {
     "version": "next",
+    "date": "2026-11-08",
+    "titre": "Claude reads an epic with its features, and filters the board by epic",
+    "changements": [
+      "Claude connected to La Fabrique can now read an epic with the new epic tool: its document, its revision and its features with status and progress, plus the count of features per status. An epic is named by its card number or its name.",
+      "The board tool takes an epic to show only its features, and the projects tool says how many epics each project has. Until epics are cards of their own, an epic is a card that other cards name in their Epic."
+    ],
+    "stories": [307],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "A card named in another card's text is a link with its status",
+    "changements": [
+      "Naming a card in another card's text or spec (\"C57\") now links to it and shows its status, as the board does. \"C570\" or \"ABC57\" stay plain text, as does a card of no such project."
+    ],
+    "stories": [289],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Epic values typed on cards can become epic cards",
+    "changements": [
+      "The board offers, to Product Engineers and above, to turn the Epic values already typed on features into epic cards. A review shows each value, its features and what will happen (attach to an epic card of the same title, or create a draft epic); nothing changes until you confirm, the features keep their value so lanes and filters group the same features, and each epic created and feature attached is in the activity log. Once converted, the offer is gone."
+    ],
+    "stories": [295],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Claude reviews an epic against its features",
+    "changements": [
+      "On an epic with features, Review with Claude reports what the document asks that no feature covers, features that overlap, a feature that goes against a decision, and missing dependencies, in the background and within the quotas.",
+      "The epic's page shows the findings by kind. Nothing changes until you apply one: a missing dependency is added, an uncovered need joins the proposed features to review in the preview, an overlap or a conflict becomes a note on the epic; or dismiss it. Each is recorded in the journal."
+    ],
+    "stories": [283],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Claude proposes an epic's features, reviewed before they are created",
+    "changements": [
+      "On an epic's page, Propose features with Claude reads the epic's document and its features and proposes only the missing ones: a title, a synopsis, a need, a priority and the dependencies of each, in the background and within the quotas.",
+      "A preview lets you uncheck and edit every proposal; the checked ones are created as draft cards attached to the epic, with their dependencies, in the Not set release lane. Claude proposes no release or order. The epic's page lists them; the journal records the creation.",
+      "The Claude buttons (write, revise) now show on an epic's page."
+    ],
+    "stories": [282],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Claude writes an epic's document",
+    "changements": [
+      "A card can now be an epic (type Epic). On its page, a person who writes requests asks Claude to write its document: Claude asks at most five questions, answered in the page (Enough questions stops them), then writes the document by the epic's sections, in the background, within the quotas and budget.",
+      "The sections are those the project declares in `epiques.rubriques` of its `.fabrique.json`, or La Fabrique's defaults: Why, Decisions, Features, Open questions. Every version of the document is kept and it can be revised with Claude.",
+      "The epic's page shows its own Claude cost and the total with its features' calls; Settings → Claude counts it. An epic has no stories or test cases of its own; a feature works as before."
+    ],
+    "stories": [281],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "The Epics tab: every epic with its status",
+    "changements": [
+      "New Epics tab in the Product perspective: each non-archived epic with its status and its number of features. The status follows the features, never typed: Ideation (no feature), Open (features, none in the sprint), Active (one is in the sprint), Done (all shipped or dropped).",
+      "By hand: Drop an epic while it is in Ideation; Archive it when it is Done (or Dropped); Unarchive it from the archived list (Show archived epics). Each status change is dated in the epic's status history, with its reason."
+    ],
+    "stories": [286],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Attach features to an epic and see them on its page",
+    "changements": [
+      "Epic cards are values of the Epic dimension, listed next to the legacy free-text values; the board filter by epic finds all its features.",
+      "An epic's page lists its attached features grouped by status. The link follows the epic card, not its name: renaming an epic leaves its features' Epic value as it was and they stay attached."
+    ],
+    "stories": [285],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Write an epic card: its own sections, page and history",
+    "changements": [
+      "New card type: Epic. Choose it when you create a card; the form then asks for the epic's sections (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions by default, or the project's own `epiques.rubriques` in `.fabrique.json`) and keeps them as one document.",
+      "An epic's page shows its document and its history, every version kept; no spec, stories, test cases or Claude. It is not on the board or in a sprint. The type of a card is fixed at creation. Through the MCP an epic is read with the type epic, not written."
+    ],
+    "stories": [284],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "A feature can depend on another feature or on an epic",
+    "changements": [
+      "On a feature's page, anyone with a role on the project (tester included) can say it depends on another feature of the project or on a whole epic. The dependency shows on both pages (Depends on, Needed by) with the other's status.",
+      "A dependency that would make a loop, directly or through an epic, is refused with the features that make it. Adding and removing are in the project's log and in the dependency history of the page."
+    ],
+    "stories": [298],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "A feature's epic is chosen from the project's epic cards",
+    "changements": [
+      "A feature's page has an Epic section: pick one of the project's epic cards, or type a new name to create an empty draft epic card with the feature attached. A feature belongs to one epic at most.",
+      "An epic card lists its features and lets you attach or remove one; choosing an epic on the feature and attaching it in the epic is the same link, and a feature moves from its old epic instead of being in two. Epic is now a card type. Each change is in the activity log."
+    ],
+    "stories": [294],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [

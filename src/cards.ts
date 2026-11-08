@@ -117,9 +117,61 @@ export interface CardTests {
   edited?: boolean;
 }
 
+// Claude's proposal of the features an epic still misses (la-fabrique#282),
+// to review before any card is created. `depends` entries are "C12" (a
+// card of the project) or "P2" (the 2nd feature of this proposal).
+export interface ProposedFeature {
+  title: string;
+  synopsis: string;
+  need: string;
+  priority: string | null;
+  depends: string[];
+}
+
+export interface EpicFeaturesProposal {
+  features: ProposedFeature[];
+  note?: string;
+  specAt: string;
+  at: string;
+}
+
+// Claude's review of an epic against its features (la-fabrique#283): what it
+// found, each finding a proposal; nothing is applied by itself.
+export const FINDING_KINDS = ["uncovered", "overlap", "conflict", "dependency"] as const;
+export type FindingKind = (typeof FINDING_KINDS)[number];
+export interface ReviewFinding {
+  kind: FindingKind;
+  title: string;
+  detail: string;
+  // The features concerned (card ids). A dependency: `cards[0]` should depend on `cards[1]`.
+  cards: number[];
+  // An uncovered need: the feature Claude proposes for it.
+  draft?: { title: string; synopsis: string; need: string; priority: string | null };
+  state: "open" | "applied" | "dismissed";
+  // What applying did, said once.
+  result?: string;
+}
+export interface EpicReview {
+  findings: ReviewFinding[];
+  note?: string;
+  specAt: string;
+  at: string;
+}
+// A note kept on an epic: an applied overlap or conflict.
+export interface EpicNote {
+  at: string;
+  by: string;
+  kind: FindingKind;
+  text: string;
+  cards: number[];
+}
+
 export interface CardData {
+  review?: EpicReview;
+  notes?: EpicNote[];
   spec?: CardSpec;
   split?: CardSplit;
+  featuresProposal?: EpicFeaturesProposal;
   tests?: CardTests;
   // Who validated the feature, and what it was then (src/feature-validation.ts).
   validation?: import("./feature-validation").FeatureValidation;
@@ -192,6 +244,14 @@ const ANNOTATION = /\{\s*(epic|domain|segment|release)\s*:\s*([^{}\n]*?)\s*\}/gi
 const ISSUE = /(^|[\s(])#(\d{1,7})\b/g;
 const PERSON = /(^|[\s(])@([a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38})\b/gi;
 const TERM = /\[\[([^[\]\n]{1,60})\]\]/g;
+
+// "C57" in a text: a card of the project, unless it sits in a longer word or
+// identifier ("C570", "ABC57", "#C57", "a/C57").
+export const CARD_MENTION = /(?<![\w/#-])C(\d{1,6})(?![\w-])/g;
+
+export function mentionedCards(text: string): number[] {
+  return [...new Set([...text.matchAll(CARD_MENTION)].map((match) => Number(match[1])))].slice(0, 50);
+}
 
 export function annotations(body: string): Partial<Record<FreeDimension, string | null>> {
   const found: Partial<Record<FreeDimension, string | null>> = {};
@@ -340,6 +400,13 @@ export async function dimensionValues(db: D1Database, repo: string, cards: Card[
     .all<{ dimension: string; value: string }>();
   const values = Object.fromEntries(FREE_DIMENSIONS.map((dimension) => [dimension, [] as string[]])) as Record<FreeDimension, string[]>;
   for (const row of results) if (isFreeDimension(row.dimension)) values[row.dimension].push(row.value);
+  // The project's epic cards are values of the Epic dimension, ahead of the
+  // legacy free-text ones (la-fabrique#285).
+  const epics = await db
+    .prepare("SELECT title FROM cards WHERE repo = ? AND kind = 'epic' AND archived_at IS NULL ORDER BY position, id")
+    .bind(repo)
+    .all<{ title: string }>();
+  for (const row of epics.results) if (!values.epic.some((v) => v.toLowerCase() === row.title.toLowerCase())) values.epic.push(row.title);
   for (const dimension of FREE_DIMENSIONS) {
     const used = [...new Set(cards.map((card) => card[dimension]).filter((value): value is string => Boolean(value)))];
     const extra = used.filter((value) => !values[dimension].includes(value)).sort((a, b) => a.localeCompare(b));
@@ -404,9 +471,14 @@ function linkStatements(db: D1Database, id: number, body: string): D1PreparedSta
   ];
 }
 
+// An epic is a document: it never enters a release or a sprint, and is not in an epic.
+export function documentTags(tags: CardTags): CardTags {
+  return tags.kind === "epic" ? { ...tags, release: null, epic: null } : tags;
+}
+
 export async function createCard(db: D1Database, repo: string, author: string, input: CardInput): Promise<number> {
   const last = await db.prepare("SELECT MAX(position) AS position FROM cards WHERE repo = ?").bind(repo).first<{ position: number | null }>();
-  const { tags } = input;
+  const tags = documentTags(input.tags);
   const row = await db
     .prepare(
       `INSERT INTO cards (repo, kind, status, title, body, epic, domain, segment, release, position, author)
@@ -439,7 +511,7 @@ export async function updateCard(
   if (baseRev !== card.rev) return "conflict";
   if (input.title === card.title && input.body === card.body && sameTags(input.tags, card)) return "unchanged";
   const rev = card.rev + 1;
-  const { tags } = input;
+  const tags = documentTags(input.tags);
   const result = await db
     .prepare(
       `UPDATE cards SET kind = ?, status = ?, title = ?, body = ?, epic = ?, domain = ?, segment = ?, release = ?,
@@ -496,6 +568,62 @@ export async function saveSplit(db: D1Database, card: Card, author: string, spli
           }),
         ]
       : []),
+  ]);
+}
+
+// Features proposed for an epic (or edited), or dropped (null): a new version.
+export async function saveFeaturesProposal(
+  db: D1Database,
+  card: Card,
+  author: string,
+  proposal: EpicFeaturesProposal | null,
+  callId: number | null = null,
+): Promise<void> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data };
+  if (proposal) data.featuresProposal = proposal;
+  else delete data.featuresProposal;
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    ...(callId && proposal
+      ? [
+          activityStatement(db, {
+            actor: author,
+            action: "epic_features_proposed",
+            repo: card.repo,
+            details: { card: card.id, title: card.title, features: proposal.features.length, call: callId },
+          }),
+        ]
+      : []),
+  ]);
+}
+
+// An epic's review saved (callId set), updated by applying or dismissing a
+// finding (`journal` says what to record then), or dropped (null): a new version.
+export async function saveEpicReview(
+  db: D1Database,
+  card: Card,
+  author: string,
+  review: EpicReview | null,
+  options: { callId?: number | null; notes?: EpicNote[]; journal?: { action: string; details: Record<string, unknown> } } = {},
+): Promise<void> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data };
+  if (review) data.review = review;
+  else delete data.review;
+  if (options.notes) data.notes = options.notes;
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    ...(options.callId && review
+      ? [activityStatement(db, { actor: author, action: "epic_reviewed", repo: card.repo, details: { card: card.id, title: card.title, findings: review.findings.length, call: options.callId } })]
+      : []),
+    ...(options.journal ? [activityStatement(db, { actor: author, action: options.journal.action, repo: card.repo, details: { card: card.id, title: card.title, ...options.journal.details } })] : []),
   ]);
 }
 
@@ -798,14 +926,14 @@ export async function importCards(db: D1Database, repo: string, author: string, 
     }
     existing.add(title.toLowerCase());
     const body = typeof item["body"] === "string" ? item["body"].replace(/\r\n/g, "\n").slice(0, MAX_BODY) : "";
-    const tags: CardTags = {
+    const tags: CardTags = documentTags({
       kind: isKind(item["kind"]) ? item["kind"] : "feature",
       status: isStatus(item["status"]) ? item["status"] : "draft",
       epic: cleanValue(item["epic"]),
       domain: cleanValue(item["domain"]),
       segment: cleanValue(item["segment"]),
       release: cleanValue(item["release"]),
-    };
+    });
     // The spec comes along; a pending split proposal does not.
     const given = typeof item["data"] === "object" && item["data"] !== null ? (item["data"] as Record<string, unknown>) : {};
     const cardData: CardData = typeof given["spec"] === "object" && given["spec"] !== null ? { spec: given["spec"] as CardSpec } : {};
@@ -888,7 +1016,9 @@ export function readBoardQuery(params: URLSearchParams): BoardQuery {
 
 // `storiesOf`: each card's stories, so "#170" (or "170") finds the cards of
 // story 170 (la-fabrique#206).
-export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>): Card[] {
+// `epicOf`: the epic card's current title of each attached feature, so a
+// renamed epic still finds its features (la-fabrique#285).
+export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>, epicOf?: Map<number, string>): Card[] {
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean);
   return cards.filter((card) => {
     if (!filters.all && (card.archivedAt || (card.status === "dropped" && filters.status !== "dropped"))) return false;
@@ -897,7 +1027,8 @@ export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Ma
     for (const dimension of FREE_DIMENSIONS) {
       const wanted = filters.values[dimension];
       if (wanted === undefined) continue;
-      if ((card[dimension] ?? "") !== wanted) return false;
+      const value = dimension === "epic" ? (epicOf?.get(card.id) ?? card.epic ?? "") : (card[dimension] ?? "");
+      if (value !== wanted && !(dimension === "epic" && wanted && value.toLowerCase() === wanted.toLowerCase())) return false;
     }
     if (words.length) {
       const text = `${card.title} ${card.body} C${card.id}`.toLowerCase();

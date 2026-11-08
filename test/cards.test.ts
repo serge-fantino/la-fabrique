@@ -271,3 +271,21 @@ describe("Cards", () => {
     expect(log).toContain(`wrote card <a class="mono" href="/projects/${REPO}/cards/${id}">C${id}</a> “Logged”`);
   });
 });
+
+describe("card mentions (#289)", () => {
+  it("finds C57 but not inside longer words or identifiers", async () => {
+    const { mentionedCards } = await import("../src/cards");
+    expect(mentionedCards("See C57, (C12) and C57 again")).toEqual([57, 12]);
+    expect(mentionedCards("C5700000 ABC57 C57x #C57 a/C57 C57-1")).toEqual([]);
+  });
+
+  it("renders a known card as a link with its status, others as plain text", async () => {
+    const { renderCardText } = await import("../src/card-views");
+    const cards = new Map([[57, `<a href="/x/cards/57">C57</a> <span class="pill">Draft</span>`]]);
+    const out = renderCardText("Needs C57 and C58, not C570.", "o/r", undefined, cards);
+    expect(out).toContain(`<a href="/x/cards/57">C57</a> <span class="pill">Draft</span>`);
+    expect(out).toContain("C58");
+    expect(out).not.toContain(`/cards/58`);
+    expect(out).toContain("C570");
+  });
+});

@@ -125,10 +125,13 @@ async function projectOf(ctx: Context, args: Args): Promise<Project> {
   return fail(matching.length ? `Several projects are called ${wanted}: give owner/repo.` : `No project ${wanted} in La Fabrique.`);
 }
 
-async function cardOf(ctx: Context, project: Project, args: Args): Promise<Card> {
+async function cardOf(ctx: Context, project: Project, args: Args, writing = false): Promise<Card> {
   const id = integer(args, "card");
   const card = await findCard(ctx.env.DB, project.repo, id);
-  return card ?? fail(`No card ${cardRef(id)} in ${project.repo}.`);
+  if (!card) return fail(`No card ${cardRef(id)} in ${project.repo}.`);
+  // An epic is a document written in La Fabrique: read here, not written.
+  if (writing && card.kind === "epic") fail(`${cardRef(id)} is an epic card: it is written in La Fabrique, not through this tool.`);
+  return card;
 }
 
 const absolute = (ctx: Context, path: string) => new URL(path, ctx.origin).href;
@@ -213,6 +216,37 @@ async function priorityOnGitHub(ctx: Context, project: Project, card: Card, to: 
   return to ? applyCardPriority(ctx.env, project, { ...card, priority: to }, ctx.login) : [];
 }
 
+
+// ---- Epics -------------------------------------------------------------------
+
+// Until epics are cards of their own (F9: #284, #294), an epic is a card that
+// other cards name in their Epic dimension, by its title ("F9 Epics") or by
+// its number ("C12"). Features are those cards.
+const sameName = (a: string | null, b: string) => (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+
+function namesEpic(feature: Card, epic: Card): boolean {
+  return feature.id !== epic.id && !feature.archivedAt && Boolean(feature.epic) && (sameName(feature.epic, epic.title) || sameName(feature.epic, cardRef(epic.id)));
+}
+
+function featuresOf(cards: Card[], epic: Card): Card[] {
+  return cards.filter((card) => namesEpic(card, epic));
+}
+
+function epicCards(cards: Card[]): Card[] {
+  return cards.filter((card) => !card.archivedAt && featuresOf(cards, card).length > 0);
+}
+
+// An epic named by its card number, "C12", or its name.
+function findEpic(cards: Card[], wanted: unknown): Card {
+  if (typeof wanted !== "string" && typeof wanted !== "number") return fail("epic is the epic card's number, or its name (such as \"F9 Epics\").");
+  const value = String(wanted).trim();
+  const byNumber = /^[#C]?\d+$/i.test(value) ? cards.find((card) => card.id === Number(value.replace(/^[#C]/i, ""))) : undefined;
+  const card = byNumber ?? cards.find((candidate) => sameName(candidate.title, value) && featuresOf(cards, candidate).length > 0) ?? cards.find((candidate) => sameName(candidate.title, value));
+  if (!card) return fail(`No epic "${value}" in this project.`);
+  if (!epicCards(cards).includes(card)) return fail(`${cardRef(card.id)} is not an epic: no feature names it in its Epic.`);
+  return card;
+}
+
 // ---- The tools ---------------------------------------------------------------
 
 const TOOLS: Tool[] = [
@@ -234,6 +268,7 @@ const TOOLS: Tool[] = [
             production_branch: productionBranch(project),
             integration_branch: hasIntegration(project) ? (project.check?.config?.branches?.integration ?? null) : null,
             sprint_running: Boolean(await activeSprint(ctx.env.DB, project.repo)),
+            epics: epicCards(await listCards(ctx.env.DB, project.repo)).length,
             url: absolute(ctx, projectUrl(project.repo)),
           })),
         ),
@@ -251,9 +286,10 @@ const TOOLS: Tool[] = [
         ...PROJECT,
         status: { type: "string", description: "draft, shaping, to_validate, validated, dropped" },
         release: { type: "string", description: "Next release, Sprint, a version, or none" },
-        kind: { type: "string", description: "feature, idea, question" },
+        kind: { type: "string", description: "feature, idea, question or epic (epic cards are documents, listed only when asked for)" },
         archived: { type: "boolean", description: "Include archived cards" },
         story: { type: "integer", description: "Only the cards of this story (its issue number)" },
+        epic: { type: ["string", "integer"], description: "Only the features of this epic: its card number or its name" },
       },
       required: ["project"],
     },
@@ -268,12 +304,14 @@ const TOOLS: Tool[] = [
       const links = await storyCards(ctx.env.DB, project.repo);
       await joinRunningSprint(ctx, project, all, links);
       const story = typeof args["story"] === "number" && Number.isInteger(args["story"]) ? args["story"] : null;
+      const epic = args["epic"] === undefined || args["epic"] === null ? null : findEpic(all, args["epic"]);
       const cards = all.filter(
         (card) =>
+          (!epic || namesEpic(card, epic)) &&
           (story === null || (links.order.get(card.id) ?? []).includes(story)) &&
           (args["archived"] === true || !card.archivedAt) &&
           (!status || card.status === status) &&
-          (!kind || card.kind === kind) &&
+          (kind ? card.kind === kind : card.kind !== "epic") &&
           (wantedRelease === undefined || (wantedRelease === "none" ? !card.release : card.release === wantedRelease)),
       );
       const progress = await cardProgress(ctx.env, project, cards, links);
@@ -281,6 +319,42 @@ const TOOLS: Tool[] = [
         project: project.repo,
         cards: cards.map((card) => cardSummary(ctx, card, progress.get(card.id), links.order.get(card.id) ?? [])),
         board: absolute(ctx, `${projectUrl(project.repo)}/board`),
+      };
+    },
+  },
+  {
+    name: "epic",
+    title: "An epic",
+    description:
+      "One epic in full: its document, its revision, its GitHub epic issue if any, its features (number, title, status, progress) and the count of features per status. Name it by its card number or its name (such as \"F9 Epics\").",
+    inputSchema: { type: "object", properties: { ...PROJECT, epic: { type: ["string", "integer"], description: "The epic card's number (C12 → 12) or its name" } }, required: ["project", "epic"] },
+    needs: null,
+    write: false,
+    async run(ctx, args) {
+      const project = await projectOf(ctx, args);
+      const all = await listCards(ctx.env.DB, project.repo);
+      const epic = findEpic(all, args["epic"]);
+      const features = featuresOf(all, epic);
+      const links = await storyCards(ctx.env.DB, project.repo);
+      const progress = await cardProgress(ctx.env, project, features, links);
+      const perStatus: Record<string, number> = {};
+      const listed = features.map((card) => cardSummary(ctx, card, progress.get(card.id), links.order.get(card.id) ?? []));
+      for (const card of features) {
+        const stage = progress.get(card.id)?.stage;
+        const label = stage ? PROGRESS_LABELS[stage] : STATUS_LABELS[card.status];
+        perStatus[label] = (perStatus[label] ?? 0) + 1;
+      }
+      return {
+        id: epic.id,
+        ref: cardRef(epic.id),
+        title: epic.title,
+        document: epic.body,
+        revision: epic.rev,
+        github_issue: null,
+        features: listed.map((feature) => ({ number: feature.id, ref: feature.ref, title: feature.title, status: feature.status, progress: feature.shown_status, url: feature.url })),
+        features_per_status: Object.fromEntries(Object.entries(perStatus).filter(([, count]) => count > 0)),
+        url: absolute(ctx, cardUrl(epic.repo, epic.id)),
+        permalink: absolute(ctx, cardPermalink(epic.id, epic.rev)),
       };
     },
   },
@@ -396,7 +470,7 @@ const TOOLS: Tool[] = [
       const title = text(args, "title", 200)?.trim();
       if (!title) fail("A card needs a title.");
       const kind = text(args, "kind", 30) ?? "feature";
-      if (!isKind(kind)) fail("kind is feature, idea or question.");
+      if (!isKind(kind) || kind === "epic") fail("kind is feature, idea or question (epic cards are written in La Fabrique).");
       const lane = release(args);
       await checkRelease(ctx, project, lane);
       const wanted = priority(args);
@@ -433,13 +507,13 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      let card = await cardOf(ctx, project, args);
+      let card = await cardOf(ctx, project, args, true);
       if (args["rev"] !== undefined && integer(args, "rev") !== card.rev) fail(`The card changed since (now version ${card.rev}): read it again.`);
       const changes: string[] = [];
       const title = text(args, "title", 200)?.trim();
       const body = text(args, "body", 50_000);
       const kind = text(args, "kind", 30);
-      if (kind !== undefined && !isKind(kind)) fail("kind is feature, idea or question.");
+      if (kind !== undefined && (!isKind(kind) || kind === "epic")) fail("kind is feature, idea or question: the type of a card is fixed once it is an epic, and a card never becomes one.");
       const status = text(args, "status", 30);
       if (status !== undefined && !isStatus(status)) fail("status is draft, shaping, to_validate, validated or dropped.");
       const lane = release(args);
@@ -499,7 +573,7 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const card = await cardOf(ctx, project, args);
+      const card = await cardOf(ctx, project, args, true);
       const given = args["answers"];
       if (!given || typeof given !== "object" || Array.isArray(given)) fail("answers is an object: section key → text.");
       const rubriques = specRubriques(project);
@@ -549,7 +623,7 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const card = await cardOf(ctx, project, args);
+      const card = await cardOf(ctx, project, args, true);
       const given = args["stories"];
       const list: unknown[] = Array.isArray(given) ? given : [];
       if (!list.length || list.length > 12) fail("stories is a list of 1 to 12 stories.");
@@ -601,7 +675,7 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const card = await cardOf(ctx, project, args);
+      const card = await cardOf(ctx, project, args, true);
       const number = integer(args, "story");
       const known = await cardStories(ctx.env, project, [number]);
       if (!known.get(number)) fail(`#${number} is not a story La Fabrique knows in ${project.repo}.`);

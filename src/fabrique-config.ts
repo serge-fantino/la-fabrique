@@ -18,6 +18,8 @@ export interface FabriqueConfig {
     etiquettes?: Record<string, string>;
     rubriques?: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[];
   };
+  // The sections of an epic card's document (la-fabrique#281, #284); absent: La Fabrique's defaults.
+  epiques?: { rubriques?: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[] };
   // The lifecycle of a story: its Definition of Ready, and the priority
   // labels, highest first.
   cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
@@ -35,6 +37,37 @@ export interface FabriqueConfig {
   // their validation. Absent: the `integration` environment, else the
   // production one for a project without an integration branch.
   recette?: { environnement: string };
+}
+
+function readRubriques(
+  rubriques: unknown,
+  path: string,
+  errors: string[],
+): { cle: string; titre: string; obligatoire?: boolean; aide?: string }[] | null {
+  if (!Array.isArray(rubriques)) {
+    errors.push(`\`${path}\` must be a list.`);
+    return null;
+  }
+  const seen = new Set<string>();
+  const out: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[] = [];
+  rubriques.forEach((rubrique: unknown, index) => {
+    if (!isObject(rubrique) || !isText(rubrique["cle"]) || !isText(rubrique["titre"])) {
+      errors.push(`\`${path}[${index}]\` needs a \`cle\` and a \`titre\`.`);
+      return;
+    }
+    if (seen.has(rubrique["cle"])) {
+      errors.push(`\`${path}[${index}]\`: the key \`${rubrique["cle"]}\` is used twice.`);
+      return;
+    }
+    seen.add(rubrique["cle"]);
+    out.push({
+      cle: rubrique["cle"],
+      titre: rubrique["titre"],
+      obligatoire: rubrique["obligatoire"] === true,
+      ...(typeof rubrique["aide"] === "string" ? { aide: rubrique["aide"] } : {}),
+    });
+  });
+  return out;
 }
 
 export const ENVIRONMENT_TYPES = ["integration", "production"] as const;
@@ -265,29 +298,21 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
       }
       const rubriques = demandes["rubriques"];
       if (rubriques !== undefined) {
-        if (!Array.isArray(rubriques)) {
-          errors.push("`demandes.rubriques` must be a list.");
-        } else {
-          const seen = new Set<string>();
-          config.demandes.rubriques = [];
-          rubriques.forEach((rubrique: unknown, index) => {
-            if (!isObject(rubrique) || !isText(rubrique["cle"]) || !isText(rubrique["titre"])) {
-              errors.push(`\`demandes.rubriques[${index}]\` needs a \`cle\` and a \`titre\`.`);
-              return;
-            }
-            if (seen.has(rubrique["cle"])) {
-              errors.push(`\`demandes.rubriques[${index}]\`: the key \`${rubrique["cle"]}\` is used twice.`);
-              return;
-            }
-            seen.add(rubrique["cle"]);
-            config.demandes?.rubriques?.push({
-              cle: rubrique["cle"],
-              titre: rubrique["titre"],
-              obligatoire: rubrique["obligatoire"] === true,
-              ...(typeof rubrique["aide"] === "string" ? { aide: rubrique["aide"] } : {}),
-            });
-          });
-        }
+        const read = readRubriques(rubriques, "demandes.rubriques", errors);
+        if (read) config.demandes.rubriques = read;
+      }
+    }
+  }
+
+  const epiques = parsed["epiques"];
+  if (epiques !== undefined) {
+    if (!isObject(epiques)) {
+      errors.push("`epiques` must be an object.");
+    } else {
+      config.epiques = {};
+      if (epiques["rubriques"] !== undefined) {
+        const read = readRubriques(epiques["rubriques"], "epiques.rubriques", errors);
+        if (read) config.epiques.rubriques = read;
       }
     }
   }
