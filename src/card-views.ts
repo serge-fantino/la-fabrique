@@ -38,6 +38,7 @@ import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } fr
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
 import { epicProgressSection, epicProgressSummary, type EpicProgress } from "./epic-progress";
+import type { EpicIssueView } from "./epic-issue";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
@@ -588,6 +589,7 @@ export interface CardPageData {
   shown: CardRevision | null;
   canWrite: boolean;
   created: boolean;
+  attachedOnCreate?: number | undefined;
   notice?: string | undefined;
   failure?: string | undefined;
   rubriques: Rubrique[];
@@ -631,6 +633,23 @@ export interface CardPageData {
   epicHistory?: EpicHistoryEntry[] | undefined;
   epicFeatures?: Card[];
   attachable?: Card[];
+  // The GitHub epic issue an epic card started from (la-fabrique#287).
+  epicIssue?: EpicIssueView;
+  keptFeatures?: number;
+}
+
+export const epicIssueSectionForTest = (data: Pick<CardPageData, "epicIssue" | "keptFeatures">) => epicIssueSection(data as CardPageData);
+
+function epicIssueSection(data: CardPageData, isEpic = false): string {
+  const issue = data.epicIssue;
+  if (!issue) return isEpic ? `<section id="epic-issue"><h2>GitHub epic</h2><p class="muted">No GitHub issue yet: it is created when the first feature of this epic enters refinement (Next release).</p></section>` : "";
+  const kept = data.keptFeatures ? `<p class="muted">${data.keptFeatures} feature${data.keptFeatures === 1 ? "" : "s"} of its stories stay in another epic.</p>` : "";
+  const none = issue.noFeature.length
+    ? `<h3>No feature <span class="muted small">${issue.noFeature.length}</span></h3><ul class="card-stories">${issue.noFeature
+        .map((story) => `<li><a href="${escapeHtml(story.url)}"><span class="mono">#${story.number}</span> ${escapeHtml(story.title)}</a></li>`)
+        .join("")}</ul>`
+    : "";
+  return `<section id="epic-issue"><h2>GitHub epic</h2><p><a href="${escapeHtml(issue.url)}"><span class="mono">#${issue.number}</span> ${escapeHtml(issue.title)}</a></p>${kept}${none}</section>`;
 }
 
 // A feature's Epic: one of the project's epic cards, or a new name.
@@ -1046,7 +1065,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   return layout(
     title(project, `${cardRef(card.id)} ${card.title}`),
     `${projectHeader(project, "board")}
-      ${data.created ? `<p class="notice ok" role="status" data-draft-clear="${escapeHtml(cardDraftKey(project.repo))}">Card ${cardRef(card.id)} written.</p>` : ""}
+      ${data.created ? `<p class="notice ok" role="status" data-draft-clear="${escapeHtml(cardDraftKey(project.repo))}">Card ${cardRef(card.id)} written.${data.attachedOnCreate === undefined ? "" : ` ${data.attachedOnCreate} feature${data.attachedOnCreate === 1 ? "" : "s"} attached from its GitHub epic.`}</p>` : ""}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
       <p class="crumbs"><a href="${escapeHtml(base)}/board#card-${card.id}">Board</a> <span aria-hidden="true">›</span> <span class="mono">${cardRef(card.id)}</span></p>
@@ -1078,6 +1097,7 @@ ${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned) : 
       ${data.epic && !shown ? epicProgressSection(data.epic) : ""}
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
+      ${shown ? "" : epicIssueSection(data, isEpic)}
       ${isEpic && !shown ? reviewHtml(viewer, project, card, data.canWrite, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title]))) + notesHtml(card, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title])), project.repo) : ""}
       ${isEpic && !shown ? epicHistoryHtml(data.epicHistory ?? []) : ""}
       <section class="card-spec" id="spec">
@@ -1138,6 +1158,8 @@ export interface CardFormData {
   known: Record<FreeDimension, string[]>;
   error?: string | undefined;
   conflict?: Card | undefined;
+  // Epic issues that can be picked when creating an epic card.
+  issues?: { number: number; title: string }[] | undefined;
 }
 
 export function cardFormPage(viewer: Viewer, project: Project, data: CardFormData): string {
@@ -1199,6 +1221,15 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
           <label for="f_title">Title <span class="muted">(required)</span></label>
           <input id="f_title" name="title" required maxlength="${MAX_TITLE}" value="${escapeHtml(input.title)}" />
         </div>
+        ${
+          !card && isEpic && (data.issues ?? []).length
+            ? `<div class="field">
+          <label for="f_issue">Start from an existing GitHub epic <span class="muted">(optional)</span></label>
+          <p class="help" id="f_issue_help">The card links to the issue, whose text is not copied; the features of its stories are attached to this epic.</p>
+          <select id="f_issue" name="issue" aria-describedby="f_issue_help"><option value="">None</option>${(data.issues ?? []).map((i) => `<option value="${i.number}">#${i.number} ${escapeHtml(i.title)}</option>`).join("")}</select>
+        </div>`
+            : ""
+        }
         ${
           isEpic
             ? epicFields(input.body)
