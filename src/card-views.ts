@@ -38,6 +38,7 @@ import type { Stage } from "./lifecycle";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
+import { EPIC_REST_FIELD, epicFieldName, epicSections, parseEpicBody } from "./epic-sections";
 import { renderMarkdown } from "./markdown";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks } from "./story-editor";
 import type { Rubrique } from "./requests";
@@ -842,6 +843,8 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   const people = data.links.filter((link) => link.kind === "person");
   const terms = data.links.filter((link) => link.kind === "term");
   const stories = data.links.filter((link) => link.kind === "story");
+  // An epic is a document: no spec, stories, tests or Claude.
+  const isEpic = card.kind === "epic";
   const linkRows: [string, string][] = [];
   if (issues.length)
     linkRows.push([
@@ -863,7 +866,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   let work = "";
   const working = isActive(data.job);
   const canAnswer = data.canWrite && !shown && data.claude.usable && !working;
-  if (data.canWrite && !shown && !working) {
+  if (data.canWrite && !shown && !working && !isEpic) {
     // What can come next, in one row; Claude's buttons carry a star. A
     // panel unfolds under the row, one at a time.
     const panel = (action: JobKind, summary: string, primary: boolean, open: boolean, inner: string): string =>
@@ -990,20 +993,20 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">
-${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
+${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">${isEpic ? "No document yet." : "No text yet."}</p>`}
       </article>
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
-      <section class="card-spec" id="spec">
+      ${isEpic ? "" : `<section class="card-spec" id="spec">
         <h2>Spec</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}
         ${specHtml(spec, data.rubriques, project.repo)}
         ${questionsHtml(viewer, url, spec, canAnswer)}
         ${dialogueHtml(spec)}
         ${work}
-      </section>
+      </section>`}
       ${
-        stories.length
+        stories.length && !isEpic
           ? `<h2 id="stories">Stories</h2>${progressSummary(data.progress, data.progressHistory ?? [])}<ul class="card-stories">${stories
               .map((link) => {
                 const state = data.storyStates.get(Number(link.ref));
@@ -1013,11 +1016,11 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
               .join("")}</ul>`
           : ""
       }
-      ${testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
-      ${validationHtml(viewer, url, data)}
+      ${isEpic ? "" : testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
+      ${isEpic ? "" : validationHtml(viewer, url, data)}
       ${dependenciesHtml(viewer, url, project, data)}
       ${
-        data.named?.length && !shown
+        data.named?.length && !shown && !isEpic
           ? `<section class="card-named" id="named"><h2>Stories that name ${cardRef(card.id)}</h2>
               <p class="muted small">They name this card in their title or text, but are not among its stories.</p>
               <ul class="card-stories">${data.named
@@ -1031,9 +1034,9 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
           : ""
       }
       ${linkRows.length ? `<h2>Mentioned</h2><dl class="facts">${linkRows.map(([term, value]) => `<dt>${term}</dt><dd>${value}</dd>`).join("")}</dl>` : ""}
-      <h2>Claude on this card</h2>
+      ${isEpic ? "" : `<h2>Claude on this card</h2>
       <p>${data.spend.calls ? spendLine(data.spend) : `<span class="muted">No call yet.</span>`}</p>
-      ${callsTable(data.calls)}
+      ${callsTable(data.calls)}`}
       <h2>History</h2>
       <p class="muted small">Written by <span class="mono">@${escapeHtml(card.author)}</span> on <span class="mono">${formatDate(card.createdAt)}</span>. Every version is kept.</p>
       <ul class="card-history">${history}</ul>`,
@@ -1057,6 +1060,34 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
   const base = projectUrl(project.repo);
   const { card, input, known } = data;
   const action = card ? cardUrl(project.repo, card.id) : `${base}/cards`;
+  const isEpic = (card ? card.kind : input.tags.kind) === "epic";
+  const sections = epicSections(project);
+  const epicFields = (body: string): string => {
+    const parsed = parseEpicBody(body, sections);
+    return `${sections
+      .map(
+        (section) => `<div class="field">
+          <label for="s_${escapeHtml(section.cle)}">${escapeHtml(section.titre)}</label>
+          ${section.aide ? `<p class="help" id="s_${escapeHtml(section.cle)}_help">${escapeHtml(section.aide)}</p>` : ""}
+          <textarea id="s_${escapeHtml(section.cle)}" name="${escapeHtml(epicFieldName(section))}" rows="5" maxlength="${MAX_BODY}">${escapeHtml(parsed.texts[section.cle] ?? "")}</textarea>
+        </div>`,
+      )
+      .join("")}${
+      parsed.rest
+        ? `<div class="field"><label for="s_rest">Other text</label><textarea id="s_rest" name="${EPIC_REST_FIELD}" rows="4" maxlength="${MAX_BODY}">${escapeHtml(parsed.rest)}</textarea></div>`
+        : ""
+    }`;
+  };
+  // Creating: the type is chosen first, as it decides the fields.
+  const typeChoice = card
+    ? ""
+    : `<form method="get" action="${escapeHtml(base)}/cards/new" class="request-form card-form" aria-label="Type of the new card">
+        <div class="field">
+          <label for="f_type_choice">Type</label>
+          <select id="f_type_choice" name="kind" data-autosubmit>${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], input.tags.kind === kind)).join("")}</select>
+          <noscript><button type="submit" class="button quiet">Choose</button></noscript>
+        </div>
+      </form>`;
   const free = FREE_DIMENSIONS.map(
     (dimension) => `<div class="field">
         <label for="f_${dimension}">${DIMENSION_LABELS[dimension]}</label>
@@ -1075,6 +1106,7 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
       <p class="crumbs"><a href="${escapeHtml(base)}/board">Board</a>${card ? ` <span aria-hidden="true">›</span> <a class="mono" href="${escapeHtml(cardUrl(project.repo, card.id))}">${cardRef(card.id)}</a>` : ""}</p>
       ${conflict}
       ${notice(data.error, "error")}
+      ${typeChoice}
       <form method="post" action="${escapeHtml(action)}" class="request-form card-form"${card ? "" : ` data-draft-key="${escapeHtml(cardDraftKey(project.repo))}"`}>
         ${csrfField(viewer)}
         <input type="hidden" name="action" value="save" />
@@ -1083,17 +1115,25 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
           <label for="f_title">Title <span class="muted">(required)</span></label>
           <input id="f_title" name="title" required maxlength="${MAX_TITLE}" value="${escapeHtml(input.title)}" />
         </div>
-        <div class="field">
+        ${
+          isEpic
+            ? epicFields(input.body)
+            : `<div class="field">
           <label for="f_body">Text</label>
           <p class="help" id="f_body_help">A few lines: what it is, for whom, why. Markdown.
             <code>{segment: pro}</code> sets a tag (epic, domain, segment, release; it wins over the fields below),
             <code>#12</code> points to an issue, <code>@login</code> to a person, <code>[[Basket]]</code> to a term.</p>
           <textarea id="f_body" name="body" rows="12" maxlength="${MAX_BODY}" aria-describedby="f_body_help">${escapeHtml(input.body)}</textarea>
-        </div>
+        </div>`
+        }
         <div class="card-form-tags">
           <div class="field">
             <label for="f_kind">Type</label>
-            <select id="f_kind" name="kind">${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], input.tags.kind === kind)).join("")}</select>
+            ${
+              card
+                ? `<input type="hidden" name="kind" value="${card.kind}" /><p id="f_kind">${KIND_LABELS[card.kind]} <span class="muted small">(fixed at creation)</span></p>`
+                : `<input type="hidden" name="kind" value="${input.tags.kind}" /><p id="f_kind">${KIND_LABELS[input.tags.kind]}</p>`
+            }
           </div>
           <div class="field">
             <label for="f_status">Status</label>

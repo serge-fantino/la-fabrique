@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Write an epic card: its own sections, page and history",
+    "changements": [
+      "New card type: Epic. Choose it when you create a card; the form then asks for the epic's sections (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions by default, or the project's own `epiques.rubriques` in `.fabrique.json`) and keeps them as one document.",
+      "An epic's page shows its document and its history, every version kept; no spec, stories, test cases or Claude. It is not on the board or in a sprint. The type of a card is fixed at creation. Through the MCP an epic is read with the type epic, not written."
+    ],
+    "stories": [284],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature can depend on another feature or on an epic",
     "changements": [
       "On a feature's page, anyone with a role on the project (tester included) can say it depends on another feature of the project or on a whole epic. The dependency shows on both pages (Depends on, Needed by) with the other's status.",

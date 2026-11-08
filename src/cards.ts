@@ -404,9 +404,14 @@ function linkStatements(db: D1Database, id: number, body: string): D1PreparedSta
   ];
 }
 
+// An epic is a document: it never enters a release or a sprint, and is not in an epic.
+export function documentTags(tags: CardTags): CardTags {
+  return tags.kind === "epic" ? { ...tags, release: null, epic: null } : tags;
+}
+
 export async function createCard(db: D1Database, repo: string, author: string, input: CardInput): Promise<number> {
   const last = await db.prepare("SELECT MAX(position) AS position FROM cards WHERE repo = ?").bind(repo).first<{ position: number | null }>();
-  const { tags } = input;
+  const tags = documentTags(input.tags);
   const row = await db
     .prepare(
       `INSERT INTO cards (repo, kind, status, title, body, epic, domain, segment, release, position, author)
@@ -439,7 +444,7 @@ export async function updateCard(
   if (baseRev !== card.rev) return "conflict";
   if (input.title === card.title && input.body === card.body && sameTags(input.tags, card)) return "unchanged";
   const rev = card.rev + 1;
-  const { tags } = input;
+  const tags = documentTags(input.tags);
   const result = await db
     .prepare(
       `UPDATE cards SET kind = ?, status = ?, title = ?, body = ?, epic = ?, domain = ?, segment = ?, release = ?,
@@ -798,14 +803,14 @@ export async function importCards(db: D1Database, repo: string, author: string, 
     }
     existing.add(title.toLowerCase());
     const body = typeof item["body"] === "string" ? item["body"].replace(/\r\n/g, "\n").slice(0, MAX_BODY) : "";
-    const tags: CardTags = {
+    const tags: CardTags = documentTags({
       kind: isKind(item["kind"]) ? item["kind"] : "feature",
       status: isStatus(item["status"]) ? item["status"] : "draft",
       epic: cleanValue(item["epic"]),
       domain: cleanValue(item["domain"]),
       segment: cleanValue(item["segment"]),
       release: cleanValue(item["release"]),
-    };
+    });
     // The spec comes along; a pending split proposal does not.
     const given = typeof item["data"] === "object" && item["data"] !== null ? (item["data"] as Record<string, unknown>) : {};
     const cardData: CardData = typeof given["spec"] === "object" && given["spec"] !== null ? { spec: given["spec"] as CardSpec } : {};
