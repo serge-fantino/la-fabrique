@@ -59,3 +59,26 @@ export function warningsHtml(warnings: DependencyWarning[], href?: (w: Dependenc
     })
     .join("")}</ul>`;
 }
+
+// The features that still need a card (la-fabrique#302): a feature or an
+// epic cannot be dropped or archived while one of them, not in production
+// yet, depends on it (directly, or on its epic by name). Dropped and
+// archived features no longer need anything.
+export function openNeeds(card: Pick<Card, "id" | "kind" | "title">, cards: Card[], links: DependencyLink[]): Card[] {
+  const byId = new Map(cards.map((candidate) => [candidate.id, candidate]));
+  const title = card.title.trim().toLowerCase();
+  const out = new Map<number, Card>();
+  for (const link of links) {
+    if (link.card_id === card.id) continue;
+    const owner = byId.get(link.card_id);
+    if (!owner || owner.kind !== "feature" || owner.archivedAt || owner.status === "dropped" || isAvailable(owner)) continue;
+    if (card.kind === "epic" ? link.kind === DEPENDS_EPIC && link.ref.trim().toLowerCase() === title : link.kind === DEPENDS && Number(link.ref) === card.id) out.set(owner.id, owner);
+  }
+  return [...out.values()].sort((a, b) => a.id - b.id);
+}
+
+export function needsRefusal(card: Pick<Card, "kind">, needs: Card[], what: "dropped" | "archived"): string | null {
+  if (!needs.length) return null;
+  const names = needs.map((n) => `${cardRef(n.id)} (${n.title})`).join(", ");
+  return `This ${card.kind === "epic" ? "epic" : "feature"} cannot be ${what}: ${names} still ${needs.length > 1 ? "need" : "needs"} it and ${needs.length > 1 ? "are" : "is"} not in production yet.`;
+}

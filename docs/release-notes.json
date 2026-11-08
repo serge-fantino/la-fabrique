@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A feature or an epic still needed cannot be dropped or archived",
+    "changements": [
+      "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be."
+    ],
+    "stories": [302],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The sprint launches a dependency first",
     "changements": [
       "In a sprint, a feature's dependency is now launched first (by the run and by \"Launch the next story\") and the feature says \"After C74\", while both can still be developed side by side. A stopped dependency shows \"C74 stopped\" on the feature, and a feature placed above its dependency shows a warning; the manual order never changes."
