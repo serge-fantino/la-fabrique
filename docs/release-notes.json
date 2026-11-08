@@ -8,7 +8,28 @@
     ],
     "stories": [293],
     "liens": null
-  },  {
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "An epic's page shows its features' dependencies",
+    "changements": [
+      "An epic's page has a Dependencies section: each feature with what it depends on and the status of each, features of other epics included. The Epics tab has a \"Depends on\" column naming the epics each epic depends on, derived from its features' dependencies on features of other epics and on whole epics."
+    ],
+    "stories": [300],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Epic cards stay out of the features on the board",
+    "changements": [
+      "The board no longer mixes epic cards with features; set the Type filter to Epic to see them."
+    ],
+    "stories": [297],
+    "liens": null
+  },
+  {
     "version": "next",
     "date": "2026-11-08",
     "titre": "Naming a feature in an epic attaches it",

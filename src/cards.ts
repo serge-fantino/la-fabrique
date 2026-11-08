@@ -1022,7 +1022,8 @@ export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Ma
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean);
   return cards.filter((card) => {
     if (!filters.all && (card.archivedAt || (card.status === "dropped" && filters.status !== "dropped"))) return false;
-    if (filters.kind && card.kind !== filters.kind) return false;
+    // Epic cards stay out of the features unless the Type filter asks for them.
+    if (filters.kind ? card.kind !== filters.kind : card.kind === "epic") return false;
     if (filters.status && shownStatus(card) !== filters.status) return false;
     for (const dimension of FREE_DIMENSIONS) {
       const wanted = filters.values[dimension];
