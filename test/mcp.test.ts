@@ -275,6 +275,40 @@ describe("La Fabrique's MCP server", () => {
     expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["epic_create", "epic_update"]);
   });
 
+  it("attaches a feature to an epic, moves it, detaches it, and refuses what is not an epic", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    await grantRole("tester", "tester");
+    const { access_token: access } = await connectClaude("pe");
+    const one = (await call(access, "epic_create", { project: REPO, title: "F10 Docs", document: "a" })).data["created"] as { id: number };
+    const two = (await call(access, "epic_create", { project: REPO, title: "F11 Tests", document: "b" })).data["created"] as { id: number };
+    const epicOf = async (id: number) => (await env.DB.prepare("SELECT epic FROM cards WHERE id = ?").bind(id).first<{ epic: string | null }>())?.epic;
+
+    const made = await call(access, "card_create", { project: REPO, title: "A feature", epic: one.id });
+    expect(made.isError).toBe(false);
+    const feature = (made.data["created"] as { id: number }).id;
+    expect(await epicOf(feature)).toBe("F10 Docs");
+
+    expect((await call(access, "card_update", { project: REPO, card: feature, epic: "F11 Tests" })).data).toMatchObject({ changed: ["epic"] });
+    expect(await epicOf(feature)).toBe("F11 Tests");
+    expect((await call(access, "card_update", { project: REPO, card: feature, epic: null })).data).toMatchObject({ changed: ["epic"] });
+    expect(await epicOf(feature)).toBeNull();
+
+    await call(access, "card_update", { project: REPO, card: feature, epic: two.id });
+    const notEpic = await call(access, "card_update", { project: REPO, card: feature, epic: feature });
+    expect(notEpic.isError).toBe(true);
+    expect((await call(access, "card_update", { project: REPO, card: feature, epic: "Nope" })).isError).toBe(true);
+    expect((await call(access, "card_create", { project: REPO, title: "Other", epic: 9999 })).isError).toBe(true);
+    expect((await call(access, "card_update", { project: REPO, card: two.id, epic: one.id })).isError).toBe(true);
+    expect(await epicOf(feature)).toBe("F11 Tests");
+
+    const { access_token: weak } = await connectClaude("tester");
+    expect((await call(weak, "card_update", { project: REPO, card: feature, epic: one.id })).isError).toBe(true);
+    expect(await epicOf(feature)).toBe("F11 Tests");
+    const tools = (await logActions()).filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool);
+    expect(tools).toContain("card_update");
+  });
+
   it("refuses epic writes to a person who cannot write cards", async () => {
     await seedProject();
     await grantRole("tester", "tester");
