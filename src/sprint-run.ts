@@ -3,6 +3,8 @@ import { activityStatement } from "./activity-log";
 import { isNice, storyCards, type StoryCards } from "./card-groups";
 import { cardStories, type CardStory } from "./card-stories";
 import { listCards, type Card } from "./cards";
+import { projectLinks } from "./card-dependencies";
+import { dependencyFirst } from "./sprint-dependencies";
 import { claudeCap, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude, type ClaudeRun } from "./claude";
 import type { Env } from "./env";
 import { sprintLiveFor } from "./live";
@@ -433,7 +435,9 @@ export async function loadPlan(env: Env, project: Project): Promise<{ plan: Plan
   const sprint = await activeSprint(env.DB, project.repo);
   if (!sprint) return { plan: [], running: false };
   const [cards, links] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo)]);
-  const inSprint = cards.filter((card) => card.release === sprint.release && !card.archivedAt).sort((a, b) => a.position - b.position || a.id - b.id);
+  const manual = cards.filter((card) => card.release === sprint.release && !card.archivedAt).sort((a, b) => a.position - b.position || a.id - b.id);
+  // Dependencies first (la-fabrique#301), the manual order otherwise.
+  const inSprint = dependencyFirst(manual, await projectLinks(env.DB, project.repo));
   const stories = await cardStories(env, project, [...new Set(inSprint.flatMap((card) => links.order.get(card.id) ?? []))]);
   return { plan: planRun(inSprint, links, stories), running: true };
 }
