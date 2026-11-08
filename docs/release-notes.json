@@ -6,9 +6,7 @@
     "changements": [
       "Naming a card in another card's text or spec (\"C57\") now links to it and shows its status, as the board does. \"C570\" or \"ABC57\" stay plain text, as does a card of no such project."
     ],
-    "stories": [
-      289
-    ],
+    "stories": [289],
     "liens": null
   },
   {
