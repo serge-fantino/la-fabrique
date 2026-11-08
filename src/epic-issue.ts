@@ -1,7 +1,10 @@
 import { activityStatement } from "./activity-log";
 import { type Card, listCards } from "./cards";
 import { setFeatureEpic } from "./card-epics";
-import type { Story } from "./stories";
+import type { Env } from "./env";
+import { githubPatch, githubPost, installationToken } from "./github-app";
+import type { Project } from "./projects";
+import { applyIssueEvent, type RestIssue, type Story } from "./stories";
 
 // An epic card started from an existing GitHub epic issue (la-fabrique#287).
 // The card links to the issue (`card_links`, kind `epic_issue`); the issue's
@@ -94,4 +97,60 @@ export async function startFromIssue(db: D1Database, epic: Card, issue: number, 
     }
   }
   return { linked: true, attached, kept };
+}
+
+// The epic's technical GitHub issue, written through the MCP server (la-fabrique#310).
+// The card holds the functional document; the issue holds how to build it. The
+// issue's text is what Claude passes, never the card's document; it is signed with
+// the person's login and links back to the card. A GitHub failure is reported,
+// never thrown: the card is already written.
+export interface EpicIssueWrite {
+  number?: number;
+  url?: string;
+  created?: boolean;
+  updated?: boolean;
+  error?: string;
+}
+
+export function epicIssueBody(technical: string, epic: Card, permalink: string, login: string): string {
+  return `${technical.trim()}\n\n---\nEpic card [C${epic.id}, document version ${epic.rev}](${permalink}) in La Fabrique extraordinaire (the functional document: what and why). Written by Claude for @${login}.`;
+}
+
+export async function writeEpicIssue(
+  env: Env,
+  project: Project,
+  db: D1Database,
+  epic: Card,
+  technical: string,
+  permalink: string,
+  login: string,
+): Promise<EpicIssueWrite> {
+  try {
+    const token = await installationToken(env, project.installationId);
+    const body = epicIssueBody(technical, epic, permalink, login);
+    const linked = await db
+      .prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = ?")
+      .bind(epic.id, EPIC_ISSUE_KIND)
+      .first<{ ref: string }>();
+    const existing = linked ? Number(linked.ref) : 0;
+    if (existing) {
+      const response = await githubPatch(token, `/repos/${project.repo}/issues/${existing}`, { body });
+      if (!response.ok) return { number: existing, error: `GitHub refused to update the epic issue #${existing} (HTTP ${response.status}).` };
+      const issue = (await response.json()) as RestIssue;
+      await activityStatement(db, { actor: login, action: "epic_issue_updated", repo: epic.repo, issueNumber: existing, details: { card: epic.id, issue: existing, via: "claude" } }).run();
+      await applyIssueEvent(env, project.repo, "edited", issue);
+      return { number: existing, url: issue.html_url, updated: true };
+    }
+    const response = await githubPost(token, `/repos/${project.repo}/issues`, { title: epic.title, body, labels: [EPIC_LABEL] });
+    if (!response.ok) return { error: `GitHub refused to create the epic issue (HTTP ${response.status}).` };
+    const issue = (await response.json()) as RestIssue;
+    await db.batch([
+      db.prepare("INSERT OR IGNORE INTO card_links (card_id, kind, ref) VALUES (?, ?, ?)").bind(epic.id, EPIC_ISSUE_KIND, String(issue.number)),
+      activityStatement(db, { actor: login, action: "epic_issue_linked", repo: epic.repo, issueNumber: issue.number, details: { card: epic.id, issue: issue.number, via: "claude", created: true } }),
+    ]);
+    await applyIssueEvent(env, project.repo, "opened", issue);
+    return { number: issue.number, url: issue.html_url, created: true };
+  } catch (error) {
+    return { error: `The epic issue was not written: ${error instanceof Error ? error.message : "GitHub error"}.` };
+  }
 }

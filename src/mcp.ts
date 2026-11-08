@@ -29,6 +29,7 @@ import {
 } from "./cards";
 import { canLaunchClaude, launchClaude } from "./claude";
 import type { Env } from "./env";
+import { EPIC_ISSUE_KIND, writeEpicIssue } from "./epic-issue";
 import { installationToken } from "./github-app";
 import { cycleRules, projectRules } from "./lifecycle";
 import { setPriority } from "./backlog";
@@ -238,6 +239,13 @@ function epicCards(cards: Card[]): Card[] {
   return cards.filter((card) => !card.archivedAt && (card.kind === "epic" || featuresOf(cards, card).length > 0));
 }
 
+// The epic's GitHub epic issue, if the card links to one.
+async function epicIssueOf(ctx: Context, epic: Card): Promise<{ number: number; url: string } | null> {
+  const link = await ctx.env.DB.prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = ?").bind(epic.id, EPIC_ISSUE_KIND).first<{ ref: string }>();
+  const number = link ? Number(link.ref) : 0;
+  return number ? { number, url: `https://github.com/${epic.repo}/issues/${number}` } : null;
+}
+
 // An epic named by its card number, "C12", or its name.
 function findEpic(cards: Card[], wanted: unknown): Card {
   if (typeof wanted !== "string" && typeof wanted !== "number") return fail("epic is the epic card's number, or its name (such as \"F9 Epics\").");
@@ -369,7 +377,7 @@ const TOOLS: Tool[] = [
         title: epic.title,
         document: epic.body,
         revision: epic.rev,
-        github_issue: null,
+        github_issue: await epicIssueOf(ctx, epic),
         features: listed.map((feature) => ({ number: feature.id, ref: feature.ref, title: feature.title, status: feature.status, progress: feature.shown_status, url: feature.url })),
         features_per_status: Object.fromEntries(Object.entries(perStatus).filter(([, count]) => count > 0)),
         url: absolute(ctx, cardUrl(epic.repo, epic.id)),
@@ -590,8 +598,8 @@ const TOOLS: Tool[] = [
     name: "epic_create",
     title: "Create an epic",
     description:
-      "A new epic card on the project's board, as a draft, with its functional document (what and why), in Markdown. No GitHub issue is created. Returns its number and revision; then epic_update to rewrite the document.",
-    inputSchema: { type: "object", properties: { ...PROJECT, title: { type: "string" }, document: { type: "string", description: "The epic's document, in Markdown" } }, required: ["project", "title", "document"] },
+      "A new epic card on the project's board, as a draft, with its functional document (what and why), in Markdown. With technical, also creates the project's GitHub epic issue (label epique) with that technical text (how to build it, never the document), signed with the person's login and linked to the card; a GitHub failure is reported and the card is still written. Returns its number and revision; then epic_update to rewrite the document.",
+    inputSchema: { type: "object", properties: { ...PROJECT, title: { type: "string" }, document: { type: "string", description: "The epic's document, in Markdown" }, technical: { type: "string", description: "Optional: the technical text of the GitHub epic issue (how to build it), in Markdown" } }, required: ["project", "title", "document"] },
     needs: "request",
     write: true,
     async run(ctx, args) {
@@ -604,17 +612,19 @@ const TOOLS: Tool[] = [
       const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
       const created = await findCard(ctx.env.DB, project.repo, id);
       if (!created) return fail("The epic was not saved.");
-      return { created: { id, ref: cardRef(id), title: created.title, revision: created.rev, url: absolute(ctx, cardUrl(project.repo, id)) } };
+      const technical = text(args, "technical", 50_000)?.trim();
+      const issue = technical ? await writeEpicIssue(ctx.env, project, ctx.env.DB, created, technical, absolute(ctx, cardPermalink(id, created.rev)), ctx.login) : undefined;
+      return { created: { id, ref: cardRef(id), title: created.title, revision: created.rev, url: absolute(ctx, cardUrl(project.repo, id)) }, ...(issue ? { github_issue: issue } : {}) };
     },
   },
   {
     name: "epic_update",
     title: "Change an epic's document",
     description:
-      "Change an epic card's title or document. Pass rev, read from the epic, to refuse to write over a change made since; a new revision is kept in its history.",
+      "Change an epic card's title or document. With technical, also replaces the text of its GitHub epic issue (created and linked if it has none); without it the issue is unchanged; a GitHub failure is reported and the card is still written. Pass rev, read from the epic, to refuse to write over a change made since; a new revision is kept in its history.",
     inputSchema: {
       type: "object",
-      properties: { ...PROJECT, ...CARD, title: { type: "string" }, document: { type: "string" }, rev: { type: "integer", description: "The epic's revision you read" } },
+      properties: { ...PROJECT, ...CARD, title: { type: "string" }, document: { type: "string" }, technical: { type: "string", description: "Optional: the new technical text of the GitHub epic issue" }, rev: { type: "integer", description: "The epic's revision you read" } },
       required: ["project", "card", "rev"],
     },
     needs: "request",
@@ -631,7 +641,9 @@ const TOOLS: Tool[] = [
       const outcome = await updateCard(ctx.env.DB, found, ctx.login, input, found.rev);
       if (outcome === "conflict") fail("The card changed while writing: read it again.");
       const current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? found;
-      return { changed: outcome === "saved" ? ["document"] : [], epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) } };
+      const technical = text(args, "technical", 50_000)?.trim();
+      const issue = technical ? await writeEpicIssue(ctx.env, project, ctx.env.DB, current, technical, absolute(ctx, cardPermalink(current.id, current.rev)), ctx.login) : undefined;
+      return { changed: outcome === "saved" ? ["document"] : [], epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) }, ...(issue ? { github_issue: issue } : {}) };
     },
   },
   {
