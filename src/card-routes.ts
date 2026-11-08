@@ -143,12 +143,12 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   await joinSprint(env, project, cards, releases);
   const progress = await cardProgress(env, project, cards);
   // The epic lanes' headers show the epic's progress (la-fabrique#305).
-  const epics = new Map<string, EpicProgress>();
+  const epics = new Map<string, { id: number; progress: EpicProgress }>();
   if (board.by === "epic" || board.then === "epic") {
     const found = allCards.filter((card) => card.kind === "epic" && !card.archivedAt);
     for (const [id, one] of await epicProgresses(env, project, found, allCards)) {
       const epic = found.find((card) => card.id === id);
-      if (epic) epics.set(epic.title.trim().toLowerCase(), one);
+      if (epic) epics.set(epic.title.trim().toLowerCase(), { id: epic.id, progress: one });
     }
   }
   const notice = url.searchParams.get("notice");

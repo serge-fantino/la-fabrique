@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Board arranged by epic: each lane leads to its epic",
+    "changements": [
+      "When the board is arranged by Epic, each lane's header is the epic's title, linked to the epic's page, with its status and \"N/M features in production\"; features without an epic stay in Not set."
+    ],
+    "stories": [296],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature named alone on a line shows in line",
     "changements": [
       "A card named alone on a line of another card's text (\"C57\") is shown in place, read live: title, status, synopsis, stories with their stage and the versions that shipped it. An epic shows its title, status and synopsis only; an archived or dropped card stays a marked link. The text itself still holds only \"C57\"."
