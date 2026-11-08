@@ -379,8 +379,8 @@ async function renderCard(
   let epic: EpicProgress | undefined;
   if (card.kind === "epic") {
     const features = featuresOfEpic(card, await listCards(env.DB, project.repo));
-    await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
-    epic = epicProgress(card, features);
+    const progresses = await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
+    epic = epicProgress(card, features, progresses);
   }
   const events = job ? await jobEvents(env.DB, job.id) : [];
   const [dependencies, dependencyOptions, dependencyLog] = await Promise.all([
