@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Claude attaches a feature to an epic, or detaches it",
+    "changements": [
+      "Claude connected to La Fabrique can now attach a feature to an epic when creating or updating it (card_create and card_update take epic: an epic card's number or name), move it to another epic, or detach it with null. Only an epic card of the same project is accepted, and never for an epic card itself. Each write is in the project log."
+    ],
+    "stories": [309],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Start an epic card from an existing GitHub epic",
     "changements": [
       "Creating an epic card now offers the project's epique issues: pick one and the card links to it (its text is not copied), the features linked to the issue's sub-issues are attached to the epic (a feature already in another epic stays there and is reported), and the epic's page shows the issue's link and its stories linked to no feature under \"No feature\". An issue can start one epic card only."
