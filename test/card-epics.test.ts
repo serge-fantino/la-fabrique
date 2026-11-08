@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { epicFeatures, findEpicByTitle } from "../src/card-epics";
+import { documentWithFeature, epicFeatures, findEpicByTitle } from "../src/card-epics";
 import { findCard, listCards } from "../src/cards";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
@@ -58,7 +58,7 @@ describe("A feature's epic", () => {
     await act(s, f, { action: "set_epic", epic: "Les recettes" });
     const epic = findEpicByTitle(await listCards(env.DB, REPO), "Les recettes");
     expect(epic?.status).toBe("draft");
-    expect(epic?.body).toBe("");
+    expect(epic?.body).toContain("C" + f);
     expect(await members(epic?.id ?? 0)).toEqual([f]);
     expect((await logActions()).map((l) => l.action)).toContain("epic_created");
   });
@@ -133,5 +133,27 @@ describe("Converting typed Epic values", () => {
     await grantRole("tt", "tester");
     const t = await signIn("tt");
     expect(await (await get(`/projects/${REPO}/board`, t.cookie)).text()).not.toContain("to create from the Epic values");
+  });
+});
+
+describe("The epic's document names its features (la-fabrique#294 rework)", () => {
+  it("writes the feature into the document when chosen, and takes it out when removed", async () => {
+    const s = await seed();
+    const e = await card(s, "epic", "Refinement");
+    const f = await card(s, "feature", "A feature");
+    await act(s, f, { action: "set_epic", epic: "Refinement" });
+    const body = (await findCard(env.DB, REPO, e))?.body ?? "";
+    expect(body).toContain("## Features");
+    expect(body).toContain(`C${f} A feature`);
+    await act(s, f, { action: "set_epic", epic: "Refinement", remove: "1" });
+    expect(await epicOf(f)).toBeNull();
+    expect((await findCard(env.DB, REPO, e))?.body ?? "").not.toContain(`C${f}`);
+  });
+
+  it("adds under an existing Features section and removes only its line", () => {
+    const doc = "## Why\n\nBecause.\n\n## Features\n\n- C1 One\n\n## Scope\n\nx";
+    const added = documentWithFeature(doc, { id: 2, title: "Two" }, true);
+    expect(added).toBe("## Why\n\nBecause.\n\n## Features\n\n- C1 One\n- C2 Two\n\n## Scope\n\nx");
+    expect(documentWithFeature(added, { id: 2, title: "Two" }, false)).toBe(doc);
   });
 });
