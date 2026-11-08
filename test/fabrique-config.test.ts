@@ -123,3 +123,13 @@ describe(".fabrique.json validation", () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+describe("epiques (#281)", () => {
+  it("reads the sections of an epic's document and refuses duplicates", () => {
+    const ok = validateFabriqueConfig(JSON.stringify({ nom: "W", epiques: { rubriques: [{ cle: "why", titre: "Why", obligatoire: true }] } }), EXAMPLE_TREE);
+    expect(ok.errors).toEqual([]);
+    expect(ok.config?.epiques?.rubriques).toEqual([{ cle: "why", titre: "Why", obligatoire: true }]);
+    const bad = validateFabriqueConfig(JSON.stringify({ nom: "W", epiques: { rubriques: [{ cle: "a", titre: "A" }, { cle: "a", titre: "B" }] } }), EXAMPLE_TREE);
+    expect(bad.errors).toEqual(["`epiques.rubriques[1]`: the key `a` is used twice."]);
+  });
+});

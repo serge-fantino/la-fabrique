@@ -1,9 +1,9 @@
 import { cardRef } from "./card-views";
 import { cardStories, type CardStory } from "./card-stories";
-import { cardLinks, DIMENSION_LABELS, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type CardTests, type StoryReview } from "./cards";
+import { cardLinks, DIMENSION_LABELS, excerpt, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type CardTests, type EpicFeaturesProposal, type ProposedFeature, type StoryReview } from "./cards";
 import { readMarkdown } from "./docs";
 import type { Env } from "./env";
-import { STAGES } from "./lifecycle";
+import { cycleRules, STAGES } from "./lifecycle";
 import { askJson, type CallOutcome, type Progress } from "./llm";
 import type { Project } from "./projects";
 import type { Rubrique } from "./requests";
@@ -20,6 +20,27 @@ const DEFAULT_RUBRIQUES: Rubrique[] = [
   { cle: "criteria", titre: "Acceptance criteria", obligatoire: true, aide: "One line per criterion, checkable by a tester (\"When I…, I see…\")." },
   { cle: "questions", titre: "Open questions", aide: "What remains to decide before coding." },
 ];
+
+// An epic's document has its own sections (la-fabrique#281): those the
+// project declares in `epiques.rubriques`, else these. No criteria, stories
+// or test cases: those belong to its features.
+export const DEFAULT_EPIC_RUBRIQUES: Rubrique[] = [
+  { cle: "why", titre: "Why", obligatoire: true, aide: "The problem this theme of work solves, for whom, and what it costs not to solve it." },
+  { cle: "decisions", titre: "Decisions", obligatoire: true, aide: "What is decided and by whom, one line each, with the reason." },
+  { cle: "features", titre: "Features", aide: "The features that make the epic, in the order to build them, each with one line on what it brings." },
+  { cle: "questions", titre: "Open questions", aide: "What remains to decide before the features can be refined." },
+];
+
+export function epicRubriques(project: Project): Rubrique[] {
+  const declared = project.check?.config?.epiques?.rubriques ?? [];
+  return declared.length ? declared : DEFAULT_EPIC_RUBRIQUES;
+}
+
+// The sections of a card's Claude-written text: the document for an epic,
+// the functional spec for anything else.
+export function rubriquesFor(project: Project, card: Pick<Card, "kind">): Rubrique[] {
+  return card.kind === "epic" ? epicRubriques(project) : specRubriques(project);
+}
 
 export function specRubriques(project: Project): Rubrique[] {
   const declared = project.check?.config?.demandes?.rubriques ?? [];
@@ -78,9 +99,10 @@ function schemaFor(rubriques: Rubrique[]): Record<string, unknown> {
 // Stable for a project: cached across the calls on its cards, whatever
 // the task (writing the spec, splitting it); what to answer is in the
 // request.
-function systemPrompt(project: Project, rubriques: Rubrique[], document: { path: string; text: string; cut: boolean } | null): string {
+function systemPrompt(project: Project, rubriques: Rubrique[], document: { path: string; text: string; cut: boolean } | null, epic = false): string {
   const config = project.check?.config;
   const language = config?.langue === "en" ? "English" : "French";
+  if (epic) return epicSystemPrompt(project, rubriques, document, language);
   const sections = rubriques
     .map((rubrique) => `- "${rubrique.cle}": ${rubrique.titre}${rubrique.obligatoire ? " (required)" : ""}${rubrique.aide ? `. ${rubrique.aide}` : ""}`)
     .join("\n");
@@ -103,6 +125,49 @@ Rules for the specification:
 The sections of a specification (and of each story), in order:
 ${sections}
 ${document ? `\nThe project's own description (${document.path}${document.cut ? ", cut to its beginning" : ""}):\n<document>\n${document.text}\n</document>` : ""}`;
+}
+
+function epicSystemPrompt(project: Project, rubriques: Rubrique[], document: { path: string; text: string; cut: boolean } | null, language: string): string {
+  const sections = rubriques
+    .map((rubrique) => `- "${rubrique.cle}": ${rubrique.titre}${rubrique.obligatoire ? " (required)" : ""}${rubrique.aide ? `. ${rubrique.aide}` : ""}`)
+    .join("\n");
+  return `You help a product person write the document of an epic, a theme of work made of several features, for the software project "${project.check?.config?.nom || project.repo}" (${project.repo}). The people who refine and build its features read your text: be precise, short and concrete. Write in ${language}.
+
+Your first job is to frame the epic, like a product manager interviewing the person who wrote it:
+- When the epic leaves something essential open (why now, for whom, what is in and out, what is decided, what depends on what), ask. Ask at most five questions, the most decisive first, each answerable in a sentence or two, and never one the epic's text, the project's description or an earlier answer already settles.
+- Write the sections you can from what you know; leave a section empty rather than invent what nobody said.
+- Stop asking when you could write the document without guessing: set "enough" to true, ask nothing, and say in the note what makes the epic clear. Until then "enough" is false.
+- From the third round on, ask only what blocks the document. When the person closes the questions, ask nothing more.
+
+Rules for the document:
+- It explains the whole and leads to its features; a feature has its own criteria, stories and test cases elsewhere: never write acceptance criteria here.
+- When you mention a feature that exists, write its reference (C12) alone on a line, or in a sentence; never copy its text.
+- Never invent facts about the project: what you are not sure of becomes a question.
+- Respect the project's principles below.
+- Each section is Markdown, without a heading of its own. An empty string when there is nothing to say.
+
+The sections of the epic's document, in order:
+${sections}
+${document ? `\nThe project's own description (${document.path}${document.cut ? ", cut to its beginning" : ""}):\n<document>\n${document.text}\n</document>` : ""}`;
+}
+
+// What Claude reads of an epic: its text and its features (title, synopsis,
+// status). The features are the cards that carry the epic's own Epic value.
+export function epicFeatures(cards: Card[], epic: Card): Card[] {
+  const wanted = (epic.epic ?? epic.title).trim().toLowerCase();
+  return cards.filter((other) => other.id !== epic.id && other.kind !== "epic" && !other.archivedAt && (other.epic ?? "").trim().toLowerCase() === wanted);
+}
+
+async function epicContext(env: Env, project: Project, card: Card): Promise<{ text: string; cards: number; stories: number }> {
+  const cards = await listCards(env.DB, project.repo);
+  const features = epicFeatures(cards, card).slice(0, 80);
+  const lines = features.map((feature) => `- ${cardRef(feature.id)} ${feature.title} (${STATUS_LABELS[feature.status]}): ${excerpt(feature.body, 200) || "(no text)"}`);
+  const text = `The epic ${cardRef(card.id)}: “${card.title}”
+<epic>
+${card.body.trim() || "(no text)"}
+</epic>
+${lines.length ? `\nIts features, each with its status and a synopsis:\n${lines.join("\n")}\n` : "\nIt has no feature yet.\n"}`;
+  return { text, cards: features.length, stories: 0 };
 }
 
 async function cardContext(env: Env, project: Project, card: Card): Promise<{ text: string; cards: number; stories: number }> {
@@ -164,8 +229,9 @@ export async function writeSpec(
   request: { mode: "draft" | "revise"; instruction: string; answers?: Answer[] },
   watch: { read?: (reading: SpecReading) => void; progress?: (progress: Progress) => void } = {},
 ): Promise<SpecOutcome> {
-  const rubriques = specRubriques(project);
-  const [document, read] = await Promise.all([projectDocument(env, project), cardContext(env, project, card)]);
+  const epic = card.kind === "epic";
+  const rubriques = rubriquesFor(project, card);
+  const [document, read] = await Promise.all([projectDocument(env, project), epic ? epicContext(env, project, card) : cardContext(env, project, card)]);
   watch.read?.({ document: document ? `${document.path} (${Math.round(document.text.length / 1000)}k characters)` : null, cards: read.cards, stories: read.stories });
   const context = read.text;
   const current = card.data.spec;
@@ -184,15 +250,16 @@ export async function writeSpec(
   ]
     .filter(Boolean)
     .join("\n\n");
+  const what = epic ? "document" : "specification";
   const ask =
     request.mode === "revise" && current
-      ? `${context}\nThe current specification:\n<spec>\n${currentSpec(current, rubriques)}\n</spec>\n${history}\n${now || "Improve it."}\n\nRevise the specification accordingly; keep what is not concerned.\n\n${SPEC_ANSWER}`
-      : `${context}${history}${now ? `\n${now}\n` : ""}\nWrite the specification of this card.\n\n${SPEC_ANSWER}`;
+      ? `${context}\nThe current ${what}:\n<spec>\n${currentSpec(current, rubriques)}\n</spec>\n${history}\n${now || "Improve it."}\n\nRevise the ${what} accordingly; keep what is not concerned.\n\n${SPEC_ANSWER}`
+      : `${context}${history}${now ? `\n${now}\n` : ""}\nWrite the ${epic ? "document of this epic" : "specification of this card"}.\n\n${SPEC_ANSWER}`;
 
   const outcome: CallOutcome<SpecAnswer> = await askJson<SpecAnswer>(
     env,
-    { login, repo: project.repo, cardId: card.id, purpose: request.mode === "revise" && current ? "spec_revise" : "spec_draft" },
-    { system: systemPrompt(project, rubriques, document), user: ask, schema: schemaFor(rubriques), ...(watch.progress ? { progress: watch.progress } : {}) },
+    { login, repo: project.repo, cardId: card.id, purpose: `${epic ? "epic" : "spec"}_${request.mode === "revise" && current ? "revise" : "draft"}` },
+    { system: systemPrompt(project, rubriques, document, epic), user: ask, schema: schemaFor(rubriques), ...(watch.progress ? { progress: watch.progress } : {}) },
   );
   if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
   const answer = outcome.value;
@@ -466,6 +533,121 @@ Write the test cases of each story, in Gherkin (Feature, then Scenario blocks wi
   return {
     ok: true,
     tests: { stories, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: spec.at, at: new Date().toISOString() },
+    callId: outcome.callId,
+    costMicros: outcome.costMicros,
+  };
+}
+
+// Which "C12" / "P2" references of a proposed feature stand: C-numbers of
+// cards of the project, P-numbers of another feature of the proposal (never
+// itself).
+export function cleanDepends(raw: unknown, index: number, count: number, known: Set<number>): string[] {
+  const out: string[] = [];
+  for (const entry of Array.isArray(raw) ? raw : String(raw ?? "").split(/[,;\s]+/)) {
+    const match = /^\s*([CP])\s*#?(\d{1,9})\s*$/i.exec(String(entry));
+    if (!match) continue;
+    const kind = (match[1] ?? "").toUpperCase();
+    const n = Number(match[2]);
+    const ok = kind === "C" ? known.has(n) : n >= 1 && n <= count && n !== index + 1;
+    const ref = `${kind}${n}`;
+    if (ok && !out.includes(ref)) out.push(ref);
+  }
+  return out;
+}
+
+function featuresSystemPrompt(project: Project, document: { path: string; text: string; cut: boolean } | null): string {
+  const language = project.check?.config?.langue === "en" ? "English" : "French";
+  return `You help a product person break an epic, a theme of work, into features for the software project "${project.check?.config?.nom || project.repo}" (${project.repo}). A feature is something people can use, refined later into stories and test cases by others: do not write those. Be precise, short and concrete, and write in ${language}. Never invent facts about the project, respect its principles below, and never propose a feature the epic's document does not call for. You propose no release and no order: the dependencies say what comes first.
+${document ? `\nThe project's own description (${document.path}${document.cut ? ", cut to its beginning" : ""}):\n<document>\n${document.text}\n</document>` : ""}`;
+}
+
+interface FeaturesAnswer {
+  features: { title: string; synopsis: string; need: string; priority: string; depends: string[] }[];
+  note: string;
+}
+
+function featuresSchema(priorities: string[]): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["features", "note"],
+    properties: {
+      features: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "synopsis", "need", "priority", "depends"],
+          properties: {
+            title: { type: "string" },
+            synopsis: { type: "string" },
+            need: { type: "string" },
+            priority: priorities.length ? { type: "string", enum: ["", ...priorities] } : { type: "string" },
+            depends: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+      note: { type: "string" },
+    },
+  };
+}
+
+export type FeaturesOutcome =
+  | { ok: true; proposal: EpicFeaturesProposal; callId: number; costMicros: number | null }
+  | { ok: false; message: string; retryable: boolean };
+
+// Claude proposes the features an epic still misses, from its document; no
+// card is created before the person reviews them (la-fabrique#282).
+export async function proposeFeatures(
+  env: Env,
+  project: Project,
+  epic: Card,
+  login: string,
+  instruction: string,
+  watch: { read?: (reading: SpecReading) => void; progress?: (progress: Progress) => void } = {},
+): Promise<FeaturesOutcome> {
+  const rubriques = epicRubriques(project);
+  const document = epic.data.spec ? currentSpec(epic.data.spec, rubriques) : epic.body.trim();
+  if (!document) return { ok: false, message: "The epic has no document yet: write it first.", retryable: false };
+  const priorities = cycleRules(project.check?.config).priorities;
+  const [description, read, cards] = await Promise.all([projectDocument(env, project), epicContext(env, project, epic), listCards(env.DB, project.repo)]);
+  watch.read?.({ document: description ? `${description.path} (${Math.round(description.text.length / 1000)}k characters)` : null, cards: read.cards, stories: 0 });
+  const others = cards.filter((card) => card.id !== epic.id && card.kind !== "epic" && !card.archivedAt);
+  const attached = new Set(epicFeatures(cards, epic).map((card) => card.id));
+  const elsewhere = others.filter((card) => !attached.has(card.id)).slice(0, 80);
+  const known = new Set(others.map((card) => card.id));
+  const ask = `${read.text}
+The epic's document:
+<document>
+${document}
+</document>
+${elsewhere.length ? `\nOther features of the project, which a new feature may depend on:\n${elsewhere.map((card) => `- ${cardRef(card.id)} ${card.title}`).join("\n")}\n` : ""}${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+Propose the features this epic still misses. ${attached.size ? "Its existing features are listed above: propose none of them again, only what they do not cover; none is a fine answer." : "From one to eight features."} Each feature can be refined into stories and shipped on its own.
+- "title": short, what the person can do once the feature is there.
+- "synopsis": two or three sentences on what the feature is.
+- "need": why it is needed and for whom, in a few sentences.
+- "priority": ${priorities.length ? `one of ${priorities.map((p) => `"${p}"`).join(", ")}, or "" when unsure` : `"" (the project declares no priority)`}.
+- "depends": what has to come first: "C12" for an existing feature listed above, "P2" for the 2nd feature of your own list (never itself, no loop). Empty when nothing.
+Propose no order in a release, no estimate, no story. Write in the language of the document.
+- "note": one sentence on how you chose them.`;
+  const outcome: CallOutcome<FeaturesAnswer> = await askJson<FeaturesAnswer>(
+    env,
+    { login, repo: project.repo, cardId: epic.id, purpose: "epic_features" },
+    { system: featuresSystemPrompt(project, description), user: ask, schema: featuresSchema(priorities), ...(watch.progress ? { progress: watch.progress } : {}) },
+  );
+  if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
+  const said = (Array.isArray(outcome.value.features) ? outcome.value.features : []).filter((f) => String(f.title ?? "").trim()).slice(0, 12);
+  const features: ProposedFeature[] = said.map((feature, index) => ({
+    title: String(feature.title).replace(/\s+/g, " ").trim().slice(0, 200),
+    synopsis: String(feature.synopsis ?? "").trim().slice(0, 4000),
+    need: String(feature.need ?? "").trim().slice(0, 4000),
+    priority: priorities.includes(String(feature.priority)) ? String(feature.priority) : null,
+    depends: cleanDepends(feature.depends, index, said.length, known),
+  }));
+  if (!features.length) return { ok: false, message: "Claude proposed no feature: the epic may already be covered. Try again with an instruction.", retryable: false };
+  return {
+    ok: true,
+    proposal: { features, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: epic.data.spec?.at ?? "", at: new Date().toISOString() },
     callId: outcome.callId,
     costMicros: outcome.costMicros,
   };
