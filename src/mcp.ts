@@ -34,6 +34,7 @@ import { cycleRules, projectRules } from "./lifecycle";
 import { setPriority } from "./backlog";
 import type { GrantProps } from "./oauth";
 import { findProject, listProjects, productionBranch, type Project } from "./projects";
+import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
 import { activeSprint, setNice } from "./sprints";
@@ -574,6 +575,7 @@ const TOOLS: Tool[] = [
         const known = await dimensionValues(ctx.env.DB, project.repo, await listCards(ctx.env.DB, project.repo));
         card = await moveCard(ctx.env.DB, card, ctx.login, { set: { release: lane ?? null }, before: null, after: null }, known, "through Claude");
         changes.push("release");
+        await ensureEpicIssue(ctx.env, project, card, ctx.login, ctx.origin);
       }
       let refused: string[] = [];
       if (args["priority"] !== undefined && (wanted ?? null) !== card.priority) {
@@ -730,6 +732,7 @@ const TOOLS: Tool[] = [
           return { created, error: `GitHub refused to create "${story.title}" (HTTP ${outcome.status ?? "?"}); the stories above were made.` };
         }
         await linkStory(ctx.env.DB, card, ctx.login, outcome.number, outcome.url);
+        await fileUnderEpic(ctx.env, project, card, outcome.number);
         if (story.nice) await setNice(ctx.env.DB, project.repo, card.id, outcome.number, true, ctx.login);
         const to = storyPriority(rules, card.priority, story.nice);
         if (to) await setPriority(ctx.env, project, ctx.login, outcome.number, to);

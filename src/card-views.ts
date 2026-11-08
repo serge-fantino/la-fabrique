@@ -632,9 +632,9 @@ export interface CardPageData {
 
 export const epicIssueSectionForTest = (data: Pick<CardPageData, "epicIssue" | "keptFeatures">) => epicIssueSection(data as CardPageData);
 
-function epicIssueSection(data: CardPageData): string {
+function epicIssueSection(data: CardPageData, isEpic = false): string {
   const issue = data.epicIssue;
-  if (!issue) return "";
+  if (!issue) return isEpic ? `<section id="epic-issue"><h2>GitHub epic</h2><p class="muted">No GitHub issue yet: it is created when the first feature of this epic enters refinement (Next release).</p></section>` : "";
   const kept = data.keptFeatures ? `<p class="muted">${data.keptFeatures} feature${data.keptFeatures === 1 ? "" : "s"} of its stories stay in another epic.</p>` : "";
   const none = issue.noFeature.length
     ? `<h3>No feature <span class="muted small">${issue.noFeature.length}</span></h3><ul class="card-stories">${issue.noFeature
@@ -1089,7 +1089,7 @@ ${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned) : 
       ${data.epic && !shown ? epicProgressSection(data.epic) : ""}
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
-      ${shown ? "" : epicIssueSection(data)}
+      ${shown ? "" : epicIssueSection(data, isEpic)}
       ${isEpic && !shown ? reviewHtml(viewer, project, card, data.canWrite, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title]))) + notesHtml(card, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title])), project.repo) : ""}
       ${isEpic && !shown ? epicHistoryHtml(data.epicHistory ?? []) : ""}
       <section class="card-spec" id="spec">

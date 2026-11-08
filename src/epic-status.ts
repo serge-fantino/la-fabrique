@@ -164,7 +164,7 @@ export async function epicHistory(db: D1Database, repo: string, id: number): Pro
   const { results } = await db
     .prepare(
       `SELECT actor, action, occurred_at, details FROM activity_log WHERE repo = ?
-       AND action IN ('epic_status_changed', 'epic_archived', 'epic_unarchived') AND json_extract(details, '$.card') = ? ORDER BY id DESC LIMIT 100`,
+       AND action IN ('epic_status_changed', 'epic_archived', 'epic_unarchived', 'epic_created', 'card_created', 'epic_issue_linked', 'epic_issue_created') AND json_extract(details, '$.card') = ? ORDER BY id DESC LIMIT 100`,
     )
     .bind(repo, id)
     .all<{ actor: string; action: string; occurred_at: string; details: string }>();
