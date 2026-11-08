@@ -1160,7 +1160,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
     }
     // Secret share links of the preparation document (la-fabrique#233).
     if (action === "share_create") {
-      const { doc } = await preparationDoc(env, viewer, project, readLevel(String(form.get("level") ?? "")));
+      const { doc } = await preparationDoc(env, viewer, project, readLevel(String(form.get("level") ?? "")), new URL(request.url).origin);
       const created = await createShareLink(env.DB, { repo: project.repo, doc, by: viewer.login, days: readExpiry(form.get("days")) });
       const link = new URL(`/shared/${created.token}`, request.url).toString();
       return html(
@@ -1331,10 +1331,10 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
 
 // The preparation document of Next release (la-fabrique#229), generated on
 // demand at the chosen level and format; logged, never published.
-async function preparationDoc(env: Env, viewer: Viewer, project: Project, level: ReturnType<typeof readLevel>) {
+async function preparationDoc(env: Env, viewer: Viewer, project: Project, level: ReturnType<typeof readLevel>, origin = "") {
   const cards = await listCards(env.DB, project.repo);
   const [links, { releases }, running] = await Promise.all([storyCards(env.DB, project.repo), knownValues(env, project, cards), activeSprint(env.DB, project.repo)]);
-  const { features } = refinementCards(cards, NEXT_RELEASE);
+  const { features, others } = refinementCards(cards, NEXT_RELEASE);
   const numbers = [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))];
   const stories = await cardStories(env, project, numbers, "cache");
   const recorded = level >= 3 ? await recordedByStory(env.DB, project.repo) : new Map();
@@ -1349,6 +1349,10 @@ async function preparationDoc(env: Env, viewer: Viewer, project: Project, level:
     by: viewer.login,
     now: new Date(),
     features,
+    epics: others.filter((card) => card.kind === "epic"),
+    cards,
+    origin,
+    repo: project.repo,
     links,
     stories,
     rubriques: specRubriques(project),
@@ -1362,7 +1366,7 @@ async function preparationRoute(request: Request, env: Env, viewer: Viewer, proj
   const params = new URL(request.url).searchParams;
   const level = readLevel(params.get("level"));
   const format = readFormat(params.get("format"));
-  const { doc, features } = await preparationDoc(env, viewer, project, level);
+  const { doc, features } = await preparationDoc(env, viewer, project, level, new URL(request.url).origin);
   await activityStatement(env.DB, {
     actor: viewer.login,
     action: "preparation_downloaded",

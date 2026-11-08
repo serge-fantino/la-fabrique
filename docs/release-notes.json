@@ -2,6 +2,15 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "The preparation document shows epics with their features in place",
+    "changements": [
+      "The release preparation document, downloaded (HTML or PDF) or shared by link, now includes each epic of Next release: its text with every feature named alone on a line shown in place (title, status, synopsis), frozen at the date of the download or sharing, each with a link to its card in La Fabrique."
+    ],
+    "stories": [293],
+    "liens": null
+  },  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Naming a feature in an epic attaches it",
     "changements": [
       "Saving an epic whose text newly names a feature (\"C57\") attaches it to the epic; removing the name detaches it; restoring an older version does the same. A feature belongs to one epic only: if it already belongs to another, it stays there and you get a warning.",
