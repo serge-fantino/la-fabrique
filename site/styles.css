@@ -4228,3 +4228,8 @@ main:has(.help-shell) {
     max-width: none;
   }
 }
+
+.epic-bar { display: flex; gap: 2px; margin: .5rem 0 1rem; }
+.epic-part { min-width: 2.5rem; padding: .4rem .5rem; background: #1E5A43; color: #fff; border-radius: 6px; font-size: .8rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.epic-part:nth-child(odd) { background: #18211B; }
+.epic-part:focus-visible { outline: 3px solid #C23D17; outline-offset: 2px; }
