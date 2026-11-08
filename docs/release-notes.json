@@ -1,6 +1,17 @@
 [
   {
     "version": "next",
+    "date": "2026-11-08",
+    "titre": "A feature can depend on another feature or on an epic",
+    "changements": [
+      "On a feature's page, anyone with a role on the project (tester included) can say it depends on another feature of the project or on a whole epic. The dependency shows on both pages (Depends on, Needed by) with the other's status.",
+      "A dependency that would make a loop, directly or through an epic, is refused with the features that make it. Adding and removing are in the project's log and in the dependency history of the page."
+    ],
+    "stories": [298],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [

@@ -69,6 +69,7 @@ import {
   type FreeDimension,
 } from "./cards";
 import { activityStatement } from "./activity-log";
+import { addDependency, dependenciesOf, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
 import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
@@ -283,6 +284,11 @@ async function renderCard(
     latestJob(env.DB, card.id),
   ]);
   const events = job ? await jobEvents(env.DB, job.id) : [];
+  const [dependencies, dependencyOptions, dependencyLog] = await Promise.all([
+    dependenciesOf(env.DB, project.repo, card.id),
+    dependencyChoices(env.DB, project.repo, card),
+    dependencyHistory(env.DB, project.repo, card.id),
+  ]);
   // The card's stories as GitHub has them (the stories' snapshot).
   const storyStates: Map<number, StoryState> = await cardStories(
     env,
@@ -335,6 +341,10 @@ async function renderCard(
       progress,
       progressHistory,
       named,
+      dependencies,
+      dependencyOptions,
+      dependencyLog,
+      canDepend: viewer.role !== null,
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -347,11 +357,28 @@ export async function showCardPage(request: Request, env: Env, viewer: Viewer, p
 }
 
 export async function changeCard(request: Request, form: FormData, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
+  const action = String(form.get("action") ?? "");
+  // Anyone with a role on the project says what a feature depends on.
+  if (action === "depend_add" || action === "depend_remove") {
+    if (viewer.role === null) return forbidden(viewer);
+    const mine = await findCard(env.DB, project.repo, id);
+    if (!mine) return notFound(viewer, "There is no such card in this project.");
+    const back = `${projectUrl(project.repo)}/cards/${mine.id}`;
+    const choice = String(form.get("on") ?? "").trim();
+    const target = choice.startsWith("epic:") ? { epic: choice.slice(5) } : /^C?\d{1,9}$/i.test(choice) ? { card: Number(choice.replace(/^C/i, "")) } : null;
+    if (!target) return renderCard(request, env, viewer, project, mine, { failure: "Choose a feature or an epic of this project.", status: 422 });
+    if (action === "depend_remove") {
+      await removeDependency(env.DB, project.repo, mine, target, viewer.login);
+      return redirect(`${back}#dependencies`);
+    }
+    const outcome = await addDependency(env.DB, project.repo, mine, target, viewer.login);
+    if (!outcome.ok) return renderCard(request, env, viewer, project, mine, { failure: outcome.reason, status: 409 });
+    return redirect(`${back}#dependencies`);
+  }
   if (!canWriteCards(viewer)) return forbidden(viewer);
   const card = await findCard(env.DB, project.repo, id);
   if (!card) return notFound(viewer, "There is no such card in this project.");
   const url = `${projectUrl(project.repo)}/cards/${card.id}`;
-  const action = String(form.get("action") ?? "");
   // A story that names the card, linked by a person (la-fabrique#218).
   if (action === "link_story") {
     const number = Number(form.get("story"));
