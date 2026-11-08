@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Naming a feature in an epic attaches it",
+    "changements": [
+      "Saving an epic whose text newly names a feature (\"C57\") attaches it to the epic; removing the name detaches it; restoring an older version does the same. A feature belongs to one epic only: if it already belongs to another, it stays there and you get a warning.",
+      "A feature named in another epic or card shows \"belongs to <epic>\" with a link, in line or in a sentence. Changing a feature's epic asks you to confirm that it leaves the first one."
+    ],
+    "stories": [291],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature named alone on a line shows in line",
     "changements": [
       "A card named alone on a line of another card's text (\"C57\") is shown in place, read live: title, status, synopsis, stories with their stage and the versions that shipped it. An epic shows its title, status and synopsis only; an archived or dropped card stays a marked link. The text itself still holds only \"C57\"."

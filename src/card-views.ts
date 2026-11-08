@@ -602,6 +602,8 @@ export interface CardPageData {
   attachedOnCreate?: number | undefined;
   notice?: string | undefined;
   failure?: string | undefined;
+  warnings?: string[] | undefined;
+  confirmMove?: string | undefined;
   rubriques: Rubrique[];
   claude: { usable: boolean; reason: string | null };
   calls: CallRow[];
@@ -674,8 +676,16 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
       : card.epic
         ? escapeHtml(card.epic)
         : `<span class="muted">none</span>`;
+    const move =
+      data.confirmMove !== undefined && card.epic
+        ? `<div class="notice error" role="alert"><p>${cardRef(card.id)} leaves ${escapeHtml(card.epic)}${data.confirmMove ? ` and goes to ${escapeHtml(data.confirmMove)}` : ""}. A feature belongs to one epic only.</p>
+            <form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
+              <input type="hidden" name="action" value="set_epic" /><input type="hidden" name="confirm" value="1" />
+              <input type="hidden" name="epic" value="${escapeHtml(data.confirmMove)}" />
+              <button type="submit" class="button">Confirm the move</button></form></div>`
+        : "";
     const form = data.canWrite
-      ? `<form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
+      ? `${move}<form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
           <input type="hidden" name="action" value="set_epic" />
           <label for="epic_name">Choose an epic, or type a new name</label>
           <input id="epic_name" name="epic" maxlength="${MAX_VALUE}" list="epic_choices" value="${escapeHtml(card.epic ?? "")}" autocomplete="off" />
@@ -1080,6 +1090,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       ${data.created ? `<p class="notice ok" role="status" data-draft-clear="${escapeHtml(cardDraftKey(project.repo))}">Card ${cardRef(card.id)} written.${data.attachedOnCreate === undefined ? "" : ` ${data.attachedOnCreate} feature${data.attachedOnCreate === 1 ? "" : "s"} attached from its GitHub epic.`}</p>` : ""}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
+      ${(data.warnings ?? []).map((warning) => notice(warning, "error")).join("")}
       <p class="crumbs"><a href="${escapeHtml(base)}/board#card-${card.id}">Board</a> <span aria-hidden="true">›</span> <span class="mono">${cardRef(card.id)}</span></p>
       ${banner}
       <h1>${escapeHtml(heading)}</h1>

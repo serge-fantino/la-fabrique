@@ -73,7 +73,11 @@ describe("A feature's epic", () => {
     expect(await epicOf(f)).toBe("B");
     expect(await members(a)).toEqual([]);
     expect(await members(b)).toEqual([f]);
-    await act(s, f, { action: "set_epic", epic: "A" });
+    // Leaving B asks first, and nothing moves until confirmed.
+    const ask = await act(s, f, { action: "set_epic", epic: "A" });
+    expect(await (ask as Response).text()).toContain("leaves B and goes to A");
+    expect(await epicOf(f)).toBe("B");
+    await act(s, f, { action: "set_epic", epic: "A", confirm: "1" });
     expect(await members(a)).toEqual([f]);
     expect(await members(b)).toEqual([]);
   });
@@ -84,7 +88,7 @@ describe("A feature's epic", () => {
     const f = await card(s, "feature", "F");
     await act(s, a, { action: "attach_feature", feature: String(f) });
     expect(await epicOf(f)).toBe("A");
-    await act(s, f, { action: "set_epic", epic: "" });
+    await act(s, f, { action: "set_epic", epic: "", confirm: "1" });
     expect(await epicOf(f)).toBeNull();
     expect(await members(a)).toEqual([]);
     await act(s, f, { action: "set_epic", epic: "A" });
