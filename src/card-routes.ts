@@ -80,7 +80,8 @@ import {
   type FreeDimension,
 } from "./cards";
 import { activityStatement } from "./activity-log";
-import { addDependency, dependenciesOf, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
+import { dependencyWarnings } from "./dependency-warnings";
+import { addDependency, dependenciesOf, projectLinks, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import { epicSections, readEpicForm } from "./epic-sections";
 import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
 import { epicsPage } from "./epics-views";
@@ -99,6 +100,7 @@ import { can } from "./rights";
 import { projectUrl } from "./urls";
 import { projectView } from "./view-context";
 import { embeddedCards, embedsFor } from "./card-embed";
+import { decodeWarnings, encodeWarnings, featureEpics, syncEpicText, type Belonging } from "./epic-text";
 import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
@@ -368,7 +370,7 @@ const CARD_NOTICES: Record<string, string> = {
 
 // The cards a text names ("C57"), those of this project only: each one's
 // link with its status as the board shows it.
-async function mentionedLinks(env: Env, project: Project, text: string): Promise<Map<number, string>> {
+async function mentionedLinks(env: Env, project: Project, text: string, marks: ReadonlyMap<number, string> = new Map()): Promise<Map<number, string>> {
   const ids = mentionedCards(text);
   const found = new Map<number, string>();
   if (!ids.length) return found;
@@ -378,9 +380,30 @@ async function mentionedLinks(env: Env, project: Project, text: string): Promise
   for (const other of cards)
     found.set(
       other.id,
-      `<a class="card-mention mono" href="${escapeHtml(cardUrl(project.repo, other.id))}" title="${escapeHtml(other.title)}">${cardRef(other.id)}</a> ${statusPill(other, progress.get(other.id))}`,
+      `<a class="card-mention mono" href="${escapeHtml(cardUrl(project.repo, other.id))}" title="${escapeHtml(other.title)}">${cardRef(other.id)}</a> ${statusPill(other, progress.get(other.id))}${marks.get(other.id) ? ` ${marks.get(other.id)}` : ""}`,
     );
   return found;
+}
+
+// "belongs to F9", for each feature of an epic other than the card's own
+// (la-fabrique#291).
+function belongsMarks(repo: string, card: Card, owners: ReadonlyMap<number, Belonging>): Map<number, string> {
+  const own = card.kind === "epic" ? card.id : owners.get(card.id)?.id;
+  const marks = new Map<number, string>();
+  for (const [feature, owner] of owners) {
+    if (owner.id === own || feature === card.id) continue;
+    marks.set(feature, `<span class="pill small belongs">belongs to <a href="${escapeHtml(cardUrl(repo, owner.id))}">${escapeHtml(owner.title)}</a></span>`);
+  }
+  return marks;
+}
+
+// What saving an epic's text did not do (la-fabrique#291).
+function warningTexts(raw: string | null, cards: Card[]): string[] {
+  return decodeWarnings(raw).flatMap(({ feature, epic }) => {
+    const owner = cards.find((card) => card.id === epic);
+    if (!owner) return [];
+    return [`${cardRef(feature)} belongs to ${owner.title} (${cardRef(owner.id)}) and stays there. To move it, open ${cardRef(feature)} and change its epic.`];
+  });
 }
 
 // The card's page, also after a failed call to Claude (`failure`, with
@@ -391,7 +414,7 @@ async function renderCard(
   viewer: Viewer,
   project: Project,
   card: Card,
-  extra: { failure?: string; instruction?: string; ask?: "draft" | "change"; status?: number } = {},
+  extra: { failure?: string; instruction?: string; ask?: "draft" | "change"; status?: number; confirmMove?: string } = {},
 ): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const [revisions, links, calls, claude, { view, cookies }, job] = await Promise.all([
@@ -438,11 +461,13 @@ async function renderCard(
   const notice = params.get("notice");
   const asked = params.get("ask");
   const version = shown ?? card;
-  const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"));
+  const owners = await featureEpics(env.DB, project.repo);
+  const marks = belongsMarks(project.repo, card, owners);
+  const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"), marks);
   const allCards = await listCards(env.DB, project.repo);
   const embedText = [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n");
   const embedded = embeddedCards(embedText).length
-    ? await embedsFor(env, project, embedText, allCards, await cardProgress(env, project, allCards.filter((other) => embeddedCards(embedText).includes(other.id))))
+    ? await embedsFor(env, project, embedText, allCards, await cardProgress(env, project, allCards.filter((other) => embeddedCards(embedText).includes(other.id))), marks)
     : new Map<number, string>();
   const rubriques = rubriquesFor(project, card);
   const spend = calls.reduce(
@@ -463,6 +488,8 @@ async function renderCard(
       attachedOnCreate: params.has("attached") ? Number(params.get("attached")) || 0 : undefined,
       notice: notice ? CARD_NOTICES[notice] : undefined,
       failure: extra.failure,
+      warnings: warningTexts(params.get("warn"), allCards),
+      ...(extra.confirmMove !== undefined ? { confirmMove: extra.confirmMove } : {}),
       instruction: extra.instruction,
       ask: extra.ask ?? (asked === "draft" || asked === "change" ? asked : null),
       rubriques,
@@ -557,6 +584,9 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (!feature || feature.kind !== "feature" || (action !== "set_epic" && card.kind !== "epic")) {
       return renderCard(request, env, viewer, project, card, { failure: "That is not a feature of this project.", status: 404 });
     }
+    if (action === "set_epic" && feature.epic && (name ?? "").trim().toLowerCase() !== feature.epic.trim().toLowerCase() && String(form.get("confirm")) !== "1") {
+      return renderCard(request, env, viewer, project, card, { confirmMove: (name ?? "").trim() });
+    }
     if (action === "set_epic") await setFeatureEpic(env.DB, feature, name, viewer.login);
     else if (action === "attach_feature") await setFeatureEpic(env.DB, feature, card.title, viewer.login, "document");
     else if ((await featureEpicTitles(env.DB, project.repo)).get(feature.id) === card.title) await setFeatureEpic(env.DB, feature, null, viewer.login, "document");
@@ -582,7 +612,8 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (!revision || revision.rev === card.rev) return redirect(url);
     await restoreRevision(env.DB, card, revision, viewer.login);
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "an older version came back");
-    return redirect(`${url}?notice=version_restored`);
+    const warnings = await syncEpicText(env.DB, card, card.body, revision.body, viewer.login);
+    return redirect(`${url}?notice=version_restored${warnings.length ? `&warn=${encodeWarnings(warnings)}` : ""}`);
   }
   if (action === "spec_draft" || action === "spec_revise" || action === "spec_answer") {
     const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
@@ -734,7 +765,8 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   if (outcome === "saved" && (input.title !== card.title || input.body !== card.body) && input.tags.status === card.status) {
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the card changed");
   }
-  return redirect(`${url}?notice=${outcome}`);
+  const warnings = outcome === "saved" ? await syncEpicText(env.DB, card, card.body, input.body, viewer.login) : [];
+  return redirect(`${url}?notice=${outcome}${warnings.length ? `&warn=${encodeWarnings(warnings)}` : ""}`);
 }
 
 export async function showSpecForm(request: Request, env: Env, viewer: Viewer, project: Project, id: number): Promise<Response> {
@@ -1244,8 +1276,11 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
     return redirect(base);
   }
   const params = new URL(request.url).searchParams;
-  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const [everyCard, links, depLinks, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectLinks(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const cards = everyCard.filter((card) => card.kind !== "epic");
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
+  // A dependency neither available nor in the same release is a warning (la-fabrique#299).
+  const warnings = new Map(features.map((card) => [card.id, dependencyWarnings(card, everyCard, depLinks, { sameRelease: true })]));
   const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
   // A waiting job with room free (a lost wake-up) gets its turn now.
@@ -1278,6 +1313,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       calls: left,
       features,
       others,
+      warnings,
       links,
       stories,
       canWrite: canWriteCards(viewer),
