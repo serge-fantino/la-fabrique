@@ -758,7 +758,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "mcp",
         title: "La Fabrique as a connector",
-        body: (h: Helpers) => `<p>Add La Fabrique to claude.ai or Claude Code as a connector, at <code>/mcp</code>; sign in with GitHub and consent. Claude reads (projects, board, cards, sprint, stories) and writes (cards, specs, stories, links, the sprint) in your name, with your rights read again at each call. Every write is logged with the tool. Never the go. Disconnect it in ${h.signedIn ? `<a href="/apps">Connected apps</a>` : "Connected apps"}.</p>`,
+        body: (h: Helpers) => `<p>Add La Fabrique to claude.ai or Claude Code as a connector, at <code>/mcp</code>; sign in with GitHub and consent. Claude reads (projects, board, cards, epics, sprint, stories) and writes (cards, epics, specs, stories, links, the sprint) in your name; an epic card can start from an existing GitHub epic issue, as with Start from an existing GitHub epic on the new card form, with your rights read again at each call. Every write is logged with the tool. Never the go. Disconnect it in ${h.signedIn ? `<a href="/apps">Connected apps</a>` : "Connected apps"}.</p>`,
       },
     ],
   },

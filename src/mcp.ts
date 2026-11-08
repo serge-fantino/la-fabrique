@@ -31,13 +31,14 @@ import {
 } from "./cards";
 import { canLaunchClaude, launchClaude } from "./claude";
 import type { Env } from "./env";
-import { EPIC_ISSUE_KIND, writeEpicIssue } from "./epic-issue";
+import { EPIC_ISSUE_KIND, epicIssuesOf, startFromIssue, takenEpicIssues, writeEpicIssue } from "./epic-issue";
+import { epicSections, parseEpicBody } from "./epic-sections";
 import { installationToken } from "./github-app";
 import { cycleRules, projectRules } from "./lifecycle";
 import { setPriority } from "./backlog";
 import type { GrantProps } from "./oauth";
 import { findProject, listProjects, productionBranch, type Project } from "./projects";
-import { syncEpicLink } from "./card-epics";
+import { attachNamingFeatures, syncEpicLink } from "./card-epics";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
@@ -47,6 +48,7 @@ import { canMerge, mergePull, pullDetails } from "./sprint-pulls";
 import { hasIntegration } from "./sprint-release";
 import { missingSections, specRubriques } from "./specs";
 import { loadStoryDetail } from "./story-detail";
+import { loadStories } from "./stories";
 import { projectUrl } from "./urls";
 import { wordingFor } from "./wording";
 
@@ -265,16 +267,51 @@ function findEpic(cards: Card[], wanted: unknown): Card {
 // epic card's title, as the board's Epic dimension does.
 async function epicTarget(ctx: Context, project: Project, args: Args, body: string | undefined): Promise<string | null | undefined> {
   if (!("epic" in args)) return undefined;
-  if (body !== undefined && "epic" in annotations(body)) fail("The text already says {epic: …}: change the epic in the text, or take the annotation out.");
+  const written = body === undefined ? undefined : annotations(body);
+  const conflict = (): never => fail("The text already says {epic: …}: change the epic in the text, or take the annotation out.");
   const wanted = args["epic"];
-  if (wanted === null || (typeof wanted === "string" && !wanted.trim())) return null;
+  if (wanted === null || (typeof wanted === "string" && !wanted.trim())) return written && "epic" in written ? conflict() : null;
   if (typeof wanted !== "string" && typeof wanted !== "number") return fail("epic is an epic card's number, its name, or null to detach.");
   const value = String(wanted).trim();
   const cards = await listCards(ctx.env.DB, project.repo);
   const byNumber = /^[#C]?\d+$/i.test(value) ? cards.find((card) => card.id === Number(value.replace(/^[#C]/i, ""))) : undefined;
   const epic = byNumber ?? cards.find((card) => card.kind === "epic" && sameName(card.title, value));
   if (!epic || epic.kind !== "epic" || epic.archivedAt) return fail(`"${value}" is not an epic card of ${project.repo}: nothing changed.`);
+  // The text naming that same epic is no conflict: the link is made from it.
+  if (written && "epic" in written && !sameName(written["epic"] ?? null, epic.title)) conflict();
   return epic.title;
+}
+
+// An existing GitHub epic issue (label epique) for an epic card to start
+// from, as the new card form's "Start from an existing GitHub epic" does
+// (la-fabrique#287): open, of this project, and picked by no other epic card.
+// Read before anything is written; refused with the reason otherwise.
+async function epicIssueToLink(ctx: Context, project: Project, args: Args, epic: Card | null) {
+  if (args["issue"] === undefined || args["issue"] === null) return undefined;
+  const issue = integer(args, "issue");
+  if (text(args, "technical", 50_000)?.trim()) fail("Give issue or technical, not both: the existing issue keeps its text (epic_update with technical replaces it afterwards). Nothing changed.");
+  if (epic) {
+    const current = await epicIssueOf(ctx, epic);
+    if (current && current.number !== issue) fail(`${cardRef(epic.id)} is already linked to the epic issue #${current.number}. Nothing changed.`);
+    if (current) return { issue, stories: [], already: true };
+  }
+  const { stories } = await loadStories(ctx.env, project);
+  const found = stories.find((story) => story.number === issue);
+  if (!found) fail(`#${issue} is not an issue of ${project.repo} that La Fabrique has read. Nothing changed.`);
+  if (!epicIssuesOf(stories).some((story) => story.number === issue)) fail(`#${issue} is not an epic issue (label epique) of ${project.repo}. Nothing changed.`);
+  if (found?.state !== "open") fail(`#${issue} is closed: only an open epic issue can be linked. Nothing changed.`);
+  const taken = (await takenEpicIssues(ctx.env.DB, project.repo)).get(issue);
+  if (taken !== undefined && taken !== epic?.id) fail(`#${issue} is already linked to the epic card ${cardRef(taken)}. Nothing changed.`);
+  return { issue, stories, already: false };
+}
+
+// Links the epic card to the issue and attaches the features of its sub-issues.
+async function linkEpicIssue(ctx: Context, project: Project, epic: Card, wanted: NonNullable<Awaited<ReturnType<typeof epicIssueToLink>>>) {
+  const url = `https://github.com/${project.repo}/issues/${wanted.issue}`;
+  if (wanted.already) return { number: wanted.issue, url, linked: true, attached: [], kept: [] };
+  const result = await startFromIssue(ctx.env.DB, epic, wanted.issue, wanted.stories, ctx.login, "claude");
+  if (!result.linked) return { number: wanted.issue, url, error: result.reason === "taken" ? "Another epic card already started from that issue." : "That issue is not an epic (label epique) of this project." };
+  return { number: wanted.issue, url, linked: true, attached: result.attached.map(cardRef), kept: result.kept.map(([feature, other]) => ({ feature: cardRef(feature), epic: other })) };
 }
 
 // ---- The tools ---------------------------------------------------------------
@@ -391,7 +428,8 @@ const TOOLS: Tool[] = [
   {
     name: "card",
     title: "A card",
-    description: "One card in full: its text, its spec (by the project's sections, with what is still missing), its stories with their stage, testing and pull requests.",
+    description:
+      "One card in full: its text, its spec (by the project's sections, with what is still missing), its stories with their stage, testing and pull requests. An epic card has no spec: its document's sections instead, with which are empty (the epic tool lists its features).",
     inputSchema: { type: "object", properties: { ...PROJECT, ...CARD }, required: ["project", "card"] },
     needs: null,
     write: false,
@@ -401,6 +439,19 @@ const TOOLS: Tool[] = [
       const links = await storyCards(ctx.env.DB, project.repo);
       const numbers = links.order.get(card.id) ?? [];
       const [stories, progress] = await Promise.all([cardStories(ctx.env, project, numbers), cardProgress(ctx.env, project, [card], links)]);
+      if (card.kind === "epic") {
+        const sections = epicSections(project);
+        const { texts } = parseEpicBody(card.body, sections);
+        const empty = (key: string) => !(texts[key] ?? "").trim();
+        return {
+          ...cardSummary(ctx, card, progress.get(card.id), numbers),
+          body: card.body,
+          epic_sections: sections.map((section) => ({ key: section.cle, title: section.titre, help: section.aide ?? null, empty: empty(section.cle) })),
+          epic_sections_empty: sections.filter((section) => empty(section.cle)).map((section) => section.titre),
+          github_issue: await epicIssueOf(ctx, card),
+          permalink: absolute(ctx, cardPermalink(card.id, card.rev)),
+        };
+      }
       const rubriques = specRubriques(project);
       return {
         ...cardSummary(ctx, card, progress.get(card.id), numbers),
@@ -512,7 +563,8 @@ const TOOLS: Tool[] = [
       const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
       const card = await findCard(ctx.env.DB, project.repo, id);
       if (card && wanted) await setCardPriority(ctx.env.DB, card, wanted, ctx.login);
-      if (card && epic) await syncEpicLink(ctx.env.DB, card, ctx.login);
+      // The epic given, or the one the text names ({epic: …}): linked if its card exists.
+      if (card?.epic) await syncEpicLink(ctx.env.DB, card, ctx.login, "claude");
       const created = (await findCard(ctx.env.DB, project.repo, id)) ?? card;
       return created ? { created: cardSummary(ctx, created, undefined, []) } : fail("The card was not saved.");
     },
@@ -563,6 +615,7 @@ const TOOLS: Tool[] = [
       }
       const epic = await epicTarget(ctx, project, args, body ?? card.body);
       const epicChanges = epic !== undefined && epic !== (card.epic ?? null);
+      const epicBefore = card.epic ?? null;
 
       if (title !== undefined || body !== undefined || kind !== undefined || epicChanges) {
         const input = await cardInput(ctx, project, {
@@ -578,12 +631,17 @@ const TOOLS: Tool[] = [
         const outcome = await updateCard(ctx.env.DB, card, ctx.login, input, card.rev);
         if (outcome === "conflict") fail("The card changed while writing: read it again.");
         if (outcome === "saved") {
-          if (epicChanges) changes.push("epic");
           if (title !== undefined || body !== undefined || kind !== undefined) changes.push("text");
           if (input.title !== card.title || input.body !== card.body) await reopenStatus(ctx.env.DB, project.repo, card.id, ctx.login, "the card changed");
         }
         card = (await findCard(ctx.env.DB, project.repo, card.id)) ?? card;
-        if (epicChanges) await syncEpicLink(ctx.env.DB, card, ctx.login);
+      }
+      // Epic given: the link is made even when the Epic value already names it
+      // (a feature written before its epic card existed). Reported only when
+      // the value or the link changed.
+      if (epic !== undefined) {
+        const relinked = await syncEpicLink(ctx.env.DB, card, ctx.login, "claude");
+        if (relinked || (card.epic ?? null) !== epicBefore) changes.unshift("epic");
       }
       if (status !== undefined && isStatus(status) && (await setStatus(ctx.env.DB, card, ctx.login, status))) {
         changes.push("status");
@@ -608,33 +666,64 @@ const TOOLS: Tool[] = [
     name: "epic_create",
     title: "Create an epic",
     description:
-      "A new epic card on the project's board, as a draft, with its functional document (what and why), in Markdown. With technical, also creates the project's GitHub epic issue (label epique) with that technical text (how to build it, never the document), signed with the person's login and linked to the card; a GitHub failure is reported and the card is still written. Returns its number and revision; then epic_update to rewrite the document.",
-    inputSchema: { type: "object", properties: { ...PROJECT, title: { type: "string" }, document: { type: "string", description: "The epic's document, in Markdown" }, technical: { type: "string", description: "Optional: the technical text of the GitHub epic issue (how to build it), in Markdown" } }, required: ["project", "title", "document"] },
+      "A new epic card on the project's board, as a draft, with its functional document (what and why), in Markdown. The features that already name its title in their Epic value, and are in no epic yet, join it. With technical, also creates the project's GitHub epic issue (label epique) with that technical text (how to build it, never the document), signed with the person's login and linked to the card; a GitHub failure is reported and the card is still written. With issue instead, links an existing open epic issue that no other epic card has picked (its text is kept, never copied; the title defaults to the issue's), and the features of its sub-issues join the epic; refused with the reason otherwise, before anything is written. Returns its number and revision; then epic_update to rewrite the document.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...PROJECT,
+        title: { type: "string", description: "The epic's title (with issue, the issue's title when left out)" },
+        document: { type: "string", description: "The epic's document, in Markdown" },
+        technical: { type: "string", description: "Optional: the technical text of a new GitHub epic issue (how to build it), in Markdown" },
+        issue: { type: "integer", description: "Optional: an existing open GitHub epic issue (label epique) to link instead of creating one; the features of its sub-issues join the epic. Not with technical." },
+      },
+      required: ["project", "document"],
+    },
     needs: "request",
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const title = text(args, "title", 200)?.trim();
-      if (!title) fail("An epic needs a title.");
       const document = text(args, "document", 50_000);
       if (document === undefined) fail("An epic needs its document.");
-      const input = await cardInput(ctx, project, { title: title ?? "", body: document ?? "", kind: "epic", status: "draft" });
+      const linking = await epicIssueToLink(ctx, project, args, null);
+      const title = text(args, "title", 200)?.trim() || (linking ? (linking.stories.find((story) => story.number === linking.issue)?.title ?? "").trim() : "");
+      if (!title) fail("An epic needs a title.");
+      const input = await cardInput(ctx, project, { title, body: document ?? "", kind: "epic", status: "draft" });
       const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
       const created = await findCard(ctx.env.DB, project.repo, id);
       if (!created) return fail("The epic was not saved.");
+      // Features written before the epic card, naming its title (la-fabrique#295's conversion, for this one epic).
+      const naming = await attachNamingFeatures(ctx.env.DB, created, ctx.login, "claude");
       const technical = text(args, "technical", 50_000)?.trim();
-      const issue = technical ? await writeEpicIssue(ctx.env, project, ctx.env.DB, created, technical, absolute(ctx, cardPermalink(id, created.rev)), ctx.login) : undefined;
-      return { created: { id, ref: cardRef(id), title: created.title, revision: created.rev, url: absolute(ctx, cardUrl(project.repo, id)) }, ...(issue ? { github_issue: issue } : {}) };
+      const issue = linking
+        ? await linkEpicIssue(ctx, project, created, linking)
+        : technical
+          ? await writeEpicIssue(ctx.env, project, ctx.env.DB, created, technical, absolute(ctx, cardPermalink(id, created.rev)), ctx.login)
+          : undefined;
+      const current = (await findCard(ctx.env.DB, project.repo, id)) ?? created;
+      return {
+        created: { id, ref: cardRef(id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, id)) },
+        ...(naming.attached.length ? { features_attached: naming.attached.map(cardRef) } : {}),
+        ...(naming.kept.length ? { features_in_another_epic: naming.kept.map(([feature, other]) => ({ feature: cardRef(feature), epic: cardRef(other) })) } : {}),
+        ...(issue ? { github_issue: issue } : {}),
+      };
     },
   },
   {
     name: "epic_update",
     title: "Change an epic's document",
     description:
-      "Change an epic card's title or document. With technical, also replaces the text of its GitHub epic issue (created and linked if it has none); without it the issue is unchanged; a GitHub failure is reported and the card is still written. Pass rev, read from the epic, to refuse to write over a change made since; a new revision is kept in its history.",
+      "Change an epic card's title or document. With technical, also replaces the text of its GitHub epic issue (created and linked if it has none); without it the issue is unchanged; a GitHub failure is reported and the card is still written. With issue instead, links an existing open epic issue (label epique) to an epic card that has none, as the new card form does: its text is kept, the features of its sub-issues join the epic; refused with the reason (another epic card picked it, the card has another issue, closed, not an epic) before anything is written. Pass rev, read from the epic, to refuse to write over a change made since; a new revision is kept in its history.",
     inputSchema: {
       type: "object",
-      properties: { ...PROJECT, ...CARD, title: { type: "string" }, document: { type: "string" }, technical: { type: "string", description: "Optional: the new technical text of the GitHub epic issue" }, rev: { type: "integer", description: "The epic's revision you read" } },
+      properties: {
+        ...PROJECT,
+        ...CARD,
+        title: { type: "string" },
+        document: { type: "string" },
+        technical: { type: "string", description: "Optional: the new technical text of the GitHub epic issue" },
+        issue: { type: "integer", description: "Optional: an existing open GitHub epic issue (label epique) to link instead of creating one; the features of its sub-issues join the epic. Not with technical." },
+        rev: { type: "integer", description: "The epic's revision you read" },
+      },
       required: ["project", "card", "rev"],
     },
     needs: "request",
@@ -645,14 +734,20 @@ const TOOLS: Tool[] = [
       if (!found || found.kind !== "epic") return fail(`${cardRef(integer(args, "card"))} is not an epic card of ${project.repo}.`);
       if (found.archivedAt) fail("This epic is archived: bring it back from its page first.");
       if (integer(args, "rev") !== found.rev) fail(`The card changed since (now version ${found.rev}): read it again.`);
+      const linking = await epicIssueToLink(ctx, project, args, found);
       const title = text(args, "title", 200)?.trim();
       const document = text(args, "document", 50_000);
       const input = await cardInput(ctx, project, { title: title || found.title, body: document ?? found.body, kind: "epic", status: found.status, epic: found.epic, domain: found.domain, segment: found.segment, release: found.release });
       const outcome = await updateCard(ctx.env.DB, found, ctx.login, input, found.rev);
       if (outcome === "conflict") fail("The card changed while writing: read it again.");
-      const current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? found;
+      let current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? found;
       const technical = text(args, "technical", 50_000)?.trim();
-      const issue = technical ? await writeEpicIssue(ctx.env, project, ctx.env.DB, current, technical, absolute(ctx, cardPermalink(current.id, current.rev)), ctx.login) : undefined;
+      const issue = linking
+        ? await linkEpicIssue(ctx, project, current, linking)
+        : technical
+          ? await writeEpicIssue(ctx.env, project, ctx.env.DB, current, technical, absolute(ctx, cardPermalink(current.id, current.rev)), ctx.login)
+          : undefined;
+      if (linking) current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? current;
       return { changed: outcome === "saved" ? ["document"] : [], epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) }, ...(issue ? { github_issue: issue } : {}) };
     },
   },

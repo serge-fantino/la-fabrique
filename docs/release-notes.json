@@ -2,6 +2,20 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Epic cards through the MCP: links that hold, existing epic issues, epic sections",
+    "changements": [
+      "card_update with epic now links a feature whose Epic value already names that epic (a feature written before its epic card existed): the epic page lists it. epic is reported as changed only when the value or the link changed, and asking again logs nothing.",
+      "A feature created through the MCP with {epic: …} in its text is linked to that epic card when it exists; a text naming the same epic as the epic argument is no longer refused.",
+      "epic_create attaches the features that already name its title and are in no epic yet, and says which ones keep another epic.",
+      "epic_create and epic_update take issue: an existing open GitHub epic issue (label epique) that no other epic card has picked is linked instead of creating one, its text kept, and the features of its sub-issues join the epic, as with Start from an existing GitHub epic on the new card form. Refused with the reason otherwise (closed, not an epic, picked by another epic card, the card already has another issue, given with technical), before anything is written.",
+      "The card tool on an epic card returns the epic's sections, with which are empty, and its GitHub epic issue, instead of a feature's spec sections and acceptance criteria."
+    ],
+    "stories": [307, 308, 309, 310],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "New epic on the Epics tab",
     "changements": [
       "The Epics tab offers New epic, which opens the new card form already set to the Epic type and its sections."

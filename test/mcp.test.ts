@@ -388,6 +388,144 @@ describe("La Fabrique's MCP server", () => {
     expect(tools).toContain("card_update");
   });
 
+  it("links a feature whose Epic value already names the epic, once, and an epic card takes the features naming its title", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const linked = async (feature: number) => (await env.DB.prepare("SELECT card_id FROM card_links WHERE kind = 'feature' AND ref = ?").bind(String(feature)).all<{ card_id: number }>()).results.map((r) => r.card_id);
+    const attachedLog = async () => (await logActions()).filter((entry) => entry.action === "feature_attached").length;
+
+    // Written before the epic card existed: the value, no link.
+    const early = ((await call(access, "card_create", { project: REPO, title: "Glossary", body: "Terms. {epic: F11 Domains}" })).data["created"] as { id: number; epic: string }).id;
+    expect(await linked(early)).toEqual([]);
+    const other = (await call(access, "epic_create", { project: REPO, title: "F10 Docs", document: "a" })).data["created"] as { id: number };
+    const elsewhere = ((await call(access, "card_create", { project: REPO, title: "Elsewhere", epic: other.id })).data["created"] as { id: number }).id;
+    // An epic renamed since: its feature keeps the old title in its value and its link by id.
+    await env.DB.prepare("UPDATE cards SET epic = 'F11 Domains' WHERE id = ?").bind(elsewhere).run();
+
+    // The epic card created through the MCP takes the features naming its title, and leaves the one in another epic.
+    const created = await call(access, "epic_create", { project: REPO, title: "F11 Domains", document: "## Why\n\nOne language." });
+    const epic = created.data["created"] as { id: number };
+    expect(created.data["features_attached"]).toEqual([`C${early}`]);
+    expect(created.data["features_in_another_epic"]).toEqual([{ feature: `C${elsewhere}`, epic: `C${other.id}` }]);
+    expect(await linked(early)).toEqual([epic.id]);
+    expect(await linked(elsewhere)).toEqual([other.id]);
+
+    // The state of 2026-11-08: the value names the epic, no link. card_update with epic links it, and says so.
+    await env.DB.prepare("DELETE FROM card_links WHERE kind = 'feature' AND ref = ?").bind(String(early)).run();
+    const before = await attachedLog();
+    const relinked = await call(access, "card_update", { project: REPO, card: early, epic: epic.id });
+    expect(relinked.isError).toBe(false);
+    expect(relinked.data["changed"]).toEqual(["epic"]);
+    expect(await linked(early)).toEqual([epic.id]);
+    expect(await attachedLog()).toBe(before + 1);
+    // Once more: nothing changes, nothing is logged.
+    expect((await call(access, "card_update", { project: REPO, card: early, epic: "F11 Domains" })).data["changed"]).toEqual([]);
+    expect(await attachedLog()).toBe(before + 1);
+    // The text naming another epic is still a conflict.
+    expect((await call(access, "card_update", { project: REPO, card: early, epic: other.id })).data["error"]).toContain("The text already says {epic: …}");
+
+    // A feature created with the annotation once the epic card exists is linked at once.
+    const late = ((await call(access, "card_create", { project: REPO, title: "Late", body: "{epic: F11 Domains}" })).data["created"] as { id: number }).id;
+    expect(await linked(late)).toEqual([epic.id]);
+    const page = await call(access, "epic", { project: REPO, epic: epic.id });
+    expect((page.data["features"] as { number: number }[]).map((feature) => feature.number).sort()).toEqual([early, elsewhere, late].sort());
+  });
+
+  it("links an existing GitHub epic issue to an epic card, on create or update, and refuses what cannot be linked", async () => {
+    const story = (number: number, extra: Record<string, unknown> = {}) => ({
+      number,
+      title: `Story ${number}`,
+      state: "open",
+      url: `https://github.com/${REPO}/issues/${number}`,
+      author: "pe",
+      labels: [],
+      parent: null,
+      subTotal: 0,
+      subCompleted: 0,
+      createdAt: "2026-11-01T00:00:00Z",
+      updatedAt: "2026-11-01T00:00:00Z",
+      closedAt: null,
+      pullRequests: [],
+      branches: [],
+      ...extra,
+    });
+    await seedProject();
+    const stories = [
+      story(280, { labels: ["epique"], title: "F11 Domains" }),
+      story(281, { parent: 280 }),
+      story(282, { parent: 280 }),
+      story(283),
+      story(270, { labels: ["epique"], state: "closed", closedAt: "2026-11-02T00:00:00Z" }),
+      story(290, { labels: ["epique"], title: "F12 Glossary" }),
+    ];
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(JSON.stringify(stories), REPO).run();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const feature = ((await call(access, "card_create", { project: REPO, title: "Terms" })).data["created"] as { id: number }).id;
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, 'story', '281')").bind(feature).run();
+    const epicCount = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM cards WHERE kind = 'epic'").first<{ n: number }>())?.n;
+
+    // Refused before anything is written.
+    for (const [args, reason] of [
+      [{ issue: 280, technical: "How." }, "not both"],
+      [{ issue: 283 }, "is not an epic issue"],
+      [{ issue: 270 }, "is closed"],
+      [{ issue: 999 }, "that La Fabrique has read"],
+    ] as const) {
+      const refused = await call(access, "epic_create", { project: REPO, document: "d", ...args });
+      expect(refused.isError).toBe(true);
+      expect(refused.data["error"]).toContain(reason);
+    }
+    expect(await epicCount()).toBe(0);
+
+    // Linked, no GitHub call (no interceptor), the title from the issue, its sub-issues' features attached.
+    const created = await call(access, "epic_create", { project: REPO, document: "## Why\n\nOne language.", issue: 280 });
+    expect(created.isError).toBe(false);
+    const epic = created.data["created"] as { id: number; title: string };
+    expect(epic.title).toBe("F11 Domains");
+    expect(created.data["github_issue"]).toMatchObject({ number: 280, linked: true, attached: [`C${feature}`], kept: [] });
+    const link = await env.DB.prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = 'epic_issue'").bind(epic.id).first<{ ref: string }>();
+    expect(link?.ref).toBe("280");
+    expect((await env.DB.prepare("SELECT epic FROM cards WHERE id = ?").bind(feature).first<{ epic: string }>())?.epic).toBe("F11 Domains");
+    expect((await call(access, "epic", { project: REPO, epic: epic.id })).data["github_issue"]).toMatchObject({ number: 280 });
+    const logged = (await logActions()).filter((entry) => entry.action === "epic_issue_linked").map((entry) => JSON.parse(entry.details ?? "{}"));
+    expect(logged).toEqual([{ card: epic.id, issue: 280, via: "claude" }]);
+
+    // Picked by another epic card: refused, on create and on update.
+    expect((await call(access, "epic_create", { project: REPO, title: "Twin", document: "d", issue: 280 })).data["error"]).toContain(`already linked to the epic card C${epic.id}`);
+    const bare = (await call(access, "epic_create", { project: REPO, title: "F12 Glossary", document: "g" })).data["created"] as { id: number; revision: number };
+    expect((await call(access, "epic_update", { project: REPO, card: bare.id, rev: bare.revision, issue: 280 })).data["error"]).toContain(`already linked to the epic card C${epic.id}`);
+
+    // An epic card without an issue takes one after its creation.
+    const updated = await call(access, "epic_update", { project: REPO, card: bare.id, rev: bare.revision, issue: 290 });
+    expect(updated.isError).toBe(false);
+    expect(updated.data["github_issue"]).toMatchObject({ number: 290, linked: true });
+    // Asked again, the same issue is no change; another one is refused.
+    const rev = (updated.data["epic"] as { revision: number }).revision;
+    expect((await call(access, "epic_update", { project: REPO, card: bare.id, rev, issue: 290 })).data["github_issue"]).toMatchObject({ number: 290, linked: true });
+    expect((await call(access, "epic_update", { project: REPO, card: epic.id, rev: (await env.DB.prepare("SELECT rev FROM cards WHERE id = ?").bind(epic.id).first<{ rev: number }>())?.rev, issue: 290 })).data["error"]).toContain("is already linked to the epic issue #280");
+    expect((await logActions()).filter((entry) => entry.action === "epic_issue_linked")).toHaveLength(2);
+  });
+
+  it("reads an epic card's sections, not a feature's spec", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const epic = (await call(access, "epic_create", { project: REPO, title: "F11 Domains", document: "## Why\n\nOne language.\n\n## Scope\n\nTerms." })).data["created"] as { id: number };
+    const read = await call(access, "card", { project: REPO, card: epic.id });
+    expect(read.data["kind"]).toBe("epic");
+    expect(read.data["spec_sections"]).toBeUndefined();
+    expect(read.data["spec_missing"]).toBeUndefined();
+    expect(read.data["spec"]).toBeUndefined();
+    const sections = read.data["epic_sections"] as { key: string; empty: boolean }[];
+    expect(sections.filter((section) => !section.empty).map((section) => section.key)).toEqual(["why", "scope"]);
+    expect(read.data["epic_sections_empty"]).toEqual(["Out of scope", "Decisions", "Features", "Dependencies", "Open questions"]);
+    // A feature keeps its spec sections.
+    const feature = ((await call(access, "card_create", { project: REPO, title: "Terms" })).data["created"] as { id: number }).id;
+    expect((await call(access, "card", { project: REPO, card: feature })).data["spec_missing"]).toBeTruthy();
+  });
+
   it("refuses epic writes to a person who cannot write cards", async () => {
     await seedProject();
     await grantRole("tester", "tester");

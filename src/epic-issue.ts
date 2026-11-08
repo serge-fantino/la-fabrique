@@ -72,13 +72,13 @@ export interface EpicIssueResult {
 }
 
 // Links `epic` to the issue and attaches the features of its stories.
-export async function startFromIssue(db: D1Database, epic: Card, issue: number, stories: Story[], login: string): Promise<EpicIssueResult> {
+export async function startFromIssue(db: D1Database, epic: Card, issue: number, stories: Story[], login: string, via?: string): Promise<EpicIssueResult> {
   const found = epicIssuesOf(stories).find((story) => story.number === issue);
   if (!found) return { linked: false, reason: "unknown", attached: [], kept: [] };
   if ((await takenEpicIssues(db, epic.repo)).has(issue)) return { linked: false, reason: "taken", attached: [], kept: [] };
   await db.batch([
     db.prepare("INSERT OR IGNORE INTO card_links (card_id, kind, ref) VALUES (?, ?, ?)").bind(epic.id, EPIC_ISSUE_KIND, String(issue)),
-    activityStatement(db, { actor: login, action: "epic_issue_linked", repo: epic.repo, details: { card: epic.id, issue } }),
+    activityStatement(db, { actor: login, action: "epic_issue_linked", repo: epic.repo, details: { card: epic.id, issue, ...(via ? { via } : {}) } }),
   ]);
   const cards = await listCards(db, epic.repo);
   const features = await featuresOfStories(db, epic.repo);

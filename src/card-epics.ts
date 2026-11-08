@@ -136,9 +136,10 @@ async function writeFeatureInDocument(db: D1Database, epicCard: Card, feature: C
 }
 
 // After a change of the Epic value from elsewhere (the board, the edit
-// form): the same link, read from both sides.
-export async function syncEpicLink(db: D1Database, feature: Card, login: string): Promise<void> {
-  if (feature.kind !== "feature") return;
+// form, the MCP): the same link, read from both sides. Idempotent: true only
+// when the link changed.
+export async function syncEpicLink(db: D1Database, feature: Card, login: string, by = "board"): Promise<boolean> {
+  if (feature.kind !== "feature") return false;
   const cards = await listCards(db, feature.repo);
   const epic = feature.epic ? findEpicByTitle(cards, feature.epic) : null;
   const linked = await db
@@ -146,10 +147,35 @@ export async function syncEpicLink(db: D1Database, feature: Card, login: string)
     .bind(String(feature.id))
     .all<{ card_id: number }>();
   const ids = linked.results.map((row) => row.card_id);
-  if (ids.length === (epic ? 1 : 0) && (!epic || ids[0] === epic.id)) return;
+  if (ids.length === (epic ? 1 : 0) && (!epic || ids[0] === epic.id)) return false;
   await db.batch([
     db.prepare("DELETE FROM card_links WHERE kind = 'feature' AND ref = ?").bind(String(feature.id)),
     ...(epic ? [db.prepare("INSERT OR IGNORE INTO card_links (card_id, kind, ref) VALUES (?, 'feature', ?)").bind(epic.id, String(feature.id))] : []),
-    activityStatement(db, { actor: login, action: epic ? "feature_attached" : "feature_detached", repo: feature.repo, details: { feature: feature.id, epic: epic?.id ?? null, by: "board" } }),
+    activityStatement(db, { actor: login, action: epic ? "feature_attached" : "feature_detached", repo: feature.repo, details: { feature: feature.id, epic: epic?.id ?? null, by } }),
   ]);
+  return true;
+}
+
+// A new epic card takes the features that already name its title in their
+// Epic value and are in no epic card yet (written before the epic existed).
+// A feature linked to another epic card keeps it (its value may be the old
+// title of a renamed epic) and is reported.
+export async function attachNamingFeatures(db: D1Database, epic: Card, login: string, by: string): Promise<{ attached: number[]; kept: [number, number][] }> {
+  const cards = await listCards(db, epic.repo);
+  const wanted = epic.title.trim().toLowerCase();
+  const naming = cards.filter((card) => card.kind === "feature" && !card.archivedAt && card.epic?.trim().toLowerCase() === wanted);
+  if (!naming.length) return { attached: [], kept: [] };
+  const rows = await db
+    .prepare("SELECT card_id, ref FROM card_links WHERE kind = 'feature' AND card_id IN (SELECT id FROM cards WHERE repo = ?)")
+    .bind(epic.repo)
+    .all<{ card_id: number; ref: string }>();
+  const owner = new Map(rows.results.map((row) => [Number(row.ref), row.card_id]));
+  const attached: number[] = [];
+  const kept: [number, number][] = [];
+  for (const feature of naming) {
+    const current = owner.get(feature.id);
+    if (current !== undefined && current !== epic.id) kept.push([feature.id, current]);
+    else if (current === undefined && (await syncEpicLink(db, feature, login, by))) attached.push(feature.id);
+  }
+  return { attached, kept };
 }
