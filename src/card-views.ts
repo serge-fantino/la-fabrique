@@ -417,6 +417,8 @@ function testsHtml(viewer: Viewer, url: string, tests: CardTests | undefined, ca
 
 const PURPOSES: Record<string, string> = {
   spec_draft: "Spec written",
+  epic_draft: "Epic document written",
+  epic_revise: "Epic document revised",
   spec_revise: "Spec revised",
   spec_split: "Stories proposed",
   spec_tests: "Test cases written",
@@ -565,6 +567,8 @@ export interface CardPageData {
   claude: { usable: boolean; reason: string | null };
   calls: CallRow[];
   spend: Spend;
+  // An epic: the calls on its features too, counted with its own.
+  epicSpend?: Spend;
   missing: string[];
   instruction?: string | undefined;
   // The request to Claude kept open after a failure.
@@ -752,6 +756,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   // the page; nothing while it works. The story once the required sections
   // are there.
   let work = "";
+  const isEpic = card.kind === "epic";
   const working = isActive(data.job);
   const canAnswer = data.canWrite && !shown && data.claude.usable && !working;
   if (data.canWrite && !shown && !working) {
@@ -774,10 +779,14 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       usable && !spec
         ? panel(
             "spec_draft",
-            "Write the spec with Claude",
+            isEpic ? "Write the document with Claude" : "Write the spec with Claude",
             true,
             data.ask === "draft",
-            `<p class="help">Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know. It works in the background: you can leave the page.</p>
+            `<p class="help">${
+              isEpic
+                ? "Claude reads the epic, its features (titles, synopses, statuses) and the project's principles (its CLAUDE.md), asks at most five questions, then writes the document by the epic's sections."
+                : "Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know."
+            } It works in the background: you can leave the page.</p>
             <div class="field">
               <label for="draft">Anything to tell Claude first? <span class="muted">(optional)</span></label>
               <textarea id="draft" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.ask === "draft" ? (data.instruction ?? "") : "")}</textarea>
@@ -787,7 +796,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     // Once the card has stories, Claude reviews them against the spec.
     const made = stories.length;
     const split =
-      usable && spec && !data.split
+      usable && spec && !data.split && !isEpic
         ? panel(
             "spec_split",
             made ? "Review the stories with Claude" : "Split into stories with Claude",
@@ -807,7 +816,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
           )
         : "";
     const tests =
-      usable && spec && (made || data.split)
+      usable && spec && (made || data.split) && !isEpic
         ? panel(
             "spec_tests",
             data.card.data.tests ? "Rewrite the test cases with Claude" : "Write test cases with Claude",
@@ -824,21 +833,21 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       usable && spec
         ? panel(
             "spec_revise",
-            "Ask Claude for a change",
+            isEpic ? "Revise the document with Claude" : "Ask Claude for a change",
             false,
             data.ask === "change",
             `<div class="field">
               <label for="change">What should change?</label>
-              <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the spec.</p>
+              <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the ${isEpic ? "document" : "spec"}.</p>
               <textarea id="change" name="instruction" rows="4" maxlength="4000" required aria-describedby="change_help">${escapeHtml(data.ask === "change" ? (data.instruction ?? "") : "")}</textarea>
             </div>`,
           )
         : "";
-    const story = spec && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
+    const story = spec && !isEpic && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
     work = `${data.split ? proposalHtml(url, data.split, spec) : ""}
       <div class="spec-actions">
         ${draft}${split}${tests}${story}${change}
-        <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
+        <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${isEpic ? (spec ? "Edit the document by hand" : "Write the document by hand") : spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
       ${
         split
@@ -849,7 +858,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
             }</p>`
           : ""
       }
-      ${spec && !made && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
+      ${spec && !isEpic && !made && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
       ${usable ? "" : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`}`;
   }
 
@@ -885,7 +894,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
       </article>
       ${actions}
       <section class="card-spec" id="spec">
-        <h2>Spec</h2>
+        <h2>${isEpic ? "Document" : "Spec"}</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}
         ${specHtml(spec, data.rubriques, project.repo)}
         ${questionsHtml(viewer, url, spec, canAnswer)}
@@ -903,8 +912,8 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
               .join("")}</ul>`
           : ""
       }
-      ${testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
-      ${validationHtml(viewer, url, data)}
+      ${isEpic ? "" : testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
+      ${isEpic ? "" : validationHtml(viewer, url, data)}
       ${
         data.named?.length && !shown
           ? `<section class="card-named" id="named"><h2>Stories that name ${cardRef(card.id)}</h2>
@@ -920,8 +929,9 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
           : ""
       }
       ${linkRows.length ? `<h2>Mentioned</h2><dl class="facts">${linkRows.map(([term, value]) => `<dt>${term}</dt><dd>${value}</dd>`).join("")}</dl>` : ""}
-      <h2>Claude on this card</h2>
-      <p>${data.spend.calls ? spendLine(data.spend) : `<span class="muted">No call yet.</span>`}</p>
+      <h2>${isEpic ? "Claude on this epic" : "Claude on this card"}</h2>
+      <p>${data.spend.calls ? spendLine(data.spend) : `<span class="muted">No call yet.</span>`}${isEpic ? " <span class=\"muted\">(this epic's own calls)</span>" : ""}</p>
+      ${isEpic && data.epicSpend ? `<p>${data.epicSpend.calls ? `${spendLine(data.epicSpend)} <span class="muted">(with its features' calls)</span>` : `<span class="muted">No call on its features.</span>`}</p>` : ""}
       ${callsTable(data.calls)}
       <h2>History</h2>
       <p class="muted small">Written by <span class="mono">@${escapeHtml(card.author)}</span> on <span class="mono">${formatDate(card.createdAt)}</span>. Every version is kept.</p>

@@ -824,3 +824,75 @@ describe("kept answers (#227)", () => {
     expect(js).toContain("localStorage.setItem(keepKey(field)");
   });
 });
+
+describe("An epic's document with Claude (#281)", () => {
+  const EPIC_ANSWER = { sections: { why: "Themes live in two places.", decisions: "Epics are cards.", features: "C77 first.", questions: "" }, questions: ["Which project first?"], enough: false, note: "First draft." };
+
+  async function epicCard(session: { cookie: string; csrf: string }, title = "F9 Epics"): Promise<number> {
+    const response = await post(`/projects/${REPO}/cards`, { csrf: session.csrf, title, body: "A theme of work. {epic: F9 Epics}", kind: "epic", status: "draft" }, session.cookie);
+    return Number(/cards\/(\d+)/.exec(response.headers.get("location") ?? "")?.[1]);
+  }
+
+  it("writes the document by La Fabrique's default sections, with questions, then its own cost and its features' cost", async () => {
+    const { cookie, csrf, id: feature } = await writerWithCard();
+    await env.DB.prepare("UPDATE cards SET epic = 'F9 Epics' WHERE id = ?").bind(feature).run();
+    const epic = await epicCard({ cookie, csrf });
+    await env.DB.prepare("INSERT INTO llm_calls (login, repo, card_id, purpose, cost_micros, outcome) VALUES ('pe', ?, ?, 'spec_draft', 7000, 'ok')").bind(REPO, feature).run();
+
+    expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "spec_draft" }, cookie)).status).toBe(303);
+    expect(await (await get(`/projects/${REPO}/board?by=status`, cookie)).text()).toContain("Claude working");
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, EPIC_ANSWER);
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
+
+    const system = ((sent.body?.["system"] as { text: string }[])[0]?.text) ?? "";
+    expect(system).toContain("document of an epic");
+    expect(system).toContain('"why": Why (required)');
+    expect(system).not.toContain("Acceptance criteria");
+    const user = (sent.body?.["messages"] as { content: string }[])[0]?.content ?? "";
+    expect(user).toContain("Quick reorder");
+    expect(await env.DB.prepare("SELECT purpose FROM llm_calls WHERE card_id = ?").bind(epic).first()).toEqual({ purpose: "epic_draft" });
+
+    const page = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    expect(page).toContain("<h3>Why</h3>");
+    expect(page).toContain('<label for="answer_0">Which project first?</label>');
+    expect(page).toContain("Claude on this epic");
+    expect(page).toContain("1 call · $0.05");
+    expect(page).toContain("2 calls · $0.06");
+    expect(page).not.toContain('value="spec_split"');
+    expect(page).not.toContain('value="spec_tests"');
+    // The feature's own page is unchanged.
+    expect(await (await get(`/projects/${REPO}/cards/${feature}`, cookie)).text()).toContain("Write the spec with Claude");
+
+    // Epics have no stories or test cases of their own.
+    expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "spec_split" }, cookie)).status).toBe(303);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM claude_jobs WHERE kind = 'spec_split'").first()).toEqual({ n: 0 });
+  });
+
+  it("writes by the sections the project declares, keeps the versions, and hides Claude from a tester", async () => {
+    const { cookie, csrf } = await writerWithCard();
+    const declared = { ...CONFIG, epiques: { rubriques: [{ cle: "vision", titre: "Vision", obligatoire: true }, { cle: "scope", titre: "Scope" }] } };
+    await env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify(declared), REPO).run();
+    const epic = await epicCard({ cookie, csrf }, "F10 Testing");
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "spec_draft" }, cookie);
+    claudeStream({}, { sections: { vision: "Test by Claude.", scope: "Sprints." }, questions: [], enough: true, note: "Clear." });
+    await runQueue();
+    const page = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    expect(page).toContain("<h3>Vision</h3>");
+    expect(page).not.toContain("<h3>Why</h3>");
+
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "spec_revise", instruction: "Add the loop." }, cookie);
+    claudeStream({}, { sections: { vision: "Test by Claude, in a loop.", scope: "Sprints." }, questions: [], enough: true, note: "Revised." });
+    await runQueue();
+    const revised = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    expect(revised).toContain("in a loop");
+    expect(revised).toContain("Version 2");
+    expect(revised).toContain("Version 3");
+
+    await grantRole("tess", "tester");
+    const tester = await signIn("tess");
+    const seen = await (await get(`/projects/${REPO}/cards/${epic}`, tester.cookie)).text();
+    expect(seen).not.toContain('value="spec_revise"');
+    expect(seen).not.toContain("Revise the document with Claude");
+  });
+});

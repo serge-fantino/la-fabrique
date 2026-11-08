@@ -3,7 +3,7 @@ import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
 import { liveFor, refinementLiveFor, type LiveEvent } from "./live";
 import { findProject } from "./projects";
-import { specRubriques, splitSpec, writeSpec, writeTests, type Answer, type SpecReading } from "./specs";
+import { rubriquesFor, splitSpec, writeSpec, writeTests, type Answer, type SpecReading } from "./specs";
 
 // Claude works in the background (docs/decisions/0001-claude-in-the-background.md).
 // A request is saved as a job at once, with what the person wrote, and
@@ -314,7 +314,7 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   await say(env, running, job.attempts ? `Trying again (attempt ${job.attempts + 1}).` : "Claude starts.", "running");
 
   // What Claude does, a line every few seconds at most.
-  const rubriques = specRubriques(project);
+  const rubriques = rubriquesFor(project, card);
   const pending: Promise<void>[] = [];
   let lastThought = "";
   let lastAt = 0;

@@ -73,6 +73,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
 | `composants.dossier` | Le dossier des composants du projet (ci-dessous) ; `components` par défaut. Sans `composants` : pas de composants. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
+| `epiques.rubriques[]` | Les rubriques du document d'une épique (même forme que `demandes.rubriques[]`) ; sans `epiques`, celles par défaut de La Fabrique : *Why*, *Decisions*, *Features*, *Open questions*. Pas de critères : ils sont aux features. |
 
 ## Cycle d'une story
 

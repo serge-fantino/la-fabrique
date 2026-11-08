@@ -1,6 +1,18 @@
 [
   {
     "version": "next",
+    "date": "2026-11-08",
+    "titre": "Claude writes an epic's document",
+    "changements": [
+      "A card can now be an epic (type Epic). On its page, a person who writes requests asks Claude to write its document: Claude asks at most five questions, answered in the page (Enough questions stops them), then writes the document by the epic's sections, in the background, within the quotas and budget.",
+      "The sections are those the project declares in `epiques.rubriques` of its `.fabrique.json`, or La Fabrique's defaults: Why, Decisions, Features, Open questions. Every version of the document is kept and it can be revised with Claude.",
+      "The epic's page shows its own Claude cost and the total with its features' calls; Settings → Claude counts it. An epic has no stories or test cases of its own; a feature works as before."
+    ],
+    "stories": [281],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [
