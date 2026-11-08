@@ -63,16 +63,24 @@ export function epicProgressSection(progress: EpicProgress): string {
   if (!total) {
     return `<section class="epic-progress" id="epic-progress"><h2>Progress</h2><p class="muted">No features yet</p>${archivedList(progress)}</section>`;
   }
+  return `<section class="epic-progress" id="epic-progress"><h2>Progress</h2>
+    ${epicProgressSummary(progress)}
+    <ul class="plain">${progress.features.map(featureLine).join("")}</ul>${shippedBlock(progress)}${archivedList(progress)}</section>`;
+}
+
+// The bar, the counts and the status, the same on the epic's page, in its row
+// of the Epics tab and in its lane header on the board (la-fabrique#305).
+export function epicProgressSummary(progress: EpicProgress, compact = false): string {
+  const total = progress.features.length;
+  if (!total) return `<span class="muted small">No features yet</span>`;
   const bar = progress.parts
     .map((part) => {
       const tip = `${part.label}: ${part.count} ${part.count === 1 ? "feature" : "features"}`;
       return `<span class="epic-part" tabindex="0" role="img" style="flex:${part.count}" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">${part.label} <span class="mono">${part.count}</span></span>`;
     })
     .join("");
-  return `<section class="epic-progress" id="epic-progress"><h2>Progress</h2>
-    <p>Epic status: <span class="pill">${EPIC_STATUS_LABELS[progress.status ?? "draft"]}</span> · <span class="mono">${progress.inProduction}/${total}</span> features in production</p>
-    <div class="epic-bar">${bar}</div>
-    <ul class="plain">${progress.features.map(featureLine).join("")}</ul>${shippedBlock(progress)}${archivedList(progress)}</section>`;
+  const line = `<${compact ? "span" : "p"} class="epic-line">Epic status: <span class="pill">${EPIC_STATUS_LABELS[progress.status ?? "draft"]}</span> · <span class="mono">${progress.inProduction}/${total}</span> features in production</${compact ? "span" : "p"}>`;
+  return `${line}<div class="epic-bar${compact ? " compact" : ""}">${bar}</div>`;
 }
 
 function archivedList(progress: EpicProgress): string {

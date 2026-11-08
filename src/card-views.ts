@@ -37,7 +37,7 @@ import {
 import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
-import { epicProgressSection } from "./epic-progress";
+import { epicProgressSection, epicProgressSummary, type EpicProgress } from "./epic-progress";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
@@ -252,6 +252,8 @@ export interface BoardData {
   toConvert?: number;
   // Each card's progress, from its stories.
   progress?: Map<number, Progress>;
+  // Each epic's progress by lowercased title, for the Epic lanes' headers.
+  epics?: Map<string, EpicProgress>;
 }
 
 // Shipped is done, in progress is on its way, planned is not started.
@@ -300,11 +302,16 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
     return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite, data.spends.get(card.id), data.working.has(card.id), data.progress?.get(card.id))).join("")}</div>`;
   };
   const count = (predicate: (card: Card) => boolean) => data.cards.filter(predicate).length;
+  const epicNote = (axis: Axis, value: string) => {
+    const progress = axis === "epic" ? data.epics?.get(value.trim().toLowerCase()) : undefined;
+    return progress ? `<div class="epic-head">${epicProgressSummary(progress, true)}</div>` : "";
+  };
   const head = (value: string) => {
     const label = valueLabel(board.by, value);
     return `<div class="board-head">
         <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${escapeHtml(label)}${releaseNote(board.by, value)}</span>
         <span class="mono muted small" data-count-column="${escapeHtml(value)}">${count((card) => valueOf(card, board.by) === value)}</span>
+        ${epicNote(board.by, value)}
         ${canWrite && !(board.by === "status" && isProgressStage(value)) ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
       </div>`;
   };
@@ -324,6 +331,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
             <div class="board-row-head">
               <span class="board-head-label${rowValue ? "" : " muted"}"${titleOf(board.then, rowValue)}>${escapeHtml(label)}${releaseNote(board.then, rowValue)}</span>
               <span class="mono muted small" data-count-row="${escapeHtml(rowValue)}">${count((card) => valueOf(card, board.then) === rowValue)}</span>
+              ${epicNote(board.then, rowValue)}
             </div>
             ${columns.map((value) => cell(value, rowValue)).join("")}
           </div>`;

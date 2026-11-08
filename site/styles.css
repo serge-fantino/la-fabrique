@@ -4233,3 +4233,8 @@ main:has(.help-shell) {
 .epic-part { min-width: 2.5rem; padding: .4rem .5rem; background: #1E5A43; color: #fff; border-radius: 6px; font-size: .8rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .epic-part:nth-child(odd) { background: #18211B; }
 .epic-part:focus-visible { outline: 3px solid #C23D17; outline-offset: 2px; }
+
+.epic-bar.compact { margin: .25rem 0; }
+.epic-bar.compact .epic-part { padding: .2rem .4rem; font-size: .72rem; min-width: 1.5rem; }
+.epic-head { flex-basis: 100%; }
+.table .epic-line { font-size: .85rem; display: block; }
