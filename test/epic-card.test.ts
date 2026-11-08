@@ -55,7 +55,7 @@ describe("Epic cards", () => {
     expect(page).toContain("Version 2");
     expect(page).not.toContain("Make one story");
     expect(page).not.toContain("Split into stories");
-    expect(page).not.toContain('id="spec"');
+    expect(page).toContain("<h2>Document</h2>");
 
     const board = await (await get(`/projects/${REPO}/board`, s.cookie)).text();
     expect(board).not.toContain(`card-${id}"`);

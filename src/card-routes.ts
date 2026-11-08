@@ -77,10 +77,10 @@ import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
 import { epicsPage } from "./epics-views";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
-import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
+import { allowance, callsLeft, cardCalls, cardSpends, epicSpendOf } from "./llm";
 import { findProject, type Project } from "./projects";
 import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
-import { closeQuestions, missingSections, readSpecForm, specRubriques, type Answer } from "./specs";
+import { closeQuestions, missingSections, readSpecForm, rubriquesFor, specRubriques, type Answer } from "./specs";
 import { cancelJob, dispatch, enqueue, isActive, jobEvents, latestJob, projectJobs, workingCards, type JobKind } from "./jobs";
 import { liveFor, refinementLiveFor, sprintLiveFor } from "./live";
 import { wordingFor } from "./wording";
@@ -344,11 +344,12 @@ async function renderCard(
   const shown = wanted && wanted !== card.rev ? (revisions.find((revision) => revision.rev === wanted) ?? null) : null;
   const notice = params.get("notice");
   const asked = params.get("ask");
-  const rubriques = specRubriques(project);
+  const rubriques = rubriquesFor(project, card);
   const spend = calls.reduce(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
     { calls: 0, micros: 0, unknown: 0 },
   );
+  const epicSpend = card.kind === "epic" ? await epicSpendOf(env.DB, project.repo, card, spend) : undefined;
   const allCards = await listCards(env.DB, project.repo);
   return html(
     cardPage(viewer, view, {
@@ -368,6 +369,7 @@ async function renderCard(
       claude: { usable: claude.ok, reason: claude.ok ? null : claude.reason },
       calls,
       spend,
+      ...(epicSpend ? { epicSpend } : {}),
       missing: missingSections(card.data.spec, rubriques),
       job,
       events,
@@ -514,6 +516,10 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "shaping", "Claude asked");
     return redirect(`${url}#claude-job`);
   }
+  if (card.kind === "epic" && (action === "spec_split" || action === "spec_tests" || action === "split_save" || action === "split_stories")) {
+    // An epic has no stories or test cases of its own: its features do.
+    return redirect(url);
+  }
   if (action === "spec_split") {
     if (!card.data.spec) return redirect(`${url}#spec`);
     const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
@@ -563,7 +569,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (Number(form.get("rev")) !== card.rev) {
       return renderCard(request, env, viewer, project, card, { failure: "The card changed while you were editing its spec: your text was not saved. Open the spec again.", status: 409 });
     }
-    const spec = readSpecForm(form, specRubriques(project), card.data.spec);
+    const spec = readSpecForm(form, rubriquesFor(project, card), card.data.spec);
     await saveSpec(env.DB, card, viewer.login, spec);
     if (JSON.stringify(spec.answers) !== JSON.stringify(card.data.spec?.answers ?? {})) {
       await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the spec changed");
@@ -599,7 +605,7 @@ export async function showSpecForm(request: Request, env: Env, viewer: Viewer, p
   const card = await findCard(env.DB, project.repo, id);
   if (!card) return notFound(viewer, "There is no such card in this project.");
   const { view, cookies } = await projectView(request, env, project, viewer);
-  return html(specFormPage(viewer, view, { card, rubriques: specRubriques(project), spec: card.data.spec }), { cookies });
+  return html(specFormPage(viewer, view, { card, rubriques: rubriquesFor(project, card), spec: card.data.spec }), { cookies });
 }
 
 function storyDraft(request: Request, project: Project, card: Card, login: string, title: string): { draft: RequestDraft; origin: string; body: string } {
@@ -1348,7 +1354,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const url = cardUrl(project.repo, card.id);
   const split = card.data.split;
   if (!split) return redirect(`${url}#spec`);
-  const rubriques = specRubriques(project);
+  const rubriques = rubriquesFor(project, card);
   const words = wordingFor(project);
   const label = project.check?.config?.demandes?.etiquettes?.["demande"] ?? null;
   // After a review, new stories are numbered after those already made.
