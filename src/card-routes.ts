@@ -57,6 +57,7 @@ import {
   restoreRevision,
   saveSpec,
   saveFeaturesProposal,
+  saveEpicReview,
   saveSplit,
   type EpicFeaturesProposal,
   saveTests,
@@ -82,6 +83,7 @@ import { html, json, redirect } from "./http";
 import { allowance, callsLeft, cardCalls, cardSpends, epicSpendOf } from "./llm";
 import { findProject, type Project } from "./projects";
 import { commentIssue, createRequest, issueBody, type RequestDraft, type Rubrique } from "./requests";
+import { applyFinding } from "./epic-review";
 import { createFeatures, featuresPage, readFeaturesForm } from "./epic-features";
 import { closeQuestions, missingSections, readSpecForm, rubriquesFor, specRubriques, type Answer } from "./specs";
 import { cancelJob, dispatch, enqueue, isActive, jobEvents, latestJob, projectJobs, workingCards, type JobKind } from "./jobs";
@@ -291,6 +293,9 @@ const CARD_NOTICES: Record<string, string> = {
   epic_refused: "That is not possible with this epic's status.",
   features_created: "The features are created as draft cards attached to the epic.",
   features_skipped: "The features are created, but some dependencies could not be set (a loop, or a feature left out): check each feature's Dependencies.",
+  review_applied: "Done: only the change that finding names is made. See it below.",
+  review_dismissed: "The finding is dismissed; nothing else changed.",
+  review_discarded: "The review is discarded.",
   features_discarded: "The proposal is discarded.",
   restored: "Back on the board.",
   version_restored: "That version is back, as the newest one.",
@@ -530,6 +535,26 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "epic_features", request: { instruction, answers: [] }, login: viewer.login });
     if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
     return redirect(`${url}#claude-job`);
+  }
+  if (action === "epic_review") {
+    if (card.kind !== "epic" || (!card.data.spec && !card.body.trim())) return redirect(`${url}#spec`);
+    const instruction = String(form.get("instruction") ?? "").trim().slice(0, 4000);
+    const allowed = await allowance(env, viewer.role, viewer.login);
+    if (!allowed.ok) return renderCard(request, env, viewer, project, card, { failure: allowed.reason, status: 429 });
+    const queued = await enqueue(env, { repo: project.repo, cardId: card.id, kind: "epic_review", request: { instruction, answers: [] }, login: viewer.login });
+    if (!queued.ok) return renderCard(request, env, viewer, project, card, { failure: queued.message, status: 409 });
+    return redirect(`${url}#claude-job`);
+  }
+  if (action === "review_discard" && card.kind === "epic") {
+    if (card.data.review) await saveEpicReview(env.DB, card, viewer.login, null);
+    return redirect(`${url}?notice=review_discarded#features`);
+  }
+  if ((action === "review_apply" || action === "review_dismiss") && card.kind === "epic") {
+    if (card.archivedAt) return renderCard(request, env, viewer, project, card, { failure: "The epic is archived.", status: 409 });
+    const outcome = await applyFinding(env.DB, project, card, viewer.login, Number(form.get("finding")), action === "review_dismiss");
+    if (!outcome.ok) return renderCard(request, env, viewer, project, card, { failure: outcome.reason, status: 409 });
+    if (outcome.preview) return redirect(`${url}/features`);
+    return redirect(`${url}?notice=${action === "review_dismiss" ? "review_dismissed" : "review_applied"}#review`);
   }
   if (card.kind === "epic" && (action === "spec_split" || action === "spec_tests" || action === "split_save" || action === "split_stories")) {
     // An epic has no stories or test cases of its own: its features do.

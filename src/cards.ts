@@ -135,7 +135,40 @@ export interface EpicFeaturesProposal {
   at: string;
 }
 
+// Claude's review of an epic against its features (la-fabrique#283): what it
+// found, each finding a proposal; nothing is applied by itself.
+export const FINDING_KINDS = ["uncovered", "overlap", "conflict", "dependency"] as const;
+export type FindingKind = (typeof FINDING_KINDS)[number];
+export interface ReviewFinding {
+  kind: FindingKind;
+  title: string;
+  detail: string;
+  // The features concerned (card ids). A dependency: `cards[0]` should depend on `cards[1]`.
+  cards: number[];
+  // An uncovered need: the feature Claude proposes for it.
+  draft?: { title: string; synopsis: string; need: string; priority: string | null };
+  state: "open" | "applied" | "dismissed";
+  // What applying did, said once.
+  result?: string;
+}
+export interface EpicReview {
+  findings: ReviewFinding[];
+  note?: string;
+  specAt: string;
+  at: string;
+}
+// A note kept on an epic: an applied overlap or conflict.
+export interface EpicNote {
+  at: string;
+  by: string;
+  kind: FindingKind;
+  text: string;
+  cards: number[];
+}
+
 export interface CardData {
+  review?: EpicReview;
+  notes?: EpicNote[];
   spec?: CardSpec;
   split?: CardSplit;
   featuresProposal?: EpicFeaturesProposal;
@@ -557,6 +590,32 @@ export async function saveFeaturesProposal(
           }),
         ]
       : []),
+  ]);
+}
+
+// An epic's review saved (callId set), updated by applying or dismissing a
+// finding (`journal` says what to record then), or dropped (null): a new version.
+export async function saveEpicReview(
+  db: D1Database,
+  card: Card,
+  author: string,
+  review: EpicReview | null,
+  options: { callId?: number | null; notes?: EpicNote[]; journal?: { action: string; details: Record<string, unknown> } } = {},
+): Promise<void> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data };
+  if (review) data.review = review;
+  else delete data.review;
+  if (options.notes) data.notes = options.notes;
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    ...(options.callId && review
+      ? [activityStatement(db, { actor: author, action: "epic_reviewed", repo: card.repo, details: { card: card.id, title: card.title, findings: review.findings.length, call: options.callId } })]
+      : []),
+    ...(options.journal ? [activityStatement(db, { actor: author, action: options.journal.action, repo: card.repo, details: { card: card.id, title: card.title, ...options.journal.details } })] : []),
   ]);
 }
 

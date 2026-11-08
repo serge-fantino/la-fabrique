@@ -983,4 +983,71 @@ describe("An epic's features with Claude (#282)", () => {
     const tester = await signIn("tess");
     expect((await get(`/projects/${REPO}/cards/${epic}/features`, tester.cookie)).status).toBe(403);
   });
+
+  it("reviews the epic against its features: findings by kind, nothing changed until one is applied (#283)", async () => {
+    const { cookie, csrf, epic, existing } = await epicWithDocument();
+    const second = Number((await env.DB.prepare("INSERT INTO cards (repo, kind, status, title, body, author, epic, position) VALUES (?, 'feature', 'draft', 'Reorder twice', 'Same.', 'x', 'F11 Epics', 99) RETURNING id").bind(REPO).first<{ id: number }>())?.id);
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, 'feature', ?)").bind(epic, String(second)).run();
+    expect((await get(`/projects/${REPO}/cards/${epic}`, cookie).then((r) => r.text()))).toContain("Review with Claude");
+    expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "epic_review" }, cookie)).status).toBe(303);
+    const empty = { draft_title: "", draft_synopsis: "", draft_need: "", draft_priority: "" };
+    claudeStream({}, {
+      findings: [
+        { kind: "uncovered", title: "No export", detail: "The document asks for export.", features: [], draft_title: "Export", draft_synopsis: "Export.", draft_need: "Share.", draft_priority: "P1" },
+        { kind: "overlap", title: "Twice the same", detail: "Both reorder.", features: [`C${existing}`, `C${second}`], ...empty },
+        { kind: "conflict", title: "Against a decision", detail: "Decision 2.", features: [`C${second}`], ...empty },
+        { kind: "dependency", title: "Needs the first", detail: "Order.", features: [`C${second}`, `C${existing}`], ...empty },
+        { kind: "dependency", title: "Unknown card", detail: "x", features: ["C9999", `C${existing}`], ...empty },
+      ],
+      note: "Mostly fine.",
+    });
+    await runQueue();
+    expect(await env.DB.prepare("SELECT purpose FROM llm_calls WHERE card_id = ?").bind(epic).first()).toEqual({ purpose: "epic_review" });
+    const page = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    for (const text of ["Uncovered needs", "Overlaps", "Conflicts with a decision", "Missing dependencies", "No export", "Twice the same", "Against a decision", "Needs the first"]) expect(page).toContain(text);
+    expect(page).not.toContain("Unknown card");
+    // Nothing changed yet.
+    const counts = async () => (await env.DB.prepare("SELECT (SELECT COUNT(*) FROM cards) AS cards, (SELECT COUNT(*) FROM card_links WHERE kind = 'depends') AS deps").first()) as { cards: number; deps: number };
+    const before = await counts();
+    expect(before.deps).toBe(0);
+    expect(page).not.toContain('id="notes"');
+
+    // The dependency: only that link is added.
+    const dep = await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "review_apply", finding: "3" }, cookie);
+    expect(dep.status).toBe(303);
+    expect(await counts()).toEqual({ cards: before.cards, deps: 1 });
+    expect(await env.DB.prepare("SELECT card_id, ref FROM card_links WHERE kind = 'depends'").first()).toEqual({ card_id: second, ref: String(existing) });
+    // Applying twice is refused.
+    expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "review_apply", finding: "3" }, cookie)).status).toBe(409);
+
+    // An overlap becomes a note on the epic, nothing else.
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "review_apply", finding: "1" }, cookie);
+    expect(await counts()).toEqual({ cards: before.cards, deps: 1 });
+    const noted = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    expect(noted).toContain('id="notes"');
+    expect(noted).toContain("Both reorder.");
+
+    // An uncovered need opens the preview with the draft; no card yet.
+    const open = await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "review_apply", finding: "0" }, cookie);
+    expect(open.headers.get("location")).toContain("/features");
+    expect(await counts()).toEqual({ cards: before.cards, deps: 1 });
+    expect(await (await get(`/projects/${REPO}/cards/${epic}/features`, cookie)).text()).toContain("Export");
+
+    // Dismiss the conflict.
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "review_dismiss", finding: "2" }, cookie);
+    expect(await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text()).toContain("Dismissed");
+    const actions = (await logActions()).map((entry) => entry.action);
+    expect(actions).toEqual(expect.arrayContaining(["epic_reviewed", "epic_finding_applied", "epic_finding_dismissed"]));
+
+    await grantRole("tess", "tester");
+    const tester = await signIn("tess");
+    expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf: tester.csrf, action: "review_apply", finding: "2" }, tester.cookie)).status).toBe(403);
+  });
+
+  it("does not review an epic without features", async () => {
+    const { cookie, epic, existing } = await epicWithDocument();
+    await env.DB.prepare("DELETE FROM card_links WHERE card_id = ?").bind(epic).run();
+    await env.DB.prepare("UPDATE cards SET epic = NULL WHERE id = ?").bind(existing).run();
+    expect((await get(`/projects/${REPO}/cards/${epic}`, cookie).then((r) => r.text()))).not.toContain("Review with Claude");
+  });
 });
