@@ -1,5 +1,5 @@
 import { activityStatement } from "./activity-log";
-import { type Card, cleanValue, dimensionValues, listCards, moveCard } from "./cards";
+import { type Card, cleanValue, dimensionValues, findCard, listCards, mentionedCards, moveCard, tagsOf, updateCard } from "./cards";
 
 // A feature's epic is one of the project's epic cards (kind `epic`). The
 // choice and the epic's document list are the same link: the epic card's
@@ -95,7 +95,44 @@ export async function setFeatureEpic(
       details: { feature: feature.id, epic: epic?.id ?? null, from: previous, by },
     }),
   ]);
+  if (by !== "text") {
+    const old = previous ? findEpicByTitle(cards, previous) : null;
+    if (old && old.id !== epic?.id) await writeFeatureInDocument(db, old, feature, false, login);
+    if (epic) await writeFeatureInDocument(db, epic, feature, true, login);
+  }
   return { change: epic ? (created ? "created" : "set") : "removed", epic };
+}
+
+// The epic's document names its features: a line under "Features" for each.
+// Choosing an epic from the feature adds the line; removing it takes it out.
+export function documentWithFeature(body: string, feature: Pick<Card, "id" | "title">, present: boolean): string {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const mention = (line: string): boolean => mentionedCards(line).includes(feature.id);
+  const at = lines.findIndex((line) => /^##\s+Features\s*$/i.test(line));
+  if (!present) {
+    const start = at < 0 ? 0 : at + 1;
+    let end = lines.length;
+    for (let i = start; i < lines.length; i++) if (/^##\s/.test(lines[i] ?? "")) { end = i; break; }
+    const kept = lines.filter((line, i) => !(i >= start && i < end && /^\s*[-*]\s/.test(line) && mention(line)));
+    return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  if (lines.some(mention)) return body;
+  const item = `- C${feature.id} ${feature.title}`;
+  if (at < 0) return [body.trim(), `## Features\n\n${item}`].filter(Boolean).join("\n\n");
+  let end = lines.length;
+  for (let i = at + 1; i < lines.length; i++) if (/^##\s/.test(lines[i] ?? "")) { end = i; break; }
+  let last = end;
+  while (last > at + 1 && !(lines[last - 1] ?? "").trim()) last--;
+  lines.splice(last, 0, ...(last === at + 1 ? [""] : []), item);
+  return lines.join("\n").trim();
+}
+
+async function writeFeatureInDocument(db: D1Database, epicCard: Card, feature: Card, present: boolean, login: string): Promise<void> {
+  const epic = await findCard(db, epicCard.repo, epicCard.id);
+  if (!epic) return;
+  const body = documentWithFeature(epic.body, feature, present);
+  if (body === epic.body) return;
+  await updateCard(db, epic, login, { title: epic.title, body, tags: tagsOf(epic) }, epic.rev);
 }
 
 // After a change of the Epic value from elsewhere (the board, the edit
