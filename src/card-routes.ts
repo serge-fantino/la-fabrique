@@ -18,7 +18,8 @@ import { recordedByStory } from "./gherkin";
 import { createShareLink, listShareLinks, readExpiry, revokeShareLink } from "./share-links";
 import { criteriaOf, criteriaRubrique, criteriaText, moveCriterion } from "./story-editor";
 import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
-import { FOLLOW_MAX_AGE_MS } from "./stories";
+import { FOLLOW_MAX_AGE_MS, loadStories } from "./stories";
+import { EPIC_ISSUE_KIND, epicIssueView, epicIssuesOf, startFromIssue, takenEpicIssues } from "./epic-issue";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
@@ -41,6 +42,7 @@ import {
   cardRevisions,
   cleanValue,
   createCard,
+  MAX_TITLE,
   dimensionValues,
   DIMENSIONS,
   exportCards,
@@ -268,7 +270,14 @@ export async function showCardForm(request: Request, env: Env, viewer: Viewer, p
   const [cards, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
   const { known } = await knownValues(env, project, cards);
   const input = card ? { title: card.title, body: card.body, tags: card } : emptyInput(new URL(request.url).searchParams);
-  return html(cardFormPage(viewer, view, { card, input, known }), { cookies });
+  const issues = !card && input.tags.kind === "epic" ? await pickableEpicIssues(env, project) : [];
+  return html(cardFormPage(viewer, view, { card, input, known, issues }), { cookies });
+}
+
+// The `epique` issues no epic card has picked (la-fabrique#287).
+async function pickableEpicIssues(env: Env, project: Project): Promise<{ number: number; title: string }[]> {
+  const [{ stories }, taken] = await Promise.all([loadStories(env, project), takenEpicIssues(env.DB, project.repo)]);
+  return epicIssuesOf(stories).filter((story) => !taken.has(story.number)).map((story) => ({ number: story.number, title: story.title }));
 }
 
 export async function submitCard(request: Request, form: FormData, env: Env, viewer: Viewer, project: Project): Promise<Response> {
@@ -277,11 +286,28 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
   const known = await dimensionValues(env.DB, project.repo, cards);
   const input = readCardForm(form, known);
   if (input.tags.kind === "epic") input.body = readEpicForm(form, epicSections(project)).slice(0, MAX_BODY);
+  const issue = input.tags.kind === "epic" ? Number(String(form.get("issue") ?? "").replace(/^#/, "")) || 0 : 0;
+  const stories = issue ? (await loadStories(env, project)).stories : [];
+  // Started from an epic issue: the title defaults to the issue's (its text is not copied).
+  if (issue && !input.title) input.title = (stories.find((story) => story.number === issue)?.title ?? "").slice(0, MAX_TITLE);
   if (!input.title) {
     const { view, cookies } = await projectView(request, env, project, viewer);
-    return html(cardFormPage(viewer, view, { card: null, input, known, error: "A card needs a title." }), { status: 422, cookies });
+    return html(cardFormPage(viewer, view, { card: null, input, known, issues: input.tags.kind === "epic" ? await pickableEpicIssues(env, project) : [], error: "A card needs a title." }), { status: 422, cookies });
+  }
+  if (issue) {
+    const taken = (await takenEpicIssues(env.DB, project.repo)).has(issue);
+    if (taken || !epicIssuesOf(stories).some((story) => story.number === issue)) {
+      const { view, cookies } = await projectView(request, env, project, viewer);
+      const error = taken ? "Another epic card already started from that issue." : "That issue is not an epic (label epique) of this project.";
+      return html(cardFormPage(viewer, view, { card: null, input, known, issues: await pickableEpicIssues(env, project), error }), { status: 422, cookies });
+    }
   }
   const id = await createCard(env.DB, project.repo, viewer.login, input);
+  if (issue) {
+    const epic = await findCard(env.DB, project.repo, id);
+    const result = epic ? await startFromIssue(env.DB, epic, issue, stories, viewer.login) : null;
+    if (result) return redirect(`${projectUrl(project.repo)}/cards/${id}?created=1&attached=${result.attached.length}&kept=${result.kept.length}`);
+  }
   return redirect(`${projectUrl(project.repo)}/cards/${id}?created=1`);
 }
 
@@ -353,8 +379,8 @@ async function renderCard(
   let epic: EpicProgress | undefined;
   if (card.kind === "epic") {
     const features = featuresOfEpic(card, await listCards(env.DB, project.repo));
-    await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
-    epic = epicProgress(card, features);
+    const progresses = await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
+    epic = epicProgress(card, features, progresses);
   }
   const events = job ? await jobEvents(env.DB, job.id) : [];
   const [dependencies, dependencyOptions, dependencyLog] = await Promise.all([
@@ -376,6 +402,7 @@ async function renderCard(
   // Its progress from those stories, and when it reached each stage.
   const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
   const progressHistory = await progressSince(env.DB, project.repo, card.id);
+  const epicIssueRef = card.kind === "epic" ? Number(links.find((link) => link.kind === EPIC_ISSUE_KIND)?.ref) || 0 : 0;
   const attachedTitles = card.kind === "epic" ? await featureEpicTitles(env.DB, project.repo) : new Map<number, string>();
   const storyNumbers = [...linked];
   const step = nextStep(card, storyNumbers, storyStates as never);
@@ -402,6 +429,7 @@ async function renderCard(
       validation: validationOf(card, storyNumbers),
       canValidate: step.step === "approve",
       created: params.get("created") === "1",
+      attachedOnCreate: params.has("attached") ? Number(params.get("attached")) || 0 : undefined,
       notice: notice ? CARD_NOTICES[notice] : undefined,
       failure: extra.failure,
       instruction: extra.instruction,
@@ -427,6 +455,7 @@ async function renderCard(
       dependencyLog,
       canDepend: viewer.role !== null,
       epics: epicCardsOf(allCards),
+      ...(card.kind === "epic" && epicIssueRef ? { epicIssue: await epicIssueView(env.DB, project.repo, epicIssueRef, (await loadStories(env, project)).stories), keptFeatures: Number(params.get("kept")) || 0 } : {}),
       epicState: card.kind === "epic" ? (await epicStates(env, project, [card])).get(card.id) : undefined,
       epicHistory: card.kind === "epic" ? await epicHistory(env.DB, project.repo, card.id) : undefined,
       epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],

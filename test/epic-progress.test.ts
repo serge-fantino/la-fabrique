@@ -40,4 +40,20 @@ describe("epic progress", () => {
     expect(p.status).toBeNull();
     expect(epicProgressSection(p)).toContain("No features yet");
   });
+  it("lists shipped versions oldest first and the features left", () => {
+    const a = feature("validated", "in_production");
+    const b = feature("validated", "ready");
+    const c = feature("validated", "in_production");
+    const progresses = new Map([
+      [a.id, { shipped: { versions: ["0.82", "0.80"], left: [], nice: [] } }],
+      [c.id, { shipped: { versions: ["0.81"], left: [], nice: [] } }],
+    ]) as never;
+    const p = epicProgress(epic, [a, b, c], progresses);
+    expect(p.shipped?.versions).toEqual(["0.80", "0.81", "0.82"]);
+    expect(p.shipped?.left.map((card) => card.id)).toEqual([b.id]);
+    const html = epicProgressSection(p);
+    expect(html).toContain("Shipped in");
+    expect(html).toContain("Still to come");
+    expect(epicProgress(epic, [b]).shipped).toBeUndefined();
+  });
 });
