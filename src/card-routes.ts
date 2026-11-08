@@ -644,12 +644,12 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   }
   // A feature's epic, and the epic's document: one link (la-fabrique#294).
   if (action === "set_epic" || action === "attach_feature" || action === "detach_feature") {
-    const name = action === "set_epic" ? String(form.get("epic") ?? "") : null;
+    const name = action === "set_epic" ? (form.get("remove") ? "" : String(form.get("epic") ?? "")) : null;
     const feature = action === "set_epic" ? card : await findCard(env.DB, project.repo, Number(form.get("feature")));
     if (!feature || feature.kind !== "feature" || (action !== "set_epic" && card.kind !== "epic")) {
       return renderCard(request, env, viewer, project, card, { failure: "That is not a feature of this project.", status: 404 });
     }
-    if (action === "set_epic" && feature.epic && (name ?? "").trim().toLowerCase() !== feature.epic.trim().toLowerCase() && String(form.get("confirm")) !== "1") {
+    if (action === "set_epic" && feature.epic && (name ?? "").trim().toLowerCase() !== feature.epic.trim().toLowerCase() && String(form.get("confirm")) !== "1" && !form.get("remove")) {
       return renderCard(request, env, viewer, project, card, { confirmMove: (name ?? "").trim() });
     }
     if (action === "set_epic") await setFeatureEpic(env.DB, feature, name, viewer.login);

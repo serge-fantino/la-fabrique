@@ -701,7 +701,7 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
           <datalist id="epic_choices">${epics.map((epic) => `<option value="${escapeHtml(epic.title)}"></option>`).join("")}</datalist>
           <div class="card-actions">
             <button type="submit" class="button">Set the epic</button>
-            ${card.epic ? `<button type="submit" class="button quiet" name="epic" value="">Remove the epic</button>` : ""}
+            ${card.epic ? `<button type="submit" class="button quiet" name="remove" value="1" formnovalidate>Remove the epic</button>` : ""}
           </div>
         </form>`
       : "";

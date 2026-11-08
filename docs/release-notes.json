@@ -12,6 +12,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Choosing an epic on a feature writes it in the epic's document",
+    "changements": [
+      "Choosing an epic on a feature now adds the feature to the Features section of the epic's document (a new version), and removing the epic takes it out.",
+      "\"Remove the epic\" on a feature page works while the epic field shows the current epic."
+    ],
+    "stories": [294],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature or an epic still needed cannot be dropped or archived",
     "changements": [
       "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be."
