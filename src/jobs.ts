@@ -1,8 +1,9 @@
-import { advanceStatus, findCard, reopenStatus, saveFeaturesProposal, saveSpec, saveSplit, saveTests } from "./cards";
+import { advanceStatus, findCard, reopenStatus, saveEpicReview, saveFeaturesProposal, saveSpec, saveSplit, saveTests } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
 import { liveFor, refinementLiveFor, type LiveEvent } from "./live";
 import { findProject } from "./projects";
+import { reviewEpic } from "./epic-review";
 import { proposeFeatures, rubriquesFor, splitSpec, writeSpec, writeTests, type Answer, type SpecReading } from "./specs";
 
 // Claude works in the background (docs/decisions/0001-claude-in-the-background.md).
@@ -10,7 +11,7 @@ import { proposeFeatures, rubriquesFor, splitSpec, writeSpec, writeTests, type A
 // put on a queue; the queue's consumer runs it, detached from the browser,
 // writes its log and tells the card's open pages (CardLive).
 
-export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split" | "spec_tests" | "epic_features";
+export type JobKind = "spec_draft" | "spec_revise" | "spec_answer" | "spec_split" | "spec_tests" | "epic_features" | "epic_review";
 // waiting: in La Fabrique's line, not yet given to the queue; queued: given
 // to it; cancelled: taken out before it started (la-fabrique#226).
 export type JobStatus = "waiting" | "queued" | "running" | "done" | "failed" | "cancelled";
@@ -57,6 +58,7 @@ const LABELS: Record<JobKind, string> = {
   spec_split: "Claude is working on the stories",
   spec_tests: "Claude is writing the test cases",
   epic_features: "Claude is proposing the epic's features",
+  epic_review: "Claude is reviewing the epic against its features",
 };
 
 export function ordinal(n: number): string {
@@ -378,6 +380,15 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
     await saveTests(env.DB, current, job.login, outcome.tests, outcome.callId);
     const count = outcome.tests.stories.length;
     return finish(outcome.callId, `test cases written for ${count} stor${count === 1 ? "y" : "ies"}.`, outcome.costMicros);
+  }
+
+  if (job.kind === "epic_review") {
+    const outcome = await reviewEpic(env, project, card, job.login, job.request.instruction, watch);
+    if (!outcome.ok) return failed(outcome);
+    const current = (await findCard(env.DB, job.repo, job.cardId)) ?? card;
+    await saveEpicReview(env.DB, current, job.login, outcome.review, { callId: outcome.callId });
+    const count = outcome.review.findings.length;
+    return finish(outcome.callId, count ? `${count} finding${count === 1 ? "" : "s"}, to apply or dismiss one by one; nothing is changed.` : "nothing to report.", outcome.costMicros);
   }
 
   if (job.kind === "epic_features") {

@@ -12,6 +12,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Claude reviews an epic against its features",
+    "changements": [
+      "On an epic with features, Review with Claude reports what the document asks that no feature covers, features that overlap, a feature that goes against a decision, and missing dependencies, in the background and within the quotas.",
+      "The epic's page shows the findings by kind. Nothing changes until you apply one: a missing dependency is added, an uncovered need joins the proposed features to review in the preview, an overlap or a conflict becomes a note on the epic; or dismiss it. Each is recorded in the journal."
+    ],
+    "stories": [283],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude proposes an epic's features, reviewed before they are created",
     "changements": [
       "On an epic's page, Propose features with Claude reads the epic's document and its features and proposes only the missing ones: a title, a synopsis, a need, a priority and the dependencies of each, in the background and within the quotas.",
