@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Claude's epic changes show on the epic page",
+    "changements": [
+      "Attaching a feature to an epic, moving it or detaching it through Claude (card_create, card_update) now updates the epic page's Features list too, and the feature is offered again in Attach once detached."
+    ],
+    "stories": [309],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Choosing an epic on a feature writes it in the epic's document",
     "changements": [
       "Choosing an epic on a feature now adds the feature to the Features section of the epic's document (a new version), and removing the epic takes it out.",

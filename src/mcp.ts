@@ -35,6 +35,7 @@ import { cycleRules, projectRules } from "./lifecycle";
 import { setPriority } from "./backlog";
 import type { GrantProps } from "./oauth";
 import { findProject, listProjects, productionBranch, type Project } from "./projects";
+import { syncEpicLink } from "./card-epics";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
@@ -509,6 +510,7 @@ const TOOLS: Tool[] = [
       const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
       const card = await findCard(ctx.env.DB, project.repo, id);
       if (card && wanted) await setCardPriority(ctx.env.DB, card, wanted, ctx.login);
+      if (card && epic) await syncEpicLink(ctx.env.DB, card, ctx.login);
       const created = (await findCard(ctx.env.DB, project.repo, id)) ?? card;
       return created ? { created: cardSummary(ctx, created, undefined, []) } : fail("The card was not saved.");
     },
@@ -574,6 +576,7 @@ const TOOLS: Tool[] = [
           if (input.title !== card.title || input.body !== card.body) await reopenStatus(ctx.env.DB, project.repo, card.id, ctx.login, "the card changed");
         }
         card = (await findCard(ctx.env.DB, project.repo, card.id)) ?? card;
+        if (epicChanges) await syncEpicLink(ctx.env.DB, card, ctx.login);
       }
       if (status !== undefined && isStatus(status) && (await setStatus(ctx.env.DB, card, ctx.login, status))) {
         changes.push("status");

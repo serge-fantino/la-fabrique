@@ -347,11 +347,16 @@ describe("La Fabrique's MCP server", () => {
     expect(made.isError).toBe(false);
     const feature = (made.data["created"] as { id: number }).id;
     expect(await epicOf(feature)).toBe("F10 Docs");
+    // The epic page's Features list reads the card links: they follow too.
+    const linked = async () => (await env.DB.prepare("SELECT card_id FROM card_links WHERE kind = 'feature' AND ref = ?").bind(String(feature)).all<{ card_id: number }>()).results.map((r) => r.card_id);
+    expect(await linked()).toEqual([one.id]);
 
     expect((await call(access, "card_update", { project: REPO, card: feature, epic: "F11 Tests" })).data).toMatchObject({ changed: ["epic"] });
     expect(await epicOf(feature)).toBe("F11 Tests");
+    expect(await linked()).toEqual([two.id]);
     expect((await call(access, "card_update", { project: REPO, card: feature, epic: null })).data).toMatchObject({ changed: ["epic"] });
     expect(await epicOf(feature)).toBeNull();
+    expect(await linked()).toEqual([]);
 
     await call(access, "card_update", { project: REPO, card: feature, epic: two.id });
     const notEpic = await call(access, "card_update", { project: REPO, card: feature, epic: feature });
