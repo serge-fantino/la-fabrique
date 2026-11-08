@@ -73,6 +73,8 @@ import {
 import { activityStatement } from "./activity-log";
 import { addDependency, dependenciesOf, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import { epicSections, readEpicForm } from "./epic-sections";
+import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
+import { epicsPage } from "./epics-views";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
 import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
@@ -88,7 +90,7 @@ import { projectView } from "./view-context";
 import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|epics|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -144,6 +146,28 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       releases,
       nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
       progress,
+    }),
+    { cookies },
+  );
+}
+
+// The Epics tab: the project's epic cards with their status (la-fabrique#286).
+async function showEpics(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
+  const params = new URL(request.url).searchParams;
+  const archived = params.get("archived") === "1";
+  const [cards, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const epics = cards.filter((card) => card.kind === "epic" && Boolean(card.archivedAt) === archived);
+  const states = await epicStates(env, project, epics);
+  const notice = params.get("notice");
+  return html(
+    epicsPage(viewer, view, {
+      epics: epics.flatMap((epic) => {
+        const state = states.get(epic.id);
+        return state ? [{ epic, state }] : [];
+      }),
+      archived,
+      canWrite: canWriteCards(viewer),
+      notice: notice ? CARD_NOTICES[notice] : undefined,
     }),
     { cookies },
   );
@@ -258,6 +282,10 @@ const CARD_NOTICES: Record<string, string> = {
   tests: "Test cases saved.",
   priority: "Priority set: on the card, and on GitHub for its stories (one level lower when nice to have).",
   archived: "Archived: it no longer shows on the board.",
+  epic_dropped: "The epic is dropped.",
+  epic_archived: "The epic is archived. Show archived epics to see it again.",
+  epic_unarchived: "The epic is back in the list.",
+  epic_refused: "That is not possible with this epic's status.",
   restored: "Back on the board.",
   version_restored: "That version is back, as the newest one.",
   spec: "Spec written. Read it, then revise it with Claude or by hand.",
@@ -354,6 +382,8 @@ async function renderCard(
       dependencyLog,
       canDepend: viewer.role !== null,
       epics: epicCardsOf(allCards),
+      epicState: card.kind === "epic" ? (await epicStates(env, project, [card])).get(card.id) : undefined,
+      epicHistory: card.kind === "epic" ? await epicHistory(env.DB, project.repo, card.id) : undefined,
       epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
       attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && attachedTitles.get(c.id) !== card.title) : [],
     }),
@@ -425,6 +455,15 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     else if (action === "attach_feature") await setFeatureEpic(env.DB, feature, card.title, viewer.login, "document");
     else if ((await featureEpicTitles(env.DB, project.repo)).get(feature.id) === card.title) await setFeatureEpic(env.DB, feature, null, viewer.login, "document");
     return redirect(`${url}#${action === "set_epic" ? "epic" : "features"}`);
+  }
+  if (card.kind === "epic" && (action === "archive" || action === "restore" || action === "epic_drop" || action === "epic_archive" || action === "epic_unarchive")) {
+    if (!canWriteCards(viewer)) return redirect(url);
+    const refusal =
+      action === "epic_drop"
+        ? await dropEpic(env, project, card, viewer.login)
+        : await archiveEpic(env, project, card, viewer.login, action === "archive" || action === "epic_archive");
+    const notice = refusal ? "epic_refused" : action === "epic_drop" ? "epic_dropped" : action === "archive" || action === "epic_archive" ? "epic_archived" : "epic_unarchived";
+    return redirect(String(form.get("back")) === "epics" ? `${projectUrl(project.repo)}/epics?notice=${notice}` : `${url}?notice=${notice}`);
   }
   if (action === "archive" || action === "restore") {
     if (Boolean(card.archivedAt) !== (action === "restore")) return redirect(url);
@@ -1471,6 +1510,7 @@ export async function cardRoute(
     if (method === "POST") return withForm((data) => refinementRoute(request, env, viewer, project, data));
     return notAllowed();
   }
+  if (path === "epics") return method === "GET" ? showEpics(request, env, viewer, project) : notAllowed();
   if (path === "board") {
     if (method === "GET") return showBoard(request, env, viewer, project);
     if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));
