@@ -87,7 +87,10 @@ describe("The Epics tab", () => {
     expect(page).toContain("unarchived");
     const actions = (await logActions()).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["epic_status_changed", "epic_archived", "epic_unarchived"]));
-  });
+    // About twenty requests: well under a second here, but over the default
+    // 5 s on the CI runner, where the test then stopped with a request still
+    // running against storage already reset ("Isolated storage failed").
+  }, 30_000);
 
   it("is a tab of the Product perspective", async () => {
     const s = await seed();
