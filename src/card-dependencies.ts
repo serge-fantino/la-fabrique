@@ -24,7 +24,7 @@ interface LinkRow {
   ref: string;
 }
 
-async function projectLinks(db: D1Database, repo: string): Promise<LinkRow[]> {
+export async function projectLinks(db: D1Database, repo: string): Promise<LinkRow[]> {
   const { results } = await db
     .prepare("SELECT l.card_id, l.kind, l.ref FROM card_links l JOIN cards c ON c.id = l.card_id WHERE c.repo = ? AND l.kind IN (?, ?)")
     .bind(repo, DEPENDS, DEPENDS_EPIC)

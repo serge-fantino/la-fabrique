@@ -40,6 +40,7 @@ import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { epicActions, epicHistoryHtml, epicStatusPill } from "./epics-views";
 import type { EpicHistoryEntry, EpicState } from "./epic-status";
+import { notesHtml, reviewHtml } from "./epic-review";
 import { EPIC_REST_FIELD, epicFieldName, epicSections, parseEpicBody } from "./epic-sections";
 import { renderMarkdown } from "./markdown";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks } from "./story-editor";
@@ -427,6 +428,7 @@ const PURPOSES: Record<string, string> = {
   spec_split: "Stories proposed",
   spec_tests: "Test cases written",
   epic_features: "Features proposed",
+  epic_review: "Epic reviewed",
   key_check: "Key checked",
 };
 
@@ -984,10 +986,24 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     const proposedLink = proposed && isEpic
       ? `<p class="notice" role="status">Claude proposed ${proposed.features.length} feature${proposed.features.length === 1 ? "" : "s"}. <a class="button" href="${escapeHtml(url)}/features">Review the proposed features</a></p>`
       : "";
+    const review =
+      usable && isEpic && (spec || card.body.trim()) && (data.epicFeatures ?? []).length
+        ? panel(
+            "epic_review",
+            "Review with Claude",
+            false,
+            false,
+            `<p class="help">Claude reads the epic's document and its features, and reports what no feature covers, features that overlap, a feature that goes against a decision, and missing dependencies. Nothing is changed: you apply each finding yourself. It counts as one Claude call.</p>
+            <div class="field">
+              <label for="epic_review">Anything to look at? <span class="muted">(optional)</span></label>
+              <textarea id="epic_review" name="instruction" rows="2" maxlength="4000"></textarea>
+            </div>`,
+          )
+        : "";
     const story = spec && !isEpic && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
     work = `${data.split ? proposalHtml(url, data.split, spec) : ""}${proposedLink}
       <div class="spec-actions">
-        ${draft}${split}${tests}${features}${story}${change}
+        ${draft}${split}${tests}${features}${review}${story}${change}
         <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${isEpic ? (spec ? "Edit the document by hand" : "Write the document by hand") : spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
       ${
@@ -1037,6 +1053,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">${isEpic 
       </article>
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
+      ${isEpic && !shown ? reviewHtml(viewer, project, card, data.canWrite, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title]))) + notesHtml(card, new Map((data.epicFeatures ?? []).map((f) => [f.id, f.title])), project.repo) : ""}
       ${isEpic && !shown ? epicHistoryHtml(data.epicHistory ?? []) : ""}
       <section class="card-spec" id="spec">
         <h2>${isEpic ? "Document" : "Spec"}</h2>
