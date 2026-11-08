@@ -1,6 +1,7 @@
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks, type StoryEditorData } from "./story-editor";
+import { warningsHtml, type DependencyWarning } from "./dependency-warnings";
 import { cardRef, cardUrl, statusPill } from "./card-views";
 import { jobLabel, type Job } from "./jobs";
 import { formatUsd, type CallsLeft } from "./llm";
@@ -56,6 +57,8 @@ export interface RefinementData {
   calls?: CallsLeft | null;
   features: Card[];
   others: Card[];
+  // Dependencies not available yet, by feature (la-fabrique#299): warnings only.
+  warnings?: Map<number, DependencyWarning[]>;
   // The stories Claude proposed for a feature, in the same editor as the
   // card's stories page (la-fabrique#228).
   editors?: Map<number, Omit<StoryEditorData, "repo" | "errors">>;
@@ -273,11 +276,19 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
   const running = data.sprint
     ? `<p><span class="pill">Sprint running</span> ${escapeHtml(data.sprint.label)} is in progress: <a href="${escapeHtml(base)}/sprint">go to the sprint</a>.</p>`
     : "";
+  // Warnings never change the verdict.
+  const warned = data.features.filter((card) => data.warnings?.get(card.id)?.length);
+  const warningList = warned.length
+    ? `<div class="go-warnings"><p><strong>Warnings</strong> <span class="muted small">(they do not block the release)</span></p><ul class="plain">${warned
+        .map((card) => `<li><a href="#card-${card.id}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a>${warningsHtml(data.warnings?.get(card.id) ?? [])}</li>`)
+        .join("")}</ul></div>`
+    : "";
   const verdict = go
     ? data.sprint
       ? `<p><span class="pill ok">GO</span> Every feature of Next release is ready.</p>${running}`
       : `<p><span class="pill ok">GO</span> Every feature of Next release is ready. <a class="button" href="${escapeHtml(base)}/sprint#start-sprint">Start the sprint</a></p>`
     : `<p><span class="pill alert">NO-GO</span> ${progress.features ? "What blocks:" : "No feature in Next release."}</p>${blockersList}${running}`;
+  const verdictAll = verdict + warningList;
   const summary = `<section class="card release-progress" id="release-progress" aria-label="Progress of the next release">
       <h2>Next release</h2>
       ${meter("Features", progress.features, progress.features, "The features in Next release")}
@@ -285,7 +296,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${meter("Refined", progress.refined, progress.features, "Features specified and with stories")}
       ${meter("Ready", progress.ready, progress.features, "Features whose every needed story meets the Definition of Ready")}
       <p class="release-stories" tabindex="0" title="Stories of these features: needed ones hold the release back, nice to have ones never do"><span class="mono">${progress.needed + progress.nice}</span> stories: <span class="mono">${progress.needed}</span> needed, <span class="mono">${progress.nice}</span> nice to have</p>
-      ${verdict}
+      ${verdictAll}
       <form method="get" action="${escapeHtml(base)}/refinement/preparation" class="inline preparation-form">
         <label>Level of detail <select name="level">
           <option value="1">1 · Features and their specs</option>
@@ -328,6 +339,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       </div>
       <p>${priority(card)} ${order(card, index, total)}</p>
       <p class="muted">${escapeHtml(synopsisOf(card))}</p>
+      ${warningsHtml(data.warnings?.get(card.id) ?? [], (w) => (w.card ? cardUrl(project.repo, w.card) : null))}
       ${jobState(card)}
       ${numbers.length ? `<ul class="plain">${numbers.map((number) => story(card, number)).join("")}</ul>` : `<p class="muted small">No story yet.</p>`}
       <p>${step(card, next)}</p>

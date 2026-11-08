@@ -80,7 +80,8 @@ import {
   type FreeDimension,
 } from "./cards";
 import { activityStatement } from "./activity-log";
-import { addDependency, dependenciesOf, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
+import { dependencyWarnings } from "./dependency-warnings";
+import { addDependency, dependenciesOf, projectLinks, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import { epicSections, readEpicForm } from "./epic-sections";
 import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
 import { epicsPage } from "./epics-views";
@@ -144,12 +145,12 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   await joinSprint(env, project, cards, releases);
   const progress = await cardProgress(env, project, cards);
   // The epic lanes' headers show the epic's progress (la-fabrique#305).
-  const epics = new Map<string, EpicProgress>();
+  const epics = new Map<string, { id: number; progress: EpicProgress }>();
   if (board.by === "epic" || board.then === "epic") {
     const found = allCards.filter((card) => card.kind === "epic" && !card.archivedAt);
     for (const [id, one] of await epicProgresses(env, project, found, allCards)) {
       const epic = found.find((card) => card.id === id);
-      if (epic) epics.set(epic.title.trim().toLowerCase(), one);
+      if (epic) epics.set(epic.title.trim().toLowerCase(), { id: epic.id, progress: one });
     }
   }
   const notice = url.searchParams.get("notice");
@@ -1275,8 +1276,11 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
     return redirect(base);
   }
   const params = new URL(request.url).searchParams;
-  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const [everyCard, links, depLinks, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectLinks(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const cards = everyCard.filter((card) => card.kind !== "epic");
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
+  // A dependency neither available nor in the same release is a warning (la-fabrique#299).
+  const warnings = new Map(features.map((card) => [card.id, dependencyWarnings(card, everyCard, depLinks, { sameRelease: true })]));
   const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
   // A waiting job with room free (a lost wake-up) gets its turn now.
@@ -1309,6 +1313,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       calls: left,
       features,
       others,
+      warnings,
       links,
       stories,
       canWrite: canWriteCards(viewer),
