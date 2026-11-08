@@ -52,6 +52,7 @@ import {
   moveCard,
   readBoardQuery,
   readCardForm,
+  MAX_BODY,
   linkStory,
   restoreRevision,
   saveSpec,
@@ -71,6 +72,7 @@ import {
 } from "./cards";
 import { activityStatement } from "./activity-log";
 import { addDependency, dependenciesOf, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
+import { epicSections, readEpicForm } from "./epic-sections";
 import type { Env } from "./env";
 import { html, json, redirect } from "./http";
 import { allowance, callsLeft, cardCalls, cardSpends } from "./llm";
@@ -115,7 +117,8 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   const url = new URL(request.url);
   const board = readBoardQuery(url.searchParams);
   const [cards, { view, cookies }, spends, working] = await Promise.all([
-    listCards(env.DB, project.repo),
+    // Epic cards are documents, not on the board.
+    listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")),
     projectView(request, env, project, viewer),
     cardSpends(env.DB, project.repo),
     workingCards(env.DB, project.repo),
@@ -191,7 +194,7 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   for (const dimension of DIMENSIONS) {
     const value = form.get(`set_${dimension}`);
     if (typeof value !== "string") continue;
-    if (dimension === "kind" && !isKind(value)) continue;
+    if (dimension === "kind" && (!isKind(value) || value === "epic" || card.kind === "epic")) continue;
     if (dimension === "status" && !isStatus(value)) continue;
     set[dimension] = value || null;
   }
@@ -240,6 +243,7 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const input = readCardForm(form, known);
+  if (input.tags.kind === "epic") input.body = readEpicForm(form, epicSections(project)).slice(0, MAX_BODY);
   if (!input.title) {
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card: null, input, known, error: "A card needs a title." }), { status: 422, cookies });
@@ -340,7 +344,7 @@ async function renderCard(
       events,
       split: card.data.split,
       storyStates,
-      priorities: cycleRules(project.check?.config).priorities,
+      priorities: card.kind === "epic" ? [] : cycleRules(project.check?.config).priorities,
       progress,
       progressHistory,
       named,
@@ -529,6 +533,9 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const input = readCardForm(form, known);
+  // The type is fixed at creation: a feature never becomes an epic, nor the other way.
+  input.tags.kind = card.kind;
+  if (card.kind === "epic") input.body = readEpicForm(form, epicSections(project)).slice(0, MAX_BODY);
   if (!input.title) {
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card, input, known, error: "A card needs a title." }), { status: 422, cookies });
@@ -1039,7 +1046,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
     return redirect(base);
   }
   const params = new URL(request.url).searchParams;
-  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
+  const [cards, links, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")), storyCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
   const { features, others } = refinementCards(cards, NEXT_RELEASE);
   const running = await activeSprint(env.DB, project.repo);
   const stories = await cardStories(env, project, [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))], "cache");
