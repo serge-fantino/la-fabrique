@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A feature can depend on another feature or on an epic",
+    "changements": [
+      "On a feature's page, anyone with a role on the project (tester included) can say it depends on another feature of the project or on a whole epic. The dependency shows on both pages (Depends on, Needed by) with the other's status.",
+      "A dependency that would make a loop, directly or through an epic, is refused with the features that make it. Adding and removing are in the project's log and in the dependency history of the page."
+    ],
+    "stories": [298],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature's epic is chosen from the project's epic cards",
     "changements": [
       "A feature's page has an Epic section: pick one of the project's epic cards, or type a new name to create an empty draft epic card with the feature attached. A feature belongs to one epic at most.",

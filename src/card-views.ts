@@ -1,3 +1,4 @@
+import type { Dependencies, dependencyHistory } from "./card-dependencies";
 import { type ValidationState } from "./feature-validation";
 import {
   axisValues,
@@ -584,6 +585,11 @@ export interface CardPageData {
   // The feature's validation (la-fabrique#232), and whether it can be asked now.
   validation?: ValidationState;
   canValidate?: boolean;
+  // Dependencies on other features or epics, both ways (la-fabrique#298).
+  dependencies?: Dependencies;
+  dependencyOptions?: { cards: Card[]; epics: string[] };
+  dependencyLog?: Awaited<ReturnType<typeof dependencyHistory>>;
+  canDepend?: boolean;
   // The project's epic cards (to pick a feature's epic from), and, on an
   // epic, its features and the features that could be attached.
   epics?: Card[];
@@ -641,6 +647,52 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
     return `<section id="features"><h2>Features</h2>${rows ? `<ul class="card-stories">${rows}</ul>` : `<p class="muted">No feature attached yet.</p>`}${attach}</section>`;
   }
   return "";
+}
+
+function epicPill(cards: Card[]): string {
+  if (!cards.length) return `<span class="pill">no feature yet</span>`;
+  const done = cards.filter((card) => card.status === "validated").length;
+  return `<span class="pill">${cards.length} feature${cards.length === 1 ? "" : "s"}, ${done} validated</span>`;
+}
+
+function dependenciesHtml(viewer: Viewer, url: string, project: Project, data: CardPageData): string {
+  const deps = data.dependencies;
+  if (!deps || data.shown) return "";
+  const base = projectUrl(project.repo);
+  const link = (card: Card) => `<a class="mono" href="${escapeHtml(base)}/cards/${card.id}">${cardRef(card.id)}</a> ${escapeHtml(card.title)} ${statusPill(card)}`;
+  const remove = (on: string) =>
+    data.canDepend
+      ? ` <form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}<input type="hidden" name="action" value="depend_remove" /><input type="hidden" name="on" value="${escapeHtml(on)}" /><button type="submit" class="button quiet" aria-label="Remove this dependency">Remove</button></form>`
+      : "";
+  const dependsOn = [
+    ...deps.dependsOn.map((card) => `<li>Depends on ${link(card)}${remove(String(card.id))}</li>`),
+    ...deps.dependsOnEpics.map((entry) => `<li>Depends on epic <strong>${escapeHtml(entry.epic)}</strong> ${epicPill(entry.cards)}${remove(`epic:${entry.epic}`)}</li>`),
+  ];
+  const needed = deps.neededBy.map((entry) => `<li>Needed by ${link(entry.card)}${entry.viaEpic ? ` <span class="muted small">through epic ${escapeHtml(entry.viaEpic)}</span>` : ""}</li>`);
+  const options = data.dependencyOptions;
+  const chosen = new Set(deps.dependsOn.map((card) => card.id));
+  const form =
+    data.canDepend && options && !data.card.archivedAt
+      ? `<form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}<input type="hidden" name="action" value="depend_add" />
+          <label for="depend-on">Depends on</label>
+          <select id="depend-on" name="on">
+            <optgroup label="Features">${options.cards.filter((card) => !chosen.has(card.id)).map((card) => `<option value="${card.id}">${cardRef(card.id)} ${escapeHtml(card.title)}</option>`).join("")}</optgroup>
+            <optgroup label="Epics">${options.epics.filter((epic) => !deps.dependsOnEpics.some((entry) => entry.epic === epic)).map((epic) => `<option value="epic:${escapeHtml(epic)}">Epic ${escapeHtml(epic)}</option>`).join("")}</optgroup>
+          </select>
+          <button type="submit" class="button">Add dependency</button></form>`
+      : "";
+  const log = (data.dependencyLog ?? [])
+    .map((entry) => {
+      const target = entry.epic ? `epic ${escapeHtml(entry.epic)}` : cardRef(entry.on ?? 0);
+      return `<li><span class="mono muted">@${escapeHtml(entry.actor)} · ${formatDate(entry.at)}</span> ${entry.action === "card_dependency_added" ? "added" : "removed"} the dependency of ${cardRef(entry.card)} on ${target}</li>`;
+    })
+    .join("");
+  return `<section class="card-dependencies" id="dependencies"><h2>Dependencies</h2>
+      <p class="muted small">Upstream: what has to come first. Stories keep GitHub's blocked by for technical dependencies.</p>
+      ${dependsOn.length || needed.length ? `<ul class="card-stories">${dependsOn.join("")}${needed.join("")}</ul>` : `<p class="muted">No dependency.</p>`}
+      ${form}
+      ${log ? `<details><summary>Dependency history</summary><ul class="card-history">${log}</ul></details>` : ""}
+    </section>`;
 }
 
 // A story that names a card it is not linked to: the form that links it
@@ -963,6 +1015,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
       }
       ${testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
       ${validationHtml(viewer, url, data)}
+      ${dependenciesHtml(viewer, url, project, data)}
       ${
         data.named?.length && !shown
           ? `<section class="card-named" id="named"><h2>Stories that name ${cardRef(card.id)}</h2>
