@@ -82,6 +82,7 @@ import {
 } from "./cards";
 import { activityStatement } from "./activity-log";
 import { dependencyWarnings } from "./dependency-warnings";
+import { dependencyFirst, dependencyNotes } from "./sprint-dependencies";
 import { addDependency, dependenciesOf, projectLinks, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import { epicSections, readEpicForm } from "./epic-sections";
 import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
@@ -1433,18 +1434,22 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const held = heldStories(links, stories, new Set(runs.filter(isRunning).map((run) => run.issue).filter((issue): issue is number => issue !== null)), sprintCards.map((card) => card.id));
   // The next for Claude: in the sprint's order, the first ready story not
   // launched yet, nor waiting for another of its card.
+  // A dependency in the sprint comes first (la-fabrique#301).
+  const depLinks = await projectLinks(env.DB, project.repo);
+  const launchOrder = dependencyFirst(sprintCards, depLinks);
   const next =
-    sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => isReadyStage(stories.get(number)) && !launches.has(number) && !held.has(number)) ?? null;
+    launchOrder.flatMap((card) => links.order.get(card.id) ?? []).find((number) => isReadyStage(stories.get(number)) && !launches.has(number) && !held.has(number)) ?? null;
   const launched = Number(params.get("story"));
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
-      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(launchOrder, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,
       sprintCards,
+      dependencyNotes: dependencyNotes(sprintCards, depLinks, new Set((runState?.cards ?? []).filter((card) => card.step === "stopped").map((card) => card.id))),
       nextCards,
       keptCards,
       integration,
