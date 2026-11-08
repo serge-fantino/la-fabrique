@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "The Epics tab: every epic with its status",
+    "changements": [
+      "New Epics tab in the Product perspective: each non-archived epic with its status and its number of features. The status follows the features, never typed: Ideation (no feature), Open (features, none in the sprint), Active (one is in the sprint), Done (all shipped or dropped).",
+      "By hand: Drop an epic while it is in Ideation; Archive it when it is Done (or Dropped); Unarchive it from the archived list (Show archived epics). Each status change is dated in the epic's status history, with its reason."
+    ],
+    "stories": [286],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Attach features to an epic and see them on its page",
     "changements": [
       "Epic cards are values of the Epic dimension, listed next to the legacy free-text values; the board filter by epic finds all its features.",

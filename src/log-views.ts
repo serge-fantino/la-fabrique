@@ -75,6 +75,11 @@ export function describe(entry: LogEntry, repo: string): string {
       const verb = { card_created: "wrote", card_edited: "edited", card_archived: "archived", card_restored: "restored" }[entry.action];
       return `${verb} card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     }
+    case "epic_status_changed":
+      return `epic ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}: ${text(d["from"]) || "—"} → ${text(d["to"])}${d["reason"] ? ` (${text(d["reason"])})` : ""}`;
+    case "epic_archived":
+    case "epic_unarchived":
+      return `${entry.action === "epic_archived" ? "archived" : "unarchived"} epic ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_moved": {
       const changes = Array.isArray(d["changes"]) ? (d["changes"] as { dimension?: unknown; from?: unknown; to?: unknown }[]) : [];
       const said = changes.map((change) => `${text(change.dimension)}: ${text(change.from) || "not set"} → ${text(change.to) || "not set"}`).join(", ");

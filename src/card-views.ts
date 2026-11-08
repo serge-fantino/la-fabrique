@@ -38,6 +38,8 @@ import type { Stage } from "./lifecycle";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
+import { epicActions, epicHistoryHtml, epicStatusPill } from "./epics-views";
+import type { EpicHistoryEntry, EpicState } from "./epic-status";
 import { EPIC_REST_FIELD, epicFieldName, epicSections, parseEpicBody } from "./epic-sections";
 import { renderMarkdown } from "./markdown";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks } from "./story-editor";
@@ -594,6 +596,8 @@ export interface CardPageData {
   // The project's epic cards (to pick a feature's epic from), and, on an
   // epic, its features and the features that could be attached.
   epics?: Card[];
+  epicState?: EpicState | undefined;
+  epicHistory?: EpicHistoryEntry[] | undefined;
   epicFeatures?: Card[];
   attachable?: Card[];
 }
@@ -834,10 +838,16 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     data.canWrite && !shown
       ? `<div class="card-actions">
           <a class="button" href="${escapeHtml(url)}/edit">Edit</a>
-          <form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}
+          ${
+            card.kind === "epic"
+              ? data.epicState
+                ? epicActions(viewer, url, card, data.epicState, null)
+                : ""
+              : `<form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}
             <input type="hidden" name="action" value="${card.archivedAt ? "restore" : "archive"}" />
             <button type="submit" class="button quiet">${card.archivedAt ? "Restore" : "Archive"}</button>
-          </form>
+          </form>`
+          }
         </div>`
       : "";
   const issues = data.links.filter((link) => link.kind === "issue");
@@ -979,7 +989,9 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
         tags,
         shown
           ? undefined
-          : data.canWrite && !card.archivedAt
+          : isEpic && data.epicState
+            ? epicStatusPill(data.epicState)
+            : data.canWrite && !card.archivedAt
             ? statusForm(viewer, url, card, data.progress)
             : statusPill(card, data.progress, data.progressHistory?.at(-1)?.at ?? null),
       )}${
@@ -998,6 +1010,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">${isEpic 
       </article>
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
+      ${isEpic && !shown ? epicHistoryHtml(data.epicHistory ?? []) : ""}
       ${isEpic ? "" : `<section class="card-spec" id="spec">
         <h2>Spec</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}
