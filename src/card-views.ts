@@ -17,6 +17,7 @@ import {
   shownStatus,
   shownStatusLabel,
   STATUS_LABELS,
+  CARD_MENTION,
   valueLabel,
   valueOf,
   type Axis,
@@ -370,7 +371,9 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
 const TOKEN = /(\d+)/g;
 
 // The text in Markdown, its annotations as tags and links.
-export function renderCardText(body: string, repo: string, imageUrl?: (src: string) => string | null): string {
+// `cards` holds, per card id of the project, the HTML of its link with its
+// status: a "C57" naming one of them becomes that.
+export function renderCardText(body: string, repo: string, imageUrl?: (src: string) => string | null, cards?: ReadonlyMap<number, string>): string {
   const pieces: string[] = [];
   const keep = (html: string) => {
     pieces.push(html);
@@ -382,6 +385,10 @@ export function renderCardText(body: string, repo: string, imageUrl?: (src: stri
       keep(value.trim() ? tag(dimension.toLowerCase() as FreeDimension, value.trim()) : ""),
     )
     .replace(/\[\[([^[\]\n]{1,60})\]\]/g, (_all, term: string) => keep(`<span class="term" title="Glossary term">${escapeHtml(term.trim())}</span>`))
+    .replace(CARD_MENTION, (all, id: string) => {
+      const link = cards?.get(Number(id));
+      return link ? keep(link) : all;
+    })
     .replace(/(^|[\s(])#(\d{1,7})\b/g, (_all, before: string, number: string) =>
       before + keep(`<a href="https://github.com/${escapeHtml(repo)}/issues/${number}">#${number}</a>`),
     )
@@ -450,12 +457,12 @@ export function spendLine(spend: Spend): string {
   return `${spend.calls} call${spend.calls === 1 ? "" : "s"} · ${formatUsd(spend.micros)}${spend.unknown ? ` (+ ${spend.unknown} at an unknown price)` : ""}`;
 }
 
-function specHtml(spec: CardSpec | undefined, rubriques: Rubrique[], repo: string): string {
+function specHtml(spec: CardSpec | undefined, rubriques: Rubrique[], repo: string, cards?: ReadonlyMap<number, string>): string {
   if (!spec) return `<p class="muted">No spec yet. Claude can write a first one from the card, the project's principles and what the project already has, and ask what it needs to know.</p>`;
   const sections = rubriques
     .map(
       (rubrique) => `<h3>${escapeHtml(rubrique.titre)}</h3>
-        ${spec.answers[rubrique.cle]?.trim() ? `<div class="markdown">${renderCardText(spec.answers[rubrique.cle] ?? "", repo)}</div>` : `<p class="muted">—</p>`}`,
+        ${spec.answers[rubrique.cle]?.trim() ? `<div class="markdown">${renderCardText(spec.answers[rubrique.cle] ?? "", repo, undefined, cards)}</div>` : `<p class="muted">—</p>`}`,
     )
     .join("");
   const by = spec.source === "claude" ? "Written with Claude" : "Edited by hand";
@@ -581,6 +588,8 @@ export interface CardPageData {
   // The stories that name this card ("C5") without being linked to it
   // (la-fabrique#218): proposed, never linked by themselves.
   named?: { number: number; title: string; url: string }[];
+  // Cards of the project named in the text or spec ("C57"): link and status.
+  mentioned?: ReadonlyMap<number, string>;
   // The feature's validation (la-fabrique#232), and whether it can be asked now.
   validation?: ValidationState;
   canValidate?: boolean;
@@ -881,13 +890,13 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">
-${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
+${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned) : `<p class="muted">No text yet.</p>`}
       </article>
       ${actions}
       <section class="card-spec" id="spec">
         <h2>Spec</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}
-        ${specHtml(spec, data.rubriques, project.repo)}
+        ${specHtml(spec, data.rubriques, project.repo, data.mentioned)}
         ${questionsHtml(viewer, url, spec, canAnswer)}
         ${dialogueHtml(spec)}
         ${work}

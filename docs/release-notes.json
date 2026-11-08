@@ -1,6 +1,15 @@
 [
   {
     "version": "next",
+    "date": "2026-11-08",
+    "titre": "A card named in another card's text is a link with its status",
+    "changements": [
+      "Naming a card in another card's text or spec (\"C57\") now links to it and shows its status, as the board does. \"C570\" or \"ABC57\" stay plain text, as does a card of no such project."
+    ],
+    "stories": [289],
+    "liens": null
+  },  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [
