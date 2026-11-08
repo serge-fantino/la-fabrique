@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Claude writes an epic's technical GitHub issue",
+    "changements": [
+      "When Claude creates or updates an epic through La Fabrique (epic_create, epic_update), it can pass a technical text: the project's GitHub epic issue (label epique) is created or its text replaced, signed with the person's login and linking to the epic card, which links back. The issue is never a copy of the card's document. Without a technical text the issue is untouched; if GitHub refuses, the call says so and the card is still written."
+    ],
+    "stories": [310],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude attaches a feature to an epic, or detaches it",
     "changements": [
       "Claude connected to La Fabrique can now attach a feature to an epic when creating or updating it (card_create and card_update take epic: an epic card's number or name), move it to another epic, or detach it with null. Only an epic card of the same project is accepted, and never for an epic card itself. Each write is in the project log."

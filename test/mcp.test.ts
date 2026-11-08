@@ -275,6 +275,65 @@ describe("La Fabrique's MCP server", () => {
     expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["epic_create", "epic_update"]);
   });
 
+  it("writes an epic's technical GitHub issue on create and update, and survives a GitHub refusal", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const github = fetchMock.get("https://api.github.com");
+    const issue = (number: number, body: string) =>
+      JSON.stringify({ number, title: "F10 Docs", html_url: `https://github.com/${REPO}/issues/${number}`, state: "open", labels: [{ name: "epique" }], body, user: { login: "la-fabrique[bot]" }, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", closed_at: null });
+    const sent: { labels?: string[]; body: string }[] = [];
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues` }).reply(201, (options) => {
+      const body = JSON.parse(String(options.body)) as { labels?: string[]; body: string };
+      sent.push(body);
+      return issue(60, body.body);
+    });
+    const created = await call(access, "epic_create", { project: REPO, title: "F10 Docs", document: "Functional document.", technical: "Use a queue." });
+    const epic = created.data["created"] as { id: number };
+    expect(created.data["github_issue"]).toMatchObject({ number: 60, created: true });
+    expect(sent[0]?.labels).toEqual(["epique"]);
+    expect(sent[0]?.body).toContain("Use a queue.");
+    expect(sent[0]?.body).toContain("@pe");
+    expect(sent[0]?.body).toContain(`/c/${epic.id}`);
+    expect(sent[0]?.body).not.toContain("Functional document.");
+    const link = await env.DB.prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = 'epic_issue'").bind(epic.id).first<{ ref: string }>();
+    expect(link?.ref).toBe("60");
+    expect((await call(access, "epic", { project: REPO, epic: epic.id })).data["github_issue"]).toMatchObject({ number: 60 });
+
+    // Update with a technical text replaces the issue's body.
+    const patched: string[] = [];
+    github.intercept({ method: "PATCH", path: `/repos/${REPO}/issues/60` }).reply(200, (options) => {
+      const body = JSON.parse(String(options.body)) as { body: string };
+      patched.push(body.body);
+      return issue(60, body.body);
+    });
+    const updated = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 1, document: "Doc 2.", technical: "Use a cron." });
+    expect(updated.data["github_issue"]).toMatchObject({ number: 60, updated: true });
+    expect(patched[0]).toContain("Use a cron.");
+
+    // No technical text: nothing is sent to GitHub (no interceptor left pending).
+    const quiet = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 2, document: "Doc 3." });
+    expect(quiet.data["github_issue"]).toBeUndefined();
+
+    // GitHub refuses: said, and the card is still written.
+    github.intercept({ method: "PATCH", path: `/repos/${REPO}/issues/60` }).reply(403, "{}");
+    const refused = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 3, document: "Doc 4.", technical: "x" });
+    expect((refused.data["github_issue"] as { error: string }).error).toContain("refused");
+    expect(refused.data).toMatchObject({ epic: { revision: 4 } });
+
+    // An epic with no issue gets one on update.
+    const bare = (await call(access, "epic_create", { project: REPO, title: "F11 Tests", document: "b" })).data["created"] as { id: number };
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues` }).reply(201, (options) => issue(61, (JSON.parse(String(options.body)) as { body: string }).body));
+    const made = await call(access, "epic_update", { project: REPO, card: bare.id, rev: 1, technical: "How." });
+    expect(made.data["github_issue"]).toMatchObject({ number: 61, created: true });
+
+    // A refused creation leaves the card written.
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues` }).reply(422, "{}");
+    const failed = await call(access, "epic_create", { project: REPO, title: "F12 X", document: "c", technical: "t" });
+    expect((failed.data["github_issue"] as { error: string }).error).toContain("refused");
+    expect(failed.data["created"]).toBeTruthy();
+  });
+
   it("attaches a feature to an epic, moves it, detaches it, and refuses what is not an epic", async () => {
     await seedProject();
     await grantRole("pe", "product_engineer");
