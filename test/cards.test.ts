@@ -320,3 +320,12 @@ describe("a card named alone on a line (#290)", () => {
     expect(markedLink("o/r", { id: 5, title: "T", archivedAt: null } as never)).toContain("dropped");
   });
 });
+
+import { filterCards as filterEpicsOut } from "../src/cards";
+import { it as itEpic, expect as expectEpic } from "vitest";
+itEpic("epic cards show on the board only when the Type filter asks", () => {
+  const base = { q: "", kind: "", status: "", all: false, values: {} } as never;
+  const cards = [{ id: 1, kind: "feature", title: "a", body: "", status: "draft" }, { id: 2, kind: "epic", title: "b", body: "", status: "draft" }] as never;
+  expectEpic(filterEpicsOut(cards, base).map((c: { id: number }) => c.id)).toEqual([1]);
+  expectEpic(filterEpicsOut(cards, { ...(base as object), kind: "epic" } as never).map((c: { id: number }) => c.id)).toEqual([2]);
+});

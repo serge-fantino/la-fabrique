@@ -12,6 +12,27 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Epic cards stay out of the features on the board",
+    "changements": [
+      "The board no longer mixes epic cards with features; set the Type filter to Epic to see them."
+    ],
+    "stories": [297],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Naming a feature in an epic attaches it",
+    "changements": [
+      "Saving an epic whose text newly names a feature (\"C57\") attaches it to the epic; removing the name detaches it; restoring an older version does the same. A feature belongs to one epic only: if it already belongs to another, it stays there and you get a warning.",
+      "A feature named in another epic or card shows \"belongs to <epic>\" with a link, in line or in a sentence. Changing a feature's epic asks you to confirm that it leaves the first one."
+    ],
+    "stories": [291],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A dependency not yet in production shows a warning",
     "changements": [
       "A feature whose dependency (a feature, or an epic) is not In production with its mandatory stories shows a warning on its page, naming the dependency and its state. In Refinement the warning shows on the feature unless the dependency is in the same release, and GO / NO-GO lists the warnings with their state without ever changing the verdict."
