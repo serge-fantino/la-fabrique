@@ -1,6 +1,19 @@
 [
   {
     "version": "next",
+    "date": "2026-11-08",
+    "titre": "Claude reads an epic with its features, and filters the board by epic",
+    "changements": [
+      "Claude connected to La Fabrique can now read an epic with the new epic tool: its document, its revision and its features with status and progress, plus the count of features per status. An epic is named by its card number or its name.",
+      "The board tool takes an epic to show only its features, and the projects tool says how many epics each project has. Until epics are cards of their own, an epic is a card that other cards name in their Epic."
+    ],
+    "stories": [
+      307
+    ],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [
