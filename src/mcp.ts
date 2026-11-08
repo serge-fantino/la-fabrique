@@ -233,7 +233,7 @@ function featuresOf(cards: Card[], epic: Card): Card[] {
 }
 
 function epicCards(cards: Card[]): Card[] {
-  return cards.filter((card) => !card.archivedAt && featuresOf(cards, card).length > 0);
+  return cards.filter((card) => !card.archivedAt && (card.kind === "epic" || featuresOf(cards, card).length > 0));
 }
 
 // An epic named by its card number, "C12", or its name.
@@ -557,6 +557,54 @@ const TOOLS: Tool[] = [
       }
       const current = (await findCard(ctx.env.DB, project.repo, card.id)) ?? card;
       return { changed: changes, ...(refused.length ? { github_refused: refused } : {}), card: cardSummary(ctx, current, undefined, (await storyCards(ctx.env.DB, project.repo)).order.get(card.id) ?? []) };
+    },
+  },
+  {
+    name: "epic_create",
+    title: "Create an epic",
+    description:
+      "A new epic card on the project's board, as a draft, with its functional document (what and why), in Markdown. No GitHub issue is created. Returns its number and revision; then epic_update to rewrite the document.",
+    inputSchema: { type: "object", properties: { ...PROJECT, title: { type: "string" }, document: { type: "string", description: "The epic's document, in Markdown" } }, required: ["project", "title", "document"] },
+    needs: "request",
+    write: true,
+    async run(ctx, args) {
+      const project = await projectOf(ctx, args);
+      const title = text(args, "title", 200)?.trim();
+      if (!title) fail("An epic needs a title.");
+      const document = text(args, "document", 50_000);
+      if (document === undefined) fail("An epic needs its document.");
+      const input = await cardInput(ctx, project, { title: title ?? "", body: document ?? "", kind: "epic", status: "draft" });
+      const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
+      const created = await findCard(ctx.env.DB, project.repo, id);
+      if (!created) return fail("The epic was not saved.");
+      return { created: { id, ref: cardRef(id), title: created.title, revision: created.rev, url: absolute(ctx, cardUrl(project.repo, id)) } };
+    },
+  },
+  {
+    name: "epic_update",
+    title: "Change an epic's document",
+    description:
+      "Change an epic card's title or document. Pass rev, read from the epic, to refuse to write over a change made since; a new revision is kept in its history.",
+    inputSchema: {
+      type: "object",
+      properties: { ...PROJECT, ...CARD, title: { type: "string" }, document: { type: "string" }, rev: { type: "integer", description: "The epic's revision you read" } },
+      required: ["project", "card", "rev"],
+    },
+    needs: "request",
+    write: true,
+    async run(ctx, args) {
+      const project = await projectOf(ctx, args);
+      const found = await findCard(ctx.env.DB, project.repo, integer(args, "card"));
+      if (!found || found.kind !== "epic") return fail(`${cardRef(integer(args, "card"))} is not an epic card of ${project.repo}.`);
+      if (found.archivedAt) fail("This epic is archived: bring it back from its page first.");
+      if (integer(args, "rev") !== found.rev) fail(`The card changed since (now version ${found.rev}): read it again.`);
+      const title = text(args, "title", 200)?.trim();
+      const document = text(args, "document", 50_000);
+      const input = await cardInput(ctx, project, { title: title || found.title, body: document ?? found.body, kind: "epic", status: found.status, epic: found.epic, domain: found.domain, segment: found.segment, release: found.release });
+      const outcome = await updateCard(ctx.env.DB, found, ctx.login, input, found.rev);
+      if (outcome === "conflict") fail("The card changed while writing: read it again.");
+      const current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? found;
+      return { changed: outcome === "saved" ? ["document"] : [], epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) } };
     },
   },
   {

@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Claude creates an epic and updates its document",
+    "changements": [
+      "Claude connected to La Fabrique can now create an epic card with its document (epic_create) and rewrite that document (epic_update), without overwriting a change made since: an older revision is refused. No GitHub issue is created; each write is in the project log."
+    ],
+    "stories": [308],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude reads an epic with its features, and filters the board by epic",
     "changements": [
       "Claude connected to La Fabrique can now read an epic with the new epic tool: its document, its revision and its features with status and progress, plus the count of features per status. An epic is named by its card number or its name.",
