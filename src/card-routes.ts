@@ -1,3 +1,4 @@
+import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
 import { loadStoryDetail, storyDetailPage } from "./story-detail";
@@ -348,6 +349,13 @@ async function renderCard(
     projectView(request, env, project, viewer),
     latestJob(env.DB, card.id),
   ]);
+  // An epic: its progress, from its features' statuses (la-fabrique#303).
+  let epic: EpicProgress | undefined;
+  if (card.kind === "epic") {
+    const features = featuresOfEpic(card, await listCards(env.DB, project.repo));
+    await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
+    epic = epicProgress(card, features);
+  }
   const events = job ? await jobEvents(env.DB, job.id) : [];
   const [dependencies, dependencyOptions, dependencyLog] = await Promise.all([
     dependenciesOf(env.DB, project.repo, card.id),
@@ -412,6 +420,7 @@ async function renderCard(
       progress,
       progressHistory,
       named,
+      ...(epic ? { epic } : {}),
       mentioned,
       dependencies,
       dependencyOptions,

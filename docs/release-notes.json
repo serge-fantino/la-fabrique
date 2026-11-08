@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "An epic's page shows its progress",
+    "changements": [
+      "A card of type Epic now shows its progress from its features (those tagged {epic: its title}): a bar with one part per feature status present, each feature with its status and link, N/M features in production, and the epic's own status (Draft, Ready, In production). Dropped features are not counted; archived ones are listed under Archives. Nothing is typed in."
+    ],
+    "stories": [303],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude reads an epic with its features, and filters the board by epic",
     "changements": [
       "Claude connected to La Fabrique can now read an epic with the new epic tool: its document, its revision and its features with status and progress, plus the count of features per status. An epic is named by its card number or its name.",
