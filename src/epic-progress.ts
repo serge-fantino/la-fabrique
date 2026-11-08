@@ -1,5 +1,5 @@
 import { shownStatus, shownStatusLabel, SHOWN_STATUSES, type Card, type ShownStatus } from "./cards";
-import { compareVersions } from "./card-releases";
+import { compareVersions, NEXT_RELEASE, SPRINT_LANE } from "./card-releases";
 import type { Progress } from "./progress-stages";
 import { cardRef, cardUrl } from "./card-views";
 import { escapeHtml } from "./views";
@@ -97,4 +97,34 @@ function shippedBlock(progress: EpicProgress): string {
     ? `<h3>Still to come</h3><ul class="plain">${shipped.left.map(featureLine).join("")}</ul>`
     : `<p class="muted">Nothing left: every feature is in production.</p>`;
   return `<p class="epic-shipped">${versions}</p>${left}`;
+}
+
+// Where an epic's features are, for the dashboard (la-fabrique#306): to do,
+// in refinement (Next release), in the sprint, in production. Read from the
+// cards only. A feature in production counts there whatever its lane.
+export interface EpicWhere {
+  epic: Card;
+  todo: number;
+  refinement: number;
+  sprint: number;
+  production: number;
+}
+
+export function epicWhere(epic: Card, cards: Card[]): EpicWhere {
+  const out: EpicWhere = { epic, todo: 0, refinement: 0, sprint: 0, production: 0 };
+  for (const card of epicFeatures(epic, cards)) {
+    if (card.status === "dropped" || card.archivedAt) continue;
+    if (shownStatus(card) === "in_production") out.production++;
+    else if (card.release === SPRINT_LANE) out.sprint++;
+    else if (card.release === NEXT_RELEASE) out.refinement++;
+    else out.todo++;
+  }
+  return out;
+}
+
+export function epicsWhere(cards: Card[]): EpicWhere[] {
+  return cards
+    .filter((card) => card.kind === "epic" && !card.archivedAt && card.status !== "dropped")
+    .map((epic) => epicWhere(epic, cards))
+    .filter((one) => one.todo + one.refinement + one.sprint + one.production > 0);
 }

@@ -50,3 +50,26 @@ describe("An epic's text decides its features (#291)", () => {
     expect((await listCards(env.DB, REPO)).length).toBeGreaterThan(0);
   });
 });
+
+describe("A mention of a card that does not exist (#292)", () => {
+  it("takes the number of the card created from it, as a new version, journalled, and attaches a feature to its epic", async () => {
+    const { replaceMention } = await import("../src/card-routes");
+    const epic = await make("epic", "F20", "Needs C99999 and C99998");
+    const created = await make("feature", "Gamma");
+    const done = await replaceMention(env.DB, REPO, "pe", { from: epic, mention: 99999 }, created);
+    expect(done).toBe(epic);
+    const after = (await findCard(env.DB, REPO, epic))!;
+    expect(after.body).toBe(`Needs C${created} and C99998`);
+    expect(after.rev).toBe(2);
+    expect((await featureEpicTitles(env.DB, REPO)).get(created)).toBe("F20");
+    expect(await journal("card_mention_replaced")).toBe(1);
+  });
+
+  it("does nothing when the mention is gone or the card exists", async () => {
+    const { replaceMention } = await import("../src/card-routes");
+    const other = await make("feature", "Delta", "No mention");
+    const created = await make("feature", "Eps");
+    expect(await replaceMention(env.DB, REPO, "pe", { from: other, mention: 88888 }, created)).toBeNull();
+    expect(await replaceMention(env.DB, REPO, "pe", { from: other, mention: created }, created)).toBeNull();
+  });
+});

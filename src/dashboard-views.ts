@@ -1,4 +1,5 @@
 import type { ProjectCard } from "./dashboard";
+import { cardRef, cardUrl } from "./card-views";
 import { age } from "./in-dev-views";
 import { escapeHtml, layout, type Viewer } from "./views";
 
@@ -14,6 +15,14 @@ export function cardHtml(card: ProjectCard, now = Date.now()): string {
         </a>`,
     )
     .join("");
+  const epics = card.epics.length
+    ? `<table class="table dashboard-epics"><caption class="muted small">Epics: features by place</caption><thead><tr><th>Epic</th><th>To do</th><th>In refinement</th><th>In the sprint</th><th>In production</th></tr></thead><tbody>${card.epics
+        .map(
+          (one) =>
+            `<tr><td><a href="${escapeHtml(cardUrl(project.repo, one.epic.id))}"><span class="mono">${cardRef(one.epic.id)}</span> ${escapeHtml(one.epic.title)}</a></td><td class="mono">${one.todo}</td><td class="mono">${one.refinement}</td><td class="mono">${one.sprint}</td><td class="mono">${one.production}</td></tr>`,
+        )
+        .join("")}</tbody></table>`
+    : "";
   return `<section class="project-card">
       <div class="project-card-head">
         <h2><a href="${escapeHtml(base)}">${escapeHtml(project.check?.config?.nom || project.repo)}</a></h2>
@@ -21,6 +30,7 @@ export function cardHtml(card: ProjectCard, now = Date.now()): string {
         <span class="muted small">${card.readAt ? `read ${age(card.readAt, now)}` : "not read yet"}</span>
       </div>
       <div class="tiles dashboard-tiles">${tiles}</div>
+      ${epics}
     </section>`;
 }
 

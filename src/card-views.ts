@@ -1194,6 +1194,12 @@ export interface CardFormData {
   conflict?: Card | undefined;
   // Epic issues that can be picked when creating an epic card.
   issues?: { number: number; title: string }[] | undefined;
+  // Reached from a new-card link: "{card}:{mention}" (la-fabrique#292).
+  replace?: string | undefined;
+}
+
+function replaceField(replace: string | undefined): string {
+  return replace && /^\d{1,9}:\d{1,6}$/.test(replace) ? `<input type="hidden" name="replace" value="${escapeHtml(replace)}" />` : "";
 }
 
 export function cardFormPage(viewer: Viewer, project: Project, data: CardFormData): string {
@@ -1224,7 +1230,7 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
     : `<form method="get" action="${escapeHtml(base)}/cards/new" class="request-form card-form" aria-label="Type of the new card">
         <div class="field">
           <label for="f_type_choice">Type</label>
-          <select id="f_type_choice" name="kind" data-autosubmit>${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], input.tags.kind === kind)).join("")}</select>
+          ${replaceField(data.replace)}<select id="f_type_choice" name="kind" data-autosubmit>${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], input.tags.kind === kind)).join("")}</select>
           <noscript><button type="submit" class="button quiet">Choose</button></noscript>
         </div>
       </form>`;
@@ -1250,6 +1256,7 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
       <form method="post" action="${escapeHtml(action)}" class="request-form card-form"${card ? "" : ` data-draft-key="${escapeHtml(cardDraftKey(project.repo))}"`}>
         ${csrfField(viewer)}
         <input type="hidden" name="action" value="save" />
+        ${card ? "" : replaceField(data.replace)}
         ${card ? `<input type="hidden" name="rev" value="${data.conflict?.rev ?? card.rev}" />` : ""}
         <div class="field">
           <label for="f_title">Title <span class="muted">(required)</span></label>

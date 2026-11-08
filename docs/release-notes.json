@@ -12,6 +12,26 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A card named but not yet written can be created from its mention",
+    "changements": [
+      "A mention of a card that does not exist (\"C99\") is marked as a new card in a card's text. For those who can write cards it is a link to the new card form; once the card is created (say C91), the original text takes its number as a new version, and a feature named in an epic is attached to it. Others see the mark, not a link."
+    ],
+    "stories": [292],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "The dashboard shows each project's epics",
+    "changements": [
+      "Under each project, the dashboard lists its epics with how many of their features are to do, in refinement (Next release), in the sprint and in production. Epics with no feature are left out; dropped and archived ones too; an epic whose features are all in production stays listed."
+    ],
+    "stories": [306],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The sprint launches a dependency first",
     "changements": [
       "In a sprint, a feature's dependency is now launched first (by the run and by \"Launch the next story\") and the feature says \"After C74\", while both can still be developed side by side. A stopped dependency shows \"C74 stopped\" on the feature, and a feature placed above its dependency shows a warning; the manual order never changes."
