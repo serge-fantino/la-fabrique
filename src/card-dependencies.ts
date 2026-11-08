@@ -1,4 +1,5 @@
 import { activityStatement } from "./activity-log";
+import { dependencyWarnings, type DependencyWarning } from "./dependency-warnings";
 import { dimensionValues, listCards, type Card } from "./cards";
 
 // A feature depends on other features of its project, or on a whole epic
@@ -16,6 +17,8 @@ export interface Dependencies {
   dependsOnEpics: { epic: string; cards: Card[] }[];
   // Who needs it, directly or through its epic.
   neededBy: { card: Card; viaEpic: string | null }[];
+  // What is not in production yet (la-fabrique#299): a warning, never a block.
+  warnings: DependencyWarning[];
 }
 
 interface LinkRow {
@@ -54,7 +57,8 @@ export async function dependenciesOf(db: D1Database, repo: string, id: number): 
     if (link.kind === DEPENDS && Number(link.ref) === id) neededBy.push({ card: owner, viaEpic: null });
     if (link.kind === DEPENDS_EPIC && mine?.epic && link.ref === mine.epic) neededBy.push({ card: owner, viaEpic: link.ref });
   }
-  return { dependsOn, dependsOnEpics, neededBy };
+  const warnings = mine ? dependencyWarnings(mine, cards, links) : [];
+  return { dependsOn, dependsOnEpics, neededBy, warnings };
 }
 
 // The features that would make a loop if `card` depended on `target`:

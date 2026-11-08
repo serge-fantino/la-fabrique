@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A dependency not yet in production shows a warning",
+    "changements": [
+      "A feature whose dependency (a feature, or an epic) is not In production with its mandatory stories shows a warning on its page, naming the dependency and its state. In Refinement the warning shows on the feature unless the dependency is in the same release, and GO / NO-GO lists the warnings with their state without ever changing the verdict."
+    ],
+    "stories": [299],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The Epics tab and the board show each epic's progress",
     "changements": [
       "The Epics tab has a Progress column, and the board arranged by Epic shows the progress under each epic lane's header: the same bar, counts and status as on the epic's page, with the same hover and focus explanations."

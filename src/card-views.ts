@@ -1,4 +1,5 @@
 import type { PendingEpic } from "./epic-conversion";
+import { warningsHtml } from "./dependency-warnings";
 import type { Dependencies, dependencyHistory } from "./card-dependencies";
 import { type ValidationState } from "./feature-validation";
 import {
@@ -745,6 +746,7 @@ function dependenciesHtml(viewer: Viewer, url: string, project: Project, data: C
     .join("");
   return `<section class="card-dependencies" id="dependencies"><h2>Dependencies</h2>
       <p class="muted small">Upstream: what has to come first. Stories keep GitHub's blocked by for technical dependencies.</p>
+      ${warningsHtml(deps.warnings, (w) => (w.card ? `${base}/cards/${w.card}` : null))}
       ${dependsOn.length || needed.length ? `<ul class="card-stories">${dependsOn.join("")}${needed.join("")}</ul>` : `<p class="muted">No dependency.</p>`}
       ${form}
       ${log ? `<details><summary>Dependency history</summary><ul class="card-history">${log}</ul></details>` : ""}
