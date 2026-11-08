@@ -117,9 +117,28 @@ export interface CardTests {
   edited?: boolean;
 }
 
+// Claude's proposal of the features an epic still misses (la-fabrique#282),
+// to review before any card is created. `depends` entries are "C12" (a
+// card of the project) or "P2" (the 2nd feature of this proposal).
+export interface ProposedFeature {
+  title: string;
+  synopsis: string;
+  need: string;
+  priority: string | null;
+  depends: string[];
+}
+
+export interface EpicFeaturesProposal {
+  features: ProposedFeature[];
+  note?: string;
+  specAt: string;
+  at: string;
+}
+
 export interface CardData {
   spec?: CardSpec;
   split?: CardSplit;
+  featuresProposal?: EpicFeaturesProposal;
   tests?: CardTests;
   // Who validated the feature, and what it was then (src/feature-validation.ts).
   validation?: import("./feature-validation").FeatureValidation;
@@ -505,6 +524,36 @@ export async function saveSplit(db: D1Database, card: Card, author: string, spli
             action: "card_split_proposed",
             repo: card.repo,
             details: { card: card.id, title: card.title, stories: split.stories.length, call: callId },
+          }),
+        ]
+      : []),
+  ]);
+}
+
+// Features proposed for an epic (or edited), or dropped (null): a new version.
+export async function saveFeaturesProposal(
+  db: D1Database,
+  card: Card,
+  author: string,
+  proposal: EpicFeaturesProposal | null,
+  callId: number | null = null,
+): Promise<void> {
+  const rev = card.rev + 1;
+  const data: CardData = { ...card.data };
+  if (proposal) data.featuresProposal = proposal;
+  else delete data.featuresProposal;
+  await db.batch([
+    db
+      .prepare("UPDATE cards SET data = ?, rev = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .bind(JSON.stringify(data), rev, card.id),
+    revisionStatement(db, card.id, rev, { title: card.title, body: card.body, tags: tagsOf(card) }, author, data),
+    ...(callId && proposal
+      ? [
+          activityStatement(db, {
+            actor: author,
+            action: "epic_features_proposed",
+            repo: card.repo,
+            details: { card: card.id, title: card.title, features: proposal.features.length, call: callId },
           }),
         ]
       : []),

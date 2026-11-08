@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Claude proposes an epic's features, reviewed before they are created",
+    "changements": [
+      "On an epic's page, Propose features with Claude reads the epic's document and its features and proposes only the missing ones: a title, a synopsis, a need, a priority and the dependencies of each, in the background and within the quotas.",
+      "A preview lets you uncheck and edit every proposal; the checked ones are created as draft cards attached to the epic, with their dependencies, in the Not set release lane. Claude proposes no release or order. The epic's page lists them; the journal records the creation.",
+      "The Claude buttons (write, revise) now show on an epic's page."
+    ],
+    "stories": [282],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude writes an epic's document",
     "changements": [
       "A card can now be an epic (type Epic). On its page, a person who writes requests asks Claude to write its document: Claude asks at most five questions, answered in the page (Enough questions stops them), then writes the document by the epic's sections, in the background, within the quotas and budget.",

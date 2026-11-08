@@ -896,3 +896,91 @@ describe("An epic's document with Claude (#281)", () => {
     expect(seen).not.toContain("Revise the document with Claude");
   });
 });
+
+describe("An epic's features with Claude (#282)", () => {
+  const PROPOSAL = {
+    features: [
+      { title: "Epic tab filters", synopsis: "Filter epics.", need: "Find an epic fast.", priority: "P1", depends: [] },
+      { title: "Epic export", synopsis: "Export epics.", need: "Share epics.", priority: "P2", depends: ["P1", "C9999"] },
+      { title: "Epic badges", synopsis: "Badges.", need: "See at a glance.", priority: "nonsense", depends: ["P3"] },
+    ],
+    note: "Three steps.",
+  };
+
+  async function epicWithDocument(): Promise<{ cookie: string; csrf: string; epic: number; existing: number }> {
+    const { cookie, csrf, id: existing } = await writerWithCard();
+    const cfg = { ...CONFIG, cycle: { priorites: ["P1", "P2", "P3"] } };
+    await env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify(cfg), REPO).run();
+    const made = await post(`/projects/${REPO}/cards`, { csrf, title: "F11 Epics", body: "Themes of work.", kind: "epic", status: "draft" }, cookie);
+    const epic = Number(/cards\/(\d+)/.exec(made.headers.get("location") ?? "")?.[1]);
+    await env.DB.prepare("UPDATE cards SET body = '## Why\n\nThemes of work.' WHERE id = ?").bind(epic).run();
+    await env.DB.prepare("UPDATE cards SET epic = 'F11 Epics' WHERE id = ?").bind(existing).run();
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, 'feature', ?)").bind(epic, String(existing)).run();
+    return { cookie, csrf, epic, existing };
+  }
+
+  it("proposes only the missing features, then creates the kept and edited ones as drafts attached to the epic", async () => {
+    const { cookie, csrf, epic, existing } = await epicWithDocument();
+    const page = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    expect(page).toContain("Propose features with Claude");
+
+    expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "epic_features", instruction: "Small ones." }, cookie)).status).toBe(303);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, PROPOSAL);
+    expect(await runQueue()).toEqual({ retried: 0, acked: 1 });
+    const user = (sent.body?.["messages"] as { content: string }[])[0]?.content ?? "";
+    expect(user).toContain("Quick reorder");
+    expect(user).toContain("propose none of them again");
+    expect(await env.DB.prepare("SELECT purpose FROM llm_calls WHERE card_id = ?").bind(epic).first()).toEqual({ purpose: "epic_features" });
+
+    const preview = await (await get(`/projects/${REPO}/cards/${epic}/features`, cookie)).text();
+    for (const text of ["Epic tab filters", "Filter epics.", "Find an epic fast.", 'name="priority_0"', 'name="depends_1"', "P1 Epic tab filters"]) expect(preview).toContain(text);
+    expect(preview).not.toContain("C9999");
+    expect(preview).not.toContain("P3 Epic badges</p>");
+
+    // Leave the 3rd out, edit the 2nd, depend on the existing feature.
+    const created = await post(
+      `/projects/${REPO}/cards/${epic}/features`,
+      {
+        csrf, action: "create",
+        keep_0: "1", title_0: "Epic tab filters", synopsis_0: "Filter epics.", need_0: "Find an epic fast.", priority_0: "P1", depends_0: `C${existing}`,
+        keep_1: "1", title_1: "Epic export, edited", synopsis_1: "Edited synopsis.", need_1: "Edited need.", priority_1: "P3", depends_1: "P1, P3",
+        title_2: "Epic badges", synopsis_2: "Badges.", need_2: "See.", priority_2: "", depends_2: "",
+      },
+      cookie,
+    );
+    expect(created.status).toBe(303);
+    const cards = (await env.DB.prepare("SELECT id, kind, status, title, body, epic, release, priority FROM cards WHERE title LIKE 'Epic %' ORDER BY id").all()).results as Record<string, unknown>[];
+    expect(cards.map((c) => c["title"])).toEqual(["Epic tab filters", "Epic export, edited"]);
+    expect(cards.every((c) => c["kind"] === "feature" && c["status"] === "draft" && c["epic"] === "F11 Epics" && c["release"] === null)).toBe(true);
+    expect(cards[1]).toMatchObject({ priority: "P3", body: expect.stringContaining("Edited need.") });
+    const [first, second] = cards.map((c) => c["id"] as number);
+    const links = (await env.DB.prepare("SELECT card_id, kind, ref FROM card_links WHERE kind IN ('depends', 'feature') AND card_id IN (?, ?, ?)").bind(first, second, epic).all()).results;
+    expect(links).toEqual(expect.arrayContaining([
+      { card_id: first, kind: "depends", ref: String(existing) },
+      { card_id: second, kind: "depends", ref: String(first) },
+      { card_id: epic, kind: "feature", ref: String(first) },
+      { card_id: epic, kind: "feature", ref: String(second) },
+    ]));
+    expect((await logActions()).map((entry) => entry.action)).toContain("epic_features_created");
+
+    const after = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
+    expect(after).toContain("Epic tab filters");
+    expect(after).toContain("Epic export, edited");
+    expect(after).not.toContain("Epic badges");
+    expect((await get(`/projects/${REPO}/cards/${epic}/features`, cookie)).status).toBe(303);
+  });
+
+  it("creates nothing when no feature is kept, and not for a tester", async () => {
+    const { cookie, csrf, epic } = await epicWithDocument();
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "epic_features" }, cookie);
+    claudeStream({}, PROPOSAL);
+    await runQueue();
+    const none = await post(`/projects/${REPO}/cards/${epic}/features`, { csrf, action: "create", title_0: "Epic tab filters" }, cookie);
+    expect(none.status).toBe(422);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM cards WHERE title LIKE 'Epic %'").first()).toEqual({ n: 0 });
+    await grantRole("tess", "tester");
+    const tester = await signIn("tess");
+    expect((await get(`/projects/${REPO}/cards/${epic}/features`, tester.cookie)).status).toBe(403);
+  });
+});
