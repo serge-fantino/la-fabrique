@@ -426,6 +426,7 @@ const PURPOSES: Record<string, string> = {
   spec_revise: "Spec revised",
   spec_split: "Stories proposed",
   spec_tests: "Test cases written",
+  epic_features: "Features proposed",
   key_check: "Key checked",
 };
 
@@ -881,7 +882,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   let work = "";
   const working = isActive(data.job);
   const canAnswer = data.canWrite && !shown && data.claude.usable && !working;
-  if (data.canWrite && !shown && !working && !isEpic) {
+  if (data.canWrite && !shown && !working) {
     // What can come next, in one row; Claude's buttons carry a star. A
     // panel unfolds under the row, one at a time.
     const panel = (action: JobKind, summary: string, primary: boolean, open: boolean, inner: string): string =>
@@ -965,10 +966,28 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
             </div>`,
           )
         : "";
+    const proposed = data.card.data.featuresProposal;
+    const features =
+      usable && isEpic && (spec || card.body.trim())
+        ? panel(
+            "epic_features",
+            "Propose features with Claude",
+            !proposed,
+            false,
+            `<p class="help">Claude reads the epic's document and its features, and proposes the ones still missing, each with a synopsis, a need, a priority and its dependencies. You review and edit them before any card is created; they come as drafts attached to the epic, in no release. It counts as one Claude call.</p>
+            <div class="field">
+              <label for="epic_features">Anything about the features? <span class="muted">(optional)</span></label>
+              <textarea id="epic_features" name="instruction" rows="2" maxlength="4000"></textarea>
+            </div>`,
+          )
+        : "";
+    const proposedLink = proposed && isEpic
+      ? `<p class="notice" role="status">Claude proposed ${proposed.features.length} feature${proposed.features.length === 1 ? "" : "s"}. <a class="button" href="${escapeHtml(url)}/features">Review the proposed features</a></p>`
+      : "";
     const story = spec && !isEpic && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
-    work = `${data.split ? proposalHtml(url, data.split, spec) : ""}
+    work = `${data.split ? proposalHtml(url, data.split, spec) : ""}${proposedLink}
       <div class="spec-actions">
-        ${draft}${split}${tests}${story}${change}
+        ${draft}${split}${tests}${features}${story}${change}
         <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${isEpic ? (spec ? "Edit the document by hand" : "Write the document by hand") : spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
       ${

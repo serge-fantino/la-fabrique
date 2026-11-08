@@ -1,9 +1,9 @@
 import { cardRef } from "./card-views";
 import { cardStories, type CardStory } from "./card-stories";
-import { cardLinks, DIMENSION_LABELS, excerpt, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type CardTests, type StoryReview } from "./cards";
+import { cardLinks, DIMENSION_LABELS, excerpt, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type CardTests, type EpicFeaturesProposal, type ProposedFeature, type StoryReview } from "./cards";
 import { readMarkdown } from "./docs";
 import type { Env } from "./env";
-import { STAGES } from "./lifecycle";
+import { cycleRules, STAGES } from "./lifecycle";
 import { askJson, type CallOutcome, type Progress } from "./llm";
 import type { Project } from "./projects";
 import type { Rubrique } from "./requests";
@@ -533,6 +533,121 @@ Write the test cases of each story, in Gherkin (Feature, then Scenario blocks wi
   return {
     ok: true,
     tests: { stories, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: spec.at, at: new Date().toISOString() },
+    callId: outcome.callId,
+    costMicros: outcome.costMicros,
+  };
+}
+
+// Which "C12" / "P2" references of a proposed feature stand: C-numbers of
+// cards of the project, P-numbers of another feature of the proposal (never
+// itself).
+export function cleanDepends(raw: unknown, index: number, count: number, known: Set<number>): string[] {
+  const out: string[] = [];
+  for (const entry of Array.isArray(raw) ? raw : String(raw ?? "").split(/[,;\s]+/)) {
+    const match = /^\s*([CP])\s*#?(\d{1,9})\s*$/i.exec(String(entry));
+    if (!match) continue;
+    const kind = (match[1] ?? "").toUpperCase();
+    const n = Number(match[2]);
+    const ok = kind === "C" ? known.has(n) : n >= 1 && n <= count && n !== index + 1;
+    const ref = `${kind}${n}`;
+    if (ok && !out.includes(ref)) out.push(ref);
+  }
+  return out;
+}
+
+function featuresSystemPrompt(project: Project, document: { path: string; text: string; cut: boolean } | null): string {
+  const language = project.check?.config?.langue === "en" ? "English" : "French";
+  return `You help a product person break an epic, a theme of work, into features for the software project "${project.check?.config?.nom || project.repo}" (${project.repo}). A feature is something people can use, refined later into stories and test cases by others: do not write those. Be precise, short and concrete, and write in ${language}. Never invent facts about the project, respect its principles below, and never propose a feature the epic's document does not call for. You propose no release and no order: the dependencies say what comes first.
+${document ? `\nThe project's own description (${document.path}${document.cut ? ", cut to its beginning" : ""}):\n<document>\n${document.text}\n</document>` : ""}`;
+}
+
+interface FeaturesAnswer {
+  features: { title: string; synopsis: string; need: string; priority: string; depends: string[] }[];
+  note: string;
+}
+
+function featuresSchema(priorities: string[]): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["features", "note"],
+    properties: {
+      features: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "synopsis", "need", "priority", "depends"],
+          properties: {
+            title: { type: "string" },
+            synopsis: { type: "string" },
+            need: { type: "string" },
+            priority: priorities.length ? { type: "string", enum: ["", ...priorities] } : { type: "string" },
+            depends: { type: "array", items: { type: "string" } },
+          },
+        },
+      },
+      note: { type: "string" },
+    },
+  };
+}
+
+export type FeaturesOutcome =
+  | { ok: true; proposal: EpicFeaturesProposal; callId: number; costMicros: number | null }
+  | { ok: false; message: string; retryable: boolean };
+
+// Claude proposes the features an epic still misses, from its document; no
+// card is created before the person reviews them (la-fabrique#282).
+export async function proposeFeatures(
+  env: Env,
+  project: Project,
+  epic: Card,
+  login: string,
+  instruction: string,
+  watch: { read?: (reading: SpecReading) => void; progress?: (progress: Progress) => void } = {},
+): Promise<FeaturesOutcome> {
+  const rubriques = epicRubriques(project);
+  const document = epic.data.spec ? currentSpec(epic.data.spec, rubriques) : epic.body.trim();
+  if (!document) return { ok: false, message: "The epic has no document yet: write it first.", retryable: false };
+  const priorities = cycleRules(project.check?.config).priorities;
+  const [description, read, cards] = await Promise.all([projectDocument(env, project), epicContext(env, project, epic), listCards(env.DB, project.repo)]);
+  watch.read?.({ document: description ? `${description.path} (${Math.round(description.text.length / 1000)}k characters)` : null, cards: read.cards, stories: 0 });
+  const others = cards.filter((card) => card.id !== epic.id && card.kind !== "epic" && !card.archivedAt);
+  const attached = new Set(epicFeatures(cards, epic).map((card) => card.id));
+  const elsewhere = others.filter((card) => !attached.has(card.id)).slice(0, 80);
+  const known = new Set(others.map((card) => card.id));
+  const ask = `${read.text}
+The epic's document:
+<document>
+${document}
+</document>
+${elsewhere.length ? `\nOther features of the project, which a new feature may depend on:\n${elsewhere.map((card) => `- ${cardRef(card.id)} ${card.title}`).join("\n")}\n` : ""}${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+Propose the features this epic still misses. ${attached.size ? "Its existing features are listed above: propose none of them again, only what they do not cover; none is a fine answer." : "From one to eight features."} Each feature can be refined into stories and shipped on its own.
+- "title": short, what the person can do once the feature is there.
+- "synopsis": two or three sentences on what the feature is.
+- "need": why it is needed and for whom, in a few sentences.
+- "priority": ${priorities.length ? `one of ${priorities.map((p) => `"${p}"`).join(", ")}, or "" when unsure` : `"" (the project declares no priority)`}.
+- "depends": what has to come first: "C12" for an existing feature listed above, "P2" for the 2nd feature of your own list (never itself, no loop). Empty when nothing.
+Propose no order in a release, no estimate, no story. Write in the language of the document.
+- "note": one sentence on how you chose them.`;
+  const outcome: CallOutcome<FeaturesAnswer> = await askJson<FeaturesAnswer>(
+    env,
+    { login, repo: project.repo, cardId: epic.id, purpose: "epic_features" },
+    { system: featuresSystemPrompt(project, description), user: ask, schema: featuresSchema(priorities), ...(watch.progress ? { progress: watch.progress } : {}) },
+  );
+  if (!outcome.ok || !outcome.value) return { ok: false, message: outcome.message ?? "Claude did not answer.", retryable: outcome.retryable ?? false };
+  const said = (Array.isArray(outcome.value.features) ? outcome.value.features : []).filter((f) => String(f.title ?? "").trim()).slice(0, 12);
+  const features: ProposedFeature[] = said.map((feature, index) => ({
+    title: String(feature.title).replace(/\s+/g, " ").trim().slice(0, 200),
+    synopsis: String(feature.synopsis ?? "").trim().slice(0, 4000),
+    need: String(feature.need ?? "").trim().slice(0, 4000),
+    priority: priorities.includes(String(feature.priority)) ? String(feature.priority) : null,
+    depends: cleanDepends(feature.depends, index, said.length, known),
+  }));
+  if (!features.length) return { ok: false, message: "Claude proposed no feature: the epic may already be covered. Try again with an instruction.", retryable: false };
+  return {
+    ok: true,
+    proposal: { features, note: String(outcome.value.note ?? "").trim().slice(0, 500), specAt: epic.data.spec?.at ?? "", at: new Date().toISOString() },
     callId: outcome.callId,
     costMicros: outcome.costMicros,
   };
