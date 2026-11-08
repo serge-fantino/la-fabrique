@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A feature named alone on a line shows in line",
+    "changements": [
+      "A card named alone on a line of another card's text (\"C57\") is shown in place, read live: title, status, synopsis, stories with their stage and the versions that shipped it. An epic shows its title, status and synopsis only; an archived or dropped card stays a marked link. The text itself still holds only \"C57\"."
+    ],
+    "stories": [290],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The Epics tab and the board show each epic's progress",
     "changements": [
       "The Epics tab has a Progress column, and the board arranged by Epic shows the progress under each epic lane's header: the same bar, counts and status as on the epic's page, with the same hover and focus explanations."

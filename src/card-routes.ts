@@ -98,6 +98,7 @@ import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
 import { projectView } from "./view-context";
+import { embeddedCards, embedsFor } from "./card-embed";
 import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
@@ -438,13 +439,17 @@ async function renderCard(
   const asked = params.get("ask");
   const version = shown ?? card;
   const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"));
+  const allCards = await listCards(env.DB, project.repo);
+  const embedText = [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n");
+  const embedded = embeddedCards(embedText).length
+    ? await embedsFor(env, project, embedText, allCards, await cardProgress(env, project, allCards.filter((other) => embeddedCards(embedText).includes(other.id))))
+    : new Map<number, string>();
   const rubriques = rubriquesFor(project, card);
   const spend = calls.reduce(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
     { calls: 0, micros: 0, unknown: 0 },
   );
   const epicSpend = card.kind === "epic" ? await epicSpendOf(env.DB, project.repo, card, spend) : undefined;
-  const allCards = await listCards(env.DB, project.repo);
   return html(
     cardPage(viewer, view, {
       card,
@@ -476,6 +481,7 @@ async function renderCard(
       named,
       ...(epic ? { epic } : {}),
       mentioned,
+      embedded,
       dependencies,
       dependencyOptions,
       dependencyLog,
