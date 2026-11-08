@@ -254,7 +254,7 @@ export interface BoardData {
   // Each card's progress, from its stories.
   progress?: Map<number, Progress>;
   // Each epic's progress by lowercased title, for the Epic lanes' headers.
-  epics?: Map<string, EpicProgress>;
+  epics?: Map<string, { id: number; progress: EpicProgress }>;
 }
 
 // Shipped is done, in progress is on its way, planned is not started.
@@ -304,13 +304,19 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   };
   const count = (predicate: (card: Card) => boolean) => data.cards.filter(predicate).length;
   const epicNote = (axis: Axis, value: string) => {
-    const progress = axis === "epic" ? data.epics?.get(value.trim().toLowerCase()) : undefined;
+    const progress = axis === "epic" ? data.epics?.get(value.trim().toLowerCase())?.progress : undefined;
     return progress ? `<div class="epic-head">${epicProgressSummary(progress, true)}</div>` : "";
+  };
+  // An epic lane is headed by the epic's title, linked to its page (la-fabrique#296).
+  const labelOf = (axis: Axis, value: string) => {
+    const text = escapeHtml(valueLabel(axis, value));
+    const epic = axis === "epic" && value ? data.epics?.get(value.trim().toLowerCase()) : undefined;
+    return epic ? `<a href="${escapeHtml(cardUrl(project.repo, epic.id))}">${text}</a>` : text;
   };
   const head = (value: string) => {
     const label = valueLabel(board.by, value);
     return `<div class="board-head">
-        <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${escapeHtml(label)}${releaseNote(board.by, value)}</span>
+        <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${labelOf(board.by, value)}${releaseNote(board.by, value)}</span>
         <span class="mono muted small" data-count-column="${escapeHtml(value)}">${count((card) => valueOf(card, board.by) === value)}</span>
         ${epicNote(board.by, value)}
         ${canWrite && !(board.by === "status" && isProgressStage(value)) ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
@@ -330,7 +336,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         const label = valueLabel(board.then, rowValue);
         return `<div class="board-row" role="group" aria-label="${escapeHtml(label)}">
             <div class="board-row-head">
-              <span class="board-head-label${rowValue ? "" : " muted"}"${titleOf(board.then, rowValue)}>${escapeHtml(label)}${releaseNote(board.then, rowValue)}</span>
+              <span class="board-head-label${rowValue ? "" : " muted"}"${titleOf(board.then, rowValue)}>${labelOf(board.then, rowValue)}${releaseNote(board.then, rowValue)}</span>
               <span class="mono muted small" data-count-row="${escapeHtml(rowValue)}">${count((card) => valueOf(card, board.then) === rowValue)}</span>
               ${epicNote(board.then, rowValue)}
             </div>

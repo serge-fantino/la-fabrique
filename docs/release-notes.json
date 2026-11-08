@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Board arranged by epic: each lane leads to its epic",
+    "changements": [
+      "When the board is arranged by Epic, each lane's header is the epic's title, linked to the epic's page, with its status and \"N/M features in production\"; features without an epic stay in Not set."
+    ],
+    "stories": [296],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The Epics tab and the board show each epic's progress",
     "changements": [
       "The Epics tab has a Progress column, and the board arranged by Epic shows the progress under each epic lane's header: the same bar, counts and status as on the epic's page, with the same hover and focus explanations."
