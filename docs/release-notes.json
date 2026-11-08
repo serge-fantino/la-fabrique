@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "An epic gets its GitHub issue when its first feature enters refinement",
+    "changements": [
+      "An epic created from scratch has no GitHub issue; its page says so. When the first feature attached to it is placed in Next release, La Fabrique creates its epique issue (title, short abstract, link to the epic card, never the document) and links it on the epic's page. A story made from one of its features, with \"Make one story\", the split or Claude, becomes a sub-issue of it. The epic's history dates its creation, its link to an issue and the issue's creation."
+    ],
+    "stories": [288],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude attaches a feature to an epic, or detaches it",
     "changements": [
       "Claude connected to La Fabrique can now attach a feature to an epic when creating or updating it (card_create and card_update take epic: an epic card's number or name), move it to another epic, or detach it with null. Only an epic card of the same project is accepted, and never for an epic card itself. Each write is in the project log."
