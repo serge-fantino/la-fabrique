@@ -19,6 +19,7 @@ import { createShareLink, listShareLinks, readExpiry, revokeShareLink } from "./
 import { criteriaOf, criteriaRubrique, criteriaText, moveCriterion } from "./story-editor";
 import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS, loadStories } from "./stories";
+import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { EPIC_ISSUE_KIND, epicIssueView, epicIssuesOf, startFromIssue, takenEpicIssues } from "./epic-issue";
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
@@ -190,7 +191,7 @@ function backTo(project: Project, form: FormData): string {
 }
 
 // The board's actions: a card moved (from /board.js), a new value.
-export async function boardAction(form: FormData, env: Env, viewer: Viewer, project: Project): Promise<Response> {
+export async function boardAction(request: Request, form: FormData, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   if (!canWriteCards(viewer)) return json({ error: "Your role does not let you move cards." }, { status: 403 });
   const action = String(form.get("action") ?? "");
   if (action === "add_value") {
@@ -241,6 +242,7 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const known = await dimensionValues(env.DB, project.repo, cards);
   const moved = await moveCard(env.DB, card, viewer.login, { set, before: neighbour("before"), after: neighbour("after") }, known);
   if (moved.epic !== card.epic) await syncEpicLink(env.DB, moved, viewer.login);
+  if (moved.release !== card.release) await ensureEpicIssue(env, project, moved, viewer.login, new URL(request.url).origin);
   const [spends, working, progress] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo), cardProgress(env, project, [moved])]);
   return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id)) });
 }
@@ -694,6 +696,10 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     return html(cardFormPage(viewer, view, { card, input, known, conflict: current }), { status: 409, cookies });
   }
   if (outcome === "saved" && input.tags.epic !== card.epic) await syncEpicLink(env.DB, { ...card, epic: input.tags.epic, kind: input.tags.kind }, viewer.login);
+  if (outcome === "saved" && (input.tags.release !== card.release || input.tags.epic !== card.epic)) {
+    const saved = await findCard(env.DB, project.repo, id);
+    if (saved) await ensureEpicIssue(env, project, saved, viewer.login, new URL(request.url).origin);
+  }
   // The feature changed, its status left as it was: to validate again.
   if (outcome === "saved" && (input.title !== card.title || input.body !== card.body) && input.tags.status === card.status) {
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the card changed");
@@ -741,6 +747,7 @@ export async function storyRoute(request: Request, env: Env, viewer: Viewer, pro
     );
   }
   await linkStory(env.DB, card, viewer.login, outcome.number, outcome.url);
+  await fileUnderEpic(env, project, card, outcome.number);
   // The story takes its card's priority.
   if (card.priority && cycleRules(project.check?.config).priorities.includes(card.priority)) await setPriority(env, project, viewer.login, outcome.number, card.priority);
   await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story made");
@@ -1630,6 +1637,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     const outcome = await createRequest(request, env, project, viewer.login, { title: story.title, answers: story.answers }, rubriques, originOf(position + 1, edited.kept.length, saved.rev));
     if (!outcome.ok) return stop(outcome, "to create the issue");
     await linkStory(env.DB, saved, viewer.login, outcome.number, outcome.url);
+    await fileUnderEpic(env, project, saved, outcome.number);
     // Nice to have as proposed (and kept), and the priority its card gives.
     if (story.nice) await setNice(env.DB, project.repo, card.id, outcome.number, true, viewer.login);
     const to = storyPriority(rules, card.priority, Boolean(story.nice));
@@ -1681,7 +1689,7 @@ export async function cardRoute(
   if (path === "epics") return method === "GET" ? showEpics(request, env, viewer, project) : notAllowed();
   if (path === "board") {
     if (method === "GET") return showBoard(request, env, viewer, project);
-    if (method === "POST") return withForm((data) => boardAction(data, env, viewer, project));
+    if (method === "POST") return withForm((data) => boardAction(request, data, env, viewer, project));
     return notAllowed();
   }
   // The sprint's live connection: Claude's runs, pushed (CardLive).

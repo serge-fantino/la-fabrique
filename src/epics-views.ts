@@ -25,7 +25,7 @@ export function epicHistoryHtml(history: EpicHistoryEntry[]): string {
   const rows = history
     .map((entry) => {
       const what =
-        entry.action === "epic_archived" ? "archived" : entry.action === "epic_unarchived" ? "unarchived" : `${entry.from ? EPIC_STATUS_LABELS[entry.from as keyof typeof EPIC_STATUS_LABELS] ?? entry.from : "—"} → ${EPIC_STATUS_LABELS[entry.to as keyof typeof EPIC_STATUS_LABELS] ?? entry.to}`;
+        entry.action === "epic_created" || entry.action === "card_created" ? "created" : entry.action === "epic_issue_linked" ? "linked to its GitHub issue" : entry.action === "epic_issue_created" ? "GitHub issue created" : entry.action === "epic_archived" ? "archived" : entry.action === "epic_unarchived" ? "unarchived" : `${entry.from ? EPIC_STATUS_LABELS[entry.from as keyof typeof EPIC_STATUS_LABELS] ?? entry.from : "—"} → ${EPIC_STATUS_LABELS[entry.to as keyof typeof EPIC_STATUS_LABELS] ?? entry.to}`;
       return `<li><span class="mono muted">${formatDate(entry.at)} · ${entry.actor === "la-fabrique" ? "La Fabrique" : `@${escapeHtml(entry.actor)}`}</span> ${escapeHtml(what)}${entry.reason ? ` <span class="muted">(${escapeHtml(entry.reason)})</span>` : ""}</li>`;
     })
     .join("");
