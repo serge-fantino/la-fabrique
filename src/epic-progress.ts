@@ -1,4 +1,6 @@
 import { shownStatus, shownStatusLabel, SHOWN_STATUSES, type Card, type ShownStatus } from "./cards";
+import { compareVersions } from "./card-releases";
+import type { Progress } from "./progress-stages";
 import { cardRef, cardUrl } from "./card-views";
 import { escapeHtml } from "./views";
 
@@ -18,6 +20,9 @@ export interface EpicProgress {
   parts: { status: ShownStatus; label: string; count: number }[];
   inProduction: number;
   status: EpicStatus | null;
+  // Once part of it has shipped (la-fabrique#304): the versions that shipped
+  // its features, oldest first, and the features not yet in production.
+  shipped?: { versions: string[]; left: Card[] };
 }
 
 const SPEC_STATUSES: readonly ShownStatus[] = ["draft", "shaping", "to_validate", "validated"];
@@ -27,7 +32,7 @@ export function epicFeatures(epic: Pick<Card, "id" | "title">, cards: Card[]): C
   return cards.filter((card) => card.id !== epic.id && card.kind === "feature" && (card.epic ?? "").trim().toLowerCase() === name);
 }
 
-export function epicProgress(epic: Pick<Card, "id" | "title">, cards: Card[]): EpicProgress {
+export function epicProgress(epic: Pick<Card, "id" | "title">, cards: Card[], progresses?: Map<number, Progress>): EpicProgress {
   const own = epicFeatures(epic, cards).filter((card) => card.status !== "dropped");
   const features = own.filter((card) => !card.archivedAt);
   const archived = own.filter((card) => card.archivedAt);
@@ -40,7 +45,14 @@ export function epicProgress(epic: Pick<Card, "id" | "title">, cards: Card[]): E
     if (features.some((card) => SPEC_STATUSES.includes(shownStatus(card)))) status = "draft";
     else status = inProduction === features.length ? "in_production" : "ready";
   }
-  return { features, archived, parts, inProduction, status };
+  const out = features.filter((card) => progresses?.get(card.id)?.shipped);
+  const shipped = out.length
+    ? {
+        versions: [...new Set(out.flatMap((card) => progresses?.get(card.id)?.shipped?.versions ?? []))].sort((a, b) => compareVersions(b, a)),
+        left: features.filter((card) => shownStatus(card) !== "in_production"),
+      }
+    : undefined;
+  return { features, archived, parts, inProduction, status, ...(shipped ? { shipped } : {}) };
 }
 
 const featureLine = (card: Card) =>
@@ -60,9 +72,21 @@ export function epicProgressSection(progress: EpicProgress): string {
   return `<section class="epic-progress" id="epic-progress"><h2>Progress</h2>
     <p>Epic status: <span class="pill">${EPIC_STATUS_LABELS[progress.status ?? "draft"]}</span> · <span class="mono">${progress.inProduction}/${total}</span> features in production</p>
     <div class="epic-bar">${bar}</div>
-    <ul class="plain">${progress.features.map(featureLine).join("")}</ul>${archivedList(progress)}</section>`;
+    <ul class="plain">${progress.features.map(featureLine).join("")}</ul>${shippedBlock(progress)}${archivedList(progress)}</section>`;
 }
 
 function archivedList(progress: EpicProgress): string {
   return progress.archived.length ? `<h3>Archives</h3><ul class="plain">${progress.archived.map(featureLine).join("")}</ul>` : "";
+}
+
+function shippedBlock(progress: EpicProgress): string {
+  const shipped = progress.shipped;
+  if (!shipped) return "";
+  const versions = shipped.versions.length
+    ? `Shipped in ${shipped.versions.map((version) => `<span class="mono">${escapeHtml(version)}</span>`).join(", ")}`
+    : "Part of it is in production";
+  const left = shipped.left.length
+    ? `<h3>Still to come</h3><ul class="plain">${shipped.left.map(featureLine).join("")}</ul>`
+    : `<p class="muted">Nothing left: every feature is in production.</p>`;
+  return `<p class="epic-shipped">${versions}</p>${left}`;
 }

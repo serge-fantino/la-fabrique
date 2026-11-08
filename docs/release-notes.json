@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "An epic's page shows the versions that shipped it, and what is left",
+    "changements": [
+      "Once part of an epic has shipped, its page lists the versions that shipped its features, oldest first, and the features not yet in production, each linked to its card. Dropped and archived features are left out."
+    ],
+    "stories": [304],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude creates an epic and updates its document",
     "changements": [
       "Claude connected to La Fabrique can now create an epic card with its document (epic_create) and rewrite that document (epic_update), without overwriting a change made since: an older revision is refused. No GitHub issue is created; each write is in the project log."
