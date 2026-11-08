@@ -40,7 +40,7 @@ describe("Perspectives", () => {
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/board`);
     const product = await (await get(`/projects/${REPO}/board`, session.cookie)).text();
     expect(product).toContain("<summary><span class=\"muted\">Perspective</span> Product</summary>");
-    expect(tabs(product)).toEqual(["Overview", "Board", "Refinement", "Sprint", "Stories", "Backlog", "To test", "Defects", "Roadmap", "Releases", "Requests"]);
+    expect(tabs(product)).toEqual(["Overview", "Board", "Epics", "Refinement", "Sprint", "Stories", "Backlog", "To test", "Defects", "Roadmap", "Releases", "Requests"]);
 
     await choose(session, "administration");
     const admin = await (await get(`/projects/${REPO}`, session.cookie)).text();

@@ -125,10 +125,13 @@ async function projectOf(ctx: Context, args: Args): Promise<Project> {
   return fail(matching.length ? `Several projects are called ${wanted}: give owner/repo.` : `No project ${wanted} in La Fabrique.`);
 }
 
-async function cardOf(ctx: Context, project: Project, args: Args): Promise<Card> {
+async function cardOf(ctx: Context, project: Project, args: Args, writing = false): Promise<Card> {
   const id = integer(args, "card");
   const card = await findCard(ctx.env.DB, project.repo, id);
-  return card ?? fail(`No card ${cardRef(id)} in ${project.repo}.`);
+  if (!card) return fail(`No card ${cardRef(id)} in ${project.repo}.`);
+  // An epic is a document written in La Fabrique: read here, not written.
+  if (writing && card.kind === "epic") fail(`${cardRef(id)} is an epic card: it is written in La Fabrique, not through this tool.`);
+  return card;
 }
 
 const absolute = (ctx: Context, path: string) => new URL(path, ctx.origin).href;
@@ -283,7 +286,7 @@ const TOOLS: Tool[] = [
         ...PROJECT,
         status: { type: "string", description: "draft, shaping, to_validate, validated, dropped" },
         release: { type: "string", description: "Next release, Sprint, a version, or none" },
-        kind: { type: "string", description: "feature, idea, question" },
+        kind: { type: "string", description: "feature, idea, question or epic (epic cards are documents, listed only when asked for)" },
         archived: { type: "boolean", description: "Include archived cards" },
         story: { type: "integer", description: "Only the cards of this story (its issue number)" },
         epic: { type: ["string", "integer"], description: "Only the features of this epic: its card number or its name" },
@@ -308,7 +311,7 @@ const TOOLS: Tool[] = [
           (story === null || (links.order.get(card.id) ?? []).includes(story)) &&
           (args["archived"] === true || !card.archivedAt) &&
           (!status || card.status === status) &&
-          (!kind || card.kind === kind) &&
+          (kind ? card.kind === kind : card.kind !== "epic") &&
           (wantedRelease === undefined || (wantedRelease === "none" ? !card.release : card.release === wantedRelease)),
       );
       const progress = await cardProgress(ctx.env, project, cards, links);
@@ -467,7 +470,7 @@ const TOOLS: Tool[] = [
       const title = text(args, "title", 200)?.trim();
       if (!title) fail("A card needs a title.");
       const kind = text(args, "kind", 30) ?? "feature";
-      if (!isKind(kind)) fail("kind is feature, idea or question.");
+      if (!isKind(kind) || kind === "epic") fail("kind is feature, idea or question (epic cards are written in La Fabrique).");
       const lane = release(args);
       await checkRelease(ctx, project, lane);
       const wanted = priority(args);
@@ -504,13 +507,13 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      let card = await cardOf(ctx, project, args);
+      let card = await cardOf(ctx, project, args, true);
       if (args["rev"] !== undefined && integer(args, "rev") !== card.rev) fail(`The card changed since (now version ${card.rev}): read it again.`);
       const changes: string[] = [];
       const title = text(args, "title", 200)?.trim();
       const body = text(args, "body", 50_000);
       const kind = text(args, "kind", 30);
-      if (kind !== undefined && !isKind(kind)) fail("kind is feature, idea or question.");
+      if (kind !== undefined && (!isKind(kind) || kind === "epic")) fail("kind is feature, idea or question: the type of a card is fixed once it is an epic, and a card never becomes one.");
       const status = text(args, "status", 30);
       if (status !== undefined && !isStatus(status)) fail("status is draft, shaping, to_validate, validated or dropped.");
       const lane = release(args);
@@ -570,7 +573,7 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const card = await cardOf(ctx, project, args);
+      const card = await cardOf(ctx, project, args, true);
       const given = args["answers"];
       if (!given || typeof given !== "object" || Array.isArray(given)) fail("answers is an object: section key → text.");
       const rubriques = specRubriques(project);
@@ -620,7 +623,7 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const card = await cardOf(ctx, project, args);
+      const card = await cardOf(ctx, project, args, true);
       const given = args["stories"];
       const list: unknown[] = Array.isArray(given) ? given : [];
       if (!list.length || list.length > 12) fail("stories is a list of 1 to 12 stories.");
@@ -672,7 +675,7 @@ const TOOLS: Tool[] = [
     write: true,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const card = await cardOf(ctx, project, args);
+      const card = await cardOf(ctx, project, args, true);
       const number = integer(args, "story");
       const known = await cardStories(ctx.env, project, [number]);
       if (!known.get(number)) fail(`#${number} is not a story La Fabrique knows in ${project.repo}.`);
