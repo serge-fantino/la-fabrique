@@ -2,6 +2,15 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Epic values typed on cards can become epic cards",
+    "changements": [
+      "The board offers, to Product Engineers and above, to turn the Epic values already typed on features into epic cards. A review shows each value, its features and what will happen (attach to an epic card of the same title, or create a draft epic); nothing changes until you confirm, the features keep their value so lanes and filters group the same features, and each epic created and feature attached is in the activity log. Once converted, the offer is gone."
+    ],
+    "stories": [295],
+    "liens": null
+  },  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature's epic is chosen from the project's epic cards",
     "changements": [
       "A feature's page has an Epic section: pick one of the project's epic cards, or type a new name to create an empty draft epic card with the feature attached. A feature belongs to one epic at most.",

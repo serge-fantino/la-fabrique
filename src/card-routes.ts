@@ -5,10 +5,11 @@ import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
 import { goSection } from "./production-views";
 import { storyChecks } from "./validation";
-import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
+import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, epicConversionPage, importPage, specFormPage, splitPage, storyPage, type StoryState } from "./card-views";
 import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { convertEpics, pendingEpics, type EpicChoice } from "./epic-conversion";
 import { epicCardsOf, epicFeatures, setFeatureEpic, syncEpicLink } from "./card-epics";
 import { validateFeature, validationOf } from "./feature-validation";
 import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
@@ -85,7 +86,7 @@ import { projectView } from "./view-context";
 import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
-export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
+export const CARD_ROUTE = /^\/projects\/([^/]+\/[^/]+?)\/(board|refinement|refinement\/live|refinement\/preparation|sprint|sprint\/live|sprint\/run|sprint\/stories\/\d{1,9}|cards|cards\/new|cards\/export|cards\/import|cards\/epics|cards\/(\d{1,9})(\/edit|\/spec|\/story|\/stories|\/live)?)$/;
 
 // Writing cards goes with writing requests: Product Engineers and above.
 export function canWriteCards(viewer: Viewer): boolean {
@@ -135,7 +136,8 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       canWrite: canWriteCards(viewer),
       spends,
       working,
-      notice: notice === "imported" ? importedNotice(url.searchParams) : notice ? BOARD_NOTICES[notice] : undefined,
+      toConvert: canWriteCards(viewer) ? (await pendingEpics(env.DB, project.repo)).length : 0,
+      notice: notice === "epics" ? `${Number(url.searchParams.get("created")) || 0} epic cards created, ${Number(url.searchParams.get("attached")) || 0} features attached.` : notice === "imported" ? importedNotice(url.searchParams) : notice ? BOARD_NOTICES[notice] : undefined,
       failure: refused ? (planningProblem(project, refused, [...releases.values()]) ?? undefined) : undefined,
       releases,
       nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
@@ -590,6 +592,20 @@ export async function importRoute(request: Request, env: Env, viewer: Viewer, pr
     return page({ error: "No card found: the JSON has no list of cards with a title.", text: uploaded ? "" : text, status: 422 });
   }
   return redirect(`${projectUrl(project.repo)}/board?notice=imported&created=${outcome.created.length}&skipped=${outcome.skipped.length}`);
+}
+
+// The typed Epic values, turned into epic cards after a review (la-fabrique#295).
+async function epicsRoute(request: Request, env: Env, viewer: Viewer, project: Project, form: FormData | null): Promise<Response> {
+  if (!canWriteCards(viewer)) return forbidden(viewer);
+  const pending = await pendingEpics(env.DB, project.repo);
+  if (!form) {
+    const { view, cookies } = await projectView(request, env, project, viewer);
+    return html(epicConversionPage(viewer, view, pending), { cookies });
+  }
+  const choices = new Map<string, EpicChoice>();
+  for (const [index, item] of pending.entries()) choices.set(item.key, form.get(`choice_${index}`) === "create" ? "create" : "attach");
+  const done = pending.length ? await convertEpics(env.DB, project.repo, viewer.login, choices) : { created: 0, attached: 0 };
+  return redirect(`${projectUrl(project.repo)}/board?notice=epics&created=${done.created}&attached=${done.attached}`);
 }
 
 const SPRINT_NOTICES: Record<string, string> = {
@@ -1480,6 +1496,11 @@ export async function cardRoute(
   }
   if (path === "cards/new") return method === "GET" ? showCardForm(request, env, viewer, project, null) : notAllowed();
   if (path === "cards/export") return method === "GET" ? downloadCards(env, project) : notAllowed();
+  if (path === "cards/epics") {
+    if (method === "GET") return epicsRoute(request, env, viewer, project, null);
+    if (method === "POST") return withForm((data) => epicsRoute(request, env, viewer, project, data));
+    return notAllowed();
+  }
   if (path === "cards/import") {
     if (method === "GET") return importRoute(request, env, viewer, project, null);
     if (method === "POST") return withForm((data) => importRoute(request, env, viewer, project, data));

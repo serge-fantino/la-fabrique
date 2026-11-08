@@ -94,3 +94,40 @@ describe("A feature's epic", () => {
     expect((await logActions()).map((l) => l.action)).toContain("feature_detached");
   });
 });
+
+describe("Converting typed Epic values", () => {
+  it("offers, reviews, then converts once", async () => {
+    const s = await seed();
+    const existing = await card(s, "epic", "Famille");
+    const f1 = await card(s, "feature", "One");
+    const f2 = await card(s, "feature", "Two");
+    await env.DB.prepare("UPDATE cards SET epic = ? WHERE id = ?").bind("Famille", f1).run();
+    await env.DB.prepare("UPDATE cards SET epic = ? WHERE id = ?").bind("Recettes", f2).run();
+    await env.DB.prepare("DELETE FROM card_links").run();
+    const board = await (await get(`/projects/${REPO}/board`, s.cookie)).text();
+    expect(board).toContain("2 epics to create from the Epic values");
+    const review = await (await get(`/projects/${REPO}/cards/epics`, s.cookie)).text();
+    expect(review).toContain("Recettes");
+    expect((await listCards(env.DB, REPO)).filter((c) => c.kind === "epic")).toHaveLength(1);
+    await post(`/projects/${REPO}/cards/epics`, { csrf: s.csrf }, s.cookie);
+    const epics = (await listCards(env.DB, REPO)).filter((c) => c.kind === "epic");
+    expect(epics).toHaveLength(2);
+    expect(await members(existing)).toEqual([f1]);
+    expect(await epicOf(f2)).toBe("Recettes");
+    const actions = (await logActions()).map((l) => l.action);
+    expect(actions).toContain("epic_conversion_confirmed");
+    expect(actions).toContain("feature_attached");
+    await post(`/projects/${REPO}/cards/epics`, { csrf: s.csrf }, s.cookie);
+    expect((await listCards(env.DB, REPO)).filter((c) => c.kind === "epic")).toHaveLength(2);
+    expect(await (await get(`/projects/${REPO}/board`, s.cookie)).text()).not.toContain("to create from the Epic values");
+  });
+
+  it("is not offered to a tester", async () => {
+    const s = await seed();
+    const f = await card(s, "feature", "One");
+    await env.DB.prepare("UPDATE cards SET epic = ? WHERE id = ?").bind("X", f).run();
+    await grantRole("tt", "tester");
+    const t = await signIn("tt");
+    expect(await (await get(`/projects/${REPO}/board`, t.cookie)).text()).not.toContain("to create from the Epic values");
+  });
+});
