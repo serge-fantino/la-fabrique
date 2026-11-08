@@ -9,6 +9,7 @@ import { storyCards, isNice, type StoryCards } from "./card-groups";
 import { cardPermalink, cardRef, cardUrl } from "./card-views";
 import {
   advanceStatus,
+  annotations,
   createCard,
   dimensionValues,
   findCard,
@@ -247,6 +248,23 @@ function findEpic(cards: Card[], wanted: unknown): Card {
   return card;
 }
 
+// The epic a feature is put under, by an epic card's number or name, in the
+// same project. undefined: not asked; null: detach. The feature carries the
+// epic card's title, as the board's Epic dimension does.
+async function epicTarget(ctx: Context, project: Project, args: Args, body: string | undefined): Promise<string | null | undefined> {
+  if (!("epic" in args)) return undefined;
+  if (body !== undefined && "epic" in annotations(body)) fail("The text already says {epic: …}: change the epic in the text, or take the annotation out.");
+  const wanted = args["epic"];
+  if (wanted === null || (typeof wanted === "string" && !wanted.trim())) return null;
+  if (typeof wanted !== "string" && typeof wanted !== "number") return fail("epic is an epic card's number, its name, or null to detach.");
+  const value = String(wanted).trim();
+  const cards = await listCards(ctx.env.DB, project.repo);
+  const byNumber = /^[#C]?\d+$/i.test(value) ? cards.find((card) => card.id === Number(value.replace(/^[#C]/i, ""))) : undefined;
+  const epic = byNumber ?? cards.find((card) => card.kind === "epic" && sameName(card.title, value));
+  if (!epic || epic.kind !== "epic" || epic.archivedAt) return fail(`"${value}" is not an epic card of ${project.repo}: nothing changed.`);
+  return epic.title;
+}
+
 // ---- The tools ---------------------------------------------------------------
 
 const TOOLS: Tool[] = [
@@ -460,6 +478,7 @@ const TOOLS: Tool[] = [
         kind: { type: "string", enum: ["feature", "idea", "question"] },
         release: { type: ["string", "null"], description: `${NEXT_RELEASE}, ${SPRINT_LANE} (while a sprint runs), or null` },
         priority: { type: ["string", "null"], description: "One of the project's priority labels" },
+        epic: { type: ["string", "integer", "null"], description: "Put the feature under this epic card: its number or name" },
       },
       required: ["project", "title"],
     },
@@ -475,7 +494,9 @@ const TOOLS: Tool[] = [
       await checkRelease(ctx, project, lane);
       const wanted = priority(args);
       checkPriority(project, wanted);
-      const input = await cardInput(ctx, project, { title: title ?? "", body: text(args, "body", 50_000) ?? "", kind, status: "draft", release: lane ?? null });
+      const body = text(args, "body", 50_000) ?? "";
+      const epic = await epicTarget(ctx, project, args, body);
+      const input = await cardInput(ctx, project, { title: title ?? "", body, kind, status: "draft", release: lane ?? null, epic: epic ?? null });
       const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
       const card = await findCard(ctx.env.DB, project.repo, id);
       if (card && wanted) await setCardPriority(ctx.env.DB, card, wanted, ctx.login);
@@ -499,6 +520,7 @@ const TOOLS: Tool[] = [
         status: { type: "string", enum: ["draft", "shaping", "to_validate", "validated", "dropped"] },
         release: { type: ["string", "null"] },
         priority: { type: ["string", "null"] },
+        epic: { type: ["string", "integer", "null"], description: "Move the feature under this epic card (number or name), or null to detach it" },
         rev: { type: "integer", description: "The card's version you read" },
       },
       required: ["project", "card"],
@@ -521,14 +543,16 @@ const TOOLS: Tool[] = [
       const wanted = priority(args);
       if (args["priority"] !== undefined) checkPriority(project, wanted);
       if (card.archivedAt) fail("This card is archived: bring it back from its page first.");
+      const epic = await epicTarget(ctx, project, args, body ?? card.body);
+      const epicChanges = epic !== undefined && epic !== (card.epic ?? null);
 
-      if (title !== undefined || body !== undefined || kind !== undefined) {
+      if (title !== undefined || body !== undefined || kind !== undefined || epicChanges) {
         const input = await cardInput(ctx, project, {
           title: title || card.title,
           body: body ?? card.body,
           kind: kind ?? card.kind,
           status: card.status,
-          epic: card.epic,
+          epic: epic === undefined ? card.epic : epic,
           domain: card.domain,
           segment: card.segment,
           release: card.release,
@@ -536,7 +560,8 @@ const TOOLS: Tool[] = [
         const outcome = await updateCard(ctx.env.DB, card, ctx.login, input, card.rev);
         if (outcome === "conflict") fail("The card changed while writing: read it again.");
         if (outcome === "saved") {
-          changes.push("text");
+          if (epicChanges) changes.push("epic");
+          if (title !== undefined || body !== undefined || kind !== undefined) changes.push("text");
           if (input.title !== card.title || input.body !== card.body) await reopenStatus(ctx.env.DB, project.repo, card.id, ctx.login, "the card changed");
         }
         card = (await findCard(ctx.env.DB, project.repo, card.id)) ?? card;
