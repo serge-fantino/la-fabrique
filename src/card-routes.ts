@@ -99,6 +99,7 @@ import { wordingFor } from "./wording";
 import { can } from "./rights";
 import { projectUrl } from "./urls";
 import { projectView } from "./view-context";
+import { embeddedCards, embedsFor } from "./card-embed";
 import { escapeHtml, layout, messagePage, type Viewer } from "./views";
 
 // /projects/{repo}/board, /cards, /cards/new, /cards/export, /cards/import, /cards/{id}, /cards/{id}/edit, /spec, /story
@@ -143,12 +144,12 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   await joinSprint(env, project, cards, releases);
   const progress = await cardProgress(env, project, cards);
   // The epic lanes' headers show the epic's progress (la-fabrique#305).
-  const epics = new Map<string, EpicProgress>();
+  const epics = new Map<string, { id: number; progress: EpicProgress }>();
   if (board.by === "epic" || board.then === "epic") {
     const found = allCards.filter((card) => card.kind === "epic" && !card.archivedAt);
     for (const [id, one] of await epicProgresses(env, project, found, allCards)) {
       const epic = found.find((card) => card.id === id);
-      if (epic) epics.set(epic.title.trim().toLowerCase(), one);
+      if (epic) epics.set(epic.title.trim().toLowerCase(), { id: epic.id, progress: one });
     }
   }
   const notice = url.searchParams.get("notice");
@@ -439,13 +440,17 @@ async function renderCard(
   const asked = params.get("ask");
   const version = shown ?? card;
   const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"));
+  const allCards = await listCards(env.DB, project.repo);
+  const embedText = [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n");
+  const embedded = embeddedCards(embedText).length
+    ? await embedsFor(env, project, embedText, allCards, await cardProgress(env, project, allCards.filter((other) => embeddedCards(embedText).includes(other.id))))
+    : new Map<number, string>();
   const rubriques = rubriquesFor(project, card);
   const spend = calls.reduce(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
     { calls: 0, micros: 0, unknown: 0 },
   );
   const epicSpend = card.kind === "epic" ? await epicSpendOf(env.DB, project.repo, card, spend) : undefined;
-  const allCards = await listCards(env.DB, project.repo);
   return html(
     cardPage(viewer, view, {
       card,
@@ -477,6 +482,7 @@ async function renderCard(
       named,
       ...(epic ? { epic } : {}),
       mentioned,
+      embedded,
       dependencies,
       dependencyOptions,
       dependencyLog,
