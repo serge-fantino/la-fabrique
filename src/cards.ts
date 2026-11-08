@@ -208,7 +208,7 @@ export interface CardRevision {
 
 export interface CardLink {
   // Read from the text (issue, person, term), or made from the card (story).
-  kind: "issue" | "person" | "term" | "story";
+  kind: "issue" | "person" | "term" | "story" | "epic_issue";
   ref: string;
 }
 

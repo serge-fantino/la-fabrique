@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Start an epic card from an existing GitHub epic",
+    "changements": [
+      "Creating an epic card now offers the project's epique issues: pick one and the card links to it (its text is not copied), the features linked to the issue's sub-issues are attached to the epic (a feature already in another epic stays there and is reported), and the epic's page shows the issue's link and its stories linked to no feature under \"No feature\". An issue can start one epic card only."
+    ],
+    "stories": [287],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "An epic's page shows the versions that shipped it, and what is left",
     "changements": [
       "Once part of an epic has shipped, its page lists the versions that shipped its features, oldest first, and the features not yet in production, each linked to its card. Dropped and archived features are left out."
