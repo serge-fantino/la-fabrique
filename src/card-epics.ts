@@ -45,7 +45,7 @@ export async function setFeatureEpic(
   feature: Card,
   name: string | null,
   login: string,
-  by: "feature" | "document" = "feature",
+  by: "feature" | "document" | "text" = "feature",
 ): Promise<{ change: EpicChange; epic: Card | null }> {
   if (feature.kind !== "feature") return { change: "not_a_feature", epic: null };
   const title = cleanValue(name);

@@ -37,8 +37,9 @@ export function embedHtml(
   card: Card,
   progress: Progress | null | undefined,
   stories: CardStory[],
+  mark = "",
 ): string {
-  const head = `<a class="card-mention mono" href="${escapeHtml(cardUrl(repo, card.id))}">${cardRef(card.id)}</a> <strong>${escapeHtml(card.title)}</strong> ${statusPill(card, progress)}`;
+  const head = `<a class="card-mention mono" href="${escapeHtml(cardUrl(repo, card.id))}">${cardRef(card.id)}</a> <strong>${escapeHtml(card.title)}</strong> ${statusPill(card, progress)}${mark ? ` ${mark}` : ""}`;
   const synopsis = synopsisOf(card);
   const body = synopsis ? `<p class="card-embed-synopsis">${escapeHtml(synopsis)}</p>` : "";
   let rest = "";
@@ -65,6 +66,7 @@ export async function embedsFor(
   text: string,
   cards: Card[],
   progress: ReadonlyMap<number, Progress>,
+  marks: ReadonlyMap<number, string> = new Map(),
 ): Promise<Map<number, string>> {
   const found = new Map<number, string>();
   const ids = embeddedCards(text);
@@ -80,7 +82,7 @@ export async function embedsFor(
       continue;
     }
     const mine = (links.order.get(card.id) ?? []).flatMap((number) => stories.get(number) ?? []);
-    found.set(card.id, embedHtml(project.repo, card, progress.get(card.id), mine));
+    found.set(card.id, embedHtml(project.repo, card, progress.get(card.id), mine, marks.get(card.id)));
   }
   return found;
 }
