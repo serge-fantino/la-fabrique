@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A feature or an epic still needed cannot be dropped or archived",
+    "changements": [
+      "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be.",
+      "The same refusal now applies when Claude drops a card through the MCP (card_update, status dropped)."
+    ],
+    "stories": [302],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude's epic changes show on the epic page",
     "changements": [
       "Attaching a feature to an epic, moving it or detaching it through Claude (card_create, card_update) now updates the epic page's Features list too, and the feature is offered again in Attach once detached."
