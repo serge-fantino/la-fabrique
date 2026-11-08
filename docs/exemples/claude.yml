@@ -106,10 +106,26 @@ jobs:
           fi
           echo "BRANCHE=$branch" >> "$GITHUB_ENV"
 
+      # Bun pour l'action Claude Code, depuis le registre npm. Sinon l'action le télécharge depuis les releases de
+      # GitHub, qui ont répondu 504 toute une matinée (8 novembre 2026) : chaque run échouait avant que Claude
+      # démarre (la-fabrique C90). Même version que celle que l'action fixe.
+      - name: Bun
+        id: bun
+        run: |
+          for attempt in 1 2 3; do
+            npm install --global --no-audit --no-fund bun@1.4.4 && break
+            [ "$attempt" = 3 ] && { echo "::error title=Bun absent::npm n'a pas pu installer bun@1.4.4."; exit 1; }
+            sleep $((attempt * 15))
+          done
+          bun="$(npm prefix --global)/bin/bun"
+          "$bun" --version
+          echo "path=$bun" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
         with:
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
           github_token: ${{ secrets.FABRIQUE_TOKEN }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -8,7 +8,62 @@
     ],
     "stories": [295],
     "liens": null
-  },  {
+  },
+  {
+    "titre": "Claude writes an epic's document",
+    "changements": [
+      "A card can now be an epic (type Epic). On its page, a person who writes requests asks Claude to write its document: Claude asks at most five questions, answered in the page (Enough questions stops them), then writes the document by the epic's sections, in the background, within the quotas and budget.",
+      "The sections are those the project declares in `epiques.rubriques` of its `.fabrique.json`, or La Fabrique's defaults: Why, Decisions, Features, Open questions. Every version of the document is kept and it can be revised with Claude.",
+      "The epic's page shows its own Claude cost and the total with its features' calls; Settings → Claude counts it. An epic has no stories or test cases of its own; a feature works as before."
+    ],
+    "stories": [281],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "The Epics tab: every epic with its status",
+    "changements": [
+      "New Epics tab in the Product perspective: each non-archived epic with its status and its number of features. The status follows the features, never typed: Ideation (no feature), Open (features, none in the sprint), Active (one is in the sprint), Done (all shipped or dropped).",
+      "By hand: Drop an epic while it is in Ideation; Archive it when it is Done (or Dropped); Unarchive it from the archived list (Show archived epics). Each status change is dated in the epic's status history, with its reason."
+    ],
+    "stories": [286],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Attach features to an epic and see them on its page",
+    "changements": [
+      "Epic cards are values of the Epic dimension, listed next to the legacy free-text values; the board filter by epic finds all its features.",
+      "An epic's page lists its attached features grouped by status. The link follows the epic card, not its name: renaming an epic leaves its features' Epic value as it was and they stay attached."
+    ],
+    "stories": [285],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "Write an epic card: its own sections, page and history",
+    "changements": [
+      "New card type: Epic. Choose it when you create a card; the form then asks for the epic's sections (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions by default, or the project's own `epiques.rubriques` in `.fabrique.json`) and keeps them as one document.",
+      "An epic's page shows its document and its history, every version kept; no spec, stories, test cases or Claude. It is not on the board or in a sprint. The type of a card is fixed at creation. Through the MCP an epic is read with the type epic, not written."
+    ],
+    "stories": [284],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
+    "titre": "A feature can depend on another feature or on an epic",
+    "changements": [
+      "On a feature's page, anyone with a role on the project (tester included) can say it depends on another feature of the project or on a whole epic. The dependency shows on both pages (Depends on, Needed by) with the other's status.",
+      "A dependency that would make a loop, directly or through an epic, is refused with the features that make it. Adding and removing are in the project's log and in the dependency history of the page."
+    ],
+    "stories": [298],
+    "liens": null
+  },
+  {
     "version": "next",
     "date": "2026-11-08",
     "titre": "A feature's epic is chosen from the project's epic cards",

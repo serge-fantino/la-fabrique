@@ -366,6 +366,21 @@ export async function cardSpends(db: D1Database, repo: string): Promise<Map<numb
   return new Map(results.map((row) => [row.card_id, spendOf(row)]));
 }
 
+// An epic's cost: its own calls and its features' (the cards carrying its
+// Epic value) added, la-fabrique#281. `own` is the epic's own spend.
+export async function epicSpendOf(db: D1Database, repo: string, epic: { id: number; title: string; epic: string | null }, own: Spend): Promise<Spend> {
+  const wanted = (epic.epic ?? epic.title).trim().toLowerCase();
+  const row = await db
+    .prepare(
+      `SELECT ${SPEND} FROM llm_calls WHERE repo = ? AND card_id IN (
+         SELECT id FROM cards WHERE repo = ? AND id <> ? AND kind <> 'epic' AND archived_at IS NULL AND LOWER(TRIM(COALESCE(epic, ''))) = ?)`,
+    )
+    .bind(repo, repo, epic.id, wanted)
+    .first<{ calls: number; micros: number; unknown: number }>();
+  const features = spendOf(row);
+  return { calls: own.calls + features.calls, micros: own.micros + features.micros, unknown: own.unknown + features.unknown };
+}
+
 export interface UsageReport {
   month: Spend;
   today: Spend;

@@ -1,4 +1,5 @@
 import type { PendingEpic } from "./epic-conversion";
+import type { Dependencies, dependencyHistory } from "./card-dependencies";
 import { type ValidationState } from "./feature-validation";
 import {
   axisValues,
@@ -38,6 +39,9 @@ import type { Stage } from "./lifecycle";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
+import { epicActions, epicHistoryHtml, epicStatusPill } from "./epics-views";
+import type { EpicHistoryEntry, EpicState } from "./epic-status";
+import { EPIC_REST_FIELD, epicFieldName, epicSections, parseEpicBody } from "./epic-sections";
 import { renderMarkdown } from "./markdown";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks } from "./story-editor";
 import type { Rubrique } from "./requests";
@@ -421,6 +425,8 @@ function testsHtml(viewer: Viewer, url: string, tests: CardTests | undefined, ca
 
 const PURPOSES: Record<string, string> = {
   spec_draft: "Spec written",
+  epic_draft: "Epic document written",
+  epic_revise: "Epic document revised",
   spec_revise: "Spec revised",
   spec_split: "Stories proposed",
   spec_tests: "Test cases written",
@@ -569,6 +575,8 @@ export interface CardPageData {
   claude: { usable: boolean; reason: string | null };
   calls: CallRow[];
   spend: Spend;
+  // An epic: the calls on its features too, counted with its own.
+  epicSpend?: Spend;
   missing: string[];
   instruction?: string | undefined;
   // The request to Claude kept open after a failure.
@@ -588,9 +596,16 @@ export interface CardPageData {
   // The feature's validation (la-fabrique#232), and whether it can be asked now.
   validation?: ValidationState;
   canValidate?: boolean;
+  // Dependencies on other features or epics, both ways (la-fabrique#298).
+  dependencies?: Dependencies;
+  dependencyOptions?: { cards: Card[]; epics: string[] };
+  dependencyLog?: Awaited<ReturnType<typeof dependencyHistory>>;
+  canDepend?: boolean;
   // The project's epic cards (to pick a feature's epic from), and, on an
   // epic, its features and the features that could be attached.
   epics?: Card[];
+  epicState?: EpicState | undefined;
+  epicHistory?: EpicHistoryEntry[] | undefined;
   epicFeatures?: Card[];
   attachable?: Card[];
 }
@@ -621,17 +636,18 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
   }
   if (card.kind === "epic") {
     const features = data.epicFeatures ?? [];
-    const rows = features
-      .map(
-        (feature) => `<li><a href="${escapeHtml(cardUrl(card.repo, feature.id))}"><span class="mono">${cardRef(feature.id)}</span> ${escapeHtml(feature.title)}</a>${
-          data.canWrite
-            ? ` <form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}
-                <input type="hidden" name="action" value="detach_feature" />
-                <input type="hidden" name="feature" value="${feature.id}" />
-                <button type="submit" class="button quiet small">Remove</button></form>`
-            : ""
-        }</li>`,
-      )
+    const row = (feature: Card): string => `<li><a href="${escapeHtml(cardUrl(card.repo, feature.id))}"><span class="mono">${cardRef(feature.id)}</span> ${escapeHtml(feature.title)}</a>${
+      data.canWrite
+        ? ` <form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}
+            <input type="hidden" name="action" value="detach_feature" />
+            <input type="hidden" name="feature" value="${feature.id}" />
+            <button type="submit" class="button quiet small">Remove</button></form>`
+        : ""
+    }</li>`;
+    // Grouped by status, in the order of the statuses.
+    const rows = SHOWN_STATUSES.map((status) => ({ status, list: features.filter((f) => shownStatus(f) === status) }))
+      .filter((group) => group.list.length)
+      .map((group) => `<h3>${escapeHtml(shownStatusLabel(group.status))} <span class="muted small">${group.list.length}</span></h3><ul class="card-stories">${group.list.map(row).join("")}</ul>`)
       .join("");
     const attach =
       data.canWrite && (data.attachable ?? []).length
@@ -642,9 +658,55 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
             <button type="submit" class="button">Attach</button>
           </form>`
         : "";
-    return `<section id="features"><h2>Features</h2>${rows ? `<ul class="card-stories">${rows}</ul>` : `<p class="muted">No feature attached yet.</p>`}${attach}</section>`;
+    return `<section id="features"><h2>Features</h2>${rows || `<p class="muted">No feature attached yet.</p>`}${attach}</section>`;
   }
   return "";
+}
+
+function epicPill(cards: Card[]): string {
+  if (!cards.length) return `<span class="pill">no feature yet</span>`;
+  const done = cards.filter((card) => card.status === "validated").length;
+  return `<span class="pill">${cards.length} feature${cards.length === 1 ? "" : "s"}, ${done} validated</span>`;
+}
+
+function dependenciesHtml(viewer: Viewer, url: string, project: Project, data: CardPageData): string {
+  const deps = data.dependencies;
+  if (!deps || data.shown) return "";
+  const base = projectUrl(project.repo);
+  const link = (card: Card) => `<a class="mono" href="${escapeHtml(base)}/cards/${card.id}">${cardRef(card.id)}</a> ${escapeHtml(card.title)} ${statusPill(card)}`;
+  const remove = (on: string) =>
+    data.canDepend
+      ? ` <form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}<input type="hidden" name="action" value="depend_remove" /><input type="hidden" name="on" value="${escapeHtml(on)}" /><button type="submit" class="button quiet" aria-label="Remove this dependency">Remove</button></form>`
+      : "";
+  const dependsOn = [
+    ...deps.dependsOn.map((card) => `<li>Depends on ${link(card)}${remove(String(card.id))}</li>`),
+    ...deps.dependsOnEpics.map((entry) => `<li>Depends on epic <strong>${escapeHtml(entry.epic)}</strong> ${epicPill(entry.cards)}${remove(`epic:${entry.epic}`)}</li>`),
+  ];
+  const needed = deps.neededBy.map((entry) => `<li>Needed by ${link(entry.card)}${entry.viaEpic ? ` <span class="muted small">through epic ${escapeHtml(entry.viaEpic)}</span>` : ""}</li>`);
+  const options = data.dependencyOptions;
+  const chosen = new Set(deps.dependsOn.map((card) => card.id));
+  const form =
+    data.canDepend && options && !data.card.archivedAt
+      ? `<form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}<input type="hidden" name="action" value="depend_add" />
+          <label for="depend-on">Depends on</label>
+          <select id="depend-on" name="on">
+            <optgroup label="Features">${options.cards.filter((card) => !chosen.has(card.id)).map((card) => `<option value="${card.id}">${cardRef(card.id)} ${escapeHtml(card.title)}</option>`).join("")}</optgroup>
+            <optgroup label="Epics">${options.epics.filter((epic) => !deps.dependsOnEpics.some((entry) => entry.epic === epic)).map((epic) => `<option value="epic:${escapeHtml(epic)}">Epic ${escapeHtml(epic)}</option>`).join("")}</optgroup>
+          </select>
+          <button type="submit" class="button">Add dependency</button></form>`
+      : "";
+  const log = (data.dependencyLog ?? [])
+    .map((entry) => {
+      const target = entry.epic ? `epic ${escapeHtml(entry.epic)}` : cardRef(entry.on ?? 0);
+      return `<li><span class="mono muted">@${escapeHtml(entry.actor)} · ${formatDate(entry.at)}</span> ${entry.action === "card_dependency_added" ? "added" : "removed"} the dependency of ${cardRef(entry.card)} on ${target}</li>`;
+    })
+    .join("");
+  return `<section class="card-dependencies" id="dependencies"><h2>Dependencies</h2>
+      <p class="muted small">Upstream: what has to come first. Stories keep GitHub's blocked by for technical dependencies.</p>
+      ${dependsOn.length || needed.length ? `<ul class="card-stories">${dependsOn.join("")}${needed.join("")}</ul>` : `<p class="muted">No dependency.</p>`}
+      ${form}
+      ${log ? `<details><summary>Dependency history</summary><ul class="card-history">${log}</ul></details>` : ""}
+    </section>`;
 }
 
 // A story that names a card it is not linked to: the form that links it
@@ -784,16 +846,24 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     data.canWrite && !shown
       ? `<div class="card-actions">
           <a class="button" href="${escapeHtml(url)}/edit">Edit</a>
-          <form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}
+          ${
+            card.kind === "epic"
+              ? data.epicState
+                ? epicActions(viewer, url, card, data.epicState, null)
+                : ""
+              : `<form method="post" action="${escapeHtml(url)}" class="inline">${csrfField(viewer)}
             <input type="hidden" name="action" value="${card.archivedAt ? "restore" : "archive"}" />
             <button type="submit" class="button quiet">${card.archivedAt ? "Restore" : "Archive"}</button>
-          </form>
+          </form>`
+          }
         </div>`
       : "";
   const issues = data.links.filter((link) => link.kind === "issue");
   const people = data.links.filter((link) => link.kind === "person");
   const terms = data.links.filter((link) => link.kind === "term");
   const stories = data.links.filter((link) => link.kind === "story");
+  // An epic is a document: no spec, stories, tests or Claude.
+  const isEpic = card.kind === "epic";
   const linkRows: [string, string][] = [];
   if (issues.length)
     linkRows.push([
@@ -815,7 +885,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
   let work = "";
   const working = isActive(data.job);
   const canAnswer = data.canWrite && !shown && data.claude.usable && !working;
-  if (data.canWrite && !shown && !working) {
+  if (data.canWrite && !shown && !working && !isEpic) {
     // What can come next, in one row; Claude's buttons carry a star. A
     // panel unfolds under the row, one at a time.
     const panel = (action: JobKind, summary: string, primary: boolean, open: boolean, inner: string): string =>
@@ -835,10 +905,14 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       usable && !spec
         ? panel(
             "spec_draft",
-            "Write the spec with Claude",
+            isEpic ? "Write the document with Claude" : "Write the spec with Claude",
             true,
             data.ask === "draft",
-            `<p class="help">Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know. It works in the background: you can leave the page.</p>
+            `<p class="help">${
+              isEpic
+                ? "Claude reads the epic, its features (titles, synopses, statuses) and the project's principles (its CLAUDE.md), asks at most five questions, then writes the document by the epic's sections."
+                : "Claude reads the card, the project's principles (its CLAUDE.md), its other cards and open stories, then writes a first spec and asks what it needs to know."
+            } It works in the background: you can leave the page.</p>
             <div class="field">
               <label for="draft">Anything to tell Claude first? <span class="muted">(optional)</span></label>
               <textarea id="draft" name="instruction" rows="3" maxlength="4000">${escapeHtml(data.ask === "draft" ? (data.instruction ?? "") : "")}</textarea>
@@ -848,7 +922,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     // Once the card has stories, Claude reviews them against the spec.
     const made = stories.length;
     const split =
-      usable && spec && !data.split
+      usable && spec && !data.split && !isEpic
         ? panel(
             "spec_split",
             made ? "Review the stories with Claude" : "Split into stories with Claude",
@@ -868,7 +942,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
           )
         : "";
     const tests =
-      usable && spec && (made || data.split)
+      usable && spec && (made || data.split) && !isEpic
         ? panel(
             "spec_tests",
             data.card.data.tests ? "Rewrite the test cases with Claude" : "Write test cases with Claude",
@@ -885,21 +959,21 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       usable && spec
         ? panel(
             "spec_revise",
-            "Ask Claude for a change",
+            isEpic ? "Revise the document with Claude" : "Ask Claude for a change",
             false,
             data.ask === "change",
             `<div class="field">
               <label for="change">What should change?</label>
-              <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the spec.</p>
+              <p class="help" id="change_help">Say what is wrong, what is missing, what to cut. Claude keeps the rest of the ${isEpic ? "document" : "spec"}.</p>
               <textarea id="change" name="instruction" rows="4" maxlength="4000" required aria-describedby="change_help">${escapeHtml(data.ask === "change" ? (data.instruction ?? "") : "")}</textarea>
             </div>`,
           )
         : "";
-    const story = spec && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
+    const story = spec && !isEpic && !made && !data.missing.length ? `<a class="button quiet" href="${escapeHtml(url)}/story">Make one story on GitHub</a>` : "";
     work = `${data.split ? proposalHtml(url, data.split, spec) : ""}
       <div class="spec-actions">
         ${draft}${split}${tests}${story}${change}
-        <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
+        <a class="spec-by-hand" href="${escapeHtml(url)}/spec">${isEpic ? (spec ? "Edit the document by hand" : "Write the document by hand") : spec ? "Edit the spec by hand" : "Write the spec by hand"}</a>
       </div>
       ${
         split
@@ -910,7 +984,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
             }</p>`
           : ""
       }
-      ${spec && !made && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
+      ${spec && !isEpic && !made && data.missing.length ? `<p class="muted">To make one story, fill in: ${data.missing.map(escapeHtml).join(", ")}.</p>` : ""}
       ${usable ? "" : `<p class="muted">${escapeHtml(data.claude.reason ?? "Claude is not available.")}</p>`}`;
   }
 
@@ -927,7 +1001,9 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
         tags,
         shown
           ? undefined
-          : data.canWrite && !card.archivedAt
+          : isEpic && data.epicState
+            ? epicStatusPill(data.epicState)
+            : data.canWrite && !card.archivedAt
             ? statusForm(viewer, url, card, data.progress)
             : statusPill(card, data.progress, data.progressHistory?.at(-1)?.at ?? null),
       )}${
@@ -942,12 +1018,13 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">
-${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
+${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">${isEpic ? "No document yet." : "No text yet."}</p>`}
       </article>
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
+      ${isEpic && !shown ? epicHistoryHtml(data.epicHistory ?? []) : ""}
       <section class="card-spec" id="spec">
-        <h2>Spec</h2>
+        <h2>${isEpic ? "Document" : "Spec"}</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}
         ${specHtml(spec, data.rubriques, project.repo)}
         ${questionsHtml(viewer, url, spec, canAnswer)}
@@ -955,7 +1032,7 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
         ${work}
       </section>
       ${
-        stories.length
+        stories.length && !isEpic
           ? `<h2 id="stories">Stories</h2>${progressSummary(data.progress, data.progressHistory ?? [])}<ul class="card-stories">${stories
               .map((link) => {
                 const state = data.storyStates.get(Number(link.ref));
@@ -965,10 +1042,11 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
               .join("")}</ul>`
           : ""
       }
-      ${testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
-      ${validationHtml(viewer, url, data)}
+      ${isEpic ? "" : testsHtml(viewer, url, data.card.data.tests, data.canWrite && !shown && !card.archivedAt)}
+      ${isEpic ? "" : validationHtml(viewer, url, data)}
+      ${dependenciesHtml(viewer, url, project, data)}
       ${
-        data.named?.length && !shown
+        data.named?.length && !shown && !isEpic
           ? `<section class="card-named" id="named"><h2>Stories that name ${cardRef(card.id)}</h2>
               <p class="muted small">They name this card in their title or text, but are not among its stories.</p>
               <ul class="card-stories">${data.named
@@ -982,8 +1060,9 @@ ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text y
           : ""
       }
       ${linkRows.length ? `<h2>Mentioned</h2><dl class="facts">${linkRows.map(([term, value]) => `<dt>${term}</dt><dd>${value}</dd>`).join("")}</dl>` : ""}
-      <h2>Claude on this card</h2>
-      <p>${data.spend.calls ? spendLine(data.spend) : `<span class="muted">No call yet.</span>`}</p>
+      <h2>${isEpic ? "Claude on this epic" : "Claude on this card"}</h2>
+      <p>${data.spend.calls ? spendLine(data.spend) : `<span class="muted">No call yet.</span>`}${isEpic ? " <span class=\"muted\">(this epic's own calls)</span>" : ""}</p>
+      ${isEpic && data.epicSpend ? `<p>${data.epicSpend.calls ? `${spendLine(data.epicSpend)} <span class="muted">(with its features' calls)</span>` : `<span class="muted">No call on its features.</span>`}</p>` : ""}
       ${callsTable(data.calls)}
       <h2>History</h2>
       <p class="muted small">Written by <span class="mono">@${escapeHtml(card.author)}</span> on <span class="mono">${formatDate(card.createdAt)}</span>. Every version is kept.</p>
@@ -1008,6 +1087,34 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
   const base = projectUrl(project.repo);
   const { card, input, known } = data;
   const action = card ? cardUrl(project.repo, card.id) : `${base}/cards`;
+  const isEpic = (card ? card.kind : input.tags.kind) === "epic";
+  const sections = epicSections(project);
+  const epicFields = (body: string): string => {
+    const parsed = parseEpicBody(body, sections);
+    return `${sections
+      .map(
+        (section) => `<div class="field">
+          <label for="s_${escapeHtml(section.cle)}">${escapeHtml(section.titre)}</label>
+          ${section.aide ? `<p class="help" id="s_${escapeHtml(section.cle)}_help">${escapeHtml(section.aide)}</p>` : ""}
+          <textarea id="s_${escapeHtml(section.cle)}" name="${escapeHtml(epicFieldName(section))}" rows="5" maxlength="${MAX_BODY}">${escapeHtml(parsed.texts[section.cle] ?? "")}</textarea>
+        </div>`,
+      )
+      .join("")}${
+      parsed.rest
+        ? `<div class="field"><label for="s_rest">Other text</label><textarea id="s_rest" name="${EPIC_REST_FIELD}" rows="4" maxlength="${MAX_BODY}">${escapeHtml(parsed.rest)}</textarea></div>`
+        : ""
+    }`;
+  };
+  // Creating: the type is chosen first, as it decides the fields.
+  const typeChoice = card
+    ? ""
+    : `<form method="get" action="${escapeHtml(base)}/cards/new" class="request-form card-form" aria-label="Type of the new card">
+        <div class="field">
+          <label for="f_type_choice">Type</label>
+          <select id="f_type_choice" name="kind" data-autosubmit>${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], input.tags.kind === kind)).join("")}</select>
+          <noscript><button type="submit" class="button quiet">Choose</button></noscript>
+        </div>
+      </form>`;
   const free = FREE_DIMENSIONS.map(
     (dimension) => `<div class="field">
         <label for="f_${dimension}">${DIMENSION_LABELS[dimension]}</label>
@@ -1026,6 +1133,7 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
       <p class="crumbs"><a href="${escapeHtml(base)}/board">Board</a>${card ? ` <span aria-hidden="true">›</span> <a class="mono" href="${escapeHtml(cardUrl(project.repo, card.id))}">${cardRef(card.id)}</a>` : ""}</p>
       ${conflict}
       ${notice(data.error, "error")}
+      ${typeChoice}
       <form method="post" action="${escapeHtml(action)}" class="request-form card-form"${card ? "" : ` data-draft-key="${escapeHtml(cardDraftKey(project.repo))}"`}>
         ${csrfField(viewer)}
         <input type="hidden" name="action" value="save" />
@@ -1034,17 +1142,25 @@ export function cardFormPage(viewer: Viewer, project: Project, data: CardFormDat
           <label for="f_title">Title <span class="muted">(required)</span></label>
           <input id="f_title" name="title" required maxlength="${MAX_TITLE}" value="${escapeHtml(input.title)}" />
         </div>
-        <div class="field">
+        ${
+          isEpic
+            ? epicFields(input.body)
+            : `<div class="field">
           <label for="f_body">Text</label>
           <p class="help" id="f_body_help">A few lines: what it is, for whom, why. Markdown.
             <code>{segment: pro}</code> sets a tag (epic, domain, segment, release; it wins over the fields below),
             <code>#12</code> points to an issue, <code>@login</code> to a person, <code>[[Basket]]</code> to a term.</p>
           <textarea id="f_body" name="body" rows="12" maxlength="${MAX_BODY}" aria-describedby="f_body_help">${escapeHtml(input.body)}</textarea>
-        </div>
+        </div>`
+        }
         <div class="card-form-tags">
           <div class="field">
             <label for="f_kind">Type</label>
-            <select id="f_kind" name="kind">${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], input.tags.kind === kind)).join("")}</select>
+            ${
+              card
+                ? `<input type="hidden" name="kind" value="${card.kind}" /><p id="f_kind">${KIND_LABELS[card.kind]} <span class="muted small">(fixed at creation)</span></p>`
+                : `<input type="hidden" name="kind" value="${input.tags.kind}" /><p id="f_kind">${KIND_LABELS[input.tags.kind]}</p>`
+            }
           </div>
           <div class="field">
             <label for="f_status">Status</label>

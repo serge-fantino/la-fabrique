@@ -340,6 +340,13 @@ export async function dimensionValues(db: D1Database, repo: string, cards: Card[
     .all<{ dimension: string; value: string }>();
   const values = Object.fromEntries(FREE_DIMENSIONS.map((dimension) => [dimension, [] as string[]])) as Record<FreeDimension, string[]>;
   for (const row of results) if (isFreeDimension(row.dimension)) values[row.dimension].push(row.value);
+  // The project's epic cards are values of the Epic dimension, ahead of the
+  // legacy free-text ones (la-fabrique#285).
+  const epics = await db
+    .prepare("SELECT title FROM cards WHERE repo = ? AND kind = 'epic' AND archived_at IS NULL ORDER BY position, id")
+    .bind(repo)
+    .all<{ title: string }>();
+  for (const row of epics.results) if (!values.epic.some((v) => v.toLowerCase() === row.title.toLowerCase())) values.epic.push(row.title);
   for (const dimension of FREE_DIMENSIONS) {
     const used = [...new Set(cards.map((card) => card[dimension]).filter((value): value is string => Boolean(value)))];
     const extra = used.filter((value) => !values[dimension].includes(value)).sort((a, b) => a.localeCompare(b));
@@ -404,9 +411,14 @@ function linkStatements(db: D1Database, id: number, body: string): D1PreparedSta
   ];
 }
 
+// An epic is a document: it never enters a release or a sprint, and is not in an epic.
+export function documentTags(tags: CardTags): CardTags {
+  return tags.kind === "epic" ? { ...tags, release: null, epic: null } : tags;
+}
+
 export async function createCard(db: D1Database, repo: string, author: string, input: CardInput): Promise<number> {
   const last = await db.prepare("SELECT MAX(position) AS position FROM cards WHERE repo = ?").bind(repo).first<{ position: number | null }>();
-  const { tags } = input;
+  const tags = documentTags(input.tags);
   const row = await db
     .prepare(
       `INSERT INTO cards (repo, kind, status, title, body, epic, domain, segment, release, position, author)
@@ -439,7 +451,7 @@ export async function updateCard(
   if (baseRev !== card.rev) return "conflict";
   if (input.title === card.title && input.body === card.body && sameTags(input.tags, card)) return "unchanged";
   const rev = card.rev + 1;
-  const { tags } = input;
+  const tags = documentTags(input.tags);
   const result = await db
     .prepare(
       `UPDATE cards SET kind = ?, status = ?, title = ?, body = ?, epic = ?, domain = ?, segment = ?, release = ?,
@@ -798,14 +810,14 @@ export async function importCards(db: D1Database, repo: string, author: string, 
     }
     existing.add(title.toLowerCase());
     const body = typeof item["body"] === "string" ? item["body"].replace(/\r\n/g, "\n").slice(0, MAX_BODY) : "";
-    const tags: CardTags = {
+    const tags: CardTags = documentTags({
       kind: isKind(item["kind"]) ? item["kind"] : "feature",
       status: isStatus(item["status"]) ? item["status"] : "draft",
       epic: cleanValue(item["epic"]),
       domain: cleanValue(item["domain"]),
       segment: cleanValue(item["segment"]),
       release: cleanValue(item["release"]),
-    };
+    });
     // The spec comes along; a pending split proposal does not.
     const given = typeof item["data"] === "object" && item["data"] !== null ? (item["data"] as Record<string, unknown>) : {};
     const cardData: CardData = typeof given["spec"] === "object" && given["spec"] !== null ? { spec: given["spec"] as CardSpec } : {};
@@ -888,7 +900,9 @@ export function readBoardQuery(params: URLSearchParams): BoardQuery {
 
 // `storiesOf`: each card's stories, so "#170" (or "170") finds the cards of
 // story 170 (la-fabrique#206).
-export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>): Card[] {
+// `epicOf`: the epic card's current title of each attached feature, so a
+// renamed epic still finds its features (la-fabrique#285).
+export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>, epicOf?: Map<number, string>): Card[] {
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean);
   return cards.filter((card) => {
     if (!filters.all && (card.archivedAt || (card.status === "dropped" && filters.status !== "dropped"))) return false;
@@ -897,7 +911,8 @@ export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Ma
     for (const dimension of FREE_DIMENSIONS) {
       const wanted = filters.values[dimension];
       if (wanted === undefined) continue;
-      if ((card[dimension] ?? "") !== wanted) return false;
+      const value = dimension === "epic" ? (epicOf?.get(card.id) ?? card.epic ?? "") : (card[dimension] ?? "");
+      if (value !== wanted && !(dimension === "epic" && wanted && value.toLowerCase() === wanted.toLowerCase())) return false;
     }
     if (words.length) {
       const text = `${card.title} ${card.body} C${card.id}`.toLowerCase();
