@@ -584,6 +584,63 @@ export interface CardPageData {
   // The feature's validation (la-fabrique#232), and whether it can be asked now.
   validation?: ValidationState;
   canValidate?: boolean;
+  // The project's epic cards (to pick a feature's epic from), and, on an
+  // epic, its features and the features that could be attached.
+  epics?: Card[];
+  epicFeatures?: Card[];
+  attachable?: Card[];
+}
+
+// A feature's Epic: one of the project's epic cards, or a new name.
+function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData): string {
+  if (card.kind === "feature") {
+    const epics = data.epics ?? [];
+    const current = epics.find((epic) => epic.title.toLowerCase() === (card.epic ?? "").toLowerCase());
+    const shown = current
+      ? `<a href="${escapeHtml(cardUrl(card.repo, current.id))}">${escapeHtml(current.title)}</a>`
+      : card.epic
+        ? escapeHtml(card.epic)
+        : `<span class="muted">none</span>`;
+    const form = data.canWrite
+      ? `<form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
+          <input type="hidden" name="action" value="set_epic" />
+          <label for="epic_name">Choose an epic, or type a new name</label>
+          <input id="epic_name" name="epic" maxlength="${MAX_VALUE}" list="epic_choices" value="${escapeHtml(card.epic ?? "")}" autocomplete="off" />
+          <datalist id="epic_choices">${epics.map((epic) => `<option value="${escapeHtml(epic.title)}"></option>`).join("")}</datalist>
+          <div class="card-actions">
+            <button type="submit" class="button">Set the epic</button>
+            ${card.epic ? `<button type="submit" class="button quiet" name="epic" value="">Remove the epic</button>` : ""}
+          </div>
+        </form>`
+      : "";
+    return `<section id="epic"><h2>Epic</h2><p>${shown}</p>${form}</section>`;
+  }
+  if (card.kind === "epic") {
+    const features = data.epicFeatures ?? [];
+    const rows = features
+      .map(
+        (feature) => `<li><a href="${escapeHtml(cardUrl(card.repo, feature.id))}"><span class="mono">${cardRef(feature.id)}</span> ${escapeHtml(feature.title)}</a>${
+          data.canWrite
+            ? ` <form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}
+                <input type="hidden" name="action" value="detach_feature" />
+                <input type="hidden" name="feature" value="${feature.id}" />
+                <button type="submit" class="button quiet small">Remove</button></form>`
+            : ""
+        }</li>`,
+      )
+      .join("");
+    const attach =
+      data.canWrite && (data.attachable ?? []).length
+        ? `<form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
+            <input type="hidden" name="action" value="attach_feature" />
+            <label for="attach_feature">Attach a feature (it leaves its current epic)</label>
+            <select id="attach_feature" name="feature">${(data.attachable ?? []).map((f) => `<option value="${f.id}">${cardRef(f.id)} ${escapeHtml(f.title)}${f.epic ? ` (now in ${escapeHtml(f.epic)})` : ""}</option>`).join("")}</select>
+            <button type="submit" class="button">Attach</button>
+          </form>`
+        : "";
+    return `<section id="features"><h2>Features</h2>${rows ? `<ul class="card-stories">${rows}</ul>` : `<p class="muted">No feature attached yet.</p>`}${attach}</section>`;
+  }
+  return "";
 }
 
 // A story that names a card it is not linked to: the form that links it
@@ -884,6 +941,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
 ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
       </article>
       ${actions}
+      ${shown ? "" : epicSection(viewer, url, card, data)}
       <section class="card-spec" id="spec">
         <h2>Spec</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}

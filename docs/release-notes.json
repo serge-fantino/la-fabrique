@@ -1,6 +1,17 @@
 [
   {
     "version": "next",
+    "date": "2026-11-08",
+    "titre": "A feature's epic is chosen from the project's epic cards",
+    "changements": [
+      "A feature's page has an Epic section: pick one of the project's epic cards, or type a new name to create an empty draft epic card with the feature attached. A feature belongs to one epic at most.",
+      "An epic card lists its features and lets you attach or remove one; choosing an epic on the feature and attaching it in the epic is the same link, and a feature moves from its old epic instead of being in two. Epic is now a card type. Each change is in the activity log."
+    ],
+    "stories": [294],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [

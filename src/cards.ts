@@ -5,9 +5,9 @@ import { isProgressStage, PROGRESS_LABELS, PROGRESS_STAGES, type ProgressStage }
 // attached to a project. The text (Markdown with annotations) is the
 // substance; the columns only filter and place a card on the board.
 
-export const CARD_KINDS = ["feature", "idea", "question"] as const;
+export const CARD_KINDS = ["feature", "idea", "question", "epic"] as const;
 export type CardKind = (typeof CARD_KINDS)[number];
-export const KIND_LABELS: Record<CardKind, string> = { feature: "Feature", idea: "Idea", question: "Question" };
+export const KIND_LABELS: Record<CardKind, string> = { feature: "Feature", idea: "Idea", question: "Question", epic: "Epic" };
 
 export const CARD_STATUSES = ["draft", "shaping", "to_validate", "validated", "dropped"] as const;
 export type CardStatus = (typeof CARD_STATUSES)[number];
