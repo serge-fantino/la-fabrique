@@ -109,6 +109,21 @@ jobs:
           fi
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
 
+      # Bun for the Claude Code action, from the npm registry. The action downloads it from GitHub's releases
+      # otherwise, which answered 504 for a whole morning (8 November 2026) and failed every run before Claude
+      # started (C90). Same version as the action pins.
+      - name: Bun
+        id: bun
+        run: |
+          for attempt in 1 2 3; do
+            npm install --global --no-audit --no-fund bun@1.4.4 && break
+            [ "$attempt" = 3 ] && { echo "::error title=Bun not installed::npm could not install bun@1.4.4."; exit 1; }
+            sleep $((attempt * 15))
+          done
+          bun="$(npm prefix --global)/bin/bun"
+          "$bun" --version
+          echo "path=$bun" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1
         id: claude
         env:
@@ -118,6 +133,7 @@ jobs:
           BASH_DEFAULT_TIMEOUT_MS: "900000"
           BASH_MAX_TIMEOUT_MS: "1800000"
         with:
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
           github_token: ${{ secrets.FABRIQUE_TOKEN }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
