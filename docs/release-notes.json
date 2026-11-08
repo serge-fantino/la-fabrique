@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "The Epics tab and the board show each epic's progress",
+    "changements": [
+      "The Epics tab has a Progress column, and the board arranged by Epic shows the progress under each epic lane's header: the same bar, counts and status as on the epic's page, with the same hover and focus explanations."
+    ],
+    "stories": [305],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Claude writes an epic's technical GitHub issue",
     "changements": [
       "When Claude creates or updates an epic through La Fabrique (epic_create, epic_update), it can pass a technical text: the project's GitHub epic issue (label epique) is created or its text replaced, signed with the person's login and linking to the epic card, which links back. The issue is never a copy of the card's document. Without a technical text the issue is untouched; if GitHub refuses, the call says so and the card is still written."

@@ -129,9 +129,10 @@ function importedNotice(params: URLSearchParams): string {
 export async function showBoard(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   const url = new URL(request.url);
   const board = readBoardQuery(url.searchParams);
+  const allCards = await listCards(env.DB, project.repo);
   const [cards, { view, cookies }, spends, working] = await Promise.all([
     // Epic cards are documents, not on the board.
-    listCards(env.DB, project.repo).then((all) => all.filter((card) => card.kind !== "epic")),
+    Promise.resolve(allCards.filter((card) => card.kind !== "epic")),
     projectView(request, env, project, viewer),
     cardSpends(env.DB, project.repo),
     workingCards(env.DB, project.repo),
@@ -140,6 +141,15 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   // Reality first (la-fabrique#205): a card being worked on is in the sprint.
   await joinSprint(env, project, cards, releases);
   const progress = await cardProgress(env, project, cards);
+  // The epic lanes' headers show the epic's progress (la-fabrique#305).
+  const epics = new Map<string, EpicProgress>();
+  if (board.by === "epic" || board.then === "epic") {
+    const found = allCards.filter((card) => card.kind === "epic" && !card.archivedAt);
+    for (const [id, one] of await epicProgresses(env, project, found, allCards)) {
+      const epic = found.find((card) => card.id === id);
+      if (epic) epics.set(epic.title.trim().toLowerCase(), one);
+    }
+  }
   const notice = url.searchParams.get("notice");
   // A release that could not be planned: why, worked out again.
   const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
@@ -158,9 +168,21 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
       releases,
       nextRelease: nextVersion(project.check?.config?.version?.forme, [...releases.values()]),
       progress,
+      epics,
     }),
     { cookies },
   );
+}
+
+// Each epic's progress, from its features (la-fabrique#303, #305).
+async function epicProgresses(env: Env, project: Project, epics: Card[], cards: Card[]): Promise<Map<number, EpicProgress>> {
+  const out = new Map<number, EpicProgress>();
+  for (const epic of epics) {
+    const features = featuresOfEpic(epic, cards);
+    const progresses = await cardProgress(env, project, features.filter((feature) => feature.status === "validated"));
+    out.set(epic.id, epicProgress(epic, features, progresses));
+  }
+  return out;
 }
 
 // The Epics tab: the project's epic cards with their status (la-fabrique#286).
@@ -170,12 +192,14 @@ async function showEpics(request: Request, env: Env, viewer: Viewer, project: Pr
   const [cards, { view, cookies }] = await Promise.all([listCards(env.DB, project.repo), projectView(request, env, project, viewer)]);
   const epics = cards.filter((card) => card.kind === "epic" && Boolean(card.archivedAt) === archived);
   const states = await epicStates(env, project, epics);
+  const progresses = await epicProgresses(env, project, epics, cards);
   const notice = params.get("notice");
   return html(
     epicsPage(viewer, view, {
       epics: epics.flatMap((epic) => {
         const state = states.get(epic.id);
-        return state ? [{ epic, state }] : [];
+        const progress = progresses.get(epic.id);
+        return state ? [{ epic, state, ...(progress ? { progress } : {}) }] : [];
       }),
       archived,
       canWrite: canWriteCards(viewer),

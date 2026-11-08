@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Card } from "../src/cards";
-import { epicProgress, epicProgressSection } from "../src/epic-progress";
+import { epicProgress, epicProgressSection, epicProgressSummary } from "../src/epic-progress";
 
 let next = 10;
 function feature(status: string, progress: string | null = null, extra: Partial<Card> = {}): Card {
@@ -55,5 +55,12 @@ describe("epic progress", () => {
     expect(html).toContain("Shipped in");
     expect(html).toContain("Still to come");
     expect(epicProgress(epic, [b]).shipped).toBeUndefined();
+  });
+  it("renders the same bar, counts and status on the page, in the Epics tab and in a lane header", () => {
+    const p = epicProgress(epic, [feature("draft"), feature("validated", "in_production")]);
+    const summary = epicProgressSummary(p);
+    expect(epicProgressSection(p)).toContain(summary);
+    const compact = epicProgressSummary(p, true);
+    for (const part of ["Epic status", "1/2", "Draft: 1 feature", 'tabindex="0"', "epic-bar compact"]) expect(compact).toContain(part);
   });
 });

@@ -1,4 +1,5 @@
 import type { Card } from "./cards";
+import { epicProgressSummary, type EpicProgress } from "./epic-progress";
 import { cardRef, cardUrl } from "./card-views";
 import { EPIC_STATUS_LABELS, EPIC_STATUS_TONES, epicChoices, type EpicHistoryEntry, type EpicState } from "./epic-status";
 import { projectContext, projectHeader, notice } from "./project-views";
@@ -33,7 +34,7 @@ export function epicHistoryHtml(history: EpicHistoryEntry[]): string {
 }
 
 export interface EpicsData {
-  epics: { epic: Card; state: EpicState }[];
+  epics: { epic: Card; state: EpicState; progress?: EpicProgress }[];
   archived: boolean;
   canWrite: boolean;
   notice?: string | undefined;
@@ -43,10 +44,11 @@ export function epicsPage(viewer: Viewer, project: Project, data: EpicsData): st
   const base = projectUrl(project.repo);
   const rows = data.epics
     .map(
-      ({ epic, state }) => `<tr>
+      ({ epic, state, progress }) => `<tr>
         <td><a href="${escapeHtml(cardUrl(project.repo, epic.id))}"><span class="mono">${cardRef(epic.id)}</span> ${escapeHtml(epic.title)}</a>${epic.archivedAt ? ` <span class="pill alert small">Archived</span>` : ""}</td>
         <td>${epicStatusPill(state)}</td>
         <td class="mono">${state.features}</td>
+        <td>${progress ? epicProgressSummary(progress, true) : ""}</td>
         <td>${data.canWrite ? epicActions(viewer, cardUrl(project.repo, epic.id), epic, state, "epics") : ""}</td>
       </tr>`,
     )
@@ -62,7 +64,7 @@ export function epicsPage(viewer: Viewer, project: Project, data: EpicsData): st
       <p class="muted">The status follows the features: Ideation (none), Open, Active (one is in the sprint), Done (all shipped or dropped). ${toggle}</p>
       ${
         rows
-          ? `<table class="table"><thead><tr><th>Epic</th><th>Status</th><th>Features</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+          ? `<table class="table"><thead><tr><th>Epic</th><th>Status</th><th>Features</th><th>Progress</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
           : `<p class="muted">${data.archived ? "No epic." : "No epic yet."}</p>`
       }`,
     viewer,
