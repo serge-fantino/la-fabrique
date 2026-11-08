@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "New epic on the Epics tab",
+    "changements": [
+      "The Epics tab offers New epic, which opens the new card form already set to the Epic type and its sections."
+    ],
+    "stories": [351],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Type = Epic on the board shows the epic cards",
     "changements": [
       "Setting the Type filter to Epic on the board now lists the project's epic cards (it listed none)."
