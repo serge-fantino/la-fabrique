@@ -97,4 +97,15 @@ describe("The Epics tab", () => {
     const page = await (await get(`/projects/${REPO}/board`, s.cookie)).text();
     expect(page).toContain(`/projects/${REPO}/epics"`);
   });
+
+  it("offers New epic to those who write cards, not to a tester", async () => {
+    const s = await seed();
+    const tab = await (await get(`/projects/${REPO}/epics`, s.cookie)).text();
+    expect(tab).toContain(`/projects/${REPO}/cards/new?kind=epic`);
+    const form = await (await get(`/projects/${REPO}/cards/new?kind=epic`, s.cookie)).text();
+    expect(form).toContain("epic");
+    await grantRole("tt", "tester");
+    const t = await signIn("tt");
+    expect(await (await get(`/projects/${REPO}/epics`, t.cookie)).text()).not.toContain("kind=epic");
+  });
 });

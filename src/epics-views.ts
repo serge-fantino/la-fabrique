@@ -63,6 +63,7 @@ export function epicsPage(viewer: Viewer, project: Project, data: EpicsData): st
     `${projectHeader(project, "epics")}
       ${notice(data.notice, "ok")}
       <h1>Epics</h1>
+      ${data.canWrite ? `<p><a class="button" href="${escapeHtml(base)}/cards/new?kind=epic">New epic</a></p>` : ""}
       <p class="muted">The status follows the features: Ideation (none), Open, Active (one is in the sprint), Done (all shipped or dropped). ${toggle}</p>
       ${
         rows
