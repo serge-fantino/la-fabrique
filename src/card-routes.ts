@@ -1,3 +1,4 @@
+import { epicDependencies } from "./epic-dependencies";
 import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
@@ -195,13 +196,14 @@ async function showEpics(request: Request, env: Env, viewer: Viewer, project: Pr
   const epics = cards.filter((card) => card.kind === "epic" && Boolean(card.archivedAt) === archived);
   const states = await epicStates(env, project, epics);
   const progresses = await epicProgresses(env, project, epics, cards);
+  const links = await projectLinks(env.DB, project.repo);
   const notice = params.get("notice");
   return html(
     epicsPage(viewer, view, {
       epics: epics.flatMap((epic) => {
         const state = states.get(epic.id);
         const progress = progresses.get(epic.id);
-        return state ? [{ epic, state, ...(progress ? { progress } : {}) }] : [];
+        return state ? [{ epic, state, dependsOnEpics: epicDependencies(epic, cards, links).epics, ...(progress ? { progress } : {}) }] : [];
       }),
       archived,
       canWrite: canWriteCards(viewer),
@@ -492,6 +494,7 @@ async function renderCard(
       epicState: card.kind === "epic" ? (await epicStates(env, project, [card])).get(card.id) : undefined,
       epicHistory: card.kind === "epic" ? await epicHistory(env.DB, project.repo, card.id) : undefined,
       epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
+      ...(card.kind === "epic" ? { epicDeps: epicDependencies(card, allCards, await projectLinks(env.DB, project.repo)) } : {}),
       attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && attachedTitles.get(c.id) !== card.title) : [],
     }),
     { cookies, status: extra.status ?? 200 },

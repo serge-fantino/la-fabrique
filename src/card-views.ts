@@ -38,6 +38,7 @@ import {
 import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
+import { epicDependenciesSection, type EpicDependencies } from "./epic-dependencies";
 import { epicProgressSection, epicProgressSummary, type EpicProgress } from "./epic-progress";
 import type { EpicIssueView } from "./epic-issue";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
@@ -651,6 +652,7 @@ export interface CardPageData {
   epicState?: EpicState | undefined;
   epicHistory?: EpicHistoryEntry[] | undefined;
   epicFeatures?: Card[];
+  epicDeps?: EpicDependencies;
   attachable?: Card[];
   // The GitHub epic issue an epic card started from (la-fabrique#287).
   epicIssue?: EpicIssueView;
@@ -1115,6 +1117,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
 ${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned, data.embedded) : `<p class="muted">${isEpic ? "No document yet." : "No text yet."}</p>`}
       </article>
       ${data.epic && !shown ? epicProgressSection(data.epic) : ""}
+      ${data.epicDeps && !shown ? epicDependenciesSection(data.epicDeps, (title) => { const found = (data.epics ?? []).find((e) => e.title.trim().toLowerCase() === title.trim().toLowerCase()); return found ? cardUrl(project.repo, found.id) : null; }) : ""}
       ${actions}
       ${shown ? "" : epicSection(viewer, url, card, data)}
       ${shown ? "" : epicIssueSection(data, isEpic)}

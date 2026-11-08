@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "An epic's page shows its features' dependencies",
+    "changements": [
+      "An epic's page has a Dependencies section: each feature with what it depends on and the status of each, features of other epics included. The Epics tab has a \"Depends on\" column naming the epics each epic depends on, derived from its features' dependencies on features of other epics and on whole epics."
+    ],
+    "stories": [300],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A dependency not yet in production shows a warning",
     "changements": [
       "A feature whose dependency (a feature, or an epic) is not In production with its mandatory stories shows a warning on its page, naming the dependency and its state. In Refinement the warning shows on the feature unless the dependency is in the same release, and GO / NO-GO lists the warnings with their state without ever changing the verdict."
