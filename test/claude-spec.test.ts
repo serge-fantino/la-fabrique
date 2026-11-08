@@ -840,7 +840,7 @@ describe("An epic's document with Claude (#281)", () => {
     await env.DB.prepare("INSERT INTO llm_calls (login, repo, card_id, purpose, cost_micros, outcome) VALUES ('pe', ?, ?, 'spec_draft', 7000, 'ok')").bind(REPO, feature).run();
 
     expect((await post(`/projects/${REPO}/cards/${epic}`, { csrf, action: "spec_draft" }, cookie)).status).toBe(303);
-    expect(await (await get(`/projects/${REPO}/board?by=status`, cookie)).text()).toContain("Claude working");
+    expect(await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text()).toContain("data-live=");
     const sent: { body?: Record<string, unknown> } = {};
     claudeStream(sent, EPIC_ANSWER);
     expect(await runQueue()).toEqual({ retried: 0, acked: 1 });

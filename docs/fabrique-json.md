@@ -72,6 +72,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `claude.plafond` | Combien de Claude lancés depuis La Fabrique peuvent tourner en même temps sur le projet (1 à 10 ; 2 par défaut). |
 | `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
 | `composants.dossier` | Le dossier des composants du projet (ci-dessous) ; `components` par défaut. Sans `composants` : pas de composants. |
+| `epiques.rubriques[]` | Les sections du document d'une fiche de type *Epic* : `cle`, `titre`, `aide` (texte d'aide). Elles remplacent les sections par défaut (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions). Le document est le texte de la fiche, un titre `##` par section. Absent : les sections par défaut. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
 | `epiques.rubriques[]` | Les rubriques du document d'une épique (même forme que `demandes.rubriques[]`) ; sans `epiques`, celles par défaut de La Fabrique : *Why*, *Decisions*, *Features*, *Open questions*. Pas de critères : ils sont aux features. |
 

@@ -75,6 +75,11 @@ export function describe(entry: LogEntry, repo: string): string {
       const verb = { card_created: "wrote", card_edited: "edited", card_archived: "archived", card_restored: "restored" }[entry.action];
       return `${verb} card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     }
+    case "epic_status_changed":
+      return `epic ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}: ${text(d["from"]) || "—"} → ${text(d["to"])}${d["reason"] ? ` (${text(d["reason"])})` : ""}`;
+    case "epic_archived":
+    case "epic_unarchived":
+      return `${entry.action === "epic_archived" ? "archived" : "unarchived"} epic ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "card_moved": {
       const changes = Array.isArray(d["changes"]) ? (d["changes"] as { dimension?: unknown; from?: unknown; to?: unknown }[]) : [];
       const said = changes.map((change) => `${text(change.dimension)}: ${text(change.from) || "not set"} → ${text(change.to) || "not set"}`).join(", ");
@@ -101,6 +106,11 @@ export function describe(entry: LogEntry, repo: string): string {
       return `downloaded the preparation document (level ${text(d["level"])}, ${text(d["format"]).toUpperCase()}${d["version"] ? `, for ${text(d["version"])}` : ""}, ${text(d["features"])} cards)`;
     case "card_priority_set":
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
+    case "card_dependency_added":
+    case "card_dependency_removed": {
+      const on = typeof d["on"] === "number" ? card(d["on"]) : `epic ${text(d["epic"])}`;
+      return `${entry.action === "card_dependency_added" ? "made" : "stopped making"} card ${card(d["card"])} depend on ${on}`;
+    }
     case "story_marked_ready":
       return `marked ${story} ready for Claude`;
     case "review_requested":

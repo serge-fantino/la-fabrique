@@ -366,7 +366,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "kinds",
         title: "Kinds",
-        body: `<p>A card's <em>Type</em> is <em>Feature</em> (something to build), <em>Idea</em> (not decided) or <em>Question</em> (to answer before deciding). It lives in La Fabrique, attached to its project. It is never assigned, estimated or put in a sprint by itself: what is development is a story on GitHub.</p>`,
+        body: `<p>A card's <em>Type</em> is <em>Feature</em> (something to build), <em>Idea</em> (not decided) or <em>Question</em> (to answer before deciding) or <em>Epic</em> (a document written in sections: Why, Scope, Out of scope, Decisions…; fixed at creation, with no spec, stories or sprint, and not on the board). It lives in La Fabrique, attached to its project. It is never assigned, estimated or put in a sprint by itself: what is development is a story on GitHub.</p>`,
       },
       {
         id: "create",

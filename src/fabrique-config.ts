@@ -18,8 +18,8 @@ export interface FabriqueConfig {
     etiquettes?: Record<string, string>;
     rubriques?: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[];
   };
-  // The sections of an epic's document; absent: La Fabrique's default ones.
-  epiques?: { rubriques: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[] };
+  // The sections of an epic card's document (la-fabrique#281, #284); absent: La Fabrique's defaults.
+  epiques?: { rubriques?: { cle: string; titre: string; obligatoire?: boolean; aide?: string }[] };
   // The lifecycle of a story: its Definition of Ready, and the priority
   // labels, highest first.
   cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
@@ -304,14 +304,16 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
     }
   }
 
-  // The sections of an epic's document (la-fabrique#281).
   const epiques = parsed["epiques"];
   if (epiques !== undefined) {
     if (!isObject(epiques)) {
       errors.push("`epiques` must be an object.");
-    } else if (epiques["rubriques"] !== undefined) {
-      const read = readRubriques(epiques["rubriques"], "epiques.rubriques", errors);
-      if (read) config.epiques = { rubriques: read };
+    } else {
+      config.epiques = {};
+      if (epiques["rubriques"] !== undefined) {
+        const read = readRubriques(epiques["rubriques"], "epiques.rubriques", errors);
+        if (read) config.epiques.rubriques = read;
+      }
     }
   }
 
