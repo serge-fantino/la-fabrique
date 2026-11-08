@@ -9,6 +9,7 @@ import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, ca
 import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
+import { epicCardsOf, epicFeatures, setFeatureEpic, syncEpicLink } from "./card-epics";
 import { validateFeature, validationOf } from "./feature-validation";
 import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
 import { recordedByStory } from "./gherkin";
@@ -201,6 +202,7 @@ export async function boardAction(form: FormData, env: Env, viewer: Viewer, proj
   const cards = await listCards(env.DB, project.repo);
   const known = await dimensionValues(env.DB, project.repo, cards);
   const moved = await moveCard(env.DB, card, viewer.login, { set, before: neighbour("before"), after: neighbour("after") }, known);
+  if (moved.epic !== card.epic) await syncEpicLink(env.DB, moved, viewer.login);
   const [spends, working, progress] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo), cardProgress(env, project, [moved])]);
   return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id)) });
 }
@@ -314,6 +316,7 @@ async function renderCard(
     (total, call) => ({ calls: total.calls + 1, micros: total.micros + (call.cost_micros ?? 0), unknown: total.unknown + (call.cost_micros === null ? 1 : 0) }),
     { calls: 0, micros: 0, unknown: 0 },
   );
+  const allCards = await listCards(env.DB, project.repo);
   return html(
     cardPage(viewer, view, {
       card,
@@ -345,6 +348,9 @@ async function renderCard(
       dependencyOptions,
       dependencyLog,
       canDepend: viewer.role !== null,
+      epics: epicCardsOf(allCards),
+      epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
+      attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && (c.epic ?? "").toLowerCase() !== card.title.toLowerCase()) : [],
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -402,6 +408,18 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     }
     await validateFeature(env.DB, card, numbers, viewer.login);
     return redirect(to);
+  }
+  // A feature's epic, and the epic's document: one link (la-fabrique#294).
+  if (action === "set_epic" || action === "attach_feature" || action === "detach_feature") {
+    const name = action === "set_epic" ? String(form.get("epic") ?? "") : null;
+    const feature = action === "set_epic" ? card : await findCard(env.DB, project.repo, Number(form.get("feature")));
+    if (!feature || feature.kind !== "feature" || (action !== "set_epic" && card.kind !== "epic")) {
+      return renderCard(request, env, viewer, project, card, { failure: "That is not a feature of this project.", status: 404 });
+    }
+    if (action === "set_epic") await setFeatureEpic(env.DB, feature, name, viewer.login);
+    else if (action === "attach_feature") await setFeatureEpic(env.DB, feature, card.title, viewer.login, "document");
+    else if ((feature.epic ?? "").toLowerCase() === card.title.toLowerCase()) await setFeatureEpic(env.DB, feature, null, viewer.login, "document");
+    return redirect(`${url}#${action === "set_epic" ? "epic" : "features"}`);
   }
   if (action === "archive" || action === "restore") {
     if (Boolean(card.archivedAt) !== (action === "restore")) return redirect(url);
@@ -521,6 +539,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const { view, cookies } = await projectView(request, env, project, viewer);
     return html(cardFormPage(viewer, view, { card, input, known, conflict: current }), { status: 409, cookies });
   }
+  if (outcome === "saved" && input.tags.epic !== card.epic) await syncEpicLink(env.DB, { ...card, epic: input.tags.epic, kind: input.tags.kind }, viewer.login);
   // The feature changed, its status left as it was: to validate again.
   if (outcome === "saved" && (input.title !== card.title || input.body !== card.body) && input.tags.status === card.status) {
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the card changed");
