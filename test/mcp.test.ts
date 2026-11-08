@@ -249,6 +249,41 @@ describe("La Fabrique's MCP server", () => {
     expect((boardByNumber.data["cards"] as { id: number }[]).length).toBe(2);
   });
 
+  it("creates an epic and updates its document, refusing an older revision", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    await grantRole("tester", "tester");
+    const { access_token: access } = await connectClaude("pe");
+    const created = await call(access, "epic_create", { project: REPO, title: "F10 Docs", document: "What and why." });
+    expect(created.isError).toBe(false);
+    const epic = created.data["created"] as { id: number; revision: number };
+    expect(epic.revision).toBe(1);
+    const card = await env.DB.prepare("SELECT kind, body FROM cards WHERE id = ?").bind(epic.id).first<{ kind: string; body: string }>();
+    expect(card).toMatchObject({ kind: "epic", body: "What and why." });
+
+    const updated = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 1, document: "A better document." });
+    expect(updated.data).toMatchObject({ changed: ["document"], epic: { revision: 2 } });
+    const revisions = await env.DB.prepare("SELECT COUNT(*) AS n FROM card_revisions WHERE card_id = ?").bind(epic.id).first<{ n: number }>();
+    expect(revisions?.n).toBe(2);
+
+    const stale = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 1, document: "Lost." });
+    expect(stale.data["error"]).toContain("The card changed since (now version 2)");
+    const after = await env.DB.prepare("SELECT body FROM cards WHERE id = ?").bind(epic.id).first<{ body: string }>();
+    expect(after?.body).toBe("A better document.");
+
+    const actions = await logActions();
+    expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["epic_create", "epic_update"]);
+  });
+
+  it("refuses epic writes to a person who cannot write cards", async () => {
+    await seedProject();
+    await grantRole("tester", "tester");
+    const { access_token: access } = await connectClaude("tester");
+    const refused = await call(access, "epic_create", { project: REPO, title: "No", document: "x" });
+    expect(refused.isError).toBe(true);
+    expect((await call(access, "epic_update", { project: REPO, card: 1, rev: 1, document: "x" })).isError).toBe(true);
+  });
+
   it("keeps an assistant's token and a project app's apart, and follows the role at each call", async () => {
     await grantRole("lead", "tech_lead");
     const { access_token: access } = await connectClaude("lead");
