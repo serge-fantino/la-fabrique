@@ -185,7 +185,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
         <summary>Filters${active ? ` <span class="pill">${active} on</span>` : ""}</summary>
         <div class="board-show-fields">
         <label>Type
-          <select name="kind" data-autosubmit>${option("", "Any", !filters.kind)}${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], filters.kind === kind)).join("")}</select>
+          <select name="kind" data-autosubmit>${option("", "All but epics", !filters.kind)}${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], filters.kind === kind)).join("")}</select>
         </label>
         <label>Status
           <select name="status" data-autosubmit>${option("", "Any", !filters.status)}${SHOWN_STATUSES.map((status) => option(status, shownStatusLabel(status), filters.status === status)).join("")}</select>
