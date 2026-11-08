@@ -340,6 +340,13 @@ export async function dimensionValues(db: D1Database, repo: string, cards: Card[
     .all<{ dimension: string; value: string }>();
   const values = Object.fromEntries(FREE_DIMENSIONS.map((dimension) => [dimension, [] as string[]])) as Record<FreeDimension, string[]>;
   for (const row of results) if (isFreeDimension(row.dimension)) values[row.dimension].push(row.value);
+  // The project's epic cards are values of the Epic dimension, ahead of the
+  // legacy free-text ones (la-fabrique#285).
+  const epics = await db
+    .prepare("SELECT title FROM cards WHERE repo = ? AND kind = 'epic' AND archived_at IS NULL ORDER BY position, id")
+    .bind(repo)
+    .all<{ title: string }>();
+  for (const row of epics.results) if (!values.epic.some((v) => v.toLowerCase() === row.title.toLowerCase())) values.epic.push(row.title);
   for (const dimension of FREE_DIMENSIONS) {
     const used = [...new Set(cards.map((card) => card[dimension]).filter((value): value is string => Boolean(value)))];
     const extra = used.filter((value) => !values[dimension].includes(value)).sort((a, b) => a.localeCompare(b));
@@ -893,7 +900,9 @@ export function readBoardQuery(params: URLSearchParams): BoardQuery {
 
 // `storiesOf`: each card's stories, so "#170" (or "170") finds the cards of
 // story 170 (la-fabrique#206).
-export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>): Card[] {
+// `epicOf`: the epic card's current title of each attached feature, so a
+// renamed epic still finds its features (la-fabrique#285).
+export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Map<number, number[]>, epicOf?: Map<number, string>): Card[] {
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean);
   return cards.filter((card) => {
     if (!filters.all && (card.archivedAt || (card.status === "dropped" && filters.status !== "dropped"))) return false;
@@ -902,7 +911,8 @@ export function filterCards(cards: Card[], filters: BoardFilters, storiesOf?: Ma
     for (const dimension of FREE_DIMENSIONS) {
       const wanted = filters.values[dimension];
       if (wanted === undefined) continue;
-      if ((card[dimension] ?? "") !== wanted) return false;
+      const value = dimension === "epic" ? (epicOf?.get(card.id) ?? card.epic ?? "") : (card[dimension] ?? "");
+      if (value !== wanted && !(dimension === "epic" && wanted && value.toLowerCase() === wanted.toLowerCase())) return false;
     }
     if (words.length) {
       const text = `${card.title} ${card.body} C${card.id}`.toLowerCase();
