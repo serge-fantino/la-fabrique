@@ -4238,3 +4238,20 @@ main:has(.help-shell) {
 .epic-bar.compact .epic-part { padding: .2rem .4rem; font-size: .72rem; min-width: 1.5rem; }
 .epic-head { flex-basis: 100%; }
 .table .epic-line { font-size: .85rem; display: block; }
+
+/* A feature named alone on a line, shown in place (la-fabrique#290). */
+.card-embed {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(24, 33, 27, 0.15);
+  border-left: 4px solid #c23d17;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+.card-embed p {
+  margin: 0.25rem 0;
+}
+.card-embed-stories {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}

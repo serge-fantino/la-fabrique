@@ -289,3 +289,43 @@ describe("card mentions (#289)", () => {
     expect(out).toContain("C570");
   });
 });
+
+describe("a card named alone on a line (#290)", () => {
+  it("finds only cards alone on their line", async () => {
+    const { embeddedCards } = await import("../src/card-embed");
+    expect(embeddedCards("Intro\nC57\n  C12  \nSee C99 here\n- C5")).toEqual([57, 12]);
+  });
+
+  it("shows the embed in place of the line, and a mention inside a sentence stays a link", async () => {
+    const { renderCardText } = await import("../src/card-views");
+    const links = new Map([[57, `<a>C57</a>`]]);
+    const embeds = new Map([[57, `<aside class="card-embed">FEATURE</aside>`]]);
+    const out = renderCardText("Intro\n\nC57\n\nAnd C57 again.", "o/r", undefined, links, embeds);
+    expect(out).toContain(`<aside class="card-embed">FEATURE</aside>`);
+    expect(out).not.toContain(`<p><aside`);
+    expect(out).toContain("And <a>C57</a> again.");
+  });
+
+  it("takes the first paragraph as synopsis, else the Need", async () => {
+    const { synopsisOf } = await import("../src/card-embed");
+    const base = { body: "# Title\n\nFirst {segment: pro}\nparagraph.\n\nSecond.", data: {} } as never;
+    expect(synopsisOf(base)).toBe("First paragraph.");
+    const none = { body: "", data: { spec: { answers: { need: "The need." } } } } as never;
+    expect(synopsisOf(none)).toBe("The need.");
+  });
+
+  it("shows an archived card as a marked link", async () => {
+    const { markedLink } = await import("../src/card-embed");
+    expect(markedLink("o/r", { id: 5, title: "T", archivedAt: "2026-01-01" } as never)).toContain("archived");
+    expect(markedLink("o/r", { id: 5, title: "T", archivedAt: null } as never)).toContain("dropped");
+  });
+});
+
+import { filterCards as filterEpicsOut } from "../src/cards";
+import { it as itEpic, expect as expectEpic } from "vitest";
+itEpic("epic cards show on the board only when the Type filter asks", () => {
+  const base = { q: "", kind: "", status: "", all: false, values: {} } as never;
+  const cards = [{ id: 1, kind: "feature", title: "a", body: "", status: "draft" }, { id: 2, kind: "epic", title: "b", body: "", status: "draft" }] as never;
+  expectEpic(filterEpicsOut(cards, base).map((c: { id: number }) => c.id)).toEqual([1]);
+  expectEpic(filterEpicsOut(cards, { ...(base as object), kind: "epic" } as never).map((c: { id: number }) => c.id)).toEqual([2]);
+});

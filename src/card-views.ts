@@ -1,4 +1,5 @@
 import type { PendingEpic } from "./epic-conversion";
+import { warningsHtml } from "./dependency-warnings";
 import type { Dependencies, dependencyHistory } from "./card-dependencies";
 import { type ValidationState } from "./feature-validation";
 import {
@@ -185,7 +186,7 @@ function filterBar(base: string, board: BoardQuery, known: Record<FreeDimension,
         <summary>Filters${active ? ` <span class="pill">${active} on</span>` : ""}</summary>
         <div class="board-show-fields">
         <label>Type
-          <select name="kind" data-autosubmit>${option("", "Any", !filters.kind)}${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], filters.kind === kind)).join("")}</select>
+          <select name="kind" data-autosubmit>${option("", "All but epics", !filters.kind)}${CARD_KINDS.map((kind) => option(kind, KIND_LABELS[kind], filters.kind === kind)).join("")}</select>
         </label>
         <label>Status
           <select name="status" data-autosubmit>${option("", "Any", !filters.status)}${SHOWN_STATUSES.map((status) => option(status, shownStatusLabel(status), filters.status === status)).join("")}</select>
@@ -254,7 +255,7 @@ export interface BoardData {
   // Each card's progress, from its stories.
   progress?: Map<number, Progress>;
   // Each epic's progress by lowercased title, for the Epic lanes' headers.
-  epics?: Map<string, EpicProgress>;
+  epics?: Map<string, { id: number; progress: EpicProgress }>;
 }
 
 // Shipped is done, in progress is on its way, planned is not started.
@@ -304,13 +305,19 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   };
   const count = (predicate: (card: Card) => boolean) => data.cards.filter(predicate).length;
   const epicNote = (axis: Axis, value: string) => {
-    const progress = axis === "epic" ? data.epics?.get(value.trim().toLowerCase()) : undefined;
+    const progress = axis === "epic" ? data.epics?.get(value.trim().toLowerCase())?.progress : undefined;
     return progress ? `<div class="epic-head">${epicProgressSummary(progress, true)}</div>` : "";
+  };
+  // An epic lane is headed by the epic's title, linked to its page (la-fabrique#296).
+  const labelOf = (axis: Axis, value: string) => {
+    const text = escapeHtml(valueLabel(axis, value));
+    const epic = axis === "epic" && value ? data.epics?.get(value.trim().toLowerCase()) : undefined;
+    return epic ? `<a href="${escapeHtml(cardUrl(project.repo, epic.id))}">${text}</a>` : text;
   };
   const head = (value: string) => {
     const label = valueLabel(board.by, value);
     return `<div class="board-head">
-        <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${escapeHtml(label)}${releaseNote(board.by, value)}</span>
+        <span class="board-head-label${value ? "" : " muted"}"${titleOf(board.by, value)}>${labelOf(board.by, value)}${releaseNote(board.by, value)}</span>
         <span class="mono muted small" data-count-column="${escapeHtml(value)}">${count((card) => valueOf(card, board.by) === value)}</span>
         ${epicNote(board.by, value)}
         ${canWrite && !(board.by === "status" && isProgressStage(value)) ? newCardLink(base, { [board.by]: value }, `New card in ${label}`) : ""}
@@ -330,7 +337,7 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         const label = valueLabel(board.then, rowValue);
         return `<div class="board-row" role="group" aria-label="${escapeHtml(label)}">
             <div class="board-row-head">
-              <span class="board-head-label${rowValue ? "" : " muted"}"${titleOf(board.then, rowValue)}>${escapeHtml(label)}${releaseNote(board.then, rowValue)}</span>
+              <span class="board-head-label${rowValue ? "" : " muted"}"${titleOf(board.then, rowValue)}>${labelOf(board.then, rowValue)}${releaseNote(board.then, rowValue)}</span>
               <span class="mono muted small" data-count-row="${escapeHtml(rowValue)}">${count((card) => valueOf(card, board.then) === rowValue)}</span>
               ${epicNote(board.then, rowValue)}
             </div>
@@ -392,8 +399,9 @@ const TOKEN = /(\d+)/g;
 // The text in Markdown, its annotations as tags and links.
 // `cards` holds, per card id of the project, the HTML of its link with its
 // status: a "C57" naming one of them becomes that.
-export function renderCardText(body: string, repo: string, imageUrl?: (src: string) => string | null, cards?: ReadonlyMap<number, string>): string {
+export function renderCardText(body: string, repo: string, imageUrl?: (src: string) => string | null, cards?: ReadonlyMap<number, string>, embeds?: ReadonlyMap<number, string>): string {
   const pieces: string[] = [];
+  const blocks = new Set<number>();
   const keep = (html: string) => {
     pieces.push(html);
     return `${pieces.length - 1}`;
@@ -404,6 +412,12 @@ export function renderCardText(body: string, repo: string, imageUrl?: (src: stri
       keep(value.trim() ? tag(dimension.toLowerCase() as FreeDimension, value.trim()) : ""),
     )
     .replace(/\[\[([^[\]\n]{1,60})\]\]/g, (_all, term: string) => keep(`<span class="term" title="Glossary term">${escapeHtml(term.trim())}</span>`))
+    .replace(/^[ \t]*C(\d{1,6})[ \t]*$/gm, (all, id: string) => {
+      const block = embeds?.get(Number(id));
+      if (!block) return all;
+      blocks.add(pieces.length);
+      return keep(block);
+    })
     .replace(CARD_MENTION, (all, id: string) => {
       const link = cards?.get(Number(id));
       return link ? keep(link) : all;
@@ -421,7 +435,10 @@ export function renderCardText(body: string, repo: string, imageUrl?: (src: stri
     githubUrl: (path) => `https://github.com/${repo}/blob/HEAD/${path}`,
     ...(imageUrl ? { imageUrl } : {}),
   });
-  return html.replace(TOKEN, (_all, index: string) => pieces[Number(index)] ?? "");
+  const placed = html.replace(new RegExp(`<p>${TOKEN.source}</p>`, "g"), (all, index: string) =>
+    blocks.has(Number(index)) ? (pieces[Number(index)] ?? "") : all,
+  );
+  return placed.replace(TOKEN, (_all, index: string) => pieces[Number(index)] ?? "");
 }
 
 // The test cases Claude wrote for the feature's stories, each editable.
@@ -480,12 +497,12 @@ export function spendLine(spend: Spend): string {
   return `${spend.calls} call${spend.calls === 1 ? "" : "s"} · ${formatUsd(spend.micros)}${spend.unknown ? ` (+ ${spend.unknown} at an unknown price)` : ""}`;
 }
 
-function specHtml(spec: CardSpec | undefined, rubriques: Rubrique[], repo: string, cards?: ReadonlyMap<number, string>): string {
+function specHtml(spec: CardSpec | undefined, rubriques: Rubrique[], repo: string, cards?: ReadonlyMap<number, string>, embeds?: ReadonlyMap<number, string>): string {
   if (!spec) return `<p class="muted">No spec yet. Claude can write a first one from the card, the project's principles and what the project already has, and ask what it needs to know.</p>`;
   const sections = rubriques
     .map(
       (rubrique) => `<h3>${escapeHtml(rubrique.titre)}</h3>
-        ${spec.answers[rubrique.cle]?.trim() ? `<div class="markdown">${renderCardText(spec.answers[rubrique.cle] ?? "", repo, undefined, cards)}</div>` : `<p class="muted">—</p>`}`,
+        ${spec.answers[rubrique.cle]?.trim() ? `<div class="markdown">${renderCardText(spec.answers[rubrique.cle] ?? "", repo, undefined, cards, embeds)}</div>` : `<p class="muted">—</p>`}`,
     )
     .join("");
   const by = spec.source === "claude" ? "Written with Claude" : "Edited by hand";
@@ -592,6 +609,8 @@ export interface CardPageData {
   attachedOnCreate?: number | undefined;
   notice?: string | undefined;
   failure?: string | undefined;
+  warnings?: string[] | undefined;
+  confirmMove?: string | undefined;
   rubriques: Rubrique[];
   claude: { usable: boolean; reason: string | null };
   calls: CallRow[];
@@ -616,6 +635,8 @@ export interface CardPageData {
   named?: { number: number; title: string; url: string }[];
   // Cards of the project named in the text or spec ("C57"): link and status.
   mentioned?: ReadonlyMap<number, string>;
+  // Cards named alone on a line: the HTML shown in place (la-fabrique#290).
+  embedded?: ReadonlyMap<number, string>;
   // The feature's validation (la-fabrique#232), and whether it can be asked now.
   validation?: ValidationState;
   canValidate?: boolean;
@@ -662,8 +683,16 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
       : card.epic
         ? escapeHtml(card.epic)
         : `<span class="muted">none</span>`;
+    const move =
+      data.confirmMove !== undefined && card.epic
+        ? `<div class="notice error" role="alert"><p>${cardRef(card.id)} leaves ${escapeHtml(card.epic)}${data.confirmMove ? ` and goes to ${escapeHtml(data.confirmMove)}` : ""}. A feature belongs to one epic only.</p>
+            <form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
+              <input type="hidden" name="action" value="set_epic" /><input type="hidden" name="confirm" value="1" />
+              <input type="hidden" name="epic" value="${escapeHtml(data.confirmMove)}" />
+              <button type="submit" class="button">Confirm the move</button></form></div>`
+        : "";
     const form = data.canWrite
-      ? `<form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
+      ? `${move}<form method="post" action="${escapeHtml(url)}" data-busy>${csrfField(viewer)}
           <input type="hidden" name="action" value="set_epic" />
           <label for="epic_name">Choose an epic, or type a new name</label>
           <input id="epic_name" name="epic" maxlength="${MAX_VALUE}" list="epic_choices" value="${escapeHtml(card.epic ?? "")}" autocomplete="off" />
@@ -745,6 +774,7 @@ function dependenciesHtml(viewer: Viewer, url: string, project: Project, data: C
     .join("");
   return `<section class="card-dependencies" id="dependencies"><h2>Dependencies</h2>
       <p class="muted small">Upstream: what has to come first. Stories keep GitHub's blocked by for technical dependencies.</p>
+      ${warningsHtml(deps.warnings, (w) => (w.card ? `${base}/cards/${w.card}` : null))}
       ${dependsOn.length || needed.length ? `<ul class="card-stories">${dependsOn.join("")}${needed.join("")}</ul>` : `<p class="muted">No dependency.</p>`}
       ${form}
       ${log ? `<details><summary>Dependency history</summary><ul class="card-history">${log}</ul></details>` : ""}
@@ -1068,6 +1098,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       ${data.created ? `<p class="notice ok" role="status" data-draft-clear="${escapeHtml(cardDraftKey(project.repo))}">Card ${cardRef(card.id)} written.${data.attachedOnCreate === undefined ? "" : ` ${data.attachedOnCreate} feature${data.attachedOnCreate === 1 ? "" : "s"} attached from its GitHub epic.`}</p>` : ""}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
+      ${(data.warnings ?? []).map((warning) => notice(warning, "error")).join("")}
       <p class="crumbs"><a href="${escapeHtml(base)}/board#card-${card.id}">Board</a> <span aria-hidden="true">›</span> <span class="mono">${cardRef(card.id)}</span></p>
       ${banner}
       <h1>${escapeHtml(heading)}</h1>
@@ -1092,7 +1123,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>
       <article class="markdown card-text">
-${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned) : `<p class="muted">${isEpic ? "No document yet." : "No text yet."}</p>`}
+${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned, data.embedded) : `<p class="muted">${isEpic ? "No document yet." : "No text yet."}</p>`}
       </article>
       ${data.epic && !shown ? epicProgressSection(data.epic) : ""}
       ${actions}
@@ -1103,7 +1134,7 @@ ${body.trim() ? renderCardText(body, project.repo, undefined, data.mentioned) : 
       <section class="card-spec" id="spec">
         <h2>${isEpic ? "Document" : "Spec"}</h2>
         ${shown ? "" : jobHtml(viewer, url, data.job, data.events, data.canWrite && data.claude.usable)}
-        ${specHtml(spec, data.rubriques, project.repo, data.mentioned)}
+        ${specHtml(spec, data.rubriques, project.repo, data.mentioned, data.embedded)}
         ${questionsHtml(viewer, url, spec, canAnswer)}
         ${dialogueHtml(spec)}
         ${work}

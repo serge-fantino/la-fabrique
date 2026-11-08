@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Card } from "../src/cards";
+import { boardPage } from "../src/card-views";
+import { readBoardQuery, type Card } from "../src/cards";
 import { epicsWhere, epicProgress, epicProgressSection, epicProgressSummary } from "../src/epic-progress";
 
 let next = 10;
@@ -82,5 +83,28 @@ describe("epics on the dashboard", () => {
     ]);
     expect(where).toHaveLength(1);
     expect(where[0]).toMatchObject({ todo: 1, refinement: 1, sprint: 1, production: 1 });
+  });
+});
+
+describe("board lanes arranged by Epic (la-fabrique#296)", () => {
+  it("heads each epic lane with a link to the epic's page, its status and count; no link for Not set", () => {
+    const f = feature("validated", "in_production", { body: "", tags: [] } as never);
+    const known = { epic: ["Big epic"], domain: [], segment: [], release: [] } as never;
+    const page = boardPage({ login: "a", role: "super_admin", csrfToken: "x" } as never, { repo: "acme/widget" } as never, {
+      cards: [f],
+      total: 1,
+      known,
+      board: readBoardQuery(new URLSearchParams("by=epic")),
+      canWrite: false,
+      spends: new Map(),
+      working: new Set(),
+      releases: new Map(),
+      nextRelease: null,
+      epics: new Map([["big epic", { id: 1, progress: epicProgress(epic, [f]) }]]),
+    });
+    expect(page).toMatch(/<a href="[^"]*\/cards\/1">Big epic<\/a>/);
+    expect(page).toContain("features in production");
+    expect(page).toContain("Not set");
+    expect(page).not.toMatch(/<a href="[^"]*\/cards\/1">Not set/);
   });
 });
