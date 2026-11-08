@@ -34,6 +34,7 @@ import {
 import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } from "./card-releases";
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
+import { epicProgressSection } from "./epic-progress";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
@@ -584,6 +585,8 @@ export interface CardPageData {
   // The feature's validation (la-fabrique#232), and whether it can be asked now.
   validation?: ValidationState;
   canValidate?: boolean;
+  // For an epic: its progress, from its features (la-fabrique#303).
+  epic?: import("./epic-progress").EpicProgress;
 }
 
 // A story that names a card it is not linked to: the form that links it
@@ -883,6 +886,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
       <article class="markdown card-text">
 ${body.trim() ? renderCardText(body, project.repo) : `<p class="muted">No text yet.</p>`}
       </article>
+      ${data.epic && !shown ? epicProgressSection(data.epic) : ""}
       ${actions}
       <section class="card-spec" id="spec">
         <h2>Spec</h2>
