@@ -82,7 +82,7 @@ import {
   type FreeDimension,
 } from "./cards";
 import { activityStatement } from "./activity-log";
-import { dependencyWarnings } from "./dependency-warnings";
+import { dependencyWarnings, needsRefusal, openNeeds } from "./dependency-warnings";
 import { dependencyFirst, dependencyNotes } from "./sprint-dependencies";
 import { addDependency, dependenciesOf, projectLinks, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import { epicSections, readEpicForm } from "./epic-sections";
@@ -257,6 +257,10 @@ export async function boardAction(request: Request, form: FormData, env: Env, vi
       return json({ error: "This status follows the card's stories on GitHub: it cannot be set by moving the card." }, { status: 409 });
     }
   }
+  if (statusSet === "dropped" && card.status !== "dropped") {
+    const refused = await refusalFor(env, project.repo, card, "dropped");
+    if (refused) return json({ error: refused }, { status: 409 });
+  }
   const set: Partial<Record<Dimension, string | null>> = {};
   for (const dimension of DIMENSIONS) {
     const value = form.get(`set_${dimension}`);
@@ -276,6 +280,11 @@ export async function boardAction(request: Request, form: FormData, env: Env, vi
   if (moved.release !== card.release) await ensureEpicIssue(env, project, moved, viewer.login, new URL(request.url).origin);
   const [spends, working, progress] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo), cardProgress(env, project, [moved])]);
   return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id)) });
+}
+
+async function refusalFor(env: Env, repo: string, card: Card, what: "dropped" | "archived"): Promise<string | null> {
+  const [cards, links] = await Promise.all([listCards(env.DB, repo), projectLinks(env.DB, repo)]);
+  return needsRefusal(card, openNeeds(card, cards, links), what);
 }
 
 function emptyInput(params: URLSearchParams): CardInput {
@@ -650,6 +659,11 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   }
   if (card.kind === "epic" && (action === "archive" || action === "restore" || action === "epic_drop" || action === "epic_archive" || action === "epic_unarchive")) {
     if (!canWriteCards(viewer)) return redirect(url);
+    const wasArchiving = action === "archive" || action === "epic_archive";
+    if (action === "epic_drop" || wasArchiving) {
+      const refused = await refusalFor(env, project.repo, card, action === "epic_drop" ? "dropped" : "archived");
+      if (refused) return renderCard(request, env, viewer, project, card, { failure: refused, status: 409 });
+    }
     const refusal =
       action === "epic_drop"
         ? await dropEpic(env, project, card, viewer.login)
@@ -659,6 +673,10 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   }
   if (action === "archive" || action === "restore") {
     if (Boolean(card.archivedAt) !== (action === "restore")) return redirect(url);
+    if (action === "archive") {
+      const refused = await refusalFor(env, project.repo, card, "archived");
+      if (refused) return renderCard(request, env, viewer, project, card, { failure: refused, status: 409 });
+    }
     await archiveCard(env.DB, card, viewer.login, action === "archive");
     return redirect(`${url}?notice=${action === "archive" ? "archived" : "restored"}`);
   }
@@ -782,6 +800,10 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   if (action === "status") {
     const to = form.get("status");
     if (!isStatus(to) || card.archivedAt) return redirect(url);
+    if (to === "dropped" && card.status !== "dropped") {
+      const refused = await refusalFor(env, project.repo, card, "dropped");
+      if (refused) return renderCard(request, env, viewer, project, card, { failure: refused, status: 409 });
+    }
     const changed = await setStatus(env.DB, card, viewer.login, to);
     return redirect(`${url}?notice=${changed ? "status" : "unchanged"}`);
   }

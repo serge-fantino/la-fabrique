@@ -28,3 +28,22 @@ describe("dependencyWarnings", () => {
     expect(dependencyWarnings(cards[0]!, cards, [dep(90, "74")])).toHaveLength(1);
   });
 });
+
+import { needsRefusal, openNeeds } from "../src/dependency-warnings";
+describe("openNeeds", () => {
+  it("names a feature not in production that depends on the card", () => {
+    const cards = [mk(74), mk(90, { status: "draft", progress: null })];
+    const needs = openNeeds(cards[0]!, cards, [dep(90, "74")]);
+    expect(needs.map((c) => c.id)).toEqual([90]);
+    expect(needsRefusal(cards[0]!, needs, "dropped")).toContain("C90");
+  });
+  it("lets go once every needing feature is in production, dropped or archived", () => {
+    const cards = [mk(74), mk(90), mk(91, { status: "dropped", progress: null }), mk(92, { status: "draft", progress: null, archivedAt: "x" })];
+    expect(openNeeds(cards[0]!, cards, [dep(90, "74"), dep(91, "74"), dep(92, "74")])).toEqual([]);
+  });
+  it("covers an epic needed by title", () => {
+    const cards = [mk(5, { kind: "epic", title: "Payments" }), mk(90, { status: "draft", progress: null })];
+    expect(openNeeds(cards[0]!, cards, [depEpic(90, "payments")]).map((c) => c.id)).toEqual([90]);
+    expect(needsRefusal(cards[0]!, openNeeds(cards[0]!, cards, [depEpic(90, "Payments")]), "archived")).toContain("epic");
+  });
+});

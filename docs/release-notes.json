@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A feature or an epic still needed cannot be dropped or archived",
+    "changements": [
+      "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be."
+    ],
+    "stories": [302],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A card named but not yet written can be created from its mention",
     "changements": [
       "A mention of a card that does not exist (\"C99\") is marked as a new card in a card's text. For those who can write cards it is a link to the new card form; once the card is created (say C91), the original text takes its number as a new version, and a feature named in an epic is attached to it. Others see the mark, not a link."
