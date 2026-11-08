@@ -1,3 +1,4 @@
+import { epicDependencies } from "./epic-dependencies";
 import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
@@ -81,6 +82,7 @@ import {
 } from "./cards";
 import { activityStatement } from "./activity-log";
 import { dependencyWarnings } from "./dependency-warnings";
+import { dependencyFirst, dependencyNotes } from "./sprint-dependencies";
 import { addDependency, dependenciesOf, projectLinks, dependencyChoices, dependencyHistory, removeDependency } from "./card-dependencies";
 import { epicSections, readEpicForm } from "./epic-sections";
 import { archiveEpic, dropEpic, epicHistory, epicStates } from "./epic-status";
@@ -196,13 +198,14 @@ async function showEpics(request: Request, env: Env, viewer: Viewer, project: Pr
   const epics = cards.filter((card) => card.kind === "epic" && Boolean(card.archivedAt) === archived);
   const states = await epicStates(env, project, epics);
   const progresses = await epicProgresses(env, project, epics, cards);
+  const links = await projectLinks(env.DB, project.repo);
   const notice = params.get("notice");
   return html(
     epicsPage(viewer, view, {
       epics: epics.flatMap((epic) => {
         const state = states.get(epic.id);
         const progress = progresses.get(epic.id);
-        return state ? [{ epic, state, ...(progress ? { progress } : {}) }] : [];
+        return state ? [{ epic, state, dependsOnEpics: epicDependencies(epic, cards, links).epics, ...(progress ? { progress } : {}) }] : [];
       }),
       archived,
       canWrite: canWriteCards(viewer),
@@ -518,6 +521,7 @@ async function renderCard(
       epicState: card.kind === "epic" ? (await epicStates(env, project, [card])).get(card.id) : undefined,
       epicHistory: card.kind === "epic" ? await epicHistory(env.DB, project.repo, card.id) : undefined,
       epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
+      ...(card.kind === "epic" ? { epicDeps: epicDependencies(card, allCards, await projectLinks(env.DB, project.repo)) } : {}),
       attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && attachedTitles.get(c.id) !== card.title) : [],
     }),
     { cookies, status: extra.status ?? 200 },
@@ -1160,7 +1164,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
     }
     // Secret share links of the preparation document (la-fabrique#233).
     if (action === "share_create") {
-      const { doc } = await preparationDoc(env, viewer, project, readLevel(String(form.get("level") ?? "")));
+      const { doc } = await preparationDoc(env, viewer, project, readLevel(String(form.get("level") ?? "")), new URL(request.url).origin);
       const created = await createShareLink(env.DB, { repo: project.repo, doc, by: viewer.login, days: readExpiry(form.get("days")) });
       const link = new URL(`/shared/${created.token}`, request.url).toString();
       return html(
@@ -1331,10 +1335,10 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
 
 // The preparation document of Next release (la-fabrique#229), generated on
 // demand at the chosen level and format; logged, never published.
-async function preparationDoc(env: Env, viewer: Viewer, project: Project, level: ReturnType<typeof readLevel>) {
+async function preparationDoc(env: Env, viewer: Viewer, project: Project, level: ReturnType<typeof readLevel>, origin = "") {
   const cards = await listCards(env.DB, project.repo);
   const [links, { releases }, running] = await Promise.all([storyCards(env.DB, project.repo), knownValues(env, project, cards), activeSprint(env.DB, project.repo)]);
-  const { features } = refinementCards(cards, NEXT_RELEASE);
+  const { features, others } = refinementCards(cards, NEXT_RELEASE);
   const numbers = [...new Set(features.flatMap((card) => links.order.get(card.id) ?? []))];
   const stories = await cardStories(env, project, numbers, "cache");
   const recorded = level >= 3 ? await recordedByStory(env.DB, project.repo) : new Map();
@@ -1349,6 +1353,10 @@ async function preparationDoc(env: Env, viewer: Viewer, project: Project, level:
     by: viewer.login,
     now: new Date(),
     features,
+    epics: others.filter((card) => card.kind === "epic"),
+    cards,
+    origin,
+    repo: project.repo,
     links,
     stories,
     rubriques: specRubriques(project),
@@ -1362,7 +1370,7 @@ async function preparationRoute(request: Request, env: Env, viewer: Viewer, proj
   const params = new URL(request.url).searchParams;
   const level = readLevel(params.get("level"));
   const format = readFormat(params.get("format"));
-  const { doc, features } = await preparationDoc(env, viewer, project, level);
+  const { doc, features } = await preparationDoc(env, viewer, project, level, new URL(request.url).origin);
   await activityStatement(env.DB, {
     actor: viewer.login,
     action: "preparation_downloaded",
@@ -1430,18 +1438,22 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const held = heldStories(links, stories, new Set(runs.filter(isRunning).map((run) => run.issue).filter((issue): issue is number => issue !== null)), sprintCards.map((card) => card.id));
   // The next for Claude: in the sprint's order, the first ready story not
   // launched yet, nor waiting for another of its card.
+  // A dependency in the sprint comes first (la-fabrique#301).
+  const depLinks = await projectLinks(env.DB, project.repo);
+  const launchOrder = dependencyFirst(sprintCards, depLinks);
   const next =
-    sprintCards.flatMap((card) => links.order.get(card.id) ?? []).find((number) => isReadyStage(stories.get(number)) && !launches.has(number) && !held.has(number)) ?? null;
+    launchOrder.flatMap((card) => links.order.get(card.id) ?? []).find((number) => isReadyStage(stories.get(number)) && !launches.has(number) && !held.has(number)) ?? null;
   const launched = Number(params.get("story"));
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
-      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(sprintCards, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
+      run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(launchOrder, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,
       sprintCards,
+      dependencyNotes: dependencyNotes(sprintCards, depLinks, new Set((runState?.cards ?? []).filter((card) => card.step === "stopped").map((card) => card.id))),
       nextCards,
       keptCards,
       integration,

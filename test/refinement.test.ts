@@ -266,6 +266,29 @@ describe("The preparation document", () => {
     expect((await PDFDocument.load(pdf)).getPageCount()).toBe(4);
   });
 
+  it("shows an epic with its features in line, frozen and linked", async () => {
+    const { buildDoc, renderHtml, renderPdf } = await import("../src/preparation");
+    const card = (id: number, title: string, body: string, kind = "feature") => ({ id, title, body, data: {}, status: "validated", progress: null, priority: null, kind }) as never;
+    const feature = card(5, "Pay by card", "Customers pay online.\n\nMore detail.");
+    const epic = card(9, "Checkout", "Intro\nC5\nC6\nC404");
+    const gone = { ...(card(6, "Old", "x") as object), archivedAt: "2026-01-01" } as never;
+    const doc = buildDoc({
+      level: 1, projectName: "W", description: "", preparing: "1.5", releases: [], by: "pe", now: new Date("2026-11-04T10:00:00Z"),
+      features: [], epics: [epic], cards: [epic, feature, gone], origin: "https://fab.example", repo: "acme/widget",
+      links: { order: new Map(), nice: new Map() } as never, stories: new Map(), rubriques: [], recorded: new Map(), sections: () => null,
+    });
+    const html = renderHtml(doc);
+    expect(html).toContain("Pay by card");
+    expect(html).toContain("Customers pay online.");
+    expect(html).toContain('href="https://fab.example/projects/acme/widget/cards/5"');
+    expect(html).toContain("As of 2026-11-04");
+    expect(html).toContain("C6 Old (archived)");
+    expect(html).toContain("C404");
+    // Frozen: the data is in the document, nothing is read afterwards.
+    expect(JSON.parse(JSON.stringify(doc)).epics[0].blocks.some((b: { t: string }) => b.t === "card")).toBe(true);
+    expect((await renderPdf(doc)).length).toBeGreaterThan(1000);
+  });
+
   it("downloads from the Refinement tab and logs the level and format", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
