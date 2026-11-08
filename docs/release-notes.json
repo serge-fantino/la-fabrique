@@ -2,6 +2,15 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "The dashboard shows each project's epics",
+    "changements": [
+      "Under each project, the dashboard lists its epics with how many of their features are to do, in refinement (Next release), in the sprint and in production. Epics with no feature are left out; dropped and archived ones too; an epic whose features are all in production stays listed."
+    ],
+    "stories": [306],
+    "liens": null
+  },  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The Epics tab and the board show each epic's progress",
     "changements": [
       "The Epics tab has a Progress column, and the board arranged by Epic shows the progress under each epic lane's header: the same bar, counts and status as on the epic's page, with the same hover and focus explanations."

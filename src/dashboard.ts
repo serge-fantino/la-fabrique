@@ -1,5 +1,7 @@
 import type { Role } from "./accounts";
 import type { DeliveryData } from "./delivery";
+import { listCards } from "./cards";
+import { epicsWhere, type EpicWhere } from "./epic-progress";
 import { IN_DEV, isStalled, type InDevData } from "./in-dev";
 import { cycleRules, isEpic, priorityOf, stagesOf } from "./lifecycle";
 import { PRODUCTION, type ProductionStatus } from "./production";
@@ -25,6 +27,8 @@ export interface ProjectCard {
   readAt: string | null;
   // The production snapshot is old: the card refreshes once shown.
   stale: boolean;
+  // The project's epics and where their features are (la-fabrique#306).
+  epics: EpicWhere[];
 }
 
 const STALE_MS = 10 * 60 * 1000;
@@ -67,7 +71,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-export function buildCard(project: Project, found: Snapshots, role: Role, now = Date.now()): ProjectCard {
+export function buildCard(project: Project, found: Snapshots, role: Role, now = Date.now(), epics: EpicWhere[] = []): ProjectCard {
   const base = `/projects/${project.repo}`;
   const config = project.check?.config;
   const rules = cycleRules(config);
@@ -199,9 +203,11 @@ export function buildCard(project: Project, found: Snapshots, role: Role, now = 
     tiles,
     readAt: dates[0] ?? null,
     stale: Boolean(config?.branches?.integration) && productionAge > STALE_MS,
+    epics,
   };
 }
 
 export async function projectCard(db: D1Database, project: Project, role: Role): Promise<ProjectCard> {
-  return buildCard(project, await readSnapshots(db, project.repo), role);
+  const [found, cards] = await Promise.all([readSnapshots(db, project.repo), listCards(db, project.repo)]);
+  return buildCard(project, found, role, Date.now(), epicsWhere(cards));
 }

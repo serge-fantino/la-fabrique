@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Card } from "../src/cards";
-import { epicProgress, epicProgressSection, epicProgressSummary } from "../src/epic-progress";
+import { epicsWhere, epicProgress, epicProgressSection, epicProgressSummary } from "../src/epic-progress";
 
 let next = 10;
 function feature(status: string, progress: string | null = null, extra: Partial<Card> = {}): Card {
@@ -62,5 +62,25 @@ describe("epic progress", () => {
     expect(epicProgressSection(p)).toContain(summary);
     const compact = epicProgressSummary(p, true);
     for (const part of ["Epic status", "1/2", "Draft: 1 feature", 'tabindex="0"', "epic-bar compact"]) expect(compact).toContain(part);
+  });
+});
+
+describe("epics on the dashboard", () => {
+  it("counts features by place and leaves out empty, dropped and archived epics", () => {
+    const e = { id: 1, repo: "acme/widget", kind: "epic", status: "draft", title: "Big epic", archivedAt: null } as unknown as Card;
+    const empty = { ...e, id: 2, title: "Empty" } as Card;
+    const gone = { ...e, id: 3, title: "Gone", archivedAt: "2026-01-01" } as Card;
+    const where = epicsWhere([
+      e,
+      empty,
+      gone,
+      feature("draft"),
+      feature("shaping", null, { release: "Next release" }),
+      feature("validated", "in_sprint", { release: "Sprint" }),
+      feature("validated", "in_production", { release: "Sprint" }),
+      feature("dropped"),
+    ]);
+    expect(where).toHaveLength(1);
+    expect(where[0]).toMatchObject({ todo: 1, refinement: 1, sprint: 1, production: 1 });
   });
 });
