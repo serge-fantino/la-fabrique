@@ -1,5 +1,7 @@
 import { effectiveRole, type Role } from "./accounts";
 import { activityStatement } from "./activity-log";
+import { projectLinks } from "./card-dependencies";
+import { needsRefusal, openNeeds } from "./dependency-warnings";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { cardProgress, PROGRESS_LABELS, type Progress } from "./card-progress";
 import { progressDetail } from "./progress-stages";
@@ -552,6 +554,11 @@ const TOOLS: Tool[] = [
       const wanted = priority(args);
       if (args["priority"] !== undefined) checkPriority(project, wanted);
       if (card.archivedAt) fail("This card is archived: bring it back from its page first.");
+      if (status === "dropped" && card.status !== "dropped") {
+        const [all, links] = await Promise.all([listCards(ctx.env.DB, project.repo), projectLinks(ctx.env.DB, project.repo)]);
+        const refused = needsRefusal(card, openNeeds(card, all, links), "dropped");
+        if (refused) fail(`${refused} Nothing changed.`);
+      }
       const epic = await epicTarget(ctx, project, args, body ?? card.body);
       const epicChanges = epic !== undefined && epic !== (card.epic ?? null);
 

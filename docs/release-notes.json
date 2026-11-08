@@ -4,7 +4,8 @@
     "date": "2026-11-08",
     "titre": "A feature or an epic still needed cannot be dropped or archived",
     "changements": [
-      "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be."
+      "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be.",
+      "The same refusal now applies when Claude drops a card through the MCP (card_update, status dropped)."
     ],
     "stories": [302],
     "liens": null

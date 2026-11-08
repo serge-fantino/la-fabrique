@@ -334,6 +334,21 @@ describe("La Fabrique's MCP server", () => {
     expect(failed.data["created"]).toBeTruthy();
   });
 
+  it("refuses to drop a card that a feature not in production needs (la-fabrique#302)", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const needed = ((await call(access, "card_create", { project: REPO, title: "Needed", kind: "feature" })).data["created"] as { id: number }).id;
+    const needing = ((await call(access, "card_create", { project: REPO, title: "Needing", kind: "feature" })).data["created"] as { id: number }).id;
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, 'depends', ?)").bind(needing, String(needed)).run();
+    const refused = await call(access, "card_update", { project: REPO, card: needed, status: "dropped" });
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.data)).toContain(`C${needing}`);
+    expect((await env.DB.prepare("SELECT status FROM cards WHERE id = ?").bind(needed).first<{ status: string }>())?.status).not.toBe("dropped");
+    expect((await call(access, "card_update", { project: REPO, card: needing, status: "dropped" })).isError).toBe(false);
+    expect((await call(access, "card_update", { project: REPO, card: needed, status: "dropped" })).isError).toBe(false);
+  });
+
   it("attaches a feature to an epic, moves it, detaches it, and refuses what is not an epic", async () => {
     await seedProject();
     await grantRole("pe", "product_engineer");
