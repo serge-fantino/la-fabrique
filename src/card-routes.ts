@@ -52,6 +52,7 @@ import {
   filterCards,
   findCard,
   mentionedCards,
+  CARD_MENTION,
   isFreeDimension,
   isKind,
   isStatus,
@@ -302,7 +303,13 @@ export async function showCardForm(request: Request, env: Env, viewer: Viewer, p
   const { known } = await knownValues(env, project, cards);
   const input = card ? { title: card.title, body: card.body, tags: card } : emptyInput(new URL(request.url).searchParams);
   const issues = !card && input.tags.kind === "epic" ? await pickableEpicIssues(env, project) : [];
-  return html(cardFormPage(viewer, view, { card, input, known, issues }), { cookies });
+  const replace = readReplace(new URL(request.url).searchParams.get("replace"));
+  return html(cardFormPage(viewer, view, { card, input, known, issues, ...(replace && !card ? { replace: `${replace.from}:${replace.mention}` } : {}) }), { cookies });
+}
+
+function readReplace(raw: string | null | undefined): { from: number; mention: number } | null {
+  const match = /^(\d{1,9}):(\d{1,6})$/.exec(raw ?? "");
+  return match ? { from: Number(match[1]), mention: Number(match[2]) } : null;
 }
 
 // The `epique` issues no epic card has picked (la-fabrique#287).
@@ -334,6 +341,8 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
     }
   }
   const id = await createCard(env.DB, project.repo, viewer.login, input);
+  const replaced = await replaceMention(env.DB, project.repo, viewer.login, readReplace(String(form.get("replace") ?? "")), id);
+  if (replaced) return redirect(`${cardUrl(project.repo, replaced)}?notice=mention_replaced`);
   if (issue) {
     const epic = await findCard(env.DB, project.repo, id);
     const result = epic ? await startFromIssue(env.DB, epic, issue, stories, viewer.login) : null;
@@ -342,7 +351,26 @@ export async function submitCard(request: Request, form: FormData, env: Env, vie
   return redirect(`${projectUrl(project.repo)}/cards/${id}?created=1`);
 }
 
+// The card that named an unknown card takes the new one's number in its
+// text, as a new version, journaled (la-fabrique#292). Returns that card's
+// id when its text changed.
+export async function replaceMention(db: D1Database, repo: string, login: string, replace: { from: number; mention: number } | null, created: number): Promise<number | null> {
+  if (!replace) return null;
+  const source = await findCard(db, repo, replace.from);
+  if (!source || source.id === created || (await findCard(db, repo, replace.mention))) return null;
+  const body = source.body.replace(CARD_MENTION, (all, id: string) => (Number(id) === replace.mention ? cardRef(created) : all));
+  if (body === source.body) return null;
+  const outcome = await updateCard(db, source, login, { title: source.title, body, tags: source }, source.rev);
+  if (outcome !== "saved") return null;
+  await db.batch([
+    activityStatement(db, { actor: login, action: "card_mention_replaced", repo: repo, details: { card: source.id, mention: cardRef(replace.mention), replacedBy: cardRef(created) } }),
+  ]);
+  await syncEpicText(db, source, source.body, body, login);
+  return source.id;
+}
+
 const CARD_NOTICES: Record<string, string> = {
+  mention_replaced: "The card is written, and the text now names it.",
   saved: "Saved.",
   unchanged: "Nothing changed.",
   tests: "Test cases saved.",
@@ -372,11 +400,31 @@ const CARD_NOTICES: Record<string, string> = {
 
 // The cards a text names ("C57"), those of this project only: each one's
 // link with its status as the board shows it.
-async function mentionedLinks(env: Env, project: Project, text: string, marks: ReadonlyMap<number, string> = new Map()): Promise<Map<number, string>> {
+async function mentionedLinks(
+  env: Env,
+  project: Project,
+  text: string,
+  marks: ReadonlyMap<number, string> = new Map(),
+  unknown?: { from: number; canWrite: boolean },
+): Promise<Map<number, string>> {
   const ids = mentionedCards(text);
   const found = new Map<number, string>();
   if (!ids.length) return found;
-  const cards = (await listCards(env.DB, project.repo)).filter((other) => ids.includes(other.id));
+  const all = await listCards(env.DB, project.repo);
+  const cards = all.filter((other) => ids.includes(other.id));
+  // A card named but not written: a new-card link for those who can write
+  // cards, a mark for the others (la-fabrique#292).
+  if (unknown) {
+    for (const id of ids) {
+      if (cards.some((other) => other.id === id)) continue;
+      found.set(
+        id,
+        unknown.canWrite
+          ? `<a class="card-mention new-card mono" href="${escapeHtml(newCardFromMention(project.repo, unknown.from, id))}" title="No such card yet: write it">${cardRef(id)}</a> <span class="pill small">new card</span>`
+          : `<span class="card-mention new-card mono" title="No such card yet">${cardRef(id)}</span> <span class="pill small">new card</span>`,
+      );
+    }
+  }
   if (!cards.length) return found;
   const progress = await cardProgress(env, project, cards);
   for (const other of cards)
@@ -385,6 +433,10 @@ async function mentionedLinks(env: Env, project: Project, text: string, marks: R
       `<a class="card-mention mono" href="${escapeHtml(cardUrl(project.repo, other.id))}" title="${escapeHtml(other.title)}">${cardRef(other.id)}</a> ${statusPill(other, progress.get(other.id))}${marks.get(other.id) ? ` ${marks.get(other.id)}` : ""}`,
     );
   return found;
+}
+
+export function newCardFromMention(repo: string, from: number, mention: number): string {
+  return `${projectUrl(repo)}/cards/new?replace=${from}:${mention}`;
 }
 
 // "belongs to F9", for each feature of an epic other than the card's own
@@ -465,7 +517,7 @@ async function renderCard(
   const version = shown ?? card;
   const owners = await featureEpics(env.DB, project.repo);
   const marks = belongsMarks(project.repo, card, owners);
-  const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"), marks);
+  const mentioned = await mentionedLinks(env, project, [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n"), marks, { from: card.id, canWrite: !shown && canWriteCards(viewer) });
   const allCards = await listCards(env.DB, project.repo);
   const embedText = [version.body, ...Object.values(version.data.spec?.answers ?? {})].join("\n");
   const embedded = embeddedCards(embedText).length

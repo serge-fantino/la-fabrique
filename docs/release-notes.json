@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "A card named but not yet written can be created from its mention",
+    "changements": [
+      "A mention of a card that does not exist (\"C99\") is marked as a new card in a card's text. For those who can write cards it is a link to the new card form; once the card is created (say C91), the original text takes its number as a new version, and a feature named in an epic is attached to it. Others see the mark, not a link."
+    ],
+    "stories": [292],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "The preparation document shows epics with their features in place",
     "changements": [
       "The release preparation document, downloaded (HTML or PDF) or shared by link, now includes each epic of Next release: its text with every feature named alone on a line shown in place (title, status, synopsis), frozen at the date of the download or sharing, each with a link to its card in La Fabrique."
