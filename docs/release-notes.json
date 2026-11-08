@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Type = Epic on the board shows the epic cards",
+    "changements": [
+      "Setting the Type filter to Epic on the board now lists the project's epic cards (it listed none)."
+    ],
+    "stories": [297],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "A feature or an epic still needed cannot be dropped or archived",
     "changements": [
       "A feature or an epic that a feature not yet in production depends on can no longer be dropped or archived (card page, board, epic page): the refusal names the feature. Once every feature that needs it is in production, it can be.",

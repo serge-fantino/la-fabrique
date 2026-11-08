@@ -161,7 +161,8 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
   return html(
     boardPage(viewer, view, {
-      cards: filterCards(cards, board.filters, (await storyCards(env.DB, project.repo)).order, await featureEpicTitles(env.DB, project.repo)),
+      // Epic cards are shown only when the Type filter asks for them (la-fabrique#297).
+      cards: filterCards(board.filters.kind === "epic" ? [...cards, ...allCards.filter((card) => card.kind === "epic")] : cards, board.filters, (await storyCards(env.DB, project.repo)).order, await featureEpicTitles(env.DB, project.repo)),
       total: cards.filter((card) => !card.archivedAt).length,
       known,
       board,
