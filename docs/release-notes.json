@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-08",
+    "titre": "Attach features to an epic and see them on its page",
+    "changements": [
+      "Epic cards are values of the Epic dimension, listed next to the legacy free-text values; the board filter by epic finds all its features.",
+      "An epic's page lists its attached features grouped by status. The link follows the epic card, not its name: renaming an epic leaves its features' Epic value as it was and they stay attached."
+    ],
+    "stories": [285],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-08",
     "titre": "Write an epic card: its own sections, page and history",
     "changements": [
       "New card type: Epic. Choose it when you create a card; the form then asks for the epic's sections (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions by default, or the project's own `epiques.rubriques` in `.fabrique.json`) and keeps them as one document.",

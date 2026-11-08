@@ -9,7 +9,7 @@ import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, ca
 import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
-import { epicCardsOf, epicFeatures, setFeatureEpic, syncEpicLink } from "./card-epics";
+import { epicCardsOf, epicFeatures, featureEpicTitles, setFeatureEpic, syncEpicLink } from "./card-epics";
 import { validateFeature, validationOf } from "./feature-validation";
 import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
 import { recordedByStory } from "./gherkin";
@@ -132,7 +132,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   const refused = url.searchParams.get("failure") === "release" ? cleanValue(url.searchParams.get("value")) : null;
   return html(
     boardPage(viewer, view, {
-      cards: filterCards(cards, board.filters, (await storyCards(env.DB, project.repo)).order),
+      cards: filterCards(cards, board.filters, (await storyCards(env.DB, project.repo)).order, await featureEpicTitles(env.DB, project.repo)),
       total: cards.filter((card) => !card.archivedAt).length,
       known,
       board,
@@ -309,6 +309,7 @@ async function renderCard(
   // Its progress from those stories, and when it reached each stage.
   const progress = (await cardProgress(env, project, [card])).get(card.id) ?? null;
   const progressHistory = await progressSince(env.DB, project.repo, card.id);
+  const attachedTitles = card.kind === "epic" ? await featureEpicTitles(env.DB, project.repo) : new Map<number, string>();
   const storyNumbers = [...linked];
   const step = nextStep(card, storyNumbers, storyStates as never);
   const wanted = Number(params.get("rev"));
@@ -354,7 +355,7 @@ async function renderCard(
       canDepend: viewer.role !== null,
       epics: epicCardsOf(allCards),
       epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
-      attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && (c.epic ?? "").toLowerCase() !== card.title.toLowerCase()) : [],
+      attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && attachedTitles.get(c.id) !== card.title) : [],
     }),
     { cookies, status: extra.status ?? 200 },
   );
@@ -422,7 +423,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     }
     if (action === "set_epic") await setFeatureEpic(env.DB, feature, name, viewer.login);
     else if (action === "attach_feature") await setFeatureEpic(env.DB, feature, card.title, viewer.login, "document");
-    else if ((feature.epic ?? "").toLowerCase() === card.title.toLowerCase()) await setFeatureEpic(env.DB, feature, null, viewer.login, "document");
+    else if ((await featureEpicTitles(env.DB, project.repo)).get(feature.id) === card.title) await setFeatureEpic(env.DB, feature, null, viewer.login, "document");
     return redirect(`${url}#${action === "set_epic" ? "epic" : "features"}`);
   }
   if (action === "archive" || action === "restore") {

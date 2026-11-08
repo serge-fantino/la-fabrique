@@ -72,3 +72,36 @@ describe("Epic cards", () => {
     expect((await findCard(env.DB, REPO, id))?.kind).toBe("feature");
   });
 });
+
+describe("Epic cards as values of the Epic dimension", () => {
+  it("lists epic cards as values, keeps links on rename, filters and groups", async () => {
+    const s = await seed();
+    const mk = async (fields: Record<string, string>) => {
+      const r = await post(`/projects/${REPO}/cards`, { csrf: s.csrf, action: "save", status: "draft", ...fields }, s.cookie);
+      return Number(/cards\/(\d+)/.exec(r.headers.get("location") ?? "")?.[1]);
+    };
+    const epic = await mk({ kind: "epic", title: "Refinement" });
+    const feat = await mk({ kind: "feature", title: "Feat A" });
+    const legacy = await mk({ kind: "feature", title: "Feat B", epic: "Old epic" });
+    const { dimensionValues } = await import("../src/cards");
+    const values = await dimensionValues(env.DB, REPO, await listCards(env.DB, REPO));
+    expect(values.epic).toEqual(expect.arrayContaining(["Refinement", "Old epic"]));
+
+    await post(`/projects/${REPO}/cards/${feat}`, { csrf: s.csrf, action: "set_epic", epic: "Refinement" }, s.cookie);
+    expect((await findCard(env.DB, REPO, legacy))?.epic).toBe("Old epic");
+    let page = await (await get(`/projects/${REPO}/cards/${epic}`, s.cookie)).text();
+    expect(page).toContain("Feat A");
+    expect(page).toContain("<h3>Draft");
+
+    const { setFeatureEpic, featureEpicTitles } = await import("../src/card-epics");
+    void setFeatureEpic;
+    await env.DB.prepare("UPDATE cards SET title = 'Renamed' WHERE id = ?").bind(epic).run();
+    expect((await findCard(env.DB, REPO, feat))?.epic).toBe("Refinement");
+    expect((await featureEpicTitles(env.DB, REPO)).get(feat)).toBe("Renamed");
+    page = await (await get(`/projects/${REPO}/cards/${epic}`, s.cookie)).text();
+    expect(page).toContain("Feat A");
+    const board = await (await get(`/projects/${REPO}/board?epic=Renamed`, s.cookie)).text();
+    expect(board).toContain("Feat A");
+    expect(board).not.toContain("Feat B");
+  });
+});

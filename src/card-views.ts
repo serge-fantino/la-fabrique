@@ -624,17 +624,18 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
   }
   if (card.kind === "epic") {
     const features = data.epicFeatures ?? [];
-    const rows = features
-      .map(
-        (feature) => `<li><a href="${escapeHtml(cardUrl(card.repo, feature.id))}"><span class="mono">${cardRef(feature.id)}</span> ${escapeHtml(feature.title)}</a>${
-          data.canWrite
-            ? ` <form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}
-                <input type="hidden" name="action" value="detach_feature" />
-                <input type="hidden" name="feature" value="${feature.id}" />
-                <button type="submit" class="button quiet small">Remove</button></form>`
-            : ""
-        }</li>`,
-      )
+    const row = (feature: Card): string => `<li><a href="${escapeHtml(cardUrl(card.repo, feature.id))}"><span class="mono">${cardRef(feature.id)}</span> ${escapeHtml(feature.title)}</a>${
+      data.canWrite
+        ? ` <form method="post" action="${escapeHtml(url)}" class="inline" data-busy>${csrfField(viewer)}
+            <input type="hidden" name="action" value="detach_feature" />
+            <input type="hidden" name="feature" value="${feature.id}" />
+            <button type="submit" class="button quiet small">Remove</button></form>`
+        : ""
+    }</li>`;
+    // Grouped by status, in the order of the statuses.
+    const rows = SHOWN_STATUSES.map((status) => ({ status, list: features.filter((f) => shownStatus(f) === status) }))
+      .filter((group) => group.list.length)
+      .map((group) => `<h3>${escapeHtml(shownStatusLabel(group.status))} <span class="muted small">${group.list.length}</span></h3><ul class="card-stories">${group.list.map(row).join("")}</ul>`)
       .join("");
     const attach =
       data.canWrite && (data.attachable ?? []).length
@@ -645,7 +646,7 @@ function epicSection(viewer: Viewer, url: string, card: Card, data: CardPageData
             <button type="submit" class="button">Attach</button>
           </form>`
         : "";
-    return `<section id="features"><h2>Features</h2>${rows ? `<ul class="card-stories">${rows}</ul>` : `<p class="muted">No feature attached yet.</p>`}${attach}</section>`;
+    return `<section id="features"><h2>Features</h2>${rows || `<p class="muted">No feature attached yet.</p>`}${attach}</section>`;
   }
   return "";
 }

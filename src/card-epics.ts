@@ -26,6 +26,16 @@ export async function epicFeatures(db: D1Database, epic: Card): Promise<Card[]> 
   return rows.results.map((row) => cards.find((card) => card.id === Number(row.ref))).filter((c): c is Card => Boolean(c && ids.has(c.id)));
 }
 
+// Each attached feature's epic title today (the link is by id, so it follows
+// a rename).
+export async function featureEpicTitles(db: D1Database, repo: string): Promise<Map<number, string>> {
+  const rows = await db
+    .prepare("SELECT l.ref AS ref, c.title AS title FROM card_links l JOIN cards c ON c.id = l.card_id WHERE l.kind = 'feature' AND c.repo = ? AND c.kind = 'epic'")
+    .bind(repo)
+    .all<{ ref: string; title: string }>();
+  return new Map(rows.results.map((row) => [Number(row.ref), row.title]));
+}
+
 export type EpicChange = "set" | "created" | "removed" | "unchanged" | "not_a_feature" | "not_an_epic";
 
 // Sets (or, with an empty name, removes) a feature's epic. A name matching
