@@ -8,6 +8,7 @@ import { LOGO_SVG } from "./logo";
 import { nextStep, releaseProgress, synopsisOf, type NextStep } from "./refinement";
 import { scenarioText, type Recorded } from "./gherkin";
 import type { Rubrique } from "./requests";
+import { projectUrl } from "./urls";
 import { escapeHtml } from "./views";
 
 // The preparation document of the next release (la-fabrique#229): what
@@ -32,7 +33,10 @@ export const LEVEL_LABELS: Record<Level, string> = {
 };
 
 // A block of a feature: a heading, text, a list item, preformatted text.
-export type Block = { t: "h" | "h2" | "p" | "li" | "pre" | "muted"; text: string };
+export type Block =
+  | { t: "h" | "h2" | "p" | "li" | "pre" | "muted"; text: string }
+  // A card named alone on a line of an epic, frozen at `asOf` (la-fabrique#293).
+  | { t: "card"; text: string; ref: string; url: string; status: string; synopsis: string; asOf: string };
 
 export interface DocFeature {
   ref: string;
@@ -42,6 +46,8 @@ export interface DocFeature {
   step: string;
   priority: string | null;
   blocks: Block[];
+  // Absolute address of the card in La Fabrique, when known.
+  url?: string;
 }
 
 export interface Doc {
@@ -55,6 +61,8 @@ export interface Doc {
   go: boolean;
   blockers: { ref: string; title: string; reason: string }[];
   features: DocFeature[];
+  // The epics of the release, their features in line as of `date`.
+  epics: DocFeature[];
 }
 
 export interface DocInput {
@@ -66,6 +74,12 @@ export interface DocInput {
   by: string;
   now: Date;
   features: Card[];
+  // Epics of the release, and every card of the project to resolve the
+  // features they name; `origin` makes the links to La Fabrique absolute.
+  epics?: Card[];
+  cards?: Card[];
+  origin?: string;
+  repo?: string;
   links: StoryCards;
   stories: Map<number, CardStory>;
   rubriques: Rubrique[];
@@ -100,7 +114,39 @@ function textBlocks(text: string): Block[] {
   return blocks;
 }
 
+const ALONE_LINE = /^[ \t]*C(\d{1,6})[ \t]*$/;
+
+// The blocks of an epic: its text and document, each feature named alone on a
+// line shown in place as it is now (the document is frozen when built).
+function epicBlocks(input: DocInput, epic: Card, date: string): Block[] {
+  const byId = new Map((input.cards ?? []).map((card) => [card.id, card]));
+  const urlOf = (id: number) => (input.repo ? `${input.origin ?? ""}${projectUrl(input.repo)}/cards/${id}` : "");
+  const lines = (text: string): Block[] =>
+    text
+      .replace(/\r\n/g, "\n")
+      .replace(/\{[^{}\n]*\}/g, "")
+      .split("\n")
+      .flatMap((raw): Block[] => {
+        const named = ALONE_LINE.exec(raw);
+        const card = named ? byId.get(Number(named[1])) : undefined;
+        if (!card || card.id === epic.id) return textBlocks(raw);
+        if (card.archivedAt || card.status === "dropped")
+          return [{ t: "muted", text: `C${card.id} ${card.title} (${card.archivedAt ? "archived" : "dropped"})` }];
+        return [{ t: "card", text: card.title, ref: `C${card.id}`, url: urlOf(card.id), status: shownStatusLabel(shownStatus(card)), synopsis: synopsisOf(card), asOf: date }];
+      });
+  const blocks: Block[] = [];
+  if (epic.body.trim()) blocks.push(...lines(epic.body));
+  const spec = epic.data.spec;
+  for (const rubrique of input.rubriques) {
+    const answer = spec?.answers[rubrique.cle]?.trim();
+    if (answer) blocks.push({ t: "h2", text: rubrique.titre }, ...lines(answer));
+  }
+  if (!blocks.length) blocks.push({ t: "muted", text: "No document yet." });
+  return blocks;
+}
+
 export function buildDoc(input: DocInput): Doc {
+  const date = input.now.toISOString().slice(0, 10);
   const progress = releaseProgress(input.features, input.links, input.stories);
   const features = input.features.map((card): DocFeature => {
     const numbers = input.links.order.get(card.id) ?? [];
@@ -162,19 +208,33 @@ export function buildDoc(input: DocInput): Doc {
       step: STEP_LABELS[next.step],
       priority: card.priority,
       blocks,
+      ...(input.repo ? { url: `${input.origin ?? ""}${projectUrl(input.repo)}/cards/${card.id}` } : {}),
     };
   });
+  const epics = (input.epics ?? []).map(
+    (epic): DocFeature => ({
+      ref: `C${epic.id}`,
+      title: epic.title,
+      status: shownStatusLabel(shownStatus(epic)),
+      stories: 0,
+      step: "Epic",
+      priority: epic.priority,
+      blocks: epicBlocks(input, epic, date),
+      ...(input.repo ? { url: `${input.origin ?? ""}${projectUrl(input.repo)}/cards/${epic.id}` } : {}),
+    }),
+  );
   return {
     level: input.level,
     project: { name: input.projectName, description: input.description },
     preparing: input.preparing,
     latest: latestReleased(input.releases),
-    date: input.now.toISOString().slice(0, 10),
+    date,
     by: input.by,
     progress: { features: progress.features, ready: progress.ready, needed: progress.needed, nice: progress.nice },
     go: progress.features > 0 && progress.blockers.length === 0,
     blockers: progress.blockers.map((b) => ({ ref: `C${b.card.id}`, title: b.card.title, reason: b.reason })),
     features,
+    epics,
   };
 }
 
@@ -194,6 +254,7 @@ table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.4rem .6
 .pill{display:inline-block;border-radius:999px;padding:.05rem .7rem;border:1px solid #18211B;font-weight:700}
 .go{background:#1E5A43;color:#fff;border-color:#1E5A43}.nogo{background:#8A2A0F;color:#fff;border-color:#8A2A0F}
 article{background:#fff;border-radius:12px;padding:1.25rem 1.5rem;margin:1.5rem 0;page-break-before:always;break-before:page}
+.embed{border-left:3px solid #C23D17;padding:.1rem .9rem;margin:.75rem 0;background:#F3F4EE;border-radius:0 8px 8px 0}
 pre{background:#F3F4EE;border-radius:8px;padding:.6rem .8rem;overflow-x:auto}
 @media print{body{background:#fff}}`;
 
@@ -212,7 +273,8 @@ export function renderHtml(doc: Doc): string {
       if (open) out += "</ul>";
       open = false;
       out +=
-        block.t === "h" ? `<h3>${e(block.text)}</h3>`
+        block.t === "card" ? `<div class="embed"><p><a class="mono" href="${e(block.url)}">${e(block.ref)}</a> <strong>${e(block.text)}</strong> <span class="muted">${e(block.status)}</span></p>${block.synopsis ? `<p>${e(block.synopsis)}</p>` : ""}<p class="muted">As of ${e(block.asOf)}</p></div>`
+        : block.t === "h" ? `<h3>${e(block.text)}</h3>`
         : block.t === "h2" ? `<h4>${e(block.text)}</h4>`
         : block.t === "pre" ? `<pre>${e(block.text)}</pre>`
         : block.t === "muted" ? `<p class="muted">${e(block.text)}</p>`
@@ -241,6 +303,7 @@ ${doc.project.description ? `<p>${e(doc.project.description)}</p>` : ""}
 ${doc.blockers.length ? `<ul>${doc.blockers.map((b) => `<li><span class="mono">${e(b.ref)}</span> ${e(b.title)}: ${e(b.reason)}</li>`).join("")}</ul>` : ""}
 ${doc.features.length ? `<table><thead><tr><th>#</th><th>Feature, in priority order</th><th>Status</th><th>Stories</th></tr></thead><tbody>${doc.features.map((f, i) => `<tr><td class="mono">${i + 1}</td><td><span class="mono">${e(f.ref)}</span> ${e(f.title)}${f.priority ? ` <span class="muted">(${e(f.priority)})</span>` : ""}</td><td>${e(f.status)}<br /><span class="muted">${e(f.step)}</span></td><td class="mono">${f.stories}</td></tr>`).join("")}</tbody></table>` : `<p class="muted">No feature in Next release.</p>`}
 </section>
+${(doc.epics ?? []).map((f) => `<article><h2><span class="mono">${e(f.ref)}</span> ${e(f.title)}</h2><p class="muted">Epic · ${e(f.status)} · features as of ${e(doc.date)}${f.url ? ` · <a href="${e(f.url)}">open in La Fabrique</a>` : ""}</p>${blocks(f.blocks)}</article>`).join("\n")}
 ${doc.features.map((f) => `<article><h2><span class="mono">${e(f.ref)}</span> ${e(f.title)}</h2><p class="muted">${e(f.status)} · ${e(f.step)} · ${f.stories} stor${f.stories === 1 ? "y" : "ies"}</p>${blocks(f.blocks)}</article>`).join("\n")}
 </main></body></html>
 `;
@@ -355,13 +418,19 @@ export async function renderPdf(doc: Doc): Promise<Uint8Array> {
     write(`${f.status} - ${f.step} - ${f.stories} stor${f.stories === 1 ? "y" : "ies"}`, { color: GREY, size: 9.5, indent: 14, gap: 6 });
   }
 
-  // A feature per page.
-  for (const f of doc.features) {
+  // An epic or a feature per page.
+  for (const f of [...(doc.epics ?? []), ...doc.features]) {
     fresh();
+    const epic = f.step === "Epic";
     write(`${f.ref} ${f.title}`, { font: bold, size: 18, gap: 4 });
-    write(`${f.status} - ${f.step} - ${f.stories} stor${f.stories === 1 ? "y" : "ies"}`, { color: GREY, gap: 10 });
+    write(epic ? `Epic - ${f.status} - features as of ${doc.date}` : `${f.status} - ${f.step} - ${f.stories} stor${f.stories === 1 ? "y" : "ies"}`, { color: GREY, gap: f.url ? 2 : 10 });
+    if (f.url) write(f.url, { font: mono, size: 8.5, color: GREY, gap: 10 });
     for (const block of f.blocks) {
-      if (block.t === "h") write(block.text, { font: bold, size: 14, gap: 4 });
+      if (block.t === "card") {
+        write(`${block.ref} ${block.text} (${block.status})`, { font: bold, indent: 8, gap: 1 });
+        if (block.synopsis) write(block.synopsis, { indent: 8, gap: 1 });
+        write(`As of ${block.asOf} - ${block.url}`, { font: mono, size: 8, color: GREY, indent: 8, gap: 6 });
+      } else if (block.t === "h") write(block.text, { font: bold, size: 14, gap: 4 });
       else if (block.t === "h2") write(block.text, { font: bold, size: 11.5, gap: 3 });
       else if (block.t === "li") write(block.text, { indent: 14, bullet: true, gap: 2 });
       else if (block.t === "muted") write(block.text, { color: GREY, size: 9.5, gap: 3 });
