@@ -1,10 +1,11 @@
 // Used by the release and merge workflows (.github/workflows/release.yml, merge.yml), once the merge to main is done:
-//   node --experimental-strip-types scripts/tag-releases.ts [--dry-run] [--since <rev>] [--notes <file>] [--remote <name>]
+//   node --experimental-strip-types scripts/tag-releases.ts [--dry-run] [--from <version>] [--notes <file>] [--remote <name>]
 // Tags every version that reached main with the annotated tag v<version> (message: the release title), on the first
-// commit of main (first-parent history) whose release notes carry it, then pushes the tags. Which versions: those of the
-// notes at HEAD numbered after the newest version already tagged; with no tag yet, only those the notes gained since
-// `--since` (default HEAD^), so history before this script is never tagged. A tag that exists stays where it is. A failed
-// push never fails the run: the tags stay local, and the next run sets what is missing. `next` entries get nothing.
+// commit of main (first-parent history) whose release notes carry it, then pushes the tags. Which versions: every one of
+// the notes at HEAD from `--from` (default 0.13) on that has no tag yet, so the past releases are tagged on the first run.
+// Earlier ones (0.1 to 0.12) were written all at once when the file was created (#33): no tag, and a line in the log.
+// A tag that exists stays where it is. A failed push never fails the run: the tags stay local, and the next run sets
+// what is missing. `next` entries get nothing.
 import { execFileSync } from "node:child_process";
 
 type Entry = { version: string; titre?: string };
@@ -30,7 +31,7 @@ export const parseNotes = (text: string | null): Entry[] => {
   }
 };
 
-export type Options = { cwd: string; notes: string; since: string; remote: string; dryRun: boolean };
+export type Options = { cwd: string; notes: string; from: string; remote: string; dryRun: boolean };
 export type Planned = { tag: string; commit: string; message: string };
 
 const git = (cwd: string, ...args: string[]): string => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -47,14 +48,7 @@ export const plan = (o: Options): Planned[] => {
   const head = at("HEAD");
   const tags = new Set(git(o.cwd, "tag", "--list", "v*").split("\n").filter(Boolean));
   const tagged = [...tags].map((t) => t.slice(1)).filter((v) => numbered.test(v));
-  let candidates: Entry[];
-  if (tagged.length) {
-    const floor = tagged.sort(compareVersions).at(-1)!;
-    candidates = head.filter((e) => compareVersions(e.version, floor) > 0);
-  } else {
-    const before = new Set(at(o.since).map((e) => e.version));
-    candidates = head.filter((e) => !before.has(e.version));
-  }
+  const candidates = head.filter((e) => compareVersions(e.version, o.from) >= 0);
   const commits = git(o.cwd, "rev-list", "--first-parent", "HEAD").split("\n").filter(Boolean);
   const out: Planned[] = [];
   for (const entry of candidates) {
@@ -73,6 +67,8 @@ export const plan = (o: Options): Planned[] => {
 
 export const run = (o: Options, log: (line: string) => void = console.log): Planned[] => {
   const planned = plan(o);
+  const early = parseNotes(tryGit(o.cwd, "show", `HEAD:${o.notes}`)).filter((e) => compareVersions(e.version, o.from) < 0);
+  if (early.length) log(`no tag for ${early.map((e) => e.version).sort(compareVersions).join(", ")}: versions before ${o.from} were written all at once when the file was created (#33), and their code is not identifiable`);
   if (o.dryRun) {
     for (const p of planned) log(`would tag ${p.tag} on ${p.commit.slice(0, 7)}: ${p.message}`);
     if (!planned.length) log("no tag to set");
@@ -96,7 +92,7 @@ if (process.argv[1]?.endsWith("tag-releases.ts")) {
   const args = process.argv.slice(2);
   const value = (flag: string, fallback: string) => (args.includes(flag) ? (args[args.indexOf(flag) + 1] ?? fallback) : fallback);
   try {
-    run({ cwd: process.cwd(), notes: value("--notes", "docs/release-notes.json"), since: value("--since", "HEAD^"), remote: value("--remote", "origin"), dryRun: args.includes("--dry-run") });
+    run({ cwd: process.cwd(), notes: value("--notes", "docs/release-notes.json"), from: value("--from", "0.13"), remote: value("--remote", "origin"), dryRun: args.includes("--dry-run") });
   } catch (error) {
     // Tagging never fails a release.
     console.log(`::warning title=Tagging skipped::${(error as Error).message.split("\n")[0]}`);

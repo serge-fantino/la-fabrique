@@ -24,7 +24,7 @@ const commit = (dir: string, text: string, message: string) => {
   sh(dir, "commit", "-q", "--allow-empty", "-m", message);
   return sh(dir, "rev-parse", "HEAD");
 };
-const opts = (cwd: string, dryRun = false) => ({ cwd, notes: "docs/release-notes.json", since: "HEAD^", remote: "origin", dryRun });
+const opts = (cwd: string, dryRun = false) => ({ cwd, notes: "docs/release-notes.json", from: "0.85", remote: "origin", dryRun });
 const quiet = () => {};
 
 test("tags the version a merge brought, on the commit that carries it, with the release title", () => {
@@ -32,7 +32,7 @@ test("tags the version a merge brought, on the commit that carries it, with the 
   commit(dir, notes(["0.84", "Old"]), "Release 0.84");
   const c = commit(dir, notes(["0.85", "New things"], ["0.84", "Old"]), "Release 0.85");
   commit(dir, notes(["0.85", "New things"], ["0.84", "Old"]), "Unrelated");
-  const done = run({ ...opts(dir), since: "HEAD~2" }, quiet);
+  const done = run(opts(dir), quiet);
   assert.deepEqual(done.map((p) => p.tag), ["v0.85"]);
   assert.equal(sh(dir, "rev-list", "-n1", "v0.85"), c);
   assert.equal(sh(dir, "cat-file", "-t", "v0.85"), "tag");
@@ -62,7 +62,7 @@ test("a failed push does not fail, and the next run sets the missing tag", () =>
   assert.ok(lines.some((l) => l.startsWith("::warning")));
   assert.equal(sh(dir, "tag", "-l", "v0.85"), "v0.85");
   sh(dir, "tag", "-d", "v0.85");
-  assert.deepEqual(run({ ...opts(dir), since: "HEAD" }, quiet).map((p) => p.tag), []);
+  assert.deepEqual(run(opts(dir), quiet).map((p) => p.tag), ["v0.85"]);
 });
 
 test("recovers a tag missed earlier once a newer one exists is not needed: missing newer versions are set", () => {
@@ -89,6 +89,21 @@ test("--dry-run lists the tags and commits and sets nothing", () => {
   const lines: string[] = [];
   const planned = run(opts(dir, true), (l) => lines.push(l));
   assert.equal(planned.length, 1);
-  assert.match(lines[0]!, /would tag v0\.85 on [0-9a-f]{7}: New/);
+  assert.match(lines.at(-1)!, /would tag v0\.85 on [0-9a-f]{7}: New/);
   assert.equal(sh(dir, "tag", "-l"), "");
+});
+
+test("tags the past versions from 0.13 on the commit that brought each, and logs 0.1 to 0.12 without tagging them", () => {
+  const dir = repo();
+  commit(dir, notes(["0.12", "Early"], ["0.1", "First"]), "File created");
+  const c13 = commit(dir, notes(["0.13", "A"], ["0.12", "Early"], ["0.1", "First"]), "Release 0.13");
+  commit(dir, notes(["0.13", "A"], ["0.12", "Early"], ["0.1", "First"]), "Unrelated");
+  const c14 = commit(dir, notes(["0.14", "B"], ["0.13", "A"], ["0.12", "Early"], ["0.1", "First"]), "Release 0.14");
+  const lines: string[] = [];
+  const done = run({ ...opts(dir), from: "0.13" }, (l) => lines.push(l));
+  assert.deepEqual(done.map((p) => p.tag), ["v0.13", "v0.14"]);
+  assert.equal(sh(dir, "rev-list", "-n1", "v0.13"), c13);
+  assert.equal(sh(dir, "rev-list", "-n1", "v0.14"), c14);
+  assert.equal(sh(dir, "tag", "-l", "v0.1*"), "v0.13\nv0.14");
+  assert.ok(lines.some((l) => l.includes("0.1, 0.12") && l.includes("#33")));
 });
