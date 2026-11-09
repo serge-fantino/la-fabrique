@@ -1,6 +1,16 @@
 [
   {
     "version": "next",
+    "date": "2026-11-09",
+    "titre": "Each release of La Fabrique gets its git tag",
+    "changements": [
+      "A new script, scripts/tag-releases.ts, tags every version that reaches main with an annotated tag v<version> (message: the release title), so a version can be found and compared on GitHub (v0.84...v0.85). It never moves a tag, sets nothing for a next entry, and a failed push does not fail the release: the next run sets what is missing."
+    ],
+    "stories": [354],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [

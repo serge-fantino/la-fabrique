@@ -202,3 +202,5 @@ Le fichier nommé par `version.fichier` est un tableau JSON, **la version la plu
 Un envoi sans rien de visible (outillage, tests, refonte interne) n'ajoute pas d'entrée. Le chemin de version des environnements (`environnements.*.version`) répond la version déployée (`numero`), qui doit être celle de la première entrée.
 
 Sans branche d'intégration, une entrée reçoit sa date et son heure quand elle part sur la branche de production.
+
+Chaque version qui arrive sur la branche de production est marquée d'un tag git annoté `v<version>` (message : le titre de la version), posé par le workflow de mise en production du projet (`contents: write`, jamais par le Worker de La Fabrique) une fois la fusion faite. Un tag qui existe ne bouge pas ; un push de tag qui échoue ne fait pas échouer la release, le prochain run pose ce qui manque. Exemple : `scripts/tag-releases.ts` de La Fabrique (`--dry-run` liste sans rien pousser), appelé par `release.yml` et `merge.yml`.
