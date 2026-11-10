@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-09",
+    "titre": "Past releases of La Fabrique get their git tags",
+    "changements": [
+      "The tag script now tags every version of the release notes from 0.13 that has no tag yet, each on the first commit of main that carries it, so the past releases can be compared on GitHub too. Versions 0.1 to 0.12, written all at once when the file was created (#33), get no tag: the script says so in its log."
+    ],
+    "stories": [355],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-09",
     "titre": "Each release of La Fabrique gets its git tag",
     "changements": [
       "A new script, scripts/tag-releases.ts, tags every version that reaches main with an annotated tag v<version> (message: the release title), so a version can be found and compared on GitHub (v0.84...v0.85). It never moves a tag, sets nothing for a next entry, and a failed push does not fail the release: the next run sets what is missing."
