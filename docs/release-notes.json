@@ -1,6 +1,16 @@
 [
   {
     "version": "next",
+    "date": "2026-11-10",
+    "titre": "The tags are set when a release reaches main",
+    "changements": [
+      "The release made when the sprint closes and the merge from the sprint now run the tag script once main is updated: each version gets its tag v<version> on GitHub. The first run also tags the past versions, from 0.13 to 0.85."
+    ],
+    "stories": [354, 355, 360],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-07",
     "titre": "Merge stays offered on a pull request in conflict",
     "changements": [

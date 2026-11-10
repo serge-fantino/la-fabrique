@@ -131,6 +131,15 @@ jobs:
           [ "${merged:-}" = yes ] || { echo "GitHub did not merge #$PR in time; the branch is pushed, numbered and checked: run Merge again." > "$REASON_FILE"; echo "::error title=Merge refused::GitHub did not merge #$PR in time; the branch is pushed, numbered and checked: run Merge again."; exit 1; }
           gh pr comment "$PR" --body "Merged into main${VERSIONS:+ as release $VERSIONS}${PAR:+, at the request of @$PAR}, from La Fabrique."
 
+      # The tag v<version> of each version on main (la-fabrique#354, #355): tags any version that has none yet, so the
+      # first run also tags the past ones (from 0.13). Pushed with the checkout's FABRIQUE_TOKEN; never fails the run.
+      - name: Tag the versions on main
+        continue-on-error: true
+        run: |
+          git fetch -q origin main --tags
+          git checkout -q --detach origin/main
+          node --experimental-strip-types scripts/tag-releases.ts || true
+
       # Refused: the reason on the pull request too, with the run.
       - name: Say why on the pull request
         if: failure()

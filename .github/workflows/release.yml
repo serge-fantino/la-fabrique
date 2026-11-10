@@ -122,3 +122,12 @@ jobs:
             sleep 10
           done
           [ "${merged:-}" = yes ] || { echo "::error title=Release refused::GitHub did not merge the release pull request in time: it is open and checked, merge it by hand; the sprint stays open in La Fabrique until a release run succeeds."; exit 1; }
+
+      # The tag v<version> of each version on main (la-fabrique#354, #355): tags any version that has none yet, so the
+      # first run also tags the past ones (from 0.13). Pushed with the checkout's FABRIQUE_TOKEN; never fails the run.
+      - name: Tag the versions on main
+        continue-on-error: true
+        run: |
+          git fetch -q origin main --tags
+          git checkout -q --detach origin/main
+          node --experimental-strip-types scripts/tag-releases.ts || true
