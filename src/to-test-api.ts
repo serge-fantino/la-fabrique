@@ -1,3 +1,4 @@
+import { testsChanged } from "./live";
 import { relayFacts } from "./relay";
 import { projectUrl } from "./urls";
 import { storyCards } from "./card-groups";
@@ -260,5 +261,6 @@ async function giveFeedback(request: Request, env: Env, project: Project, props:
       ...(stored ? { screenshot: stored } : {}),
     },
   }).run();
+  await testsChanged(env, project.repo, story, "feedback");
   return json({ ok: true, comment: commentUrl, rework: true }, { status: 201, headers: { "cache-control": "no-store" } });
 }

@@ -18,7 +18,9 @@ export interface LiveEvent {
 // What a run of the project's Claude workflow tells the open sprint pages
 // (la-fabrique#113): one started, moved or ended.
 export interface SprintEvent {
-  kind: "claude_run" | "pull_request" | "story";
+  // `test`: a criterion ticked, a story validated, a feedback or a defect,
+  // from La Fabrique's pages or from the kit in the project's app.
+  kind: "claude_run" | "pull_request" | "story" | "test";
   issue: number | null;
   status: string;
   conclusion: string | null;
@@ -80,4 +82,12 @@ export function sprintLiveFor(env: Env, repo: string): DurableObjectStub<CardLiv
 // One per project, for the Refinement page: every job of its cards (la-fabrique#226).
 export function refinementLiveFor(env: Env, repo: string): DurableObjectStub<CardLive> | null {
   return env.CARD_LIVE ? env.CARD_LIVE.get(env.CARD_LIVE.idFromName(`refinement:${repo.toLowerCase()}`)) : null;
+}
+
+// Testing moved (la-fabrique#370): the open pages of the project that show
+// tests (To test, the sprint) read themselves again. Never fails the act.
+export async function testsChanged(env: Env, repo: string, issue: number | null, status: string): Promise<void> {
+  await sprintLiveFor(env, repo)
+    ?.notify({ kind: "test", issue, status, conclusion: null, url: "", at: new Date().toISOString() })
+    .catch(() => undefined);
 }

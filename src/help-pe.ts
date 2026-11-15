@@ -688,7 +688,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "to-test",
         title: "To test",
-        body: `<p>The stories to check on the test environment (int, or production for a project without one, “Stories to validate”), with the link to open it, grouped by epic. Each story: its card, its steps, its criteria, its feedback (“2 feedbacks from testing”) and the defects linked. The validated stories are folded (“N validated stories, hidden”). <em>In production, not validated</em>: the stories a released version declares that nobody validated (the go given anyway, or the story written after the go); check them in production, validated their issue is closed. <em>Defects not linked to a story</em> lead to their triage.</p>`,
+        body: `<p>The stories to check on the test environment (int, or production for a project without one, “Stories to validate”), with the link to open it, grouped by epic. Each story: its card, its steps, its criteria, its feedback (“2 feedbacks from testing”) and the defects linked. The validated stories are folded (“N validated stories, hidden”). <em>In production, not validated</em>: the stories a released version declares that nobody validated (the go given anyway, or the story written after the go); check them in production, validated their issue is closed. <em>Defects not linked to a story</em> lead to their triage. The page follows the tests made elsewhere (a criterion ticked or a story validated from the test panel of the app, by you or another tester): it reads itself again once you are not typing nor sending anything.</p>`,
       },
       {
         id: "panel",

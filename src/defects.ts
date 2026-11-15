@@ -1,3 +1,4 @@
+import { testsChanged } from "./live";
 import { relayFacts } from "./relay";
 import { effectiveRole } from "./accounts";
 import { DEFECT_LABEL, defectTargets, isKnownStory, storiesOnIntOf } from "./defect-targets";
@@ -503,6 +504,7 @@ export async function reportDefectFromApp(request: Request, env: Env, props: Gra
       ...(screenshot ? { screenshot } : {}),
     },
   }).run();
+  await testsChanged(env, project.repo, story ?? null, "defect");
 
   return json(
     { issue: { number: created.number, url: created.html_url }, story: story ? { number: story } : null, triage },

@@ -1,3 +1,4 @@
+import { testsChanged } from "./live";
 import { reworkLabelOf, shippedStories, storiesOnInt } from "./lifecycle";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
@@ -95,6 +96,7 @@ export async function tickCriterion(
     issueNumber: number,
     details: { index, text },
   }).run();
+  await testsChanged(env, project.repo, number, done ? "criterion_checked" : "criterion_unchecked");
   return { ok: true };
 }
 
@@ -165,6 +167,7 @@ export async function validateStory(
     issueNumber: number,
     details: { version, ...(shippedIn ? { shipped_in: shippedIn, closed } : {}) },
   }).run();
+  await testsChanged(env, project.repo, number, "validated");
   return { ok: true };
 }
 
@@ -219,6 +222,7 @@ export async function reportDefect(
     issueNumber: story,
     details: { defect: created.number, title: defect.title, version },
   }).run();
+  await testsChanged(env, project.repo, story, "defect");
   return { ok: true, number: created.number };
 }
 
