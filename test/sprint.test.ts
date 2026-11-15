@@ -119,6 +119,26 @@ describe("Next release and the sprint", () => {
     expect(logged).toEqual([{ from: "0.60", to: "1.0", name: null }]);
   });
 
+  it("says when the running sprint's version is already out, and proposes the next one", async () => {
+    await seed();
+    const session = await writer();
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
+    expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).not.toContain("is already out");
+    // The go shipped 0.57 while the sprint kept its version.
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'releases'")
+      .bind(JSON.stringify({ commitSha: "abc", releases: [release("0.57", "15:23"), release("0.56", "10:00")] }), REPO)
+      .run();
+    const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    expect(page).toContain('<span class="mono">0.57</span> is already out (newest release: <span class="mono">0.57</span>): this sprint would release nothing new. Give it <span class="mono">0.58</span>.');
+    expect(page).toContain('<details class="sprint-version" open>');
+    expect(page).toContain('name="version" value="0.58"');
+    // On int, not out yet: the sprint's own version, no warning.
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'releases'")
+      .bind(JSON.stringify({ commitSha: "abc", releases: [release("0.57", null), release("0.56", "10:00")] }), REPO)
+      .run();
+    expect(await (await get(`/projects/${REPO}/sprint`, session.cookie)).text()).not.toContain("is already out");
+  });
+
   it("takes a whole new order from a drag and drop, for the cards and for a card's stories", async () => {
     const { week, empty } = await seed();
     const session = await writer();

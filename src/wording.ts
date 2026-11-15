@@ -8,6 +8,8 @@ const WORDS = {
     validated: (login: string, version: string | null) =>
       `Validé sur int par @${login}${version ? ` (version ${version})` : ""} : tous les critères d'acceptation sont vérifiés.`,
     validatedInProduction: (login: string) => `Validé par @${login} : tous les critères d'acceptation sont vérifiés. La demande reste ouverte jusqu'à la version qui la livre.`,
+    validatedShipped: (login: string, version: string) =>
+      `Validé par @${login} : tous les critères d'acceptation sont vérifiés. Déjà en production en version ${version} : la demande est terminée (La Fabrique extraordinaire).`,
     shipped: (version: string | null) => `En production${version ? ` en version ${version}` : ""}, après sa validation sur int : la demande est terminée (La Fabrique extraordinaire).`,
     inVersion: (version: string) => `En production en version ${version}.`,
     reopened: (by: string) =>
@@ -63,6 +65,8 @@ const WORDS = {
     validated: (login: string, version: string | null) =>
       `Validated on int by @${login}${version ? ` (version ${version})` : ""}: every acceptance criterion checked.`,
     validatedInProduction: (login: string) => `Validated by @${login}: every acceptance criterion checked. The story stays open until the release that ships it.`,
+    validatedShipped: (login: string, version: string) =>
+      `Validated by @${login}: every acceptance criterion checked. Already in production in version ${version}: the story is done (La Fabrique extraordinaire).`,
     shipped: (version: string | null) => `In production${version ? ` in version ${version}` : ""}, after its validation on int: the story is done (La Fabrique extraordinaire).`,
     inVersion: (version: string) => `In production in version ${version}`,
     reopened: (by: string) =>

@@ -2,6 +2,7 @@ import type { Env } from "./env";
 import type { FabriqueConfig, ReadyCheck } from "./fabrique-config";
 import { PRODUCTION, type ProductionStatus } from "./production";
 import type { Project } from "./projects";
+import { RELEASES, type Release } from "./roadmap";
 import { readSnapshot } from "./snapshots";
 import type { Story } from "./stories";
 
@@ -70,16 +71,36 @@ export interface CycleRules {
   reworkLabel: string;
   // The stories made from a card: a card groups them as an epic would.
   inCard: Set<number>;
+  // The stories a released entry of production's release notes declares:
+  // their code is out, even with no pull request GitHub links to them.
+  shipped?: Set<number>;
 }
 
-export function cycleRules(config: FabriqueConfig | null | undefined, inCard: Set<number> = new Set()): CycleRules {
+export function cycleRules(config: FabriqueConfig | null | undefined, inCard: Set<number> = new Set(), shipped: Set<number> = new Set()): CycleRules {
   return {
     checks: config?.cycle?.pret ?? DEFAULT_READY,
     priorities: config?.cycle?.priorites ?? [],
     readyLabel: config?.demandes?.etiquettes?.["prete"] ?? null,
     reworkLabel: reworkLabelOf(config),
     inCard,
+    shipped,
   };
+}
+
+// The stories production's release notes say they shipped, each with the
+// oldest released version that declares it. Their code is out whatever
+// GitHub's links say: integrated without a pull request, or their issue
+// written after the go. Read from the last snapshot of the notes, no GitHub
+// call; empty before the first read.
+export async function shippedStories(db: D1Database, repo: string): Promise<Map<number, string>> {
+  const snapshot = await readSnapshot<{ releases: Release[] }>(db, repo, RELEASES);
+  const shipped = new Map<number, string>();
+  // Newest first in the notes: an older entry naming the story wins.
+  for (const release of snapshot?.data.releases ?? []) {
+    if (release.upcoming || !release.time) continue;
+    for (const number of release.stories ?? []) shipped.set(number, release.version);
+  }
+  return shipped;
 }
 
 // The project's rules, knowing which stories come from a card.
@@ -88,7 +109,8 @@ export async function projectRules(db: D1Database, project: Project): Promise<Cy
     .prepare("SELECT DISTINCT l.ref FROM card_links l JOIN cards c ON c.id = l.card_id WHERE c.repo = ? AND l.kind = 'story' AND c.archived_at IS NULL")
     .bind(project.repo)
     .all<{ ref: string }>();
-  return cycleRules(project.check?.config, new Set(results.map((row) => Number(row.ref))));
+  const shipped = await shippedStories(db, project.repo);
+  return cycleRules(project.check?.config, new Set(results.map((row) => Number(row.ref))), new Set(shipped.keys()));
 }
 
 export function isEpic(story: Story): boolean {
@@ -124,7 +146,8 @@ export function stageOf(story: Story, rules: CycleRules, onInt: Set<number>): St
   if (onInt.has(story.number)) return "on_int";
   if (story.state === "closed") return "done";
   if (story.pullRequests.some((pull) => pull.state === "open")) return "in_dev";
-  if (story.pullRequests.some((pull) => pull.state === "merged")) return "to_validate";
+  // Merged, or declared by a version already out: its criteria to check.
+  if (story.pullRequests.some((pull) => pull.state === "merged") || rules.shipped?.has(story.number)) return "to_validate";
   if (story.branches.length > 0) return "in_dev";
   return missingForReady(story, rules).length ? "backlog" : "ready";
 }

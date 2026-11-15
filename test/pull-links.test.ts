@@ -24,6 +24,12 @@ describe("Which story a pull request belongs to", () => {
     expect(namedStories("Refs #160, #161 (card C16, stories 2 and 3 of 3), see #108")).toEqual([160, 161]);
     expect(namedStories("Closes #3 and #4 & #5")).toEqual([3, 4, 5]);
   });
+
+  it("does not take a story said in passing when the text references others with a verb", () => {
+    const body = "Refs #193, #194, #195. Les stories #198 (durée des courses) et #199 restent à faire.";
+    expect(pullStories(pull(200, "En courses (C92)", body, "claude/eager-newton-6caqcx"), NO_LINKS)).toEqual({ stories: [193, 194, 195], guessed: true });
+    expect(pullStories(pull(45, "Tidy up", "Stories #6, #7", "tidy"), NO_LINKS)).toEqual({ stories: [6, 7], guessed: true });
+  });
 });
 
 const REPO = "acme/widget";

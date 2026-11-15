@@ -1,4 +1,4 @@
-import { reworkLabelOf } from "./lifecycle";
+import { reworkLabelOf, shippedStories, storiesOnInt } from "./lifecycle";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
@@ -107,6 +107,10 @@ export async function validateStory(
 ): Promise<ValidationOutcome> {
   const words = wordingFor(project);
   let version: string | null = null;
+  // Already in production (a released version declares it, nothing newer of
+  // it waits on int): validated, the story is done and its issue closed.
+  let shippedIn: string | null = null;
+  let closed = false;
   try {
     const issue = await readIssue(env, project, number);
     if (!issue) return { ok: false, message: `Issue #${number} could not be read.`, status: 502 };
@@ -124,10 +128,12 @@ export async function validateStory(
     // online, not released yet: validated, its issue stays open until the
     // release at the close of the sprint (la-fabrique#139).
     const inProduction = !project.check?.config?.branches?.integration;
-    version = inProduction ? null : await intVersion(env, project);
+    const [shipped, onInt] = await Promise.all([shippedStories(env.DB, project.repo), storiesOnInt(env, project)]);
+    shippedIn = onInt.has(number) ? null : (shipped.get(number) ?? null);
+    version = inProduction || shippedIn ? null : await intVersion(env, project);
     const comment = await write(request, env, project, (token) =>
       githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, {
-        body: inProduction ? words.validatedInProduction(login) : words.validated(login, version),
+        body: shippedIn ? words.validatedShipped(login, shippedIn) : inProduction ? words.validatedInProduction(login) : words.validated(login, version),
       }),
     );
     if (!comment.ok) return { ok: false, message: `GitHub refused the comment (HTTP ${comment.status}).`, status: 502 };
@@ -141,6 +147,14 @@ export async function validateStory(
         labels: issue.labels.filter((label) => (typeof label === "string" ? label : label.name) !== toValidate),
       });
     }
+    if (shippedIn) {
+      const app = await installationToken(env, project.installationId);
+      const patched = await githubPatch(app, `/repos/${project.repo}/issues/${number}`, { state: "closed", state_reason: "completed" });
+      if (patched.ok) {
+        await applyIssueEvent(env, project.repo, "closed", (await patched.json()) as RestIssue);
+        closed = true;
+      }
+    }
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error), status: 502 };
   }
@@ -149,7 +163,7 @@ export async function validateStory(
     action: "story_validated",
     repo: project.repo,
     issueNumber: number,
-    details: { version },
+    details: { version, ...(shippedIn ? { shipped_in: shippedIn, closed } : {}) },
   }).run();
   return { ok: true };
 }

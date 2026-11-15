@@ -60,13 +60,25 @@ export function branchIssue(name: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+const VERBS = String.raw`close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?`;
+
+function storiesAfter(words: string, text: string): number[] {
+  const pattern = new RegExp(String.raw`\b(?:${words})\s*:?\s+(#\d+(?:\s*(?:,|&|\band\b)\s*#\d+)*)\b`, "gi");
+  return [...text.matchAll(pattern)].flatMap((match) => [...(match[1] ?? "").matchAll(/#(\d+)/g)].map((number) => Number(number[1])));
+}
+
 // "Closes #12", "Fixes #12", "Refs #12", "Story #12": a story named on
 // purpose, not any "#12" of the text. A list counts whole: "Refs #160,
 // #161", "Closes #3 and #4".
 export function namedStories(text: string): number[] {
-  return [...text.matchAll(/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|stor(?:y|ies))\s*:?\s+(#\d+(?:\s*(?:,|&|\band\b)\s*#\d+)*)\b/gi)].flatMap((match) =>
-    [...(match[1] ?? "").matchAll(/#(\d+)/g)].map((number) => Number(number[1])),
-  );
+  return storiesAfter(`${VERBS}|stor(?:y|ies)`, text);
+}
+
+// The stories a text references with a verb (Closes, Fixes, Resolves,
+// Refs): when there are some, a "story #12" said in passing ("stories #198
+// and #199 are left for later") does not link the pull request to it.
+export function referencedStories(text: string): number[] {
+  return storiesAfter(VERBS, text);
 }
 
 export interface PullStories {
@@ -84,6 +96,8 @@ export function pullStories(pull: { number: number; title: string; body: string 
     if (fromBranch !== null) sure.add(fromBranch);
   }
   if (sure.size) return { stories: [...sure], guessed: false };
-  const named = [...new Set(namedStories(`${pull.title}\n${pull.body ?? ""}`))];
+  const text = `${pull.title}\n${pull.body ?? ""}`;
+  const referenced = referencedStories(text);
+  const named = [...new Set(referenced.length ? referenced : namedStories(text))];
   return { stories: named, guessed: named.length > 0 };
 }

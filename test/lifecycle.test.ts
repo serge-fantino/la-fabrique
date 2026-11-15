@@ -1,7 +1,9 @@
 import { env, fetchMock } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { validateFabriqueConfig } from "../src/fabrique-config";
-import { cycleRules, isDeveloped, isFinished, isInDevelopment, isReadyStage, isToTest, missingForReady, stageOf, type Stage } from "../src/lifecycle";
+import { cycleRules, isDeveloped, isFinished, isInDevelopment, isReadyStage, isToTest, missingForReady, shippedStories, stageOf, type Stage } from "../src/lifecycle";
+import { RELEASES } from "../src/roadmap";
+import { writeSnapshot } from "../src/snapshots";
 import { acceptanceCriteria, type Story } from "../src/stories";
 import { get, signIn } from "./helpers";
 
@@ -99,6 +101,29 @@ describe("stageOf", () => {
     expect(stageOf(story({ state: "closed" }), DEFAULT, new Set([7]))).toBe("on_int");
     expect(stageOf(story({ state: "closed" }), DEFAULT, new Set())).toBe("done");
     expect(stageOf(story({ subTotal: 3 }), DEFAULT, new Set())).toBeNull();
+  });
+
+  it("takes a story a released version declares as developed, to validate, whatever GitHub links to it", () => {
+    const shipped = cycleRules(null, new Set(), new Set([7]));
+    // Integrated without a pull request, its issue written after the go.
+    expect(stageOf(story(), shipped, new Set())).toBe("to_validate");
+    expect(stageOf(story({ branches: ["feature/7-x"] }), shipped, new Set())).toBe("to_validate");
+    // Work going on again: an open pull request, on int, feedbacks.
+    expect(stageOf(story({ pullRequests: [{ number: 9, url: "", state: "open" }] }), shipped, new Set())).toBe("in_dev");
+    expect(stageOf(story(), shipped, new Set([7]))).toBe("on_int");
+    expect(stageOf(story({ labels: ["rework"] }), shipped, new Set())).toBe("in_dev");
+    expect(stageOf(story({ state: "closed" }), shipped, new Set())).toBe("done");
+  });
+
+  it("reads the shipped stories from production's release notes, each with the oldest version that declares it", async () => {
+    const repo = "acme/shipped";
+    expect(await shippedStories(env.DB, repo)).toEqual(new Map());
+    const release = (version: string, time: string | null, stories: number[] | null, upcoming = false) => ({ version, date: "2026-11-14", time, title: null, changes: [], links: [], stories, upcoming });
+    await writeSnapshot(env.DB, repo, RELEASES, {
+      commitSha: "abc",
+      releases: [release("1.175", null, [207], true), release("1.174", "15:23", [204, 205, 206]), release("1.173", "18:43", [193, 204]), release("1.172", "12:31", null)],
+    });
+    expect(await shippedStories(env.DB, repo)).toEqual(new Map([[204, "1.173"], [205, "1.174"], [206, "1.174"], [193, "1.173"]]));
   });
 
   it("applies the project's own Definition of Ready and priorities", () => {

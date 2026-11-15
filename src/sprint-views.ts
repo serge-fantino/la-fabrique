@@ -82,6 +82,9 @@ export interface SprintData {
   runActive?: boolean;
   // The versions a new sprint may take, after the newest release.
   versions?: { newest: string | null; minor: string | null; major: string | null };
+  // The running sprint's version is already out: its newest release and the
+  // version to give it instead.
+  versionOut?: { newest: string; next: string | null } | null;
 }
 
 // A run's state: queued, working (since when), done, failed; its link. Done
@@ -461,10 +464,14 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <h2>${data.legacy ? `<span class="mono">${escapeHtml(sprint.release)}</span>` : `Sprint${sprint.version ? ` <span class="mono">${escapeHtml(sprint.version)}</span>` : ""}${sprint.name ? ` <span class="sprint-name">${escapeHtml(sprint.name)}</span>` : ""}`} <span class="pill warn">${closing ? "Closing" : RELEASE_STATE_LABELS.in_progress}</span></h2>
         ${
           data.canOrder && !data.legacy && !closing
-            ? `<details class="sprint-version"><summary>${sprint.version ? "Change its version or name" : "Give it its version"}</summary>
+            ? `${
+                data.versionOut
+                  ? `<p class="notice warn" role="status"><span class="mono">${escapeHtml(sprint.version ?? "")}</span> is already out (newest release: <span class="mono">${escapeHtml(data.versionOut.newest)}</span>): this sprint would release nothing new. Give it ${data.versionOut.next ? `<span class="mono">${escapeHtml(data.versionOut.next)}</span>` : "the next version"}.</p>`
+                  : ""
+              }<details class="sprint-version"${data.versionOut ? " open" : ""}><summary>${sprint.version ? "Change its version or name" : "Give it its version"}</summary>
           <form method="post" action="${escapeHtml(action)}" class="inline-form" data-busy="Saving…">${csrfField(viewer)}
             <input type="hidden" name="action" value="sprint_version" />
-            <label>Version <input type="text" name="version" value="${escapeHtml(sprint.version ?? "")}" maxlength="30" required class="mono" /></label>
+            <label>Version <input type="text" name="version" value="${escapeHtml(data.versionOut?.next ?? sprint.version ?? "")}" maxlength="30" required class="mono" /></label>
             <label>Name <input type="text" name="name" value="${escapeHtml(sprint.name ?? "")}" maxlength="80" placeholder="optional" /></label>
             <button type="submit" class="button quiet small">Save</button>
           </form></details>`
