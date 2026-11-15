@@ -78,11 +78,24 @@ export function groupByCard<T extends { number: number }>(items: T[], links: Sto
 }
 
 // A card group's heading: the card, its status and its release.
-export function cardGroupHead(repo: string, card: CardHead | null, count: number, progress?: Progress | null): string {
+// The sprint (la-fabrique#362's follow-up) says the count in words, next to
+// the pills, and the card's epic when it has one.
+export interface GroupHeadOptions {
+  countInWords?: boolean;
+  epic?: { title: string; url: string | null } | null;
+}
+
+export function cardGroupHead(repo: string, card: CardHead | null, count: number, progress?: Progress | null, options: GroupHeadOptions = {}): string {
   if (!card) return `<div class="group-head"><h2>No card <span class="muted mono">${count}</span></h2></div>`;
+  const epic = options.epic
+    ? options.epic.url
+      ? `<a class="pill small epic-pill" href="${escapeHtml(options.epic.url)}"><span class="muted">Epic</span> ${escapeHtml(options.epic.title)}</a>`
+      : `<span class="pill small epic-pill"><span class="muted">Epic</span> ${escapeHtml(options.epic.title)}</span>`
+    : "";
+  const counted = options.countInWords ? ` <span class="muted small">${count} stor${count === 1 ? "y" : "ies"}</span>` : "";
   return `<div class="group-head">
-      <h2><a class="mono" href="${escapeHtml(cardUrl(repo, card.id))}">${cardRef(card.id)}</a> ${escapeHtml(card.title)} <span class="muted mono">${count}</span></h2>
-      <span class="fiche-tags">${cardPills({ release: card.release }, statusPill({ status: card.status, progress: card.progress ?? null }, progress))}</span>
+      <h2><a class="mono" href="${escapeHtml(cardUrl(repo, card.id))}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}${options.countInWords ? "" : ` <span class="muted mono">${count}</span>`}</h2>
+      <span class="fiche-tags">${epic}${cardPills({ release: card.release }, statusPill({ status: card.status, progress: card.progress ?? null }, progress))}${counted}</span>
     </div>`;
 }
 

@@ -85,6 +85,9 @@ export interface SprintData {
   // The running sprint's version is already out: its newest release and the
   // version to give it instead.
   versionOut?: { newest: string; next: string | null } | null;
+  // Each card's epic, when it has one: its title, and its page when the
+  // epic is a card of the project.
+  epics?: Map<number, { title: string; url: string | null }>;
 }
 
 // A run's state: queued, working (since when), done, failed; its link. Done
@@ -279,6 +282,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         : "";
     return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
         ${controls ? handle(`#${number}`) : ""}
+        <div class="sprint-story-body">
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
           <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
@@ -288,6 +292,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           }${readiness(number, controls)}</p>
         </div>
         ${priority || order ? `<div class="sprint-story-actions">${priority}${order}</div>` : ""}
+        </div>
       </li>`;
   };
 
@@ -333,12 +338,13 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
               index < cards.length - 1 ? button({ action: "card_down", card: card.id }, `Move ${cardRef(card.id)} down`, "↓") : ""
             }</span>`
           : "";
-        return `<section id="card-${card.id}" class="sprint-card"${controls ? ` data-sort-id="${card.id}"` : ""}><div class="sprint-card-head">${controls && cards.length > 1 ? handle(cardRef(card.id)) : ""}${cardGroupHead(
+        return `<section id="card-${card.id}" class="sprint-card"${controls ? ` data-sort-id="${card.id}"` : ""}><div class="sprint-card-head">${controls && cards.length > 1 ? handle(cardRef(card.id)) : ""}<div class="sprint-card-body">${cardGroupHead(
           project.repo,
           { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position, progress: card.progress },
           mine.length,
           data.progress?.get(card.id),
-        )}${priority}${order}</div>
+          { countInWords: true, epic: data.epics?.get(card.id) ?? null },
+        )}${priority}${order}</div></div>
           ${dependencyLines(card.id)}
           ${shippedNote(data.progress?.get(card.id)?.shipped, "sprint-shipped small")}
           ${foldedDone(card.id, foldDone)}

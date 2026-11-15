@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-15",
+    "titre": "The sprint reads well on a phone, with each feature's epic",
+    "changements": [
+      "On a phone, the drag handle stays beside the title of each feature and story of the sprint, instead of a line of its own, and what follows lines up with the title.",
+      "A feature's count of stories reads in words next to its pills (“2 stories”), and its epic shows, linked to the epic card."
+    ],
+    "stories": [364],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-15",
     "titre": "A sprint out of sync with GitHub realigns itself",
     "changements": [
       "A story that a released version declares now counts as developed, to validate, even when no pull request is linked to it (integrated by a direct merge, or its issue written after the go). It no longer stays In development or in the backlog.",
