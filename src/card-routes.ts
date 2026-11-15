@@ -1441,6 +1441,20 @@ async function preparationDoc(env: Env, viewer: Viewer, project: Project, level:
   return { doc, features };
 }
 
+// Each card's epic (its Epic value: the epic's title, or "C12"), with the
+// epic card's page when the project has it.
+function cardEpics(project: Project, cards: Card[], shown: Card[]): Map<number, { title: string; url: string | null }> {
+  const epics = new Map<number, { title: string; url: string | null }>();
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  for (const card of shown) {
+    const name = card.epic?.trim();
+    if (!name) continue;
+    const epic = cards.find((other) => other.id !== card.id && (same(other.title, name) || same(cardRef(other.id), name)));
+    epics.set(card.id, epic ? { title: epic.title, url: cardUrl(project.repo, epic.id) } : { title: name, url: null });
+  }
+  return epics;
+}
+
 // A running sprint whose version is already out (given before a go that
 // shipped it, or another way): the release it would make exists. Only a
 // shipped one counts: the sprint's version is on int while it runs.
@@ -1571,6 +1585,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       },
       ...(sprint ? {} : { versions: await sprintVersions(env, project) }),
       ...(sprint?.version && sprint.release === SPRINT_LANE ? { versionOut: await versionAlreadyOut(env, project, sprint.version) } : {}),
+      epics: cardEpics(project, live, [...sprintCards, ...keptCards]),
       notice:
         joinedNotice(joined) ??
         (params.get("notice") === "versioned"

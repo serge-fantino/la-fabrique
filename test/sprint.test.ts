@@ -119,6 +119,19 @@ describe("Next release and the sprint", () => {
     expect(logged).toEqual([{ from: "0.60", to: "1.0", name: null }]);
   });
 
+  it("shows a card's epic and its count of stories in words", async () => {
+    const { week } = await seed();
+    const epic = (await env.DB.prepare("INSERT INTO cards (repo, kind, status, title, body, release, position, author) VALUES (?, 'epic', 'draft', 'F9 Menus', '', NULL, 9, 'pe') RETURNING id").bind(REPO).first<{ id: number }>())?.id;
+    await env.DB.prepare("UPDATE cards SET epic = 'F9 Menus' WHERE id = ?").bind(week).run();
+    const session = await writer();
+    await post(`/projects/${REPO}/sprint`, { csrf: session.csrf, action: "start" }, session.cookie);
+    const page = await (await get(`/projects/${REPO}/sprint`, session.cookie)).text();
+    expect(page).toContain(`<a class="pill small epic-pill" href="/projects/${REPO}/cards/${epic}"><span class="muted">Epic</span> F9 Menus</a>`);
+    expect(page).toContain('<span class="muted small">2 stories</span>');
+    // The handle stays beside the card's head and each story's row.
+    expect(page).toMatch(/<div class="sprint-card-head"><button type="button" class="sort-handle"[^>]*>⠿<\/button><div class="sprint-card-body">/);
+  });
+
   it("says when the running sprint's version is already out, and proposes the next one", async () => {
     await seed();
     const session = await writer();
