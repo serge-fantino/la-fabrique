@@ -9,7 +9,7 @@
       "A pull request that references its stories (Closes, Refs) is no longer attached to another story it names in passing (“stories #198 and #199 are left for later”).",
       "The sprint page says when the sprint's version is already out and proposes the next one."
     ],
-    "stories": [],
+    "stories": [363],
     "liens": null
   },
   {
