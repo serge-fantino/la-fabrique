@@ -227,6 +227,9 @@ export interface ToTestData {
   // Without an integration branch: the stories merged and still open, to
   // validate in production.
   toValidate?: Story[];
+  // With an integration branch: the stories out in production without their
+  // validation; validated, their issue is closed.
+  shipped?: Story[];
   failure?: string | undefined;
   // Open defects not linked to a story yet, to triage.
   unlinked?: { number: number; title: string; url: string; triage: boolean }[];
@@ -299,8 +302,14 @@ export function toTestContent(project: Project, data: ToTestData): string {
 
   const shown = withValidatedFolded(project.repo, referred, all, actions);
   const validatedCount = referred.length - shown.count;
+  const out = (data.shipped ?? []).filter((story) => !isEpic(story) && !referred.includes(story));
+  const shippedSection = out.length
+    ? `<h2>In production, not validated <span class="muted mono">${out.length}</span></h2>
+      <p class="lede">A released version declares these stories, but nobody validated them (the go given anyway, or the story written after it). Check them in production: validated, their issue is closed and they are done.</p>
+      ${byEpic(project.repo, out, all, actions)}`
+    : "";
   if (status.aheadBy === 0) {
-    return `${failure}<p class="notice ok" role="status">Nothing new to test: <code>${escapeHtml(status.integration)}</code> has nothing that <code>${escapeHtml(status.production)}</code> lacks.</p>`;
+    return `${failure}<p class="notice ok" role="status">Nothing new to test: <code>${escapeHtml(status.integration)}</code> has nothing that <code>${escapeHtml(status.production)}</code> lacks.</p>${shippedSection}`;
   }
   return `${failure}
     <div class="test-summary">
@@ -311,6 +320,7 @@ export function toTestContent(project: Project, data: ToTestData): string {
     </div>
     <h2>Stories</h2>
     ${referred.length ? shown.html : `<p class="muted">The work waiting refers to no story; see the changes below.</p>`}
+    ${shippedSection}
     ${unlinkedDefects(project, data.unlinked ?? [])}
     <h2>Changes in the release notes</h2>
     ${changesList(releases)}`;

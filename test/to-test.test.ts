@@ -168,6 +168,68 @@ describe("To test", () => {
   });
 });
 
+describe("Stories out without their validation", () => {
+  const SHIPPED = story(36, "Invite by e-mail", { parent: null, branches: ["feature/36-invite"], criteria: [{ text: "The e-mail goes", done: true }] });
+
+  async function seedShipped(production: ProductionStatus = STATUS): Promise<void> {
+    await seed(CONFIG, production);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(JSON.stringify([...STORIES, SHIPPED]), REPO),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'releases', ?, ?)").bind(
+        REPO,
+        JSON.stringify({
+          commitSha: "abc",
+          releases: [{ version: "1.168", date: "2026-11-14", time: "15:23", title: null, changes: [], links: [], stories: [36], upcoming: false }],
+        }),
+        new Date().toISOString(),
+      ),
+    ]);
+  }
+
+  it("lists a story a released version declares, still open, to validate in production, even with nothing on int", async () => {
+    await seedShipped();
+    const { cookie } = await signIn("admin-one");
+    let page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
+    expect(page).toContain('In production, not validated <span class="muted mono">1</span>');
+    expect(page).toContain("Invite by e-mail");
+    // Production up to date: still listed.
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'production'").bind(JSON.stringify({ ...STATUS, aheadBy: 0, groups: [], waiting: [] }), REPO).run();
+    page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
+    expect(page).toContain("Nothing new to test");
+    expect(page).toContain("Invite by e-mail");
+  });
+
+  it("validated, closes its issue: it is done", async () => {
+    await seedShipped();
+    const github = () => fetchMock.get("https://api.github.com");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS).times(2);
+    const issue = { number: 36, title: "Invite by e-mail", state: "open", html_url: `https://github.com/${REPO}/issues/36`, user: { login: "pe" }, labels: [], created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z", closed_at: null, body: "## Acceptance criteria\n\n- [x] The e-mail goes" };
+    github().intercept({ path: `/repos/${REPO}/issues/36` }).reply(200, JSON.stringify(issue), JSON_HEADERS);
+    let comment = "";
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/issues/36/comments` })
+      .reply(201, (options) => {
+        comment = JSON.parse(String(options.body)).body;
+        return "{}";
+      });
+    let patch = "";
+    github()
+      .intercept({ method: "PATCH", path: `/repos/${REPO}/issues/36` })
+      .reply(200, (options) => {
+        patch = String(options.body);
+        return JSON.stringify({ ...issue, state: "closed", closed_at: "2026-11-15T10:00:00Z" });
+      });
+    const { cookie, csrf } = await signIn("admin-one");
+    const response = await post(`/projects/${REPO}/to-test/validate`, { csrf, issue: "36" }, cookie);
+    expect(response.status).toBe(303);
+    expect(comment).toBe("Validé par @admin-one : tous les critères d'acceptation sont vérifiés. Déjà en production en version 1.168 : la demande est terminée (La Fabrique extraordinaire).");
+    expect(JSON.parse(patch)).toEqual({ state: "closed", state_reason: "completed" });
+    expect(await logActions()).toContainEqual({ actor: "admin-one", action: "story_validated", details: JSON.stringify({ version: null, shipped_in: "1.168", closed: true }) });
+    const page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
+    expect(page).not.toContain("In production, not validated");
+  });
+});
+
 describe("Validating on int", () => {
   const ISSUE = {
     number: 31,

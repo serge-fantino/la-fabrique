@@ -625,7 +625,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "start",
         title: "Starting the sprint, its version",
-        body: `<p>The card <em>Start the next sprint</em> (Product Engineer and above): the next minor or the next major version, or <em>Another</em> (1.0 included); <em>Name</em>, optional. ${b("Start the sprint")}. One sprint at a time; refused when Next release has no card. While it runs, <em>Change its version or name</em> and ${b("Save")}; a version not ahead of everything out or in progress is refused. Logged.</p>`,
+        body: `<p>The card <em>Start the next sprint</em> (Product Engineer and above): the next minor or the next major version, or <em>Another</em> (1.0 included); <em>Name</em>, optional. ${b("Start the sprint")}. One sprint at a time; refused when Next release has no card. While it runs, <em>Change its version or name</em> and ${b("Save")}; a version not ahead of everything out or in progress is refused. Logged. When the sprint's version is already out (a go shipped it while the sprint went on), the sprint says so and proposes the next one in the opened form.</p>`,
       },
       {
         id: "order",
@@ -682,7 +682,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "to-test",
         title: "To test",
-        body: `<p>The stories to check on the test environment (int, or production for a project without one, “Stories to validate”), with the link to open it, grouped by epic. Each story: its card, its steps, its criteria, its feedback (“2 feedbacks from testing”) and the defects linked. The validated stories are folded (“N validated stories, hidden”). <em>Defects not linked to a story</em> lead to their triage.</p>`,
+        body: `<p>The stories to check on the test environment (int, or production for a project without one, “Stories to validate”), with the link to open it, grouped by epic. Each story: its card, its steps, its criteria, its feedback (“2 feedbacks from testing”) and the defects linked. The validated stories are folded (“N validated stories, hidden”). <em>In production, not validated</em>: the stories a released version declares that nobody validated (the go given anyway, or the story written after the go); check them in production, validated their issue is closed. <em>Defects not linked to a story</em> lead to their triage.</p>`,
       },
       {
         id: "panel",

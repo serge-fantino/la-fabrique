@@ -594,8 +594,14 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
   );
   let latest: ToTestData["latest"] = null;
   let toValidate: Story[] = [];
-  if (!production.status) {
-    const rules = await projectRules(env.DB, view);
+  let shipped: Story[] = [];
+  const rules = await projectRules(env.DB, view);
+  if (production.status) {
+    // Out without their validation (a go given anyway, or the issue written
+    // after the go): still to validate, in production.
+    const onInt = new Set(production.status.groups.flatMap((group) => group.issues));
+    shipped = stories.stories.filter((story) => rules.shipped?.has(story.number) && stageOf(story, rules, onInt) === "to_validate");
+  } else {
     toValidate = stories.stories.filter((story) => stageOf(story, rules, new Set()) === "to_validate");
     const releases = (await branchReleases(env, view)).releases.filter((release) => !release.upcoming);
     const [release, previous] = releases;
@@ -610,6 +616,7 @@ async function toTestData(env: Env, view: ProjectView): Promise<ToTestData> {
     environment: environment ? { name: environment[0], url: environment[1].url } : null,
     latest,
     toValidate,
+    shipped,
     unlinked,
     failure: production.failure ?? stories.failure,
   };

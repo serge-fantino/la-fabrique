@@ -1,6 +1,19 @@
 [
   {
     "version": "next",
+    "date": "2026-11-15",
+    "titre": "A sprint out of sync with GitHub realigns itself",
+    "changements": [
+      "A story that a released version declares now counts as developed, to validate, even when no pull request is linked to it (integrated by a direct merge, or its issue written after the go). It no longer stays In development or in the backlog.",
+      "To test lists, on a project with integration, the stories in production that nobody validated. Validated, their issue is closed: they are done, and their card and sprint follow.",
+      "A pull request that references its stories (Closes, Refs) is no longer attached to another story it names in passing (“stories #198 and #199 are left for later”).",
+      "The sprint page says when the sprint's version is already out and proposes the next one."
+    ],
+    "stories": [],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-10",
     "titre": "The tags are set when a release reaches main",
     "changements": [

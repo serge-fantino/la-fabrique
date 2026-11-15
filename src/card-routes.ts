@@ -1441,6 +1441,16 @@ async function preparationDoc(env: Env, viewer: Viewer, project: Project, level:
   return { doc, features };
 }
 
+// A running sprint whose version is already out (given before a go that
+// shipped it, or another way): the release it would make exists. Only a
+// shipped one counts: the sprint's version is on int while it runs.
+async function versionAlreadyOut(env: Env, project: Project, version: string): Promise<{ newest: string; next: string | null } | null> {
+  const { releases, newest, minor } = await sprintVersions(env, project);
+  const shipped = releases.filter((release) => release.state === "shipped");
+  if (!newest || sprintVersionProblem(project, version, shipped) === null) return null;
+  return { newest, next: minor };
+}
+
 async function preparationRoute(request: Request, env: Env, viewer: Viewer, project: Project): Promise<Response> {
   const params = new URL(request.url).searchParams;
   const level = readLevel(params.get("level"));
@@ -1560,6 +1570,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
         runsUrl: claudeWorkflow(project) ? `https://github.com/${project.repo}/actions/workflows/${encodeURIComponent(claudeWorkflow(project) ?? "")}` : null,
       },
       ...(sprint ? {} : { versions: await sprintVersions(env, project) }),
+      ...(sprint?.version && sprint.release === SPRINT_LANE ? { versionOut: await versionAlreadyOut(env, project, sprint.version) } : {}),
       notice:
         joinedNotice(joined) ??
         (params.get("notice") === "versioned"
