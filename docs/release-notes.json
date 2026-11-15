@@ -2,6 +2,27 @@
   {
     "version": "next",
     "date": "2026-11-15",
+    "titre": "To test follows the tests made from the app",
+    "changements": [
+      "A criterion ticked, a story validated, a feedback or a defect from the test panel of the app now shows on La Fabrique's To test page open beside it, and on the sprint: the page reads itself again as soon as you are not typing nor sending anything. A tick made on the page itself does not reload it."
+    ],
+    "stories": [370],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-15",
+    "titre": "To test: a long criterion stays beside its box",
+    "changements": [
+      "In To test, a criterion that takes several lines now stays beside its checkbox, its lines aligned with the first, instead of dropping under it.",
+      "Ticking a criterion shows one turning ring, beside it, instead of two (one in its text, one outside)."
+    ],
+    "stories": [368],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-15",
     "titre": "A feature behind the scenes",
     "changements": [
       "A feature can be put behind the scenes on its page (Behind the scenes): its stories carry the project's backstage label, and their release notes go in coulisses, for the team only.",

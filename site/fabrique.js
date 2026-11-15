@@ -127,6 +127,8 @@
         refreshValidate(story);
       };
       const wanted = data.get("done") === "1";
+      // Its own tick comes back as an event: this page shows it already.
+      ownTouches.set(String(data.get("issue") ?? ""), Date.now());
       const old = story && story.querySelector("[data-criterion-error]");
       if (old) old.remove();
       form.dataset.pending = "1";
@@ -370,11 +372,19 @@
   // The sprint follows Claude's runs: GitHub tells La Fabrique when one
   // starts or ends, and La Fabrique tells the open page, which reloads.
   let sprintLive = null;
+  // The stories this page itself just ticked (la-fabrique#370): their events
+  // come back through the connection, and are not a reason to reload.
+  const ownTouches = new Map();
+  const touchedHere = (issue) => {
+    const at = ownTouches.get(String(issue));
+    return at !== undefined && Date.now() - at < 20000;
+  };
   function setUpSprintLive() {
     if (sprintLive) sprintLive.stop();
     sprintLive = null;
     const line = document.querySelector("[data-sprint-live]");
     if (!line || !("WebSocket" in window)) return;
+    const kinds = (line.getAttribute("data-live-kinds") || "claude_run pull_request story test").split(/\s+/);
     let socket = null;
     let stopped = false;
     let tries = 0;
@@ -393,8 +403,11 @@
         } catch {
           return;
         }
-        // What happened before the page was shown is already on it.
-        if (!event || (event.kind !== "claude_run" && event.kind !== "pull_request" && event.kind !== "story") || event.replay) return;
+        // What happened before the page was shown is already on it. The
+        // page says which events it follows (data-live-kinds): the sprint
+        // all of them, To test what testing and GitHub's issues change.
+        if (!event || !kinds.includes(event.kind) || event.replay) return;
+        if ((event.kind === "test" || event.kind === "story") && event.issue !== null && touchedHere(event.issue)) return;
         stop();
         reloadWhenCalm();
       });

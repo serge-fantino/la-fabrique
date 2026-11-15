@@ -337,6 +337,7 @@ export function toTestPage(viewer: Viewer, project: Project, content: string): s
   return layout(
     `To test · ${name} · La Fabrique extraordinaire`,
     `${projectHeader(project, "to_test")}
+      <div hidden data-sprint-live="${escapeHtml(projectUrl(project.repo))}/sprint/live" data-live-kinds="test story"></div>
       ${content}`,
     viewer,
     [],

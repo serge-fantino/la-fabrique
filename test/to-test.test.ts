@@ -1,7 +1,7 @@
 import { env, fetchMock, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { ProductionStatus } from "../src/production";
-import { get, grantRole, logActions, post, signIn } from "./helpers";
+import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
 
 const REPO = "acme/widget";
 const JSON_HEADERS = { headers: { "content-type": "application/json" } };
@@ -263,6 +263,29 @@ describe("Validating on int", () => {
       .reply(201, JSON.stringify({ token: "ghs_installation" }), JSON_HEADERS)
       .times(times);
   }
+
+  it("pushes each test to the project's open pages, which To test follows (la-fabrique#370)", async () => {
+    await seed(CONFIG_FR);
+    const { cookie, csrf } = await signIn("admin-one");
+    const page = await (await get(`/projects/${REPO}/to-test`, cookie)).text();
+    expect(page).toContain(`data-sprint-live="/projects/${REPO}/sprint/live" data-live-kinds="test story"`);
+    const response = await SELF.fetch(`${BASE}/projects/${REPO}/sprint/live`, { headers: { upgrade: "websocket", cookie } });
+    expect(response.status).toBe(101);
+    const socket = response.webSocket;
+    if (!socket) throw new Error("no WebSocket");
+    const received: { kind: string; issue: number | null; status: string }[] = [];
+    socket.addEventListener("message", (event) => received.push(JSON.parse(String(event.data))));
+    socket.accept();
+    appToken(2);
+    const done = { ...ISSUE, body: ISSUE.body.replace("Sept jours s'affichent\nUn repas se déplace", "- [x] Sept jours s'affichent\n- [x] Un repas se déplace") };
+    github().intercept({ path: `/repos/${REPO}/issues/31` }).reply(200, JSON.stringify(done), JSON_HEADERS);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/issues/31/comments` }).reply(201, "{}");
+    github().intercept({ method: "DELETE", path: `/repos/${REPO}/issues/31/labels/a-valider-sur-int` }).reply(200, "[]", JSON_HEADERS);
+    expect((await post(`/projects/${REPO}/to-test/validate`, { csrf, issue: "31" }, cookie)).status).toBe(303);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    socket.close();
+    expect(received).toContainEqual(expect.objectContaining({ kind: "test", issue: 31, status: "validated" }));
+  });
 
   it("ticks a criterion in the GitHub issue, as the person, and logs it", async () => {
     await seed(CONFIG_FR);
