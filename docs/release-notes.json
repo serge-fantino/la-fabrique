@@ -4,7 +4,8 @@
     "date": "2026-11-15",
     "titre": "To test: a long criterion stays beside its box",
     "changements": [
-      "In To test, a criterion that takes several lines now stays beside its checkbox, its lines aligned with the first, instead of dropping under it."
+      "In To test, a criterion that takes several lines now stays beside its checkbox, its lines aligned with the first, instead of dropping under it.",
+      "Ticking a criterion shows one turning ring, beside it, instead of two (one in its text, one outside)."
     ],
     "stories": [368],
     "liens": null
