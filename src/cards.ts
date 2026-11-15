@@ -191,6 +191,9 @@ export interface Card extends CardTags {
   data: CardData;
   // One of the project's priority labels; its stories take it when made.
   priority: string | null;
+  // Behind the scenes ("coulisses"): its changes are for the team's release
+  // notes only, never the public What's new.
+  backstage: boolean;
   // Its progress as last seen (src/card-progress.ts), worked out from its
   // stories: never typed.
   progress: string | null;
@@ -315,10 +318,11 @@ interface CardRow {
   data: string | null;
   priority: string | null;
   progress: string | null;
+  backstage: number | null;
 }
 
 const CARD_COLUMNS =
-  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data, priority, progress";
+  "id, repo, kind, status, title, body, epic, domain, segment, release, position, rev, author, created_at, updated_at, archived_at, data, priority, progress, backstage";
 
 export function parseData(raw: string | null): CardData {
   if (!raw) return {};
@@ -351,6 +355,7 @@ function toCard(row: CardRow): Card {
     data: parseData(row.data),
     priority: row.priority,
     progress: row.progress ?? null,
+    backstage: Boolean(row.backstage),
   };
 }
 
@@ -814,6 +819,16 @@ export async function setCardPriority(db: D1Database, card: Card, priority: stri
   return true;
 }
 
+// Behind the scenes or not ("coulisses"); logged.
+export async function setCardBackstage(db: D1Database, card: Card, backstage: boolean, login: string): Promise<boolean> {
+  if (card.backstage === backstage) return false;
+  await db.batch([
+    db.prepare("UPDATE cards SET backstage = ? WHERE id = ?").bind(backstage ? 1 : 0, card.id),
+    activityStatement(db, { actor: login, action: "card_backstage_set", repo: card.repo, details: { card: card.id, title: card.title, backstage } }),
+  ]);
+  return true;
+}
+
 // The status chosen on the card's page.
 export async function setStatus(db: D1Database, card: Card, author: string, to: CardStatus): Promise<boolean> {
   if (to === card.status) return false;
@@ -945,10 +960,10 @@ export async function importCards(db: D1Database, repo: string, author: string, 
     const last = await db.prepare("SELECT MAX(position) AS position FROM cards WHERE repo = ?").bind(repo).first<{ position: number | null }>();
     const row = await db
       .prepare(
-        `INSERT INTO cards (repo, kind, status, title, body, epic, domain, segment, release, position, author, data)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        `INSERT INTO cards (repo, kind, status, title, body, epic, domain, segment, release, position, author, data, backstage)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
-      .bind(repo, tags.kind, tags.status, title, body, tags.epic, tags.domain, tags.segment, tags.release, (last?.position ?? 0) + 1, author, Object.keys(cardData).length ? JSON.stringify(cardData) : null)
+      .bind(repo, tags.kind, tags.status, title, body, tags.epic, tags.domain, tags.segment, tags.release, (last?.position ?? 0) + 1, author, Object.keys(cardData).length ? JSON.stringify(cardData) : null, item["backstage"] === true ? 1 : 0)
       .first<{ id: number }>();
     const id = row?.id ?? 0;
     await db.batch([

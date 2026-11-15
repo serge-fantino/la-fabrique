@@ -1,3 +1,4 @@
+import { applyCardBackstage } from "./card-backstage";
 import { effectiveRole, type Role } from "./accounts";
 import { activityStatement } from "./activity-log";
 import { projectLinks } from "./card-dependencies";
@@ -24,6 +25,7 @@ import {
   reopenStatus,
   saveSpec,
   setCardPriority,
+  setCardBackstage,
   setStatus,
   STATUS_LABELS,
   updateCard,
@@ -155,6 +157,7 @@ function cardSummary(ctx: Context, card: Card, progress: Progress | undefined, s
     shown_status: progress ? `${PROGRESS_LABELS[progress.stage]}${progressDetail(progress) ? ` ${progressDetail(progress)}` : ""}` : STATUS_LABELS[card.status],
     release: card.release,
     priority: card.priority,
+    backstage: card.backstage,
     epic: card.epic,
     domain: card.domain,
     segment: card.segment,
@@ -490,6 +493,7 @@ const TOOLS: Tool[] = [
         kind: { type: "string", enum: ["feature", "idea", "question"] },
         release: { type: ["string", "null"], description: `${NEXT_RELEASE}, ${SPRINT_LANE} (while a sprint runs), or null` },
         priority: { type: ["string", "null"], description: "One of the project's priority labels" },
+        backstage: { type: "boolean", description: "Behind the scenes (coulisses): its stories carry the backstage label, their release notes go in coulisses, for the team, never in the public What's new" },
         epic: { type: ["string", "integer", "null"], description: "Put the feature under this epic card: its number or name" },
       },
       required: ["project", "title"],
@@ -512,6 +516,7 @@ const TOOLS: Tool[] = [
       const id = await createCard(ctx.env.DB, project.repo, ctx.login, input);
       const card = await findCard(ctx.env.DB, project.repo, id);
       if (card && wanted) await setCardPriority(ctx.env.DB, card, wanted, ctx.login);
+      if (card && args["backstage"] === true) await setCardBackstage(ctx.env.DB, card, true, ctx.login);
       if (card && epic) await syncEpicLink(ctx.env.DB, card, ctx.login);
       const created = (await findCard(ctx.env.DB, project.repo, id)) ?? card;
       return created ? { created: cardSummary(ctx, created, undefined, []) } : fail("The card was not saved.");
@@ -521,7 +526,7 @@ const TOOLS: Tool[] = [
     name: "card_update",
     title: "Change a card",
     description:
-      "Change a card: its title, text or kind (a validated card whose feature changes goes back to To validate), its status (draft, shaping, to_validate, validated, dropped; not once its stories carry it), its release lane (Next release, Sprint, or null) or its priority (given to its stories on GitHub). Pass rev, read from the card, to refuse to write over a change made since.",
+      "Change a card: its title, text or kind (a validated card whose feature changes goes back to To validate), its status (draft, shaping, to_validate, validated, dropped; not once its stories carry it), its release lane (Next release, Sprint, or null), its priority (given to its stories on GitHub) or whether it is behind the scenes (backstage: its stories' label, release notes in coulisses for the team only). Pass rev, read from the card, to refuse to write over a change made since.",
     inputSchema: {
       type: "object",
       properties: {
@@ -533,6 +538,7 @@ const TOOLS: Tool[] = [
         status: { type: "string", enum: ["draft", "shaping", "to_validate", "validated", "dropped"] },
         release: { type: ["string", "null"] },
         priority: { type: ["string", "null"] },
+        backstage: { type: "boolean", description: "Behind the scenes (coulisses): release notes for the team only" },
         epic: { type: ["string", "integer", "null"], description: "Move the feature under this epic card (number or name), or null to detach it" },
         rev: { type: "integer", description: "The card's version you read" },
       },
@@ -599,6 +605,12 @@ const TOOLS: Tool[] = [
       if (args["priority"] !== undefined && (wanted ?? null) !== card.priority) {
         refused = await priorityOnGitHub(ctx, project, card, wanted ?? null);
         changes.push("priority");
+      }
+      if (typeof args["backstage"] === "boolean" && args["backstage"] !== card.backstage) {
+        if (card.kind === "epic") fail("An epic is not behind the scenes: its features are.");
+        await setCardBackstage(ctx.env.DB, card, args["backstage"], ctx.login);
+        refused = [...refused, ...(await applyCardBackstage(ctx.env, project, { ...card, backstage: args["backstage"] }, ctx.login))];
+        changes.push("backstage");
       }
       const current = (await findCard(ctx.env.DB, project.repo, card.id)) ?? card;
       return { changed: changes, ...(refused.length ? { github_refused: refused } : {}), card: cardSummary(ctx, current, undefined, (await storyCards(ctx.env.DB, project.repo)).order.get(card.id) ?? []) };
@@ -760,6 +772,7 @@ const TOOLS: Tool[] = [
         if (to) await setPriority(ctx.env, project, ctx.login, outcome.number, to);
         created.push({ number: outcome.number, title: story.title, url: outcome.url, nice: story.nice });
       }
+      if (card.backstage && created.length) await applyCardBackstage(ctx.env, project, card, ctx.login);
       await advanceStatus(ctx.env.DB, project.repo, card.id, ctx.login, "validated", "stories made");
       return { created, card: absolute(ctx, cardUrl(project.repo, card.id)) };
     },
@@ -779,6 +792,7 @@ const TOOLS: Tool[] = [
       if (!known.get(number)) fail(`#${number} is not a story La Fabrique knows in ${project.repo}.`);
       await linkStory(ctx.env.DB, card, ctx.login, number, `https://github.com/${project.repo}/issues/${number}`);
       if (args["nice"] === true) await setNice(ctx.env.DB, project.repo, card.id, number, true, ctx.login);
+      if (card.backstage) await applyCardBackstage(ctx.env, project, card, ctx.login);
       // A card with its story is validated, as when its stories are made.
       await advanceStatus(ctx.env.DB, project.repo, card.id, ctx.login, "validated", "story linked");
       return { linked: number, card: absolute(ctx, cardUrl(project.repo, card.id)) };

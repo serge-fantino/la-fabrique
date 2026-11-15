@@ -13,10 +13,18 @@ export interface Release {
   time: string | null;
   title: string | null;
   changes: string[];
+  // The entry's changes behind the scenes (`coulisses`): for the team only,
+  // never in a public What's new. Missing from older snapshots.
+  backstage?: string[];
   links: string[];
   // The stories the entry says it brings (`stories`); null when it does not say.
   stories: number[] | null;
   upcoming: boolean;
+}
+
+// A list of changes, as the release notes write them: text only.
+export function changeTexts(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((change): change is string => typeof change === "string" && change.trim() !== "") : [];
 }
 
 // `stories` of a release-notes entry: issue numbers (or "#12"); null when
@@ -58,6 +66,7 @@ export function parseReleases(raw: string): Release[] {
       changes: Array.isArray(record["changements"])
         ? record["changements"].filter((change): change is string => typeof change === "string")
         : [],
+      backstage: changeTexts(record["coulisses"]),
       links: Array.isArray(record["liens"])
         ? record["liens"].flatMap((link) =>
             typeof link === "object" && link !== null

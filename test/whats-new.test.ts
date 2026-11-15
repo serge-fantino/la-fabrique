@@ -31,6 +31,20 @@ describe("What's new", () => {
     expect(page.indexOf("Waiting change")).toBeLessThan(page.indexOf('id="v0-78"'));
   });
 
+  it("leaves out the changes behind the scenes, and an entry that has only those", async () => {
+    const { whatsNewPage } = await import("../src/whats-new");
+    const { parseReleases } = await import("../src/roadmap");
+    const notes = [
+      { version: "0.80", date: "2026-11-02", heure: "10:00", titre: "Only tooling", changements: [], coulisses: ["A new merge script."], stories: [150] },
+      { version: "0.79", date: "2026-11-01", heure: "10:00", titre: "Mixed", changements: ["A visible change."], coulisses: ["An internal one."], stories: [149] },
+    ];
+    const page = whatsNewPage({ login: "x", role: "tester", csrfToken: "" } as never, parseReleases(JSON.stringify(notes)), null);
+    expect(page).toContain("A visible change.");
+    expect(page).not.toContain("An internal one.");
+    expect(page).not.toContain("Only tooling");
+    expect(page).not.toContain("A new merge script.");
+  });
+
   it("links the stories to La Fabrique's repository when it is a project here", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES ('owner/fabrique', 99, 'admin-one')"),

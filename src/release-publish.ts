@@ -42,12 +42,22 @@ export function publishRelease(text: string, input: PublishInput): Published {
   const taken = drafts.filter((entry) => storiesOf(entry).some((number) => done.has(number)));
   const kept = drafts.filter((entry) => !taken.includes(entry));
   if (!taken.length) throw new Error("No `next` entry declares a story done: nothing to release");
-  const changes = taken.flatMap((entry) => {
-    const own = Array.isArray(entry["changements"]) ? entry["changements"].filter((change): change is string => typeof change === "string") : [];
+  const texts = (value: unknown): string[] => (Array.isArray(value) ? value.filter((change): change is string => typeof change === "string") : []);
+  const caveat = (entry: Entry): string[] => {
     const missing = storiesOf(entry).filter((number) => !done.has(number));
-    if (!missing.length) return own;
+    if (!missing.length) return [];
     const named = missing.map((number) => (input.titles?.[String(number)] ? `#${number} ${input.titles[String(number)]}` : `#${number}`)).join("; ");
-    return [...own, `Partial: not done yet, ${named}.`];
+    return [`Partial: not done yet, ${named}.`];
+  };
+  // Public changes and changes behind the scenes (`coulisses`) stay apart;
+  // an entry with only the latter keeps its caveat behind the scenes too.
+  const changes = taken.flatMap((entry) => {
+    const own = texts(entry["changements"]);
+    return own.length ? [...own, ...caveat(entry)] : [];
+  });
+  const backstage = taken.flatMap((entry) => {
+    const own = texts(entry["coulisses"]);
+    return texts(entry["changements"]).length ? own : [...own, ...(own.length ? caveat(entry) : [])];
   });
   const release: Entry = {
     version: input.version,
@@ -55,6 +65,7 @@ export function publishRelease(text: string, input: PublishInput): Published {
     heure: input.now.time,
     titre: input.title,
     changements: changes,
+    ...(backstage.length ? { coulisses: backstage } : {}),
     stories: [...done].sort((a, b) => a - b),
     liens: null,
   };

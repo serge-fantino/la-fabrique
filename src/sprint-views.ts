@@ -343,7 +343,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position, progress: card.progress },
           mine.length,
           data.progress?.get(card.id),
-          { countInWords: true, epic: data.epics?.get(card.id) ?? null },
+          { countInWords: true, epic: data.epics?.get(card.id) ?? null, backstage: card.backstage },
         )}${priority}${order}</div></div>
           ${dependencyLines(card.id)}
           ${shippedNote(data.progress?.get(card.id)?.shipped, "sprint-shipped small")}

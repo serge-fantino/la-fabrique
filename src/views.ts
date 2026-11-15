@@ -334,3 +334,12 @@ export function peoplePage(data: PeopleData): string {
     viewer,
   );
 }
+
+// A release-notes entry's changes behind the scenes (`coulisses`): for the
+// team, shown apart and never in a public What's new.
+export function backstageChanges(backstage: string[] | undefined): string {
+  if (!backstage?.length) return "";
+  return `<div class="backstage"><p class="muted small"><span class="pill small backstage-pill">Behind the scenes</span> not in the public What's new</p><ul>${backstage
+    .map((change) => `<li>${escapeHtml(change)}</li>`)
+    .join("")}</ul></div>`;
+}

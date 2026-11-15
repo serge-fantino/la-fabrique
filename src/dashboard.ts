@@ -85,7 +85,7 @@ export function buildCard(project: Project, found: Snapshots, role: Role, now = 
   if (config?.branches?.integration) {
     const known = new Set(stories.filter((story) => !isEpic(story)).map((story) => story.number));
     const testing = [...onInt].filter((number) => known.has(number)).length;
-    const changes = (status?.waiting ?? []).reduce((total, release) => total + release.changes.length, 0);
+    const changes = (status?.waiting ?? []).reduce((total, release) => total + release.changes.length + (release.backstage?.length ?? 0), 0);
     const oldest = (status?.groups ?? [])
       .map((group) => group.mergedAt)
       .filter((date): date is string => Boolean(date))

@@ -1,3 +1,4 @@
+import { applyCardBackstage } from "./card-backstage";
 import { epicDependencies } from "./epic-dependencies";
 import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
 import { readSnapshot } from "./snapshots";
@@ -71,6 +72,7 @@ import {
   saveTests,
   advanceStatus,
   setCardPriority,
+  setCardBackstage,
   reopenStatus,
   setStatus,
   shownStatus,
@@ -386,6 +388,8 @@ const CARD_NOTICES: Record<string, string> = {
   unchanged: "Nothing changed.",
   tests: "Test cases saved.",
   priority: "Priority set: on the card, and on GitHub for its stories (one level lower when nice to have).",
+  backstage: "Behind the scenes: its stories carry the backstage label, and their release notes go in coulisses, for the team, never in the public What's new.",
+  public: "Public again: its stories lose the backstage label, and their release notes go in the public changes.",
   archived: "Archived: it no longer shows on the board.",
   epic_dropped: "The epic is dropped.",
   epic_archived: "The epic is archived. Show archived epics to see it again.",
@@ -628,6 +632,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const known = await cardStories(env, project, [number]);
     if (!known.get(number)) return renderCard(request, env, viewer, project, card, { failure: `#${number} is not a story La Fabrique knows in this project.`, status: 404 });
     await linkStory(env.DB, card, viewer.login, number, `https://github.com/${project.repo}/issues/${number}`);
+    if (card.backstage) await applyCardBackstage(env, project, card, viewer.login);
     await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story linked");
     return redirect(to);
   }
@@ -798,6 +803,15 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     if (failed.length) return renderCard(request, env, viewer, project, { ...card, priority }, { failure: `Priority set on the card; GitHub refused it for ${failed.join("; ")}`, status: 502 });
     return redirect(`${url}?notice=priority`);
   }
+  // Behind the scenes (la-fabrique#366): the card, then its stories' label.
+  if (action === "backstage") {
+    if (card.archivedAt || card.kind === "epic") return redirect(url);
+    const on = form.get("backstage") === "1";
+    if (!(await setCardBackstage(env.DB, card, on, viewer.login))) return redirect(`${url}?notice=unchanged`);
+    const failed = await applyCardBackstage(env, project, { ...card, backstage: on }, viewer.login);
+    if (failed.length) return renderCard(request, env, viewer, project, { ...card, backstage: on }, { failure: `Saved on the card; GitHub refused the label for ${failed.join("; ")}`, status: 502 });
+    return redirect(`${url}?notice=${on ? "backstage" : "public"}`);
+  }
   if (action === "status") {
     const to = form.get("status");
     if (!isStatus(to) || card.archivedAt) return redirect(url);
@@ -891,6 +905,8 @@ export async function storyRoute(request: Request, env: Env, viewer: Viewer, pro
   await fileUnderEpic(env, project, card, outcome.number);
   // The story takes its card's priority.
   if (card.priority && cycleRules(project.check?.config).priorities.includes(card.priority)) await setPriority(env, project, viewer.login, outcome.number, card.priority);
+  // Behind the scenes: the story carries the label (la-fabrique#366).
+  if (card.backstage) await applyCardBackstage(env, project, card, viewer.login);
   await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", "story made");
   return redirect(`${url}?notice=story`);
 }
@@ -1823,6 +1839,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     if (to) await setPriority(env, project, viewer.login, outcome.number, to);
     created.push(index);
   }
+  if (card.backstage && created.length) await applyCardBackstage(env, project, card, viewer.login);
   const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
   await saveSplit(env.DB, current, viewer.login, null);
   if (review) {

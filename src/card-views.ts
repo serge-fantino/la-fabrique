@@ -114,6 +114,7 @@ export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = 
         <span class="pill kind">${KIND_LABELS[card.kind]}</span>
         ${statusPill(card, progress)}
         ${card.priority ? `<span class="pill">${escapeHtml(card.priority)}</span>` : ""}
+        ${card.backstage ? BACKSTAGE_PILL : ""}
         ${card.archivedAt ? `<span class="pill alert">Archived</span>` : ""}
         ${working ? `<span class="pill warn">Claude working</span>` : ""}
         ${spend?.calls ? `<span class="fiche-cost mono" title="Claude on this card: ${escapeHtml(spendLine(spend))}">${formatUsd(spend.micros)}</span>` : ""}
@@ -854,6 +855,22 @@ function priorityForm(viewer: Viewer, url: string, current: string | null, prior
     </form>`;
 }
 
+// Behind the scenes ("coulisses", la-fabrique#366): its release notes for
+// the team only; turned on or off in place, its stories follow.
+export const BACKSTAGE_PILL = `<span class="pill backstage-pill" title="Behind the scenes: its changes go in the release notes for the team (coulisses), never in the public What's new">Behind the scenes</span>`;
+
+function backstageForm(viewer: Viewer, url: string, on: boolean): string {
+  return `<form method="post" action="${escapeHtml(url)}" class="card-status-form">${csrfField(viewer)}
+      <input type="hidden" name="action" value="backstage" />
+      <input type="hidden" name="backstage" value="${on ? "0" : "1"}" />
+      <button type="submit" class="pill${on ? " backstage-pill" : ""}" aria-pressed="${on}" title="${
+        on
+          ? "Behind the scenes: its changes go in the release notes for the team (coulisses), never in the public What's new. Press to make them public."
+          : "Its changes go in the public release notes. Press to put it behind the scenes: release notes for the team only."
+      }">${on ? "Behind the scenes" : "Public release note"}</button>
+    </form>`;
+}
+
 function statusForm(viewer: Viewer, url: string, card: Pick<Card, "status" | "progress">, progress: Progress | null | undefined): string {
   const current = card.status;
   const shown = shownStatus(card);
@@ -1121,6 +1138,8 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
               ? ` <span class="pill">${escapeHtml(card.priority)}</span>`
               : ""
           : ""
+      }${
+        isEpic ? "" : data.canWrite && !card.archivedAt ? ` ${backstageForm(viewer, url, card.backstage)}` : card.backstage ? ` ${BACKSTAGE_PILL}` : ""
       }${
         card.archivedAt ? ` <span class="pill alert">Archived</span>` : ""
       }</div>

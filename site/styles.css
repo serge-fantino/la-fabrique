@@ -4348,3 +4348,25 @@ main:has(.help-shell) {
   margin: 0.25rem 0;
   padding-left: 1.25rem;
 }
+
+/* Changes behind the scenes (coulisses) of a release-notes entry: for the
+   team, apart from the public changes. */
+.backstage {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 14px;
+  background: #e6e8e0;
+}
+
+.backstage > p {
+  margin: 0;
+}
+
+.backstage ul {
+  margin: 0.35rem 0 0;
+}
+
+.backstage-pill {
+  background: #18211b;
+  color: #fff;
+}

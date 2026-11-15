@@ -2,6 +2,18 @@
   {
     "version": "next",
     "date": "2026-11-15",
+    "titre": "A feature behind the scenes",
+    "changements": [
+      "A feature can be put behind the scenes on its page (Behind the scenes): its stories carry the project's backstage label, and their release notes go in coulisses, for the team only.",
+      "Releases, Production and To test show the changes behind the scenes apart, and count them; What's new never shows them, nor a version that has only those.",
+      "Closing the sprint keeps the changes behind the scenes apart in the release it makes; Claude writes the release note of a story labelled coulisses there."
+    ],
+    "stories": [366],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-15",
     "titre": "The sprint reads well on a phone, with each feature's epic",
     "changements": [
       "On a phone, the drag handle stays beside the title of each feature and story of the sprint, instead of a line of its own, and what follows lines up with the title.",

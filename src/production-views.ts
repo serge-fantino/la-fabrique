@@ -2,7 +2,7 @@ import type { NextRelease, ProductionStatus, ProductionView, WorkflowState } fro
 import type { Story } from "./stories";
 import { notice, projectContext, projectHeader, type ProjectView } from "./project-views";
 import type { Project } from "./projects";
-import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
+import { csrfField, escapeHtml, formatDate, layout, type Viewer, backstageChanges } from "./views";
 import type { goSummary, LastGo } from "./go";
 import { nextVersion } from "./next-release";
 import type { StoryChecks } from "./validation";
@@ -102,13 +102,14 @@ function waitingSection(repo: string, status: ProductionStatus, stories: Story[]
     : `<p class="muted">The pending commits refer to no story.</p>`;
 
   const releases = waitingEntries(status);
-  const changes = releases.reduce((total, release) => total + release.changes.length, 0);
+  const changes = releases.reduce((total, release) => total + release.changes.length + (release.backstage?.length ?? 0), 0);
   const releasesHtml = releases.length
     ? releases
         .map(
           (release) => `<div class="release">
             <p><span class="pill warn">Waiting</span> <span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""}</p>
             ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
+            ${backstageChanges(release.backstage)}
           </div>`,
         )
         .join("")

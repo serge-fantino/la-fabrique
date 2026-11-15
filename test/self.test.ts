@@ -39,7 +39,8 @@ describe("La Fabrique as its own project", () => {
     const releases = all.slice(drafts.length);
     expect(new Set(releases.map((release) => release.version)).size).toBe(releases.length);
     for (const release of all) {
-      expect(release.changes.length, `version ${release.version} has no change`).toBeGreaterThan(0);
+      // Public, or behind the scenes (coulisses).
+      expect(release.changes.length + (release.backstage?.length ?? 0), `version ${release.version} has no change`).toBeGreaterThan(0);
     }
     for (const release of releases) {
       expect(release.time, `version ${release.version} has no time`).toMatch(/^\d{2}:\d{2}$/);

@@ -95,6 +95,14 @@ describe("To test", () => {
     expect(page).toContain("List from the menu.");
   });
 
+  it("shows the changes behind the scenes apart, and counts them", async () => {
+    await seed(CONFIG, { ...STATUS, waiting: [{ version: "1.169", title: "Menu", changes: ["Plan your week."], backstage: ["A new merge script."] }] });
+    const page = await (await get(`/projects/${REPO}/to-test`, (await signIn("admin-one")).cookie)).text();
+    expect(page).toContain("2 stories and 2 changes to test");
+    expect(page).toContain('<span class="pill small backstage-pill">Behind the scenes</span>');
+    expect(page).toContain("<li>A new merge script.</li>");
+  });
+
   it("shows the page at once and reads int afterwards when the last read is old", async () => {
     await seed(CONFIG, null);
     const page = await (await get(`/projects/${REPO}/to-test`, (await signIn("admin-one")).cookie)).text();

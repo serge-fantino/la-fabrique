@@ -64,7 +64,10 @@ describe("Pending work grouping", () => {
       { version: "1.168", date: "2026-10-30", titre: "E-mails", changements: ["Un e-mail de bienvenue."] },
       { version: "1.167", date: "2026-10-29", heure: "23:19", titre: "Recettes" },
     ]);
-    expect(nextRelease(raw)).toEqual({ version: "1.168", title: "E-mails", changes: ["Un e-mail de bienvenue."] });
+    expect(nextRelease(raw)).toEqual({ version: "1.168", title: "E-mails", changes: ["Un e-mail de bienvenue."], backstage: [] });
+    // Behind the scenes, apart.
+    const backstage = JSON.stringify([{ version: "1.168", date: "2026-10-30", changements: [], coulisses: ["Un script de fusion."] }]);
+    expect(nextRelease(backstage)).toMatchObject({ changes: [], backstage: ["Un script de fusion."] });
     expect(nextRelease("not json")).toBeNull();
   });
 });
