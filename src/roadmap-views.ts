@@ -4,7 +4,7 @@ import type { Project } from "./projects";
 import { monthGrid, shiftMonth, storiesBetween, type EpicProgress, type Release } from "./roadmap";
 import type { Story } from "./stories";
 import { projectUrl } from "./urls";
-import { escapeHtml, layout, type Viewer } from "./views";
+import { escapeHtml, layout, type Viewer, backstageChanges } from "./views";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -147,6 +147,7 @@ export function releasesPage(
         <h3><span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""}</h3>
         <p class="muted">${release.upcoming ? `<span class="pill warn">Upcoming</span>` : `${release.time ? `<span class="mono">${escapeHtml(release.time)}</span>` : ""}`}</p>
         ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
+        ${backstageChanges(release.backstage)}
         ${releaseLinks(project, release)}
         ${
           declared?.length

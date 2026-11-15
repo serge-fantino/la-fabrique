@@ -1,5 +1,5 @@
 import { compareVersions } from "./card-releases";
-import { cardPills, cardRef, cardUrl, statusPill } from "./card-views";
+import { BACKSTAGE_PILL, cardPills, cardRef, cardUrl, statusPill } from "./card-views";
 import type { Progress } from "./progress-stages";
 import type { CardStatus } from "./cards";
 import { escapeHtml } from "./views";
@@ -83,6 +83,8 @@ export function groupByCard<T extends { number: number }>(items: T[], links: Sto
 export interface GroupHeadOptions {
   countInWords?: boolean;
   epic?: { title: string; url: string | null } | null;
+  // Behind the scenes (la-fabrique#366).
+  backstage?: boolean;
 }
 
 export function cardGroupHead(repo: string, card: CardHead | null, count: number, progress?: Progress | null, options: GroupHeadOptions = {}): string {
@@ -95,7 +97,7 @@ export function cardGroupHead(repo: string, card: CardHead | null, count: number
   const counted = options.countInWords ? ` <span class="muted small">${count} stor${count === 1 ? "y" : "ies"}</span>` : "";
   return `<div class="group-head">
       <h2><a class="mono" href="${escapeHtml(cardUrl(repo, card.id))}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}${options.countInWords ? "" : ` <span class="muted mono">${count}</span>`}</h2>
-      <span class="fiche-tags">${epic}${cardPills({ release: card.release }, statusPill({ status: card.status, progress: card.progress ?? null }, progress))}${counted}</span>
+      <span class="fiche-tags">${epic}${cardPills({ release: card.release }, statusPill({ status: card.status, progress: card.progress ?? null }, progress))}${options.backstage ? BACKSTAGE_PILL : ""}${counted}</span>
     </div>`;
 }
 

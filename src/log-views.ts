@@ -106,6 +106,10 @@ export function describe(entry: LogEntry, repo: string): string {
       return `downloaded the preparation document (level ${text(d["level"])}, ${text(d["format"]).toUpperCase()}${d["version"] ? `, for ${text(d["version"])}` : ""}, ${text(d["features"])} cards)`;
     case "card_priority_set":
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
+    case "card_backstage_set":
+      return `${d["backstage"] ? "put" : "took"} card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} ${d["backstage"] ? "behind the scenes" : "out of the scenes: public release notes"}`;
+    case "card_backstage_applied":
+      return `${d["backstage"] ? "labelled" : "unlabelled"} ${text(d["label"])} the stories of card ${card(d["card"])}: ${(Array.isArray(d["stories"]) ? d["stories"] : []).map((n) => `#${text(n)}`).join(", ")}`;
     case "card_dependency_added":
     case "card_dependency_removed": {
       const on = typeof d["on"] === "number" ? card(d["on"]) : `epic ${text(d["epic"])}`;

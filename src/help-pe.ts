@@ -139,6 +139,7 @@ const USE_CASES: UseCase[] = [
     steps: [
       { text: (h) => `On the ${h.app("/board", "Board")}, choose <em>Lane</em>: Release. Drag the cards you want into <em>Next release</em>, and those that can wait back to <em>Not set</em>.`, ref: "board#releases" },
       { text: (h) => `On ${h.app("/refinement", "Refinement")}, set each feature's priority (${b("Set")}): its stories take it, one level lower for the nice to have.`, ref: "cards#priority" },
+      { text: `A feature the users will not see (tooling, a study, an internal rework): on its page, ${b("Public release note")} puts it <em>Behind the scenes</em>; its release notes stay for the team.`, ref: "cards#backstage" },
       { text: `Put the features in the order you want them built: ↑ ↓, or drag the handle.`, ref: "refinement#order" },
       { text: (h) => `The ${h.app("/sprint", "Sprint")} page says what the next sprint will take: the unfinished cards of the last one and those of Next release.`, ref: "sprint#before" },
     ],
@@ -416,6 +417,11 @@ const REFERENCE: RefPage[] = [
         id: "priority",
         title: "Priority",
         body: `<p>The project's priorities (for example P1, P2, P3, or <em>No priority</em>) are set on the card's page and on Refinement (${b("Set")}). The card's stories take it on GitHub when they are created and when it changes; a nice to have story takes one level lower. In the sprint, each story has its own priority list, with <em>Nice to have</em>.</p>`,
+      },
+      {
+        id: "backstage",
+        title: "Behind the scenes",
+        body: `<p>A feature the users will not see (tooling, a study, an internal rework) still ships in a version. On its page, ${b("Public release note")} puts it <em>Behind the scenes</em> (${b("Behind the scenes")} makes it public again); the board, the card and the sprint show it. Its stories carry the project's backstage label (<code>coulisses</code> unless the project names another), so their release notes go in <code>coulisses</code>: Releases, Production and To test show them apart, for the team; the public What's new never shows them, nor a version that has only those. Logged.</p>`,
       },
       {
         id: "archive",

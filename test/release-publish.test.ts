@@ -29,6 +29,16 @@ describe("The release made when the sprint closes", () => {
     expect(out.text.endsWith(`${OLD}\n]\n`)).toBe(true);
   });
 
+  it("keeps the changes behind the scenes apart, public changes in changements, the others in coulisses", () => {
+    const backstage = (titre: string, stories: number[]) => ({ version: "next", date: "2026-11-01", titre, changements: [], coulisses: [`${titre}.`], stories, liens: null });
+    const text = file(draft("Visible", [140]), backstage("Hidden", [141, 142]));
+    const notes = JSON.parse(publishRelease(text, { version: "0.79", title: "Mixed", stories: [140, 141], now: NOW }).text) as Record<string, unknown>[];
+    expect(notes[0]).toMatchObject({ changements: ["Visible."], coulisses: ["Hidden.", "Partial: not done yet, #142."], stories: [140, 141] });
+    // Nothing behind the scenes: no coulisses field.
+    const plain = JSON.parse(publishRelease(file(draft("Visible", [140])), { version: "0.79", title: "x", stories: [140], now: NOW }).text) as Record<string, unknown>[];
+    expect(plain[0]).not.toHaveProperty("coulisses");
+  });
+
   it("refuses a version already out, or a release with nothing in it", () => {
     const text = file(draft("Close the sprint", [137]));
     expect(() => publishRelease(text, { version: "0.78", title: "x", stories: [137], now: NOW })).toThrow("already in the release notes");

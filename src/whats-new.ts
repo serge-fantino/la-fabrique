@@ -62,7 +62,10 @@ function entry(release: Release, repo: string | null): string {
     </article>`;
 }
 
-export function whatsNewPage(viewer: Viewer, releases: Release[], repo: string | null): string {
+export function whatsNewPage(viewer: Viewer, all: Release[], repo: string | null): string {
+  // What's new is the public note: an entry with only changes behind the
+  // scenes (`coulisses`) is not in it, its title neither.
+  const releases = all.filter((release) => release.changes.length > 0);
   // Merged and online, not released yet: the `next` entries, above the last release.
   const online = releases.filter((release) => release.version === "next");
   const released = releases.filter((release) => release.version !== "next");

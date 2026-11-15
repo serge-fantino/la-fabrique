@@ -4,7 +4,7 @@ import { githubFetch, githubJson, installationToken } from "./github-app";
 import { describeFailure, type Project } from "./projects";
 import { isFresh, markStale, readSnapshot, writeSnapshot, onBranch } from "./snapshots";
 import { branchIssue, issueRefs, STORIES, type Story } from "./stories";
-import { declaredStories } from "./roadmap";
+import { changeTexts, declaredStories } from "./roadmap";
 import { githubContentsPath } from "./urls";
 
 export const PRODUCTION = "production";
@@ -50,6 +50,9 @@ export interface NextRelease {
   version: string;
   title: string | null;
   changes: string[];
+  // Behind the scenes (`coulisses`): for the team only; missing from older
+  // snapshots.
+  backstage?: string[];
   // Declared by the entry (`stories`); missing from older snapshots.
   stories?: number[] | null;
 }
@@ -192,6 +195,7 @@ function releaseEntries(raw: string | null): (NextRelease & { stories: number[] 
       version,
       title: typeof record["titre"] === "string" ? record["titre"] : null,
       changes,
+      backstage: changeTexts(record["coulisses"]),
       stories: declaredStories(record["stories"]),
       time: Boolean(record["heure"]),
     });
@@ -202,7 +206,7 @@ function releaseEntries(raw: string | null): (NextRelease & { stories: number[] 
 // The first release-notes entry without an `heure`: not released yet.
 export function nextRelease(raw: string): NextRelease | null {
   const entry = releaseEntries(raw).find((candidate) => !candidate.time);
-  return entry ? { version: entry.version, title: entry.title, changes: entry.changes } : null;
+  return entry ? { version: entry.version, title: entry.title, changes: entry.changes, backstage: entry.backstage ?? [] } : null;
 }
 
 // Every entry of the candidate branch's release notes that production's
@@ -213,7 +217,7 @@ export function waitingReleases(candidate: string, production: string | null): N
   const released = production === null ? null : new Set(releaseEntries(production).map((entry) => entry.version));
   return releaseEntries(candidate)
     .filter((entry) => (released ? !released.has(entry.version) : !entry.time))
-    .map(({ version, title, changes, stories }) => ({ version, title, changes, stories }));
+    .map(({ version, title, changes, backstage, stories }) => ({ version, title, changes, backstage: backstage ?? [], stories }));
 }
 
 export async function readVersion(environment: string, url: string, path: string): Promise<VersionState> {

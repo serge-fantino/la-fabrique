@@ -11,7 +11,7 @@ import type { Project } from "./projects";
 import type { Release } from "./roadmap";
 import type { Story } from "./stories";
 import type { StoryChecks } from "./validation";
-import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
+import { csrfField, escapeHtml, formatDate, layout, type Viewer, backstageChanges } from "./views";
 
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
@@ -212,6 +212,7 @@ function changesList(releases: NextRelease[]): string {
       (release) => `<div class="release">
         <p><span class="pill warn">Waiting</span> <span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""}</p>
         ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
+        ${backstageChanges(release.backstage)}
       </div>`,
     )
     .join("");
@@ -279,6 +280,7 @@ export function toTestContent(project: Project, data: ToTestData): string {
       <div class="release">
         <p><span class="pill ok">In production</span> <span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` · ${escapeHtml(release.title)}` : ""} <span class="muted">· ${escapeHtml(release.date)}${release.time ? ` ${escapeHtml(release.time)}` : ""}</span></p>
         ${release.changes.length ? `<ul>${release.changes.map((change) => `<li>${escapeHtml(change)}</li>`).join("")}</ul>` : ""}
+        ${backstageChanges(release.backstage)}
       </div>
       ${stories.length ? `<h2>Stories closed for it</h2>${byEpic(project.repo, stories.filter((story) => !isEpic(story)), all, readOnly)}` : ""}`;
   }
@@ -288,7 +290,7 @@ export function toTestContent(project: Project, data: ToTestData): string {
     .map((number) => all.get(number))
     .filter((story): story is Story => Boolean(story) && !isEpic(story as Story));
   const releases = status.waiting ?? (status.next ? [status.next] : []);
-  const changes = releases.reduce((total, release) => total + release.changes.length, 0);
+  const changes = releases.reduce((total, release) => total + release.changes.length + (release.backstage?.length ?? 0), 0);
   const oldest = status.groups
     .map((group) => group.mergedAt ?? group.commits[0]?.date ?? null)
     .filter((date): date is string => Boolean(date))
