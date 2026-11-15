@@ -1613,6 +1613,13 @@ table.backlog th.claude-col {
   cursor: pointer;
 }
 
+/* A long criterion wraps beside its box, its lines aligned with the first. */
+.criteria button.criterion > span:not(.box) {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .criteria button.criterion:hover,
 .criteria button.criterion:focus-visible {
   background: rgba(24, 33, 27, 0.05);
@@ -3629,7 +3636,9 @@ pre.gherkin {
   margin: 0.4rem 0;
 }
 
-.criterion {
+/* A criterion in the story editor (not To test's button, which has the
+   same class: its text stays beside its box). */
+li.criterion {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
