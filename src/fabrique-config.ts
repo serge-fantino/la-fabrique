@@ -1,3 +1,5 @@
+import { readReviewConfig, type ReviewConfig } from "./review-settings";
+
 // The `.fabrique.json` format is described in docs/fabrique-json.md. Its keys
 // are French because the format is shared with the projects that use it.
 
@@ -37,6 +39,10 @@ export interface FabriqueConfig {
   // their validation. Absent: the `integration` environment, else the
   // production one for a project without an integration branch.
   recette?: { environnement: string };
+  // Claude reviews the pull requests (la-fabrique#377): on or off, the model,
+  // how picky, the focus areas and their level, a guidelines folder. Run by
+  // `workflows.revue`.
+  revue?: ReviewConfig;
 }
 
 function readRubriques(
@@ -406,6 +412,17 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
         } else {
           config.cycle.priorites = priorites as string[];
         }
+      }
+    }
+  }
+
+  const revue = parsed["revue"];
+  if (revue !== undefined) {
+    const read = readReviewConfig(revue, errors, folderExists);
+    if (read) {
+      config.revue = read;
+      if (read.active && typeof config.workflows?.["revue"] !== "string") {
+        errors.push("`revue.active` is true but no `workflows.revue` names the review workflow: nothing can start the review.");
       }
     }
   }

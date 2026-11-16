@@ -13,6 +13,7 @@ import { lastMergeAttempts, mergePull, mergeWorkflow, pullDetails } from "./spri
 import { activeSprint } from "./sprints";
 import { storiesChanged } from "./stories";
 import { isDeveloped, isInDevelopment, isReadyStage } from "./lifecycle";
+import { commitChecks, forcedReviews, isForced, launchReview, pullReviewStates, reviewHolds, type Checks, type Forced, type ReviewState } from "./review";
 
 // The sprint runs by itself (la-fabrique#160, #161): for each card in the
 // sprint's order, its stories one after another (launch Claude, wait for
@@ -24,7 +25,7 @@ import { isDeveloped, isInDevelopment, isReadyStage } from "./lifecycle";
 // it never writes code nor merges itself. A card that meets a problem
 // stops and says why; the others go on.
 
-export type CardStep = "next" | "claude" | "merging" | "updating" | "done" | "stopped";
+export type CardStep = "next" | "claude" | "reviewing" | "merging" | "updating" | "done" | "stopped";
 
 export interface RunCard {
   id: number;
@@ -47,6 +48,10 @@ export interface RunCard {
   // branch left without one): Claude can be relaunched on the story from
   // the sprint (la-fabrique#239). Absent on states saved before.
   relaunch?: boolean;
+  // With the review on (la-fabrique#381): a blocking review already sent back
+  // to Claude for this story, and the commit the run asked a review of.
+  reviewed?: boolean;
+  reviewFor?: string | null;
 }
 
 export interface RunState {
@@ -61,6 +66,8 @@ export const RUNS_PER_STORY = 2;
 const STUCK_MS = 70 * 60_000;
 const NOT_STARTED_MS = 15 * 60_000;
 const MERGE_MS = 40 * 60_000;
+// The checks then Claude's review of a pull request, at most.
+const REVIEW_MS = 60 * 60_000;
 export const ALARM_MS = 4 * 60_000;
 
 // ---- The plan ----------------------------------------------------------------
@@ -172,7 +179,9 @@ export function newRun(repo: string, login: string, plan: PlannedCard[], now: st
 
 export interface Moves {
   launch: (story: number) => Promise<{ ok: true } | { ok: false; message: string; wait: boolean }>;
-  update: (story: number, pull: number) => Promise<{ ok: true } | { ok: false; message: string; wait: boolean }>;
+  update: (story: number, pull: number, options?: { review?: boolean }) => Promise<{ ok: true } | { ok: false; message: string; wait: boolean }>;
+  // Claude's review of a pull request (la-fabrique#381).
+  review?: (pull: number, story: number) => Promise<{ ok: true } | { ok: false; message: string }>;
   merge: (pull: number) => Promise<{ ok: true } | { ok: false; message: string }>;
   log: (action: string, details: Record<string, unknown>, issue?: number) => Promise<void>;
 }
@@ -186,6 +195,15 @@ export interface Seen {
   merges: Map<number, { conclusion: string | null; reason: string | null; url: string | null; at: string }>;
   cap: number;
   now: string;
+  // With the review on (la-fabrique#381): each pull request's latest commit,
+  // its checks, its review by Claude, and a review forced past by a person.
+  review?: {
+    on: boolean;
+    heads: Map<number, string | null>;
+    checks: Map<number, Checks>;
+    states: Map<number, ReviewState>;
+    forced: Map<number, Forced>;
+  };
 }
 
 const ms = (iso: string | null) => (iso ? Date.parse(iso) : 0);
@@ -234,6 +252,8 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
     card.note = null;
     card.link = null;
     card.relaunch = false;
+    card.reviewed = false;
+    card.reviewFor = null;
   };
   const startMerge = async (card: RunCard, pull: number) => {
     if (merging()) {
@@ -250,6 +270,81 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
     card.since = seen.now;
     card.note = null;
     return true;
+  };
+
+  // Before a merge, with the review on (la-fabrique#381): the pull request's
+  // checks, then Claude's review of its latest commit. OK or remarks: merge.
+  // Blocking: Claude updates the pull request once with the findings, then
+  // checks and a new review; still blocking, the card stops and a person
+  // decides. Forced past by a person on that commit: merge.
+  const gate = async (card: RunCard, number: number, pull: number): Promise<"merge" | "wait" | "stopped" | "updating"> => {
+    const review = seen.review;
+    if (!review?.on) return "merge";
+    const head = review.heads.get(pull) ?? null;
+    if (card.step !== "reviewing" || card.pull !== pull) {
+      card.step = "reviewing";
+      card.pull = pull;
+      card.since = seen.now;
+    }
+    const late = ms(seen.now) - ms(card.since) > REVIEW_MS;
+    const waits = async (note: string) => {
+      if (late) {
+        await stop(card, `the checks and the review of #${pull} did not end in 60 minutes (${note})`);
+        return "stopped" as const;
+      }
+      card.note = note;
+      return "wait" as const;
+    };
+    if (isForced(review.forced.get(pull), head)) return "merge";
+    const checks = review.checks.get(pull) ?? "pending";
+    if (checks === "failure") {
+      await stop(card, `the checks of #${pull} failed: fix them, then resume this card`);
+      return "stopped";
+    }
+    if (checks === "pending") return waits(`waits for the checks of #${pull}`);
+    const found = review.states.get(pull);
+    if (found?.state === "running") return waits(`waits for Claude's review of #${pull}`);
+    if (!found || found.stale || (found.state === "failed" && card.reviewFor !== head)) {
+      if (head && card.reviewFor === head) return waits(`waits for Claude's review of #${pull}`);
+      const outcome = moves.review ? await moves.review(pull, number) : { ok: false as const, message: "no review workflow" };
+      if (!outcome.ok) {
+        await stop(card, `Claude's review of #${pull} could not start: ${outcome.message}`);
+        return "stopped";
+      }
+      card.reviewFor = head;
+      card.note = `Claude reviews #${pull}`;
+      await moves.log("sprint_run_review_started", { card: card.id, story: number, pull }, number);
+      return "wait";
+    }
+    if (found.state === "failed") {
+      await stop(card, `Claude's review of #${pull} failed`, found.run);
+      return "stopped";
+    }
+    if (found.state !== "bloquant") return "merge";
+    if (!card.reviewed) {
+      if (claudeBusy >= seen.cap) return waits(`waits for a free Claude run (at most ${seen.cap} at once) to address the blocking review of #${pull}`);
+      const outcome = await moves.update(number, pull, { review: true });
+      if (!outcome.ok) {
+        if (outcome.wait) return waits(outcome.message);
+        await stop(card, `the review of #${pull} is blocking, and Claude could not update it: ${outcome.message}`, found.url);
+        return "stopped";
+      }
+      claudeBusy += 1;
+      card.step = "updating";
+      card.since = seen.now;
+      card.reviewed = true;
+      card.reviewFor = null;
+      card.runs += 1;
+      card.note = null;
+      await moves.log("sprint_run_review_rework", { card: card.id, story: number, pull, blocking: found.blocking }, number);
+      return "updating";
+    }
+    await stop(
+      card,
+      `Blocked by the review: ${found.blocking} blocking finding${found.blocking === 1 ? "" : "s"} on #${pull} after Claude's update; a tech lead or the super admin forces past the review, or the pull request is fixed, then resume this card`,
+      found.url,
+    );
+    return "stopped";
   };
 
   for (const card of state.cards) {
@@ -280,6 +375,7 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
         }
         const pull = openPull(story);
         if (pull) {
+          if ((await gate(card, number, pull)) !== "merge") break;
           if (!(await startMerge(card, pull))) break;
           continue;
         }
@@ -325,6 +421,7 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
           break;
         }
         if (card.step === "updating" && card.pull) {
+          if ((await gate(card, number, card.pull)) !== "merge") break;
           if (!(await startMerge(card, card.pull))) break;
           continue;
         }
@@ -333,10 +430,17 @@ export async function advance(state: RunState, seen: Seen, moves: Moves): Promis
           await stop(card, `Claude's run on #${number} ended without a pull request: it may have asked a question on the issue`, run.url, true);
           break;
         }
+        if ((await gate(card, number, pull)) !== "merge") break;
         if (!(await startMerge(card, pull))) {
-          card.step = "next";
+          if ((card.step as CardStep) !== "reviewing") card.step = "next";
           break;
         }
+        continue;
+      }
+
+      if (card.step === "reviewing" && card.pull) {
+        if ((await gate(card, number, card.pull)) !== "merge") break;
+        if (!(await startMerge(card, card.pull))) break;
         continue;
       }
 
@@ -394,13 +498,25 @@ async function seenOnGitHub(env: Env, project: Project, state: RunState, refresh
   await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = 'claude_runs'").bind(project.repo).run();
   const numbers = [...new Set(state.cards.flatMap((card) => card.stories))];
   const merging = state.cards.filter((card) => card.step === "merging" && card.pull).map((card) => card.pull as number);
-  const [stories, runs, pulls, merges] = await Promise.all([
-    cardStories(env, project, numbers),
-    claudeRuns(env, project),
-    pullDetails(env, project, merging),
-    lastMergeAttempts(env.DB, project.repo),
+  const [stories, runs, merges] = await Promise.all([cardStories(env, project, numbers), claudeRuns(env, project), lastMergeAttempts(env.DB, project.repo)]);
+  // With the review on: the open pull request of each card's story at work.
+  const on = reviewHolds(project);
+  const gated = on
+    ? state.cards
+        .filter((card) => card.step !== "done" && card.step !== "stopped")
+        .map((card) => card.pull ?? openPull(stories.get(card.stories[card.at] ?? -1)))
+        .filter((pull): pull is number => typeof pull === "number")
+    : [];
+  const pulls = await pullDetails(env, project, [...new Set([...merging, ...gated])]);
+  const base = { stories, runs, pulls, merges, cap: claudeCap(project), now: new Date().toISOString() };
+  if (!on) return base;
+  const heads = new Map([...pulls.values()].map((pull) => [pull.number, pull.head ?? null]));
+  const [states, forced, checks] = await Promise.all([
+    pullReviewStates(env.DB, project.repo, heads),
+    forcedReviews(env.DB, project.repo),
+    Promise.all(gated.map(async (pull) => [pull, heads.get(pull) ? await commitChecks(env, project, heads.get(pull) as string) : ("pending" as Checks)] as const)),
   ]);
-  return { stories, runs, pulls, merges, cap: claudeCap(project), now: new Date().toISOString() };
+  return { ...base, review: { on, heads, checks: new Map(checks), states, forced } };
 }
 
 function movesOnGitHub(env: Env, project: Project, state: RunState): Moves {
@@ -410,9 +526,13 @@ function movesOnGitHub(env: Env, project: Project, state: RunState): Moves {
       const outcome = await launchClaude(env, project, state.startedBy, story);
       return outcome.ok ? { ok: true } : { ok: false, message: outcome.message, wait: wait(outcome.status) };
     },
-    async update(story, pull) {
-      const outcome = await updateWithClaude(env, project, state.startedBy, story, pull);
+    async update(story, pull, options) {
+      const outcome = await updateWithClaude(env, project, state.startedBy, story, pull, options);
       return outcome.ok ? { ok: true } : { ok: false, message: outcome.message, wait: wait(outcome.status) };
+    },
+    async review(pull, story) {
+      const outcome = await launchReview(env, project, state.startedBy, pull, { story, trigger: "run" });
+      return outcome.ok ? { ok: true } : { ok: false, message: outcome.message };
     },
     async merge(pull) {
       const outcome = await mergePull(env, project, state.startedBy, pull);
@@ -510,7 +630,7 @@ export class SprintRun extends DurableObject<Env> {
       else if (what === "resume_card") {
         const found = state.cards.find((candidate) => candidate.id === card && candidate.step === "stopped");
         if (!found || state.status === "stopped" || state.status === "done") return state;
-        Object.assign(found, { step: "next", reason: null, link: null, note: null, runs: 0, updated: false, pull: null, since: null, relaunch: false });
+        Object.assign(found, { step: "next", reason: null, link: null, note: null, runs: 0, updated: false, pull: null, since: null, relaunch: false, reviewed: false, reviewFor: null });
         if (state.status === "waiting") state.status = "running";
       } else if (what === "relaunched") {
         // Claude relaunched on the story by a person (la-fabrique#239): the
