@@ -1,6 +1,17 @@
 [
   {
     "version": "next",
+    "date": "2026-11-16",
+    "titre": "The sprint as a list",
+    "changements": [
+      "The sprint page has a Details / List toggle, kept on this device. List shows the sprint in one band (version, stories left, the go or the close, the sprint running by itself, latest activity) and each feature on one line: status, a small bar of its stories by stage, priority, epic, and its next action as a button (Test, Merge, Launch Claude, Prepare), or why there is none.",
+      "Unfold a feature to see its stories: stage, pull request, Claude's run, criteria ticked, priority. Features and stories move by drag and drop or the arrows, as in Details."
+    ],
+    "stories": [371],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-15",
     "titre": "To test follows the tests made from the app",
     "changements": [

@@ -612,8 +612,34 @@
     });
   }
 
+  // Sprint: Details or List, chosen once and kept on this device
+  // (la-fabrique#371).
+  function setUpSprintMode() {
+    const views = document.querySelector(".sprint-views");
+    if (!views) return;
+    const show = (mode) => {
+      views.setAttribute("data-mode", mode);
+      views.querySelectorAll("[data-sprint-mode]").forEach((button) => button.setAttribute("aria-pressed", String(button.getAttribute("data-sprint-mode") === mode)));
+    };
+    let saved = null;
+    try {
+      saved = localStorage.getItem("lf-sprint-mode");
+    } catch {}
+    show(saved === "list" ? "list" : "details");
+    views.querySelectorAll("[data-sprint-mode]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const mode = button.getAttribute("data-sprint-mode") === "list" ? "list" : "details";
+        show(mode);
+        try {
+          localStorage.setItem("lf-sprint-mode", mode);
+        } catch {}
+      }),
+    );
+  }
+
   // What each page needs once it is shown.
   function setUp() {
+    setUpSprintMode();
     setUpKeptAnswers();
     document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
     setUpFragments();

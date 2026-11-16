@@ -4380,3 +4380,129 @@ main:has(.help-shell) {
   background: #18211b;
   color: #fff;
 }
+
+/* The sprint as a list (la-fabrique#371): Details or List, kept on the device. */
+.sprint-mode {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+}
+.sprint-mode [aria-pressed="true"] {
+  background: #18211b;
+  color: #fff;
+}
+.sprint-views .sprint-list-view {
+  display: none;
+}
+.sprint-views[data-mode="list"] .sprint-list-view {
+  display: block;
+}
+.sprint-views[data-mode="list"] .sprint-details-view {
+  display: none;
+}
+.sl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.sl-head h2,
+.sl-head p {
+  margin: 0;
+}
+.sl-head .sl-run,
+.sl-head .sprint-closing {
+  flex: 1 1 100%;
+}
+.sl-feature {
+  background: #fff;
+  border-radius: 18px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  min-width: 0;
+}
+.sl-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.sl-main {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.sl-title {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.sl-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0;
+}
+.sl-bar {
+  display: inline-flex;
+  width: 90px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #e4e6dc;
+}
+.sl-seg.done {
+  background: #1e5a43;
+}
+.sl-seg.test {
+  background: #d9a93b;
+}
+.sl-seg.dev {
+  background: #c23d17;
+}
+.sl-seg.ready {
+  background: #18211b;
+}
+.sl-seg.todo {
+  background: #c9ccbf;
+}
+.sl-action {
+  flex: 0 1 auto;
+}
+.sl-stories > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.sl-story {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid #e4e6dc;
+}
+.sl-story-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sl-story-body p {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .sl-line {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sl-action .button,
+  .sl-action form,
+  .sl-mode .button,
+  .sprint-mode .button {
+    min-height: 44px;
+  }
+  .sl-action .button {
+    width: 100%;
+    justify-content: center;
+  }
+}

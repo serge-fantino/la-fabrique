@@ -6,6 +6,9 @@ import { get, grantRole, logActions, post, signIn } from "./helpers";
 const REPO = "acme/widget";
 const JSON_HEADERS = { headers: { "content-type": "application/json" } };
 
+// The sprint page holds its Details and its List: these tests read Details (the List has its own).
+const detailsOf = (html: string) => html.slice(html.indexOf('class="sprint-details-view"'));
+
 function story(number: number, title: string, extra: Partial<Story> = {}): Story {
   return {
     number, title, state: "open", url: `https://github.com/${REPO}/issues/${number}`, author: null, labels: [], parent: 1,
@@ -49,7 +52,7 @@ describe("Claude Code from the sprint", () => {
   it("shows the next story for Claude, in the sprint's order, to tech leads only", async () => {
     await seed();
     await grantRole("lead", "tech_lead");
-    const page = await (await get(`/projects/${REPO}/sprint`, (await signIn("lead")).cookie)).text();
+    const page = detailsOf(await (await get(`/projects/${REPO}/sprint`, (await signIn("lead")).cookie)).text());
     expect(page).toMatch(/Next for Claude: <a [^>]*issues\/12">#12<\/a> Ready one/);
     expect(page).toContain('aria-label="Launch Claude on #12">Launch the next story</button>');
     // Claude is launched in order from the implementation card: no button per story (la-fabrique#180).
@@ -278,7 +281,7 @@ describe("The pull requests of the sprint's stories", () => {
     github()
       .intercept({ path: `/repos/${REPO}/pulls/30` })
       .reply(200, JSON.stringify({ number: 30, title: "Story #12", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, draft: false, user: { login: "claude[bot]" }, requested_reviewers: [{ login: "admin-two" }] }), JSON_HEADERS);
-    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    const page = detailsOf(await (await get(`/projects/${REPO}/sprint`, cookie)).text());
     expect(page).toMatch(/PR #30 open<\/a> <span class="muted small">review asked from @admin-two<\/span>/);
     // Who can be asked: the tech leads and super admins, not one already asked.
     expect(page).toContain('<option value="lead">@lead</option>');
@@ -482,7 +485,7 @@ describe("A merge refused", () => {
     github()
       .intercept({ path: `/repos/${REPO}/pulls/30` })
       .reply(200, JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "dirty", base: { ref: "main" } }), JSON_HEADERS);
-    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    const page = detailsOf(await (await get(`/projects/${REPO}/sprint`, cookie)).text());
     expect(page).toContain('<span class="pill alert small">Merge refused</span> <span class="small">Conflicts with main in: CLAUDE.md src/rights.ts.');
     expect(page).toMatch(/<a [^>]*class="small" href="https:\/\/github.com\/run\/77">the run<\/a>/);
     // Refused for files in conflict: only Claude's update is offered, not Merge again.
