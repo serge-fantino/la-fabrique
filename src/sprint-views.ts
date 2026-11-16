@@ -6,6 +6,8 @@ import { cardRef } from "./card-views";
 import { isRunning, type ClaudeRun } from "./claude";
 import { waitReason, type InProgress } from "./card-lock";
 import type { PullDetail } from "./sprint-pulls";
+import { reviewPill } from "./review-views";
+import type { ReviewState } from "./review";
 import type { Card } from "./cards";
 import { isFinished, isInDevelopment, isReadyStage, isToTest } from "./lifecycle";
 import { notice, projectContext, projectHeader } from "./project-views";
@@ -53,6 +55,11 @@ export interface SprintData {
   progress?: Map<number, Progress>;
   // Merging through the project's workflow (workflows.fusionner), and who may.
   merge?: { workflow: string | null; can: (base: string | null) => boolean };
+  // Claude reviews a pull request (la-fabrique#378): the project's review
+  // workflow (workflows.revue), and whether the viewer may start it.
+  review?: { workflow: string | null; can: boolean };
+  // Where each open pull request's review stands (la-fabrique#380).
+  reviews?: Map<number, ReviewState>;
   reviewers: string[];
   // The project's priorities (highest first) and whether its Definition of
   // Ready asks for the ready label (then "Mark ready" sets it).
@@ -229,6 +236,12 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : mergeable && controls && data.merge && !data.merge.workflow && data.merge.can(detail.base)
               ? ` <span class="muted small">no merge workflow declared (<a href="${escapeHtml(base)}/setup">workflows.fusionner</a>): <a href="${escapeHtml(pull.url)}">merge it on GitHub</a></span>`
               : "";
+        // Claude reviews it (la-fabrique#378): a tech lead and above, once
+        // the project declares its review workflow; a draft waits.
+        const claudeReview =
+          controls && pull.state === "open" && !detail?.draft && data.review?.workflow && data.review.can
+            ? button({ action: "claude_review", story: number, pull: pull.number }, `Review pull request #${pull.number} with Claude`, "Review with Claude", "quiet small claude")
+            : "";
         const attempt = pull.state === "open" ? data.merges?.get(pull.number) : undefined;
         const refused =
           attempt && attempt.conclusion !== "success"
@@ -239,7 +252,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         const guessed = pull.guessed
           ? ` <span class="muted small" title="Only the pull request's text names this story: no linked branch, no closing reference, not its branch name.">guessed from its text</span>`
           : "";
-        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${update}${merge}${refused}${guessed}${waiting}${ask}</span>`;
+        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${pull.state === "open" ? reviewPill(data.reviews?.get(pull.number)) : ""}${update}${merge}${claudeReview}${refused}${guessed}${waiting}${ask}</span>`;
       })
       .join("");
   };

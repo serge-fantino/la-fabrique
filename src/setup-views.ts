@@ -122,6 +122,21 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
 "claude": { "plafond": 2 }`)}
       <p>A story is launched only once <em>Ready</em> (<a href="#lifecycle">Definition of Ready</a>). Without the secrets, the run stops at its first step and says which is missing.</p>`,
   },
+  review: {
+    title: "Review by Claude",
+    why: "Optional. Claude reads each pull request against its story and leaves one review on GitHub: lenient by default, it blocks only on what really breaks. The project's own workflow runs it, with its own key.",
+    how: `<p>A workflow in <code>.github/workflows/</code> on the production branch, started by <code>workflow_dispatch</code> with inputs <code>pr</code> (the pull request), <code>par</code> (who started it) and <code>reglages</code> (the settings below, as JSON). It reviews the pull request with Claude Code, posts one GitHub review and never pushes, approves or merges. Same secrets as the Claude workflow. La Fabrique's own: <code>.github/workflows/review.yml</code>.</p>
+      <p>Then <code>revue</code> in <code>.fabrique.json</code>: <code>active</code> (every pull request reviewed when opened or updated; off, only on demand), <code>modele</code> (the reviewing model; the workflow's default otherwise), <code>exigence</code> (<code>souple</code> by default, <code>normale</code>, <code>stricte</code>), <code>max_remarques</code> (5 by default), <code>focus</code> (each area <code>off</code>, <code>conseil</code> or <code>bloquant</code>; the project may add its own) and <code>consignes</code> (a folder with one Markdown file per area). ${guide("revue", "The format")}.</p>
+      ${code(`"workflows": { "revue": "review.yml" },
+"revue": {
+  "active": true,
+  "modele": "claude-sonnet-5-5",
+  "exigence": "souple",
+  "max_remarques": 5,
+  "focus": { "securite": "bloquant", "architecture": "conseil", "performance": "conseil" },
+  "consignes": ".github/review"
+}`)}`,
+  },
   app: {
     title: "Connected app (defect reports)",
     why: "Optional. The project's own app reports a defect from the page where it shows up, in the name of the person using it; it never gets a GitHub token.",
@@ -146,7 +161,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "app"]);
+const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "review", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",

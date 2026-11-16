@@ -1,0 +1,199 @@
+# Claude reviews a pull request of La Fabrique itself (epic F14, la-fabrique#378): started from La Fabrique ("Review with
+# Claude" in the sprint, a tech lead or the super admin; or by itself on every pull request when `revue.active` is true
+# in .fabrique.json), or by hand (Actions > Review > Run workflow, pull request number).
+# It reads the pull request against its story, with the project's settings (`reglages`, the `revue` block of
+# .fabrique.json as La Fabrique resolved it: model, pickiness, focus areas and their level, guidelines folder), and
+# posts one GitHub review (a comment: never an approval, never a request for changes). Lenient by default: blocking
+# only for a broken acceptance criterion, a data loss or a security hole. It never pushes, approves or merges.
+# The verdict (ok, remarques, bloquant) and the findings are in the review's body, in a marker La Fabrique reads, and
+# in the run's annotation "Review verdict".
+# Repository secrets: CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY (as the Claude workflow).
+name: Review
+# The pull request in the run's name: La Fabrique finds the review of each pull request by it.
+run-name: "Review #${{ inputs.pr }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number"
+        required: true
+      par:
+        description: "Who started the review (GitHub login, set by La Fabrique; la-fabrique when the review is on)"
+        required: false
+      reglages:
+        description: "The review settings as JSON (set by La Fabrique from .fabrique.json > revue); empty: the defaults"
+        required: false
+
+# A newer review of the same pull request (new commits pushed) replaces the one still running.
+concurrency:
+  group: review-${{ inputs.pr }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Inputs
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR: ${{ inputs.pr }}
+          REGLAGES: ${{ inputs.reglages }}
+        run: |
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN$ANTHROPIC_API_KEY" ] || { echo "::error title=Review not started::Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY."; exit 1; }
+          case "$PR" in ''|*[!0-9]*) echo "::error title=Review not started::Not a pull request number: $PR"; exit 1 ;; esac
+          settings="${REGLAGES:-"{}"}"
+          jq -e 'type == "object"' <<<"$settings" >/dev/null || { echo "::error title=Review not started::reglages is not a JSON object."; exit 1; }
+          # The defaults of docs/fabrique-json.md § Revue, for what the settings leave out.
+          jq '{
+                modele: (.modele // ""),
+                exigence: (.exigence // "souple"),
+                max_remarques: (.max_remarques // 5),
+                focus: ({securite: "bloquant", architecture: "conseil", performance: "conseil", craftsmanship: "off", compliance: "off"} + (.focus // {})),
+                consignes: (.consignes // "")
+              }' <<<"$settings" > "$RUNNER_TEMP/settings.json"
+          cat "$RUNNER_TEMP/settings.json"
+          {
+            echo "MODEL=$(jq -r .modele "$RUNNER_TEMP/settings.json")"
+            echo "PICKINESS=$(jq -r .exigence "$RUNNER_TEMP/settings.json")"
+            echo "MAX_FINDINGS=$(jq -r .max_remarques "$RUNNER_TEMP/settings.json")"
+          } >> "$GITHUB_ENV"
+
+      # Only an open pull request is reviewed (a release merged within the minute is not).
+      - name: Pull request
+        id: pull
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+        run: |
+          data=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state,isDraft,headRefOid,baseRefName,headRefName)
+          if [ "$(jq -r .state <<<"$data")" != "OPEN" ]; then echo "::notice title=Review skipped::Pull request #$PR is not open."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "sha=$(jq -r .headRefOid <<<"$data")" >> "$GITHUB_OUTPUT"
+          echo "base=$(jq -r .baseRefName <<<"$data")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.pull.outputs.skip != 'true'
+        with:
+          ref: ${{ steps.pull.outputs.sha }}
+          fetch-depth: 0
+
+      # The guidelines of each focus area that is on, from the project's folder (C161 writes them).
+      - name: Guidelines
+        if: steps.pull.outputs.skip != 'true'
+        env:
+          BASE: ${{ steps.pull.outputs.base }}
+        run: |
+          git fetch -q origin "$BASE"
+          folder=$(jq -r .consignes "$RUNNER_TEMP/settings.json")
+          {
+            jq -r '.focus | to_entries[] | select(.value != "off") | "- `\(.key)`: \(if .value == "bloquant" then "blocking" else "advice only, never blocking" end)"' "$RUNNER_TEMP/settings.json"
+            if [ -n "$folder" ] && [ -d "$folder" ]; then
+              for area in $(jq -r '.focus | to_entries[] | select(.value != "off") | .key' "$RUNNER_TEMP/settings.json"); do
+                [ -f "$folder/$area.md" ] && printf '\n### Guidelines for `%s`\n\n%s\n' "$area" "$(cat "$folder/$area.md")"
+              done
+            fi
+          } > "$RUNNER_TEMP/focus.md"
+          cat "$RUNNER_TEMP/focus.md"
+          {
+            echo 'FOCUS<<FOCUS_EOF'
+            cat "$RUNNER_TEMP/focus.md"
+            echo 'FOCUS_EOF'
+          } >> "$GITHUB_ENV"
+
+      # Bun from the npm registry, as in the Claude workflow (GitHub's releases answered 504 on 8 November 2026, C90).
+      - name: Bun
+        id: bun
+        if: steps.pull.outputs.skip != 'true'
+        run: |
+          for attempt in 1 2 3; do
+            npm install --global --no-audit --no-fund bun@1.4.4 && break
+            [ "$attempt" = 3 ] && { echo "::error title=Review not started::npm could not install bun@1.4.4."; exit 1; }
+            sleep $((attempt * 15))
+          done
+          bun="$(npm prefix --global)/bin/bun"
+          echo "path=$bun" >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        if: steps.pull.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          github_token: ${{ github.token }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Started by La Fabrique's GitHub App: the action refuses bots unless named.
+          allowed_bots: la-fabrique-extraordinaire
+          claude_args: >-
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            ${{ env.MODEL && format('--model {0}', env.MODEL) || '' }}
+          prompt: |
+            You review pull request #${{ inputs.pr }} of this repository (${{ github.repository }}), started${{ inputs.par && format(' by @{0}', inputs.par) || '' }} from La Fabrique. You read; you change nothing, push nothing, post nothing: a later step posts your review.
+            1. Read the pull request and its diff against `origin/${{ steps.pull.outputs.base }}`: `gh pr view ${{ inputs.pr }} --comments`, `gh pr diff ${{ inputs.pr }}`. Its story is the issue it names ("Refs #N"): read it with `gh issue view N --comments`; its acceptance criteria say what the code must do. Read CLAUDE.md for the project's principles.
+            2. Review the code against its story, nothing else. You are a safety net, not a gate: the team must not spend its time rewriting stories.
+               - Pickiness: `${{ env.PICKINESS }}`. With `souple`, a finding is blocking only if the code breaks an acceptance criterion, loses or leaks data, or opens a security hole; everything else is advice. With `normale`, also a clear bug outside the criteria or a broken principle of CLAUDE.md. With `stricte`, also what the focus areas' guidelines forbid. Never block on style, naming or taste.
+               - Never question the story or ask for a different feature. A remark outside the story is one short line of advice, at most.
+               - Focus areas and their level (an area at advice never blocks; an area not listed gives no finding):
+            ${{ env.FOCUS }}
+               - At most ${{ env.MAX_FINDINGS }} findings, the blocking ones first. Fewer is better; none is a fine review.
+            3. Write your review to the file `review.json` at the root of the repository, and only that file, as JSON:
+               {"summary": "two or three sentences for the author", "findings": [{"area": "<a focus area above>", "level": "bloquant" or "conseil", "file": "path or empty", "line": number or null, "text": "what is wrong and what to do, in one or two sentences"}]}
+               Write in English. Then stop.
+      # The review posted on GitHub, with the verdict La Fabrique reads.
+      - name: Review
+        if: steps.pull.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ steps.pull.outputs.sha }}
+          PAR: ${{ inputs.par }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          settings="$RUNNER_TEMP/settings.json"
+          [ -f review.json ] && jq -e '.findings | type == "array"' review.json >/dev/null 2>&1 || {
+            echo "::error title=Review failed::Claude wrote no readable review.json."; exit 1; }
+          # The settings decide, not Claude: an area off gives nothing, an area at advice never blocks, the cap holds,
+          # blocking findings first; the verdict follows.
+          jq --slurpfile s "$settings" '
+            ($s[0]) as $s
+            | . as $review
+            | [.findings[]
+                | select(type == "object" and (.text // "") != "")
+                | .area = ((.area // "") | ascii_downcase)
+                | select(($s.focus[.area] // "off") != "off")
+                | .level = (if .level == "bloquant" and $s.focus[.area] == "bloquant" then "bloquant" else "conseil" end)]
+            | (map(select(.level == "bloquant")) + map(select(.level != "bloquant")))[0:$s.max_remarques] as $findings
+            | {
+                verdict: (if ($findings | map(select(.level == "bloquant")) | length) > 0 then "bloquant" elif ($findings | length) > 0 then "remarques" else "ok" end),
+                summary: ($review.summary // ""),
+                findings: $findings,
+                model: (if $s.modele == "" then null else $s.modele end),
+                exigence: $s.exigence
+              }' review.json > "$RUNNER_TEMP/verdict.json"
+          verdict=$(jq -r .verdict "$RUNNER_TEMP/verdict.json")
+          label=$(case "$verdict" in ok) echo "OK";; remarques) echo "Remarks";; *) echo "Blocking";; esac)
+          {
+            echo "### Review by Claude: $label"
+            echo
+            jq -r '.summary' "$RUNNER_TEMP/verdict.json"
+            echo
+            jq -r '.findings[] | "- **\(if .level == "bloquant" then "Blocking" else "Advice" end)** · `\(.area)`\(if (.file // "") != "" then " · `\(.file)\(if .line then ":\(.line)" else "" end)`" else "" end): \(.text)"' "$RUNNER_TEMP/verdict.json"
+            echo
+            echo "<sub>Pickiness \`$(jq -r .exigence "$RUNNER_TEMP/verdict.json")\`$( [ -n "$MODEL" ] && echo ", model \`$MODEL\`" ), started${PAR:+ by @$PAR} from La Fabrique · [the run]($RUN_URL)</sub>"
+            echo
+            # In an HTML comment: ">" escaped, so no text of a finding can close it (JSON has ">" only inside strings).
+            echo "<!-- fabrique-review $(jq -c --arg sha "$SHA" '. + {sha: $sha}' "$RUNNER_TEMP/verdict.json" | sed 's/>/\\u003e/g') -->"
+          } > "$RUNNER_TEMP/body.md"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" -f event=COMMENT -f commit_id="$SHA" -F body=@"$RUNNER_TEMP/body.md" >/dev/null
+          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Review verdict::$verdict"

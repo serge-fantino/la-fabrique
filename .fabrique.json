@@ -14,8 +14,10 @@
     "promouvoir": null,
     "claude": "claude.yml",
     "fusionner": "merge.yml",
-    "publier": "release.yml"
+    "publier": "release.yml",
+    "revue": "review.yml"
   },
+  "revue": { "active": false, "exigence": "souple" },
   "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
   "documentation": [
     { "titre": "The project (principles, roles, architecture)", "chemin": "CLAUDE.md" },
