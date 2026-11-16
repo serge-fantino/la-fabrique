@@ -1,6 +1,30 @@
 [
   {
     "version": "next",
+    "date": "2026-11-16",
+    "titre": "The sprint waits for Claude's review before merging",
+    "changements": [
+      "With the review on, the sprint running by itself merges a story's pull request only once its checks passed and Claude's review of its latest commit allows it: OK or remarks, it merges; blocking, Claude updates the pull request once to address the blocking findings, then a new review runs; still blocking, the card stops and says why, with a link to the review.",
+      "A blocking review holds Merge, in the sprint and from Claude through La Fabrique's MCP server. A tech lead or the super admin can force past it (Force past the review), with a reason kept in the log; a new commit is reviewed again."
+    ],
+    "stories": [381, 382],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-16",
+    "titre": "Claude reviews the pull requests",
+    "changements": [
+      "A project can turn on a review by Claude in its .fabrique.json (revue): the reviewing model, how picky it is (lenient by default: it blocks only on a broken acceptance criterion, a data loss or a security hole), its focus areas (security, architecture, performance, craftsmanship, compliance, or the project's own), each off, advice or blocking, and a folder of guidelines. Setup shows these settings and what is wrong in them.",
+      "Review with Claude, next to an open pull request of the sprint (tech lead and super admin), starts the project's review workflow: Claude reads the pull request against its story and leaves one review on GitHub, its findings by focus area.",
+      "With the review on, every pull request of the project is reviewed as soon as it is opened, updated or out of draft.",
+      "The sprint shows each pull request's review: running, OK, remarks or blocking, with a link to it, and says when commits came after it."
+    ],
+    "stories": [377, 378, 379, 380],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-15",
     "titre": "To test follows the tests made from the app",
     "changements": [

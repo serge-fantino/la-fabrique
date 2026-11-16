@@ -566,3 +566,129 @@ describe("A story's page, from the sprint", () => {
     expect((await get(`/projects/${REPO}/sprint/stories/x`, (await signIn("pe")).cookie)).status).toBe(404);
   });
 });
+
+describe("Review with Claude from the sprint (la-fabrique#378, #380)", () => {
+  it("is offered to tech leads on an open pull request, starts the project's review workflow and shows the review's verdict", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", revue: "review.yml" }, claude: { plafond: 1 }, revue: { modele: "claude-sonnet-5-5" } });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(
+        JSON.stringify([
+          story(1, "Epic", { parent: null, subTotal: 3 }),
+          story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] }),
+          story(13, "Bare one", { criteria: [], pullRequests: [{ number: 31, url: "https://github.com/acme/widget/pull/31", state: "open" }] }),
+        ]),
+        REPO,
+      )
+      .run();
+    // #30 has a blocking review on an older commit.
+    await env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('github', 'review_finished', ?, 30, ?)")
+      .bind(REPO, JSON.stringify({ verdict: "bloquant", sha: "old", blocking: 1, advice: 0, url: "https://github.com/acme/widget/pull/30#r1" }))
+      .run();
+    await grantRole("lead", "tech_lead");
+    const { cookie, csrf } = await signIn("lead");
+    const detail = (number: number, draft: boolean) =>
+      JSON.stringify({ number, title: "x", html_url: `https://github.com/acme/widget/pull/${number}`, state: "open", draft, merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "clean", base: { ref: "main" }, head: { sha: "new" } });
+    const reply = () => {
+      github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+      github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+      github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail(30, false), JSON_HEADERS);
+      github().intercept({ path: `/repos/${REPO}/pulls/31` }).reply(200, detail(31, true), JSON_HEADERS);
+    };
+    reply();
+    const page = await (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    expect(page).toContain('aria-label="Review pull request #30 with Claude">Review with Claude</button>');
+    // A draft waits.
+    expect(page).not.toContain("Review pull request #31 with Claude");
+    expect(page).toContain('class="review-link" href="https://github.com/acme/widget/pull/30#r1"><span class="pill alert small">Review blocking: 1</span></a> <span class="muted small" title="Commits were pushed after this review.">older commit</span>');
+
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(2);
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail(30, false), JSON_HEADERS);
+    let dispatched: { ref: string; inputs: Record<string, string> } | null = null;
+    github()
+      .intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/review.yml/dispatches` })
+      .reply(204, (options) => {
+        dispatched = JSON.parse(String(options.body));
+        return "";
+      });
+    const response = await post(`/projects/${REPO}/sprint`, { csrf, action: "claude_review", story: "12", pull: "30" }, cookie);
+    expect(response.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=reviewing&pull=30`);
+    expect(dispatched).toMatchObject({ ref: "main", inputs: { pr: "30", par: "lead" } });
+    expect(JSON.parse(dispatched!.inputs["reglages"] ?? "{}")).toMatchObject({ modele: "claude-sonnet-5-5", exigence: "souple", max_remarques: 5 });
+    const logged = await env.DB.prepare("SELECT actor, issue_number, details FROM activity_log WHERE action = 'review_launched'").first<{ actor: string; issue_number: number; details: string }>();
+    expect(logged).toMatchObject({ actor: "lead", issue_number: 30 });
+    expect(JSON.parse(logged?.details ?? "{}")).toMatchObject({ story: 12, trigger: "person", model: "claude-sonnet-5-5" });
+
+    // Running now (Claude's runs still in cache).
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail(30, false), JSON_HEADERS);
+    github().intercept({ path: `/repos/${REPO}/pulls/31` }).reply(200, detail(31, true), JSON_HEADERS);
+    expect(await (await get(`/projects/${REPO}/sprint`, cookie)).text()).toContain('<span class="pill small" title="Started by @lead">Review running</span>');
+
+    // Not a pull request of the story: nothing starts. Not for a Product Engineer.
+    expect((await post(`/projects/${REPO}/sprint`, { csrf, action: "claude_review", story: "12", pull: "29" }, cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint`);
+    await grantRole("pe", "product_engineer");
+    const pe = await signIn("pe");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "claude_review", story: "12", pull: "30" }, pe.cookie)).status).toBe(403);
+  });
+});
+
+describe("Force past a blocking review (la-fabrique#382)", () => {
+  it("holds Merge on a blocking review, lets a tech lead force past it with a reason, then merges", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", revue: "review.yml", fusionner: "merge.yml" }, claude: { plafond: 1 } });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]), REPO)
+      .run();
+    await env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('github', 'review_finished', ?, 30, ?)")
+      .bind(REPO, JSON.stringify({ verdict: "bloquant", sha: "new", blocking: 2, advice: 0, url: "https://github.com/acme/widget/pull/30#r1" }))
+      .run();
+    const detail = JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", draft: false, merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "clean", base: { ref: "main" }, head: { sha: "new" } });
+    const pullRead = (times = 1) => {
+      github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(times);
+      github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    };
+    const page = async (cookie: string) => {
+      pullRead(2);
+      github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+      await env.DB.prepare("DELETE FROM snapshots WHERE kind = 'claude_runs'").run();
+      return (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    };
+
+    await grantRole("lead", "tech_lead");
+    const lead = await signIn("lead");
+    const seenByLead = await page(lead.cookie);
+    expect(seenByLead).toContain(">Force past the review</button>");
+    expect(seenByLead).toContain('name="reason" required');
+
+    await grantRole("pe", "product_engineer");
+    const pe = await signIn("pe");
+    const seenByPe = await page(pe.cookie);
+    expect(seenByPe).not.toContain("Force past the review");
+    // The merge is said held, for whoever may merge.
+    expect(seenByPe).toContain("Merge held by Claude's blocking review");
+    expect(seenByPe).not.toContain('aria-label="Merge pull request #30"');
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "force_review", pull: "30", reason: "x" }, pe.cookie)).status).toBe(403);
+
+    // Refused on the server too, while held.
+    pullRead();
+    const refused = await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "merge", pull: "30" }, pe.cookie);
+    expect(refused.status).toBe(409);
+
+    // Without a reason: refused. With one: logged on the latest commit.
+    pullRead();
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: lead.csrf, action: "force_review", pull: "30", reason: "  " }, lead.cookie)).status).toBe(422);
+    pullRead();
+    const forced = await post(`/projects/${REPO}/sprint`, { csrf: lead.csrf, action: "force_review", pull: "30", reason: "False positive: the token is read from a secret" }, lead.cookie);
+    expect(forced.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=review_forced&pull=30`);
+    const logged = await env.DB.prepare("SELECT actor, issue_number, details FROM activity_log WHERE action = 'review_forced'").first<{ actor: string; issue_number: number; details: string }>();
+    expect(logged).toMatchObject({ actor: "lead", issue_number: 30 });
+    expect(JSON.parse(logged?.details ?? "{}")).toMatchObject({ sha: "new", reason: "False positive: the token is read from a secret", blocking: 2 });
+
+    // Forced: the pull request can be merged.
+    const after = await page(pe.cookie);
+    expect(after).toContain("Review forced by @lead");
+    expect(after).toContain('aria-label="Merge pull request #30"');
+    pullRead(2);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/merge.yml/dispatches` }).reply(204, "");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "merge", pull: "30" }, pe.cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=merging&pull=30`);
+  });
+});

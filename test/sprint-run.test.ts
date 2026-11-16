@@ -4,6 +4,7 @@ import type { StoryCards } from "../src/card-groups";
 import type { CardStory } from "../src/card-stories";
 import type { ClaudeRun } from "../src/claude";
 import { advance, planRun, relaunchable, runLanes, sprintRunFor, type Moves, type PlannedCard, type RunState, type Seen } from "../src/sprint-run";
+import type { ReviewState } from "../src/review";
 import type { Card } from "../src/cards";
 import { get, grantRole, logActions, post, signIn } from "./helpers";
 
@@ -368,3 +369,105 @@ describe("Relaunching Claude from a story's row (la-fabrique#239)", () => {
   });
 });
 
+
+describe("The run waits for Claude's review before merging (la-fabrique#381, #382)", () => {
+  const open = () => story(12, { stage: "in_dev", pulls: [{ number: 30, url: "x", state: "open" }] });
+  type Review = NonNullable<Seen["review"]>;
+  const review = (extra: Partial<Review> = {}): Review => ({
+    on: true,
+    heads: new Map([[30, "h1"]]),
+    checks: new Map([[30, "success"]]),
+    states: new Map(),
+    forced: new Map(),
+    ...extra,
+  });
+  const verdict = (state: "ok" | "remarques" | "bloquant" | "failed", sha = "h1", head = "h1") =>
+    new Map<number, ReviewState>([[30, { state, at: NOW, url: "https://github.com/acme/widget/pull/30#r1", run: "https://github.com/run/r", sha, blocking: state === "bloquant" ? 2 : 0, advice: 1, stale: sha !== head }]]);
+  const withReview = (moves: Moves, asked: string[]) => {
+    moves.review = async (pull) => {
+      asked.push(`review #${pull}`);
+      return { ok: true };
+    };
+    return moves;
+  };
+
+  it("waits for the checks, asks for a review of the latest commit, then merges when it is OK or has remarks", async () => {
+    const run1 = state([card(1, [12])]);
+    const { moves, done } = fakeMoves();
+    withReview(moves, done);
+    await advance(run1, seen([open()], [], { review: review({ checks: new Map([[30, "pending"]]) }) }), moves);
+    expect(run1.cards[0]).toMatchObject({ step: "reviewing", pull: 30, note: "waits for the checks of #30" });
+    expect(done).toEqual([]);
+
+    await advance(run1, seen([open()], [], { now: later(5), review: review() }), moves);
+    expect(done).toEqual(["review #30"]);
+    // Asked, not logged yet: no second review.
+    await advance(run1, seen([open()], [], { now: later(6), review: review() }), moves);
+    expect(done).toEqual(["review #30"]);
+    expect(run1.cards[0]?.note).toBe("waits for Claude's review of #30");
+
+    await advance(run1, seen([open()], [], { now: later(10), review: review({ states: verdict("remarques") }) }), moves);
+    expect(done).toEqual(["review #30", "merge #30"]);
+    expect(run1.cards[0]?.step).toBe("merging");
+  });
+
+  it("sends a blocking review back to Claude once, then stops the card with a link to the review", async () => {
+    const run1 = state([card(1, [12])]);
+    const { moves, done, logged } = fakeMoves();
+    withReview(moves, done);
+    await advance(run1, seen([open()], [], { review: review({ states: verdict("bloquant") }) }), moves);
+    expect(done).toEqual(["update #12 #30"]);
+    expect(run1.cards[0]).toMatchObject({ step: "updating", reviewed: true });
+    expect(logged.map((entry) => entry.action)).toContain("sprint_run_review_rework");
+
+    // Claude's update ended: a new commit, its review blocks again.
+    // The old review is stale on h2: the run asks for a new one.
+    const after = review({ heads: new Map([[30, "h2"]]), states: verdict("bloquant", "h1", "h2") });
+    await advance(run1, seen([open()], [run(12, "completed", "success", later(1))], { now: later(20), review: after }), moves);
+    expect(done).toEqual(["update #12 #30", "review #30"]);
+    const blocking = review({ heads: new Map([[30, "h2"]]), states: new Map([[30, { state: "bloquant", at: NOW, url: "https://github.com/acme/widget/pull/30#r2", run: null, sha: "h2", blocking: 1, advice: 0, stale: false }]]) });
+    await advance(run1, seen([open()], [run(12, "completed", "success", later(1))], { now: later(30), review: blocking }), moves);
+    expect(run1.cards[0]?.step).toBe("stopped");
+    expect(run1.cards[0]?.reason).toBe(
+      "Blocked by the review: 1 blocking finding on #30 after Claude's update; a tech lead or the super admin forces past the review, or the pull request is fixed, then resume this card",
+    );
+    expect(run1.cards[0]?.link).toBe("https://github.com/acme/widget/pull/30#r2");
+    expect(done).not.toContain("merge #30");
+  });
+
+  it("merges a review forced past on the latest commit, not on an older one", async () => {
+    const forcedOn = (sha: string) => new Map([[30, { sha, by: "lead", reason: "False positive", at: NOW }]]);
+    const run1 = state([card(1, [12])]);
+    Object.assign(run1.cards[0] ?? {}, { reviewed: true });
+    const { moves, done } = fakeMoves();
+    withReview(moves, done);
+    await advance(run1, seen([open()], [], { review: review({ states: verdict("bloquant"), forced: forcedOn("h0") }) }), moves);
+    expect(run1.cards[0]?.step).toBe("stopped");
+
+    const run2 = state([card(1, [12])]);
+    const second = fakeMoves();
+    withReview(second.moves, second.done);
+    await advance(run2, seen([open()], [], { review: review({ states: verdict("bloquant"), forced: forcedOn("h1") }) }), second.moves);
+    expect(second.done).toEqual(["merge #30"]);
+  });
+
+  it("stops on failed checks, a failed review, or a review that never ends; merges as before when the review is off", async () => {
+    const stopped = async (extra: Partial<Review>, now = NOW, before?: Partial<RunState["cards"][number]>) => {
+      const run1 = state([card(1, [12])]);
+      if (before) Object.assign(run1.cards[0] ?? {}, before);
+      const { moves, done } = fakeMoves();
+      withReview(moves, done);
+      await advance(run1, seen([open()], [], { now, review: review(extra) }), moves);
+      return run1.cards[0];
+    };
+    expect((await stopped({ checks: new Map([[30, "failure"]]) }))?.reason).toBe("the checks of #30 failed: fix them, then resume this card");
+    expect((await stopped({ states: verdict("failed") }, NOW, { reviewFor: "h1" }))?.reason).toBe("Claude's review of #30 failed");
+    const late = await stopped({ states: new Map([[30, { state: "running", at: NOW, by: "la-fabrique" }]]) }, later(61), { step: "reviewing", pull: 30, since: NOW });
+    expect(late?.reason).toBe("the checks and the review of #30 did not end in 60 minutes (waits for Claude's review of #30)");
+
+    const run1 = state([card(1, [12])]);
+    const { moves, done } = fakeMoves();
+    await advance(run1, seen([open()], [], { review: review({ on: false }) }), moves);
+    expect(done).toEqual(["merge #30"]);
+  });
+});

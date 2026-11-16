@@ -325,7 +325,7 @@ const REFERENCE: RefPage[] = [
         title: "Your role",
         body: `<p>Roles are given by a super admin to a GitHub account. Each role has the rights of those below it: tester, Product Engineer, tech lead, super admin. The go is the exception: the Product Engineer and the super admin give it, not the tech lead.</p>
           <table class="help-table"><thead><tr><th>You can</th><th>Not you</th></tr></thead><tbody>
-          <tr><td>Write, import and arrange cards; ask Claude for specs, stories, reviews and test cases; create stories, set priorities, mark them ready</td><td>Launch Claude Code on one story by hand, Rework with Claude, Update with Claude (tech lead)</td></tr>
+          <tr><td>Write, import and arrange cards; ask Claude for specs, stories, reviews and test cases; create stories, set priorities, mark them ready</td><td>Launch Claude Code on one story by hand, Rework with Claude, Update with Claude, Review with Claude (tech lead)</td></tr>
           <tr><td>Start, version, run, pause and close the sprint; relaunch Claude on a story left without a pull request; ask for a review; merge a pull request into the production branch</td><td>Merge into another branch, Launch the next story, change a project's Setup (tech lead)</td></tr>
           <tr><td>Tick criteria, validate, send feedback, triage defects; give the go</td><td>Roles, projects, apps (super admin)</td></tr>
           </tbody></table>`,
@@ -662,7 +662,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "follow",
         title: "Following the work",
-        body: `<p>The page has three parts: the sprint (where it is, the go, the close), <em>Implementation</em> (the run, Claude's runs, the next story) with <em>Pull requests open</em> (${b("Ask for a review")} to a tech lead, ${b("Merge")} into the production branch, “Merge refused” with why), and <em>Features and stories</em>. Each story has its page: steps, criteria, pull requests, Claude's runs, history, feedback. While something is in progress, the page reads itself again every minute, when you are not typing or dragging.</p>`,
+        body: `<p>The page has three parts: the sprint (where it is, the go, the close), <em>Implementation</em> (the run, Claude's runs, the next story) with <em>Pull requests open</em> (${b("Ask for a review")} to a tech lead, ${b("Review with Claude")} for a tech lead and the review's verdict next to each pull request, a blocking review holding ${b("Merge")} until a tech lead clicks ${b("Force past the review")} with a reason, ${b("Merge")} into the production branch, “Merge refused” with why), and <em>Features and stories</em>. Each story has its page: steps, criteria, pull requests, Claude's runs, history, feedback. While something is in progress, the page reads itself again every minute, when you are not typing or dragging.</p>`,
       },
       {
         id: "joining",

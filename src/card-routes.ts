@@ -26,6 +26,7 @@ import { EPIC_ISSUE_KIND, epicIssueView, epicIssuesOf, startFromIssue, takenEpic
 import { isNice, storyCards } from "./card-groups";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
+import { canForceReview, canReview, forceReview, forcedReviews, launchReview, pullReviewStates, reviewHold, reviewWorkflow } from "./review";
 import { canMerge, lastMergeAttempts, mergePull, mergeWorkflow, pullDetails, requestReview, reviewers } from "./sprint-pulls";
 import { activeSprint, latestSprint, sprintLabel, moveCardInRelease, moveStoryInCard, orderCardsInRelease, orderStoriesInCard, setNice, setSprintVersion } from "./sprints";
 import { closeSprint, joinSprint, type JoinOutcome, type Joined, sprintVersionProblem, sprintVersions, startSprint } from "./sprint-flow";
@@ -1030,6 +1031,33 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       if (outcome.ok) return redirect(`${base}?notice=updating&story=${number}&pull=${pull}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
+    // Claude reviews an open pull request of a sprint story (la-fabrique#378).
+    if (action === "claude_review") {
+      if (!canReview(viewer.role)) return forbidden(viewer);
+      const number = Number(form.get("story"));
+      const pull = Number(form.get("pull"));
+      const links = await storyCards(env.DB, project.repo);
+      const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
+      if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
+      const stories = await cardStories(env, project, [number]);
+      if (!stories.get(number)?.pulls.some((candidate) => candidate.number === pull && candidate.state === "open")) return redirect(base);
+      const detail = (await pullDetails(env, project, [pull])).get(pull);
+      if (detail?.draft) return showSprint(request, env, viewer, project, `Pull request #${pull} is a draft: it is reviewed once it is ready.`, 409);
+      const outcome = await launchReview(env, project, viewer.login, pull, { story: number });
+      if (outcome.ok) return redirect(`${base}?notice=reviewing&pull=${pull}`);
+      return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
+    // Past a blocking review by Claude, with a reason (la-fabrique#382).
+    if (action === "force_review") {
+      if (!canForceReview(viewer.role)) return forbidden(viewer);
+      const pull = Number(form.get("pull"));
+      if (!Number.isInteger(pull) || pull <= 0) return redirect(base);
+      const detail = (await pullDetails(env, project, [pull])).get(pull);
+      if (!detail || detail.state !== "open") return redirect(base);
+      const outcome = await forceReview(env, project, viewer.login, pull, String(form.get("reason") ?? ""), detail.head ?? null);
+      if (outcome.ok) return redirect(`${base}?notice=review_forced&pull=${pull}`);
+      return showSprint(request, env, viewer, project, outcome.message, outcome.status);
+    }
     // Merged by the project's workflow, release notes numbered there.
     if (action === "merge") {
       const pull = Number(form.get("pull"));
@@ -1037,6 +1065,9 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const detail = (await pullDetails(env, project, [pull])).get(pull);
       if (!detail || detail.state !== "open") return redirect(base);
       if (!canMerge(viewer.role, project, detail.base)) return forbidden(viewer);
+      // A blocking review by Claude holds it (la-fabrique#382).
+      const held = await reviewHold(env, project, pull, detail.head ?? null);
+      if (held) return showSprint(request, env, viewer, project, held, 409);
       const outcome = await mergePull(env, project, viewer.login, pull);
       if (outcome.ok) return redirect(`${base}?notice=merging&pull=${pull}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
@@ -1586,6 +1617,9 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       progress,
       merges,
       merge: { workflow: mergeWorkflow(project), can: (base: string | null) => canMerge(viewer.role, project, base) },
+      review: { workflow: reviewWorkflow(project), can: canReview(viewer.role), canForce: canForceReview(viewer.role) },
+      forced: reviewWorkflow(project) ? await forcedReviews(env.DB, project.repo) : new Map(),
+      reviews: reviewWorkflow(project) ? await pullReviewStates(env.DB, project.repo, new Map([...pulls.values()].map((pull) => [pull.number, pull.head ?? null]))) : new Map(),
       priorities: cycleRules(project.check?.config).priorities,
       readyLabel: cycleRules(project.check?.config).checks.includes("etiquette_prete") ? cycleRules(project.check?.config).readyLabel : null,
       claude: {
@@ -1616,7 +1650,11 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
           ? `The release ${params.get("version") ?? ""} has started: the project's workflow opens a pull request on the production branch and merges it. The sprint closes when it is out.`
           : params.get("notice") === "merging" && Number.isInteger(Number(params.get("pull")))
             ? `Pull request #${Number(params.get("pull"))} is being merged by the project's workflow: it numbers and dates the release notes, checks again, then merges.`
-            : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))
+            : params.get("notice") === "review_forced" && Number.isInteger(Number(params.get("pull")))
+            ? `Claude's review of pull request #${Number(params.get("pull"))} is forced past, on its latest commit: it can be merged. Your reason is in the log; a new commit is reviewed again.`
+          : params.get("notice") === "reviewing" && Number.isInteger(Number(params.get("pull")))
+            ? `Claude is reviewing pull request #${Number(params.get("pull"))}: the project's review workflow reads it against its story and leaves one review on GitHub.`
+          : params.get("notice") === "updating" && Number.isInteger(Number(params.get("pull")))
             ? `Claude is bringing pull request #${Number(params.get("pull"))} up to date: it merges the base branch, resolves the conflicts and pushes to the same branch.`
             : SPRINT_NOTICES[params.get("notice") ?? ""]),
       failure:
