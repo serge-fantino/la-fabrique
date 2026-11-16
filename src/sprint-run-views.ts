@@ -55,6 +55,7 @@ const STEP_LABELS: Record<RunCard["step"], string> = {
   next: "Next story",
   claude: "Claude working",
   updating: "Claude updating its pull request",
+  reviewing: "Checks and Claude's review",
   merging: "Merging",
   done: "Done",
   stopped: "Stopped",
@@ -94,7 +95,7 @@ export function runSection(viewer: Viewer, project: Project, state: RunState | n
       return `<li id="run-card-${card.id}"><a class="mono" href="${escapeHtml(base)}/cards/${card.id}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}
         <span class="pill ${tone} small">${STEP_LABELS[card.step]}</span>${
           story !== undefined && card.step !== "done" ? ` <a class="mono small" href="${escapeHtml(base)}/sprint/stories/${story}">#${story}</a>` : ""
-        } <span class="muted small">${Math.min(card.at, card.stories.length)}/${card.stories.length} merged</span>${card.pull && card.step === "merging" ? ` <span class="small">pull request #${card.pull}</span>` : ""}${
+        } <span class="muted small">${Math.min(card.at, card.stories.length)}/${card.stories.length} merged</span>${card.pull && (card.step === "merging" || card.step === "reviewing") ? ` <span class="small">pull request #${card.pull}</span>` : ""}${
           card.reason ? `<br /><span class="small">${escapeHtml(card.reason)}${card.link ? ` <a href="${escapeHtml(card.link)}">See it</a>` : ""}</span>` : ""
         }${card.note ? `<br /><span class="muted small">${escapeHtml(card.note)}</span>` : ""}${
           card.step === "stopped" && canRun && state.status !== "stopped" && state.status !== "done" ? ` ${control("run_resume_card", "Resume this card", { card: card.id })}` : ""

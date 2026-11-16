@@ -127,7 +127,9 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
 // "Update with Claude" (la-fabrique#113): the same workflow with `pr`, on
 // an open pull request of the story: Claude merges its base branch into it,
 // resolves the conflicts, checks again and pushes to the same branch.
-export async function updateWithClaude(env: Env, project: Project, login: string, story: number, pull: number): Promise<LaunchOutcome> {
+// `review` (la-fabrique#381): Claude's review of the pull request is blocking;
+// Claude addresses its blocking findings (the sprint's run, once).
+export async function updateWithClaude(env: Env, project: Project, login: string, story: number, pull: number, options: { review?: boolean } = {}): Promise<LaunchOutcome> {
   const file = claudeWorkflow(project);
   if (!file) return { ok: false, message: "This project declares no Claude workflow (workflows.claude).", status: 422 };
   const repo = project.repo;
@@ -140,10 +142,11 @@ export async function updateWithClaude(env: Env, project: Project, login: string
       return { ok: false, message: `Claude already runs ${running} time${running > 1 ? "s" : ""} on this project (cap ${cap}): wait for one to end.`, status: 409 };
     }
     const ref = productionBranch(project) ?? "main";
-    const response = await githubPost(token, `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/dispatches`, {
-      ref,
-      inputs: { issue: String(story), par: login, pr: String(pull) },
-    });
+    const path = `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/dispatches`;
+    const inputs = { issue: String(story), par: login, pr: String(pull) };
+    let response = await githubPost(token, path, { ref, inputs: options.review ? { ...inputs, revue: "true" } : inputs });
+    // A workflow without the `revue` input still updates the pull request.
+    if (response.status === 422 && options.review) response = await githubPost(token, path, { ref, inputs });
     if (!response.ok) {
       return {
         ok: false,
@@ -161,7 +164,7 @@ export async function updateWithClaude(env: Env, project: Project, login: string
       action: "claude_update_launched",
       repo,
       issueNumber: story,
-      details: { workflow: file, pull, running: running + 1, cap },
+      details: { workflow: file, pull, running: running + 1, cap, ...(options.review ? { review: true } : {}) },
     }).run();
     await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = ?").bind(repo, CLAUDE_RUNS).run();
     return { ok: true, running: running + 1 };

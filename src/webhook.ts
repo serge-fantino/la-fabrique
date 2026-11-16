@@ -5,6 +5,7 @@ import { reopenIfClosedByMerge } from "./story-reopen";
 import { reworkMerged, type MergedPull } from "./story-rework";
 import { mergeRunEvent } from "./sprint-pulls";
 import { claudeRunEvent, type RestWorkflowRun } from "./claude";
+import { autoReview, reviewRunEvent, type WebhookPull } from "./review";
 import { sprintLiveFor } from "./live";
 import { safeEqual } from "./crypto";
 import type { Env } from "./env";
@@ -39,7 +40,7 @@ interface Payload {
   repository?: { full_name?: string; default_branch?: string };
   head_commit?: { timestamp?: string } | null;
   issue?: RestIssue;
-  pull_request?: MergedPull;
+  pull_request?: MergedPull & WebhookPull;
   workflow_run?: RestWorkflowRun;
 }
 
@@ -78,6 +79,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
       // A rework merged: the story is to test again (la-fabrique#202).
       if (payload.action === "closed" && payload.pull_request) await reworkMerged(env, project, payload.pull_request).catch(() => []);
       if (payload.action === "closed") await sprintRunFor(env, project.repo)?.poke().catch(() => undefined);
+      // The review is on: Claude reviews it (la-fabrique#379).
+      await autoReview(env, project, payload.action ?? "", payload.pull_request).catch(() => false);
     }
     await inDevChanged(env, project.repo);
     if (event === "create" || event === "delete") await branchesChanged(env, project.repo);
@@ -90,6 +93,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     if (payload.workflow_run) await promotionRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => []);
     // The release of the sprint done: cards versioned, stories closed.
     if (payload.workflow_run) await releaseRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
+    // A review run: its verdict (la-fabrique#380).
+    if (payload.workflow_run) await reviewRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
     // A merge run: merged, or refused and why.
     if (payload.workflow_run) await mergeRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
     await productionChanged(env, project.repo);

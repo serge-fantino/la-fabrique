@@ -25,6 +25,8 @@ export interface PullDetail {
   // "behind", "clean", "blocked", "unstable"…; null while GitHub computes.
   mergeable: string | null;
   base: string | null;
+  // Its latest commit: a review of an older one is stale (la-fabrique#380).
+  head?: string | null;
 }
 
 interface RestPullDetail {
@@ -38,6 +40,7 @@ interface RestPullDetail {
   requested_reviewers?: { login: string }[];
   mergeable_state?: string;
   base?: { ref: string };
+  head?: { sha?: string };
 }
 
 export async function pullDetails(env: Env, project: Project, numbers: number[]): Promise<Map<number, PullDetail>> {
@@ -60,6 +63,7 @@ export async function pullDetails(env: Env, project: Project, numbers: number[])
         reviewers: (pull.requested_reviewers ?? []).map((reviewer) => reviewer.login),
         mergeable: pull.mergeable_state && pull.mergeable_state !== "unknown" ? pull.mergeable_state : null,
         base: pull.base?.ref ?? null,
+        head: pull.head?.sha ?? null,
       });
     }
   } catch {

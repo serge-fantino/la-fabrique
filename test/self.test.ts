@@ -18,6 +18,7 @@ describe("La Fabrique as its own project", () => {
       ".github/workflows/claude.yml",
       ".github/workflows/merge.yml",
       ".github/workflows/release.yml",
+      ".github/workflows/review.yml",
     ];
     const result = validateFabriqueConfig(JSON.stringify(ownConfig), {
       files: new Set(files),

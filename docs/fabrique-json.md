@@ -64,11 +64,13 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `workflows.deploiement_int`, `migrations_production` | Workflows suivis (état, dernier passage). |
 | `workflows.promouvoir` | Workflow `workflow_dispatch` que le « go » du super admin déclenche. `null` : pas de go depuis La Fabrique. |
 | `workflows.publier` | Workflow `workflow_dispatch` (entrées `version`, `titre`, `stories` — numéros séparés par des virgules —, `par`) que « Close the sprint » déclenche sur un projet sans branche d'intégration : une seule version (mineure ou majeure), une seule entrée de notes de version (numéro, date et heure de Paris, titre, changements, stories) à la place des entrées `next` qui déclarent une story faite, une PR sur la branche de production fusionnée (le déploiement suit). Réservé au Product Engineer et au super admin. `null` ou absent : la fermeture du sprint est refusée avec un lien vers Setup. |
-| `workflows.claude` | Workflow qui fait travailler Claude sur une demande (`workflow_dispatch` avec le numéro d'issue `issue`, et `par`, qui l'a lancé). Il prend aussi `pr` (remettre une PR à jour) et `rework` (`true` : la story a des retours de test, Claude retravaille son code sur une nouvelle branche de la même story ; « Rework with Claude » du sprint, la-fabrique#202). `null` : pas de bouton « Lancer Claude ». |
+| `workflows.claude` | Workflow qui fait travailler Claude sur une demande (`workflow_dispatch` avec le numéro d'issue `issue`, et `par`, qui l'a lancé). Il prend aussi `pr` (remettre une PR à jour), `revue` (`true` avec `pr` : la revue de Claude sur cette PR est bloquante, Claude traite ses remarques bloquantes ; la-fabrique#381) et `rework` (`true` : la story a des retours de test, Claude retravaille son code sur une nouvelle branche de la même story ; « Rework with Claude » du sprint, la-fabrique#202). `null` : pas de bouton « Lancer Claude ». |
 | `workflows.fusionner` | Workflow `workflow_dispatch` (entrées `pr` et `par`) que le bouton « Merge » d'une PR du sprint déclenche : il numérote et date les notes de version au moment de la fusion, relance les vérifications et fusionne. Vers la branche de production, c'est un go : Product Engineer et super admin ; vers une autre branche, tech lead. `null` ou absent : pas de bouton. |
 | `version.fichier`, `.forme` | Le fichier des notes de version, au format Fabrique (ci-dessous), et la forme des numéros (`v1.N`, `0.N`…). Il alimente Production (ce qui va sortir), Roadmap (calendrier) et Releases. |
 | `documentation[]` | Pages publiées dans La Fabrique : un fichier Markdown ou un dossier (tous ses `.md`), rendus depuis la branche de production. |
 | `demandes.etiquettes` | Étiquettes GitHub du circuit : demande écrite, prête pour Claude, à valider sur int, `retour` : une story qui a reçu un retour de test et repasse en développement (`rework` par défaut), et `coulisses` : une story d'une feature « en coulisses », dont la note de version va dans `coulisses` (`coulisses` par défaut). |
+| `workflows.revue` | Workflow `workflow_dispatch` (entrées `pr`, `par` et `reglages`, les réglages de `revue` en JSON) qui fait relire une PR par Claude : une seule revue GitHub, avec ses remarques par axe et son verdict ; il ne pousse, n'approuve ni ne fusionne jamais. `null` ou absent : pas de revue depuis La Fabrique. Voir [Revue](#revue). |
+| `revue` | Comment Claude relit les PR du projet : activée ou non, modèle, exigence, axes et leur niveau, consignes. Voir [Revue](#revue). |
 | `claude.plafond` | Combien de Claude lancés depuis La Fabrique peuvent tourner en même temps sur le projet (1 à 10 ; 2 par défaut). |
 | `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
 | `composants.dossier` | Le dossier des composants du projet (ci-dessous) ; `components` par défaut. Sans `composants` : pas de composants. |
@@ -167,6 +169,41 @@ components/
 | `origine` | Repris d'un autre projet (le partage passe par git) : `depot` (adresse https), `chemin`, `version`, `commit`. |
 
 La Fabrique lit les composants à chaque commit (comme la documentation) et les montre dans l'onglet *Components* du projet ; un `component.json` invalide y est listé avec ses raisons. Elle ne garde rien d'autre que ce cache.
+
+## Revue
+
+Claude relit les PR du projet (épique F14, la-fabrique#377) : une revue **peu exigeante par défaut**, un filet de sécurité et pas un péage. Elle lit le code contre sa story, ne remet jamais la story en cause, et ne bloque que ce qui casse vraiment. Le workflow du projet (`workflows.revue`) la fait tourner avec ses propres secrets (principe 3) ; La Fabrique le déclenche.
+
+```json
+"workflows": { "revue": "review.yml" },
+"revue": {
+  "active": true,
+  "modele": "claude-sonnet-5-5",
+  "exigence": "souple",
+  "max_remarques": 5,
+  "focus": {
+    "securite": "bloquant",
+    "architecture": "conseil",
+    "performance": "conseil",
+    "craftsmanship": "off",
+    "compliance": "off"
+  },
+  "consignes": ".github/review"
+}
+```
+
+| Champ | Sert à |
+|---|---|
+| `active` | `true` : toute PR du projet est relue quand elle est ouverte, mise à jour ou sortie du brouillon. `false` ou absent : seulement à la demande (« Review with Claude »). `true` sans `workflows.revue` est une erreur. |
+| `modele` | Le modèle qui relit, transmis au workflow ; il peut différer de celui qui écrit le code. Absent : le modèle par défaut du workflow. |
+| `exigence` | `souple` (par défaut) : bloquant seulement pour un critère d'acceptation cassé, une perte de données ou une faille de sécurité, le reste en conseils ; `normale` et `stricte` relèvent davantage. Jamais de blocage sur le style ou le nommage en `souple`. |
+| `max_remarques` | Combien de remarques au plus (1 à 20 ; 5 par défaut), les bloquantes d'abord. |
+| `focus` | Chaque axe et son niveau : `off` (rien), `conseil` (des remarques, jamais bloquantes) ou `bloquant`. Les axes standard : `securite`, `architecture`, `performance`, `craftsmanship`, `compliance` ; ceux que le fichier ne nomme pas gardent leur niveau par défaut (`securite` bloquant, `architecture` et `performance` en conseil, les autres `off`). Un projet peut ajouter ses propres axes (minuscules, chiffres, `-` et `_`). |
+| `consignes` | Facultatif : un dossier du dépôt, un fichier Markdown par axe (`securite.md`…), ajouté à la consigne de Claude pour cet axe. Ce que vérifie chaque axe s'y écrit (C161). |
+
+*Setup* montre ces réglages et signale une erreur sans bloquer le reste.
+
+Dans le sprint (la-fabrique#381, #382) : une revue bloquante du dernier commit d'une PR retient sa fusion (« Merge » du sprint, outil `merge` du MCP). Un tech lead ou le super admin peut passer outre (« Force past the review »), avec une raison gardée au journal (`review_forced`), pour ce commit seulement. Avec `active`, le sprint qui tourne seul attend les vérifications de la PR puis la revue de son dernier commit : OK ou remarques, il fusionne ; bloquante, il relance une fois Claude sur la PR (`workflows.claude` avec `pr` et `revue: "true"`) pour traiter les remarques bloquantes, puis une nouvelle revue ; encore bloquante, la fiche s'arrête et dit pourquoi.
 
 ## Validation
 

@@ -108,7 +108,7 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
     title: "Claude workflow",
     why: "Optional. Tech leads and super admins launch Claude Code on a ready story, from the sprint (Launch the next story) or the Backlog; the project's own workflow runs it, with its own key.",
     how: `<ol>
-        <li><strong>The workflow</strong>, in <code>.github/workflows/</code> on the production branch: started by <code>workflow_dispatch</code> with inputs <code>issue</code> (the story's number), <code>par</code> (who launched it) and <code>pr</code> (a pull request of the story to bring up to date: “Update with Claude” in the sprint). It runs Claude Code on the issue, on a working branch created <em>linked to the issue</em> (GitHub's Development section: La Fabrique finds the story's pull request by it), and opens a pull request that starts with <code>Refs #N</code> and says how each acceptance criterion is checked; with <code>pr</code>, it merges the base branch into that pull request's branch, resolves the conflicts and pushes to it. It never pushes to production. Two lines it needs: <code>run-name: "Claude #${'$'}{{ inputs.issue }}"</code> (La Fabrique finds each story's run by it) and, on the action, <code>allowed_bots: la-fabrique-extraordinaire</code> (the action refuses to be started by a bot it was not told about). Start from an example: <a href="/guide/exemples/claude.yml">the épicerie's</a> (pull request to <code>integration</code>), or La Fabrique's own <code>.github/workflows/claude.yml</code> (no integration branch: pull request to <code>main</code>).</li>
+        <li><strong>The workflow</strong>, in <code>.github/workflows/</code> on the production branch: started by <code>workflow_dispatch</code> with inputs <code>issue</code> (the story's number), <code>par</code> (who launched it) and <code>pr</code> (a pull request of the story to bring up to date: “Update with Claude” in the sprint), and optionally <code>revue</code> (<code>true</code> with <code>pr</code>: Claude's review of that pull request is blocking, address its blocking findings; the sprint's run sends it once). It runs Claude Code on the issue, on a working branch created <em>linked to the issue</em> (GitHub's Development section: La Fabrique finds the story's pull request by it), and opens a pull request that starts with <code>Refs #N</code> and says how each acceptance criterion is checked; with <code>pr</code>, it merges the base branch into that pull request's branch, resolves the conflicts and pushes to it. It never pushes to production. Two lines it needs: <code>run-name: "Claude #${'$'}{{ inputs.issue }}"</code> (La Fabrique finds each story's run by it) and, on the action, <code>allowed_bots: la-fabrique-extraordinaire</code> (the action refuses to be started by a bot it was not told about). Start from an example: <a href="/guide/exemples/claude.yml">the épicerie's</a> (pull request to <code>integration</code>), or La Fabrique's own <code>.github/workflows/claude.yml</code> (no integration branch: pull request to <code>main</code>).</li>
         <li><strong>Claude's key</strong>, a repository secret (Settings → Secrets and variables → Actions), one of the two:
           <ul>
             <li><code>CLAUDE_CODE_OAUTH_TOKEN</code>: a Claude subscription (Pro or Max); create it with <code>claude setup-token</code> in a terminal. The runs count in the subscription's usage.</li>
@@ -121,6 +121,21 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
       ${code(`"workflows": { "claude": "claude.yml" },
 "claude": { "plafond": 2 }`)}
       <p>A story is launched only once <em>Ready</em> (<a href="#lifecycle">Definition of Ready</a>). Without the secrets, the run stops at its first step and says which is missing.</p>`,
+  },
+  review: {
+    title: "Review by Claude",
+    why: "Optional. Claude reads each pull request against its story and leaves one review on GitHub: lenient by default, it blocks only on what really breaks. The project's own workflow runs it, with its own key.",
+    how: `<p>A workflow in <code>.github/workflows/</code> on the production branch, started by <code>workflow_dispatch</code> with inputs <code>pr</code> (the pull request), <code>par</code> (who started it) and <code>reglages</code> (the settings below, as JSON). It reviews the pull request with Claude Code, posts one GitHub review and never pushes, approves or merges. Same secrets as the Claude workflow. La Fabrique's own: <code>.github/workflows/review.yml</code>.</p>
+      <p>Then <code>revue</code> in <code>.fabrique.json</code>: <code>active</code> (every pull request reviewed when opened or updated; off, only on demand), <code>modele</code> (the reviewing model; the workflow's default otherwise), <code>exigence</code> (<code>souple</code> by default, <code>normale</code>, <code>stricte</code>), <code>max_remarques</code> (5 by default), <code>focus</code> (each area <code>off</code>, <code>conseil</code> or <code>bloquant</code>; the project may add its own) and <code>consignes</code> (a folder with one Markdown file per area). ${guide("revue", "The format")}.</p>
+      ${code(`"workflows": { "revue": "review.yml" },
+"revue": {
+  "active": true,
+  "modele": "claude-sonnet-5-5",
+  "exigence": "souple",
+  "max_remarques": 5,
+  "focus": { "securite": "bloquant", "architecture": "conseil", "performance": "conseil" },
+  "consignes": ".github/review"
+}`)}`,
   },
   app: {
     title: "Connected app (defect reports)",
@@ -146,7 +161,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "app"]);
+const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "review", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",

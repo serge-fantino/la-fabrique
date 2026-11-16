@@ -4,6 +4,7 @@ import { globToRegExp, type VersionState } from "./production";
 import type { ConfigCheck } from "./projects";
 import type { Release } from "./roadmap";
 import { branchIssue, type Story } from "./stories";
+import { describeReview, reviewSettings } from "./review-settings";
 
 export type SetupState = "done" | "missing" | "optional" | "unknown";
 
@@ -22,6 +23,7 @@ export type SetupKey =
   | "merge_workflow"
   | "release_workflow"
   | "claude_workflow"
+  | "review"
   | "app"
   | "integration";
 
@@ -250,6 +252,12 @@ export function setupChecklist({ check, releases, stories, branches, versions, a
         : "No `workflows.claude`: Claude is not launched from La Fabrique.",
       true,
     ),
+  );
+
+  // Optional: Claude reviews the pull requests (la-fabrique#377).
+  const review = config?.workflows?.["revue"];
+  items.push(
+    item("review", typeof review === "string", describeReview(reviewSettings(config?.revue), typeof review === "string" ? review : null), true),
   );
 
   // Optional: the project's app reports defects from an environment.
