@@ -46,6 +46,7 @@ import { can, type Action } from "./rights";
 import { activeSprint, setNice } from "./sprints";
 import { closeSprint, joinSprint, startSprint, type JoinOutcome } from "./sprint-flow";
 import { canMerge, mergePull, pullDetails } from "./sprint-pulls";
+import { reviewHold } from "./review";
 import { hasIntegration } from "./sprint-release";
 import { missingSections, specRubriques } from "./specs";
 import { loadStoryDetail } from "./story-detail";
@@ -875,6 +876,9 @@ const TOOLS: Tool[] = [
       const detail = (await pullDetails(ctx.env, project, [pull])).get(pull);
       if (!detail || detail.state !== "open") fail(`#${pull} is not an open pull request of ${project.repo}.`);
       if (!canMerge(ctx.role, project, detail?.base ?? null)) fail("Your role cannot merge into this branch.");
+      // A blocking review by Claude holds it (la-fabrique#382); never forced from here.
+      const held = await reviewHold(ctx.env, project, pull, detail?.head ?? null);
+      if (held) fail(held);
       const outcome = await mergePull(ctx.env, project, ctx.login, pull);
       return outcome.ok ? { merging: pull, sprint: absolute(ctx, `${projectUrl(project.repo)}/sprint`) } : fail(outcome.message);
     },

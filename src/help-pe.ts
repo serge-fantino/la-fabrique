@@ -662,7 +662,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "follow",
         title: "Following the work",
-        body: `<p>The page has three parts: the sprint (where it is, the go, the close), <em>Implementation</em> (the run, Claude's runs, the next story) with <em>Pull requests open</em> (${b("Ask for a review")} to a tech lead, ${b("Review with Claude")} for a tech lead and the review's verdict next to each pull request, ${b("Merge")} into the production branch, “Merge refused” with why), and <em>Features and stories</em>. Each story has its page: steps, criteria, pull requests, Claude's runs, history, feedback. While something is in progress, the page reads itself again every minute, when you are not typing or dragging.</p>`,
+        body: `<p>The page has three parts: the sprint (where it is, the go, the close), <em>Implementation</em> (the run, Claude's runs, the next story) with <em>Pull requests open</em> (${b("Ask for a review")} to a tech lead, ${b("Review with Claude")} for a tech lead and the review's verdict next to each pull request, a blocking review holding ${b("Merge")} until a tech lead clicks ${b("Force past the review")} with a reason, ${b("Merge")} into the production branch, “Merge refused” with why), and <em>Features and stories</em>. Each story has its page: steps, criteria, pull requests, Claude's runs, history, feedback. While something is in progress, the page reads itself again every minute, when you are not typing or dragging.</p>`,
       },
       {
         id: "joining",

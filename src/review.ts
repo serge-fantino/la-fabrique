@@ -48,7 +48,7 @@ export async function launchReview(
   project: Project,
   by: string,
   pull: number,
-  options: { story?: number | null; trigger?: "person" | "auto"; sha?: string | null } = {},
+  options: { story?: number | null; trigger?: "person" | "auto" | "run"; sha?: string | null } = {},
 ): Promise<ReviewOutcome> {
   const file = reviewWorkflow(project);
   if (!file) return { ok: false, message: "This project declares no review workflow (workflows.revue).", status: 422 };
@@ -298,4 +298,114 @@ export async function pullReviewStates(db: D1Database, repo: string, heads: Map<
     .bind(repo)
     .all<LogRow>();
   return reviewStates(results, heads);
+}
+
+// ---- The review holds the merge (C160: F14.5, la-fabrique#381; F14.6, #382) ----
+
+// The review is on for the sprint's run: declared and active.
+export function reviewHolds(project: Project): boolean {
+  return Boolean(reviewWorkflow(project)) && projectReviewSettings(project).active;
+}
+
+// Forced past a blocking review, by a person: on that commit only.
+export interface Forced {
+  sha: string | null;
+  by: string;
+  reason: string;
+  at: string;
+}
+
+export function canForceReview(role: Role | null): boolean {
+  return can(role, "force_review");
+}
+
+export async function forcedReviews(db: D1Database, repo: string): Promise<Map<number, Forced>> {
+  const { results } = await db
+    .prepare("SELECT occurred_at, actor, issue_number, details FROM activity_log WHERE repo = ? AND action = 'review_forced' AND issue_number IS NOT NULL ORDER BY id")
+    .bind(repo)
+    .all<{ occurred_at: string; actor: string; issue_number: number; details: string | null }>();
+  const found = new Map<number, Forced>();
+  for (const row of results) {
+    const details = row.details ? (JSON.parse(row.details) as Record<string, unknown>) : {};
+    found.set(row.issue_number, {
+      sha: typeof details["sha"] === "string" ? details["sha"] : null,
+      by: row.actor,
+      reason: typeof details["reason"] === "string" ? details["reason"] : "",
+      at: row.occurred_at,
+    });
+  }
+  return found;
+}
+
+// Whether a review was forced for the pull request's latest commit.
+export function isForced(forced: Forced | undefined, head: string | null | undefined): boolean {
+  return Boolean(forced && (forced.sha === null || !head || forced.sha === head));
+}
+
+// A blocking review on the latest commit, not forced, holds the merge.
+export function heldByReview(review: ReviewState | undefined, forced: Forced | undefined, head: string | null | undefined): boolean {
+  return review?.state === "bloquant" && !review.stale && !isForced(forced, head);
+}
+
+// "Force past the review" (F14.6): a reason is required; logged with the
+// commit it was forced on, so the next commit's review holds again.
+export async function forceReview(
+  env: Env,
+  project: Project,
+  login: string,
+  pull: number,
+  reason: string,
+  head: string | null,
+): Promise<{ ok: true } | { ok: false; message: string; status: 409 | 422 }> {
+  const why = reason.trim().slice(0, 500);
+  if (!why) return { ok: false, message: "Say why you force past the review: the reason is kept in the log.", status: 422 };
+  const review = (await pullReviewStates(env.DB, project.repo, new Map([[pull, head]]))).get(pull);
+  if (review?.state !== "bloquant" || review.stale) return { ok: false, message: `The latest review of #${pull} is not blocking: nothing to force.`, status: 409 };
+  await activityStatement(env.DB, {
+    actor: login,
+    action: "review_forced",
+    repo: project.repo,
+    issueNumber: pull,
+    details: { pull, sha: head ?? review.sha, reason: why, blocking: review.blocking, review: review.url },
+  }).run();
+  await sprintLiveFor(env, project.repo)
+    ?.notify({ kind: "pull_request", issue: null, status: "review_forced", conclusion: null, url: "", at: new Date().toISOString() })
+    .catch(() => undefined);
+  return { ok: true };
+}
+
+// The checks GitHub ran on a commit (its check runs): pending while one
+// runs, failure when one failed, success otherwise (none counts as success).
+export type Checks = "pending" | "success" | "failure";
+
+interface RestCheckRuns {
+  check_runs: { status: string; conclusion: string | null }[];
+}
+
+const FAILED = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure"]);
+
+export function checksOf(runs: RestCheckRuns["check_runs"]): Checks {
+  if (runs.some((run) => run.status !== "completed")) return "pending";
+  if (runs.some((run) => run.conclusion && FAILED.has(run.conclusion))) return "failure";
+  return "success";
+}
+
+export async function commitChecks(env: Env, project: Project, sha: string): Promise<Checks> {
+  try {
+    const token = await installationToken(env, project.installationId);
+    const found = await githubJson<RestCheckRuns>(token, `/repos/${project.repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+    return checksOf(found.check_runs);
+  } catch {
+    return "pending";
+  }
+}
+
+// Why a merge is refused because of Claude's review (la-fabrique#382), or
+// null: a blocking review of the latest commit, not forced past.
+export async function reviewHold(env: Env, project: Project, pull: number, head: string | null): Promise<string | null> {
+  if (!reviewWorkflow(project)) return null;
+  const [states, forced] = await Promise.all([pullReviewStates(env.DB, project.repo, new Map([[pull, head]])), forcedReviews(env.DB, project.repo)]);
+  const review = states.get(pull);
+  if (!heldByReview(review, forced.get(pull), head)) return null;
+  return `Claude's review of #${pull} is blocking (${review?.state === "bloquant" ? review.blocking : 0} blocking finding${review?.state === "bloquant" && review.blocking === 1 ? "" : "s"}): a tech lead or the super admin forces past it, with a reason, before the merge.`;
 }

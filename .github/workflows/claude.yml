@@ -12,7 +12,7 @@
 #   the pull request it creates start the CI, which the GITHUB_TOKEN would not.
 name: Claude
 # The issue number in the run's name: La Fabrique finds the run of each story by it.
-run-name: "Claude #${{ inputs.issue }}${{ inputs.pr && format(' · update #{0}', inputs.pr) || '' }}${{ inputs.rework == 'true' && ' · rework' || '' }}"
+run-name: "Claude #${{ inputs.issue }}${{ inputs.pr && format(' · update #{0}', inputs.pr) || '' }}${{ inputs.rework == 'true' && ' · rework' || '' }}${{ inputs.revue == 'true' && ' · review' || '' }}"
 
 on:
   workflow_dispatch:
@@ -28,6 +28,9 @@ on:
         required: false
       rework:
         description: "true: the story was tested and has feedbacks; change its code to take them into account (new branch, new pull request)"
+        required: false
+      revue:
+        description: "true (with pr): Claude's review of the pull request is blocking; address its blocking findings (la-fabrique#381)"
         required: false
 
 concurrency:
@@ -147,6 +150,7 @@ jobs:
             1. Read the story with its comments: `gh issue view ${{ inputs.issue }} --comments`${{ inputs.pr && format(', and the pull request with its reviews: `gh pr view {0} --comments`', inputs.pr) || '' }}. Its acceptance criteria say when it is done; the card it comes from is linked at the bottom.
             2. Follow CLAUDE.md (principles, security, conventions, design).
             3. ${{ inputs.pr && 'Resolve the conflicts keeping both sides'' intent (finish the merge with `git commit --no-edit`), and answer what the reviews still ask.' || inputs.rework == 'true' && 'This story was already developed and merged, then tested: its comments that start with **Test feedback** say what fails (a criterion, what the tester saw, a screenshot). Change the code so that each feedback is addressed, without undoing what works; this is the same story, not a new one.' || 'Do the work.' }}
+            ${{ inputs.revue == 'true' && 'The latest review by Claude on this pull request (its body starts with "### Review by Claude") is blocking: address each of its **Blocking** findings, and only those; its advice is optional. Do not rewrite the story nor change what it asks. In the pull request''s description, say how each blocking finding is addressed.' || '' }}
             4. Check: `npm run typecheck`, `npm test`; add tests for what you change.
             5. Release notes: if anything visible changes, this branch has one entry at the top of docs/release-notes.json with `"version": "next"`, today's date and no `heure`, in English, `"stories": [${{ inputs.issue }}]`. If the story carries the label `coulisses` (its feature is behind the scenes), its changes go in `"coulisses"` (for the team) and `"changements"` stays `[]`: the public What's new never shows them. Never write a version number or a time: the merge workflow numbers and dates it when it merges, after main's newest.
             6. Push: `git push origin HEAD:${{ env.BRANCH }}` (never with --force). ${{ inputs.pr && format('Then update the description of #{0} if what it says changed.', inputs.pr) || format('Open a pull request to main: `gh pr create --base main --head {0}`, a clear title, a body in English that starts with "Refs #{1}" (the story; not "Closes": the story stays open until it is validated), says what is done and how to check it (for a rework: each test feedback and how it is addressed), then a section "## Acceptance criteria" with one line per criterion of the issue: `- [x] <criterion>: <the test that checks it>`, or `- [ ] <criterion>: <the manual step to check it, or why it is not done>`.', env.BRANCH, inputs.issue) }}

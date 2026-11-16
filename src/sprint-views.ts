@@ -7,7 +7,7 @@ import { isRunning, type ClaudeRun } from "./claude";
 import { waitReason, type InProgress } from "./card-lock";
 import type { PullDetail } from "./sprint-pulls";
 import { reviewPill } from "./review-views";
-import type { ReviewState } from "./review";
+import { heldByReview, isForced, type Forced, type ReviewState } from "./review";
 import type { Card } from "./cards";
 import { isFinished, isInDevelopment, isReadyStage, isToTest } from "./lifecycle";
 import { notice, projectContext, projectHeader } from "./project-views";
@@ -57,7 +57,9 @@ export interface SprintData {
   merge?: { workflow: string | null; can: (base: string | null) => boolean };
   // Claude reviews a pull request (la-fabrique#378): the project's review
   // workflow (workflows.revue), and whether the viewer may start it.
-  review?: { workflow: string | null; can: boolean };
+  review?: { workflow: string | null; can: boolean; canForce?: boolean };
+  // Reviews forced past by a person, by pull request (la-fabrique#382).
+  forced?: Map<number, Forced>;
   // Where each open pull request's review stands (la-fabrique#380).
   reviews?: Map<number, ReviewState>;
   reviewers: string[];
@@ -230,8 +232,28 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         const filesInConflict = Boolean(lastAttempt && lastAttempt.conclusion !== "success" && /^Conflicts with /.test(lastAttempt.reason ?? ""));
         const mergeableAsIs = detail?.mergeable !== "dirty" || (Boolean(data.merge?.workflow) && !filesInConflict);
         const mergeable = pull.state === "open" && !detail?.draft && detail && mergeableAsIs && !running;
-        const merge =
-          mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
+        // A blocking review of the latest commit holds the merge; a reviewer
+        // role forces past it, with a reason (la-fabrique#382).
+        const review = data.reviews?.get(pull.number);
+        const forcedPast = data.forced?.get(pull.number);
+        const held = pull.state === "open" && heldByReview(review, forcedPast, detail?.head);
+        const forcedNote =
+          pull.state === "open" && review?.state === "bloquant" && !review.stale && isForced(forcedPast, detail?.head) && forcedPast
+            ? ` <span class="pill small" title="${escapeHtml(forcedPast.reason)}">Review forced by @${escapeHtml(forcedPast.by)}</span>`
+            : "";
+        const force =
+          held && controls && data.review?.canForce
+            ? `<form method="post" action="${escapeHtml(action)}" class="inline sprint-force" data-busy="…">${csrfField(viewer)}
+                <input type="hidden" name="action" value="force_review" />
+                <input type="hidden" name="pull" value="${pull.number}" />
+                <label class="visually-hidden" for="force-${pull.number}">Why you force past the review of pull request #${pull.number}</label>
+                <input id="force-${pull.number}" name="reason" required maxlength="500" placeholder="Why (kept in the log)" />
+                <button type="submit" class="button quiet small">Force past the review</button>
+              </form>`
+            : "";
+        const merge = held && controls && data.merge?.can(detail?.base ?? null)
+          ? ` <span class="muted small">Merge held by Claude's blocking review</span>`
+          : mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
             ? button({ action: "merge", pull: pull.number }, `Merge pull request #${pull.number}`, "Merge", "small")
             : mergeable && controls && data.merge && !data.merge.workflow && data.merge.can(detail.base)
               ? ` <span class="muted small">no merge workflow declared (<a href="${escapeHtml(base)}/setup">workflows.fusionner</a>): <a href="${escapeHtml(pull.url)}">merge it on GitHub</a></span>`
@@ -252,7 +274,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         const guessed = pull.guessed
           ? ` <span class="muted small" title="Only the pull request's text names this story: no linked branch, no closing reference, not its branch name.">guessed from its text</span>`
           : "";
-        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${pull.state === "open" ? reviewPill(data.reviews?.get(pull.number)) : ""}${update}${merge}${claudeReview}${refused}${guessed}${waiting}${ask}</span>`;
+        return `<span class="sprint-pull"><a class="pill ${tone} small" href="${escapeHtml(pull.url)}">PR #${pull.number} ${state}</a>${mergeState}${pull.state === "open" ? reviewPill(data.reviews?.get(pull.number)) : ""}${forcedNote}${update}${merge}${force}${claudeReview}${refused}${guessed}${waiting}${ask}</span>`;
       })
       .join("");
   };

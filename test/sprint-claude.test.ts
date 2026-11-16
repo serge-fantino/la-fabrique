@@ -631,3 +631,64 @@ describe("Review with Claude from the sprint (la-fabrique#378, #380)", () => {
     expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "claude_review", story: "12", pull: "30" }, pe.cookie)).status).toBe(403);
   });
 });
+
+describe("Force past a blocking review (la-fabrique#382)", () => {
+  it("holds Merge on a blocking review, lets a tech lead force past it with a reason, then merges", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", revue: "review.yml", fusionner: "merge.yml" }, claude: { plafond: 1 } });
+    await env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'")
+      .bind(JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]), REPO)
+      .run();
+    await env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('github', 'review_finished', ?, 30, ?)")
+      .bind(REPO, JSON.stringify({ verdict: "bloquant", sha: "new", blocking: 2, advice: 0, url: "https://github.com/acme/widget/pull/30#r1" }))
+      .run();
+    const detail = JSON.stringify({ number: 30, title: "x", html_url: "https://github.com/acme/widget/pull/30", state: "open", draft: false, merged_at: null, user: { login: "someone" }, requested_reviewers: [], mergeable_state: "clean", base: { ref: "main" }, head: { sha: "new" } });
+    const pullRead = (times = 1) => {
+      github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(times);
+      github().intercept({ path: `/repos/${REPO}/pulls/30` }).reply(200, detail, JSON_HEADERS);
+    };
+    const page = async (cookie: string) => {
+      pullRead(2);
+      github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+      await env.DB.prepare("DELETE FROM snapshots WHERE kind = 'claude_runs'").run();
+      return (await get(`/projects/${REPO}/sprint`, cookie)).text();
+    };
+
+    await grantRole("lead", "tech_lead");
+    const lead = await signIn("lead");
+    const seenByLead = await page(lead.cookie);
+    expect(seenByLead).toContain(">Force past the review</button>");
+    expect(seenByLead).toContain('name="reason" required');
+
+    await grantRole("pe", "product_engineer");
+    const pe = await signIn("pe");
+    const seenByPe = await page(pe.cookie);
+    expect(seenByPe).not.toContain("Force past the review");
+    // The merge is said held, for whoever may merge.
+    expect(seenByPe).toContain("Merge held by Claude's blocking review");
+    expect(seenByPe).not.toContain('aria-label="Merge pull request #30"');
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "force_review", pull: "30", reason: "x" }, pe.cookie)).status).toBe(403);
+
+    // Refused on the server too, while held.
+    pullRead();
+    const refused = await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "merge", pull: "30" }, pe.cookie);
+    expect(refused.status).toBe(409);
+
+    // Without a reason: refused. With one: logged on the latest commit.
+    pullRead();
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: lead.csrf, action: "force_review", pull: "30", reason: "  " }, lead.cookie)).status).toBe(422);
+    pullRead();
+    const forced = await post(`/projects/${REPO}/sprint`, { csrf: lead.csrf, action: "force_review", pull: "30", reason: "False positive: the token is read from a secret" }, lead.cookie);
+    expect(forced.headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=review_forced&pull=30`);
+    const logged = await env.DB.prepare("SELECT actor, issue_number, details FROM activity_log WHERE action = 'review_forced'").first<{ actor: string; issue_number: number; details: string }>();
+    expect(logged).toMatchObject({ actor: "lead", issue_number: 30 });
+    expect(JSON.parse(logged?.details ?? "{}")).toMatchObject({ sha: "new", reason: "False positive: the token is read from a secret", blocking: 2 });
+
+    // Forced: the pull request can be merged.
+    const after = await page(pe.cookie);
+    expect(after).toContain("Review forced by @lead");
+    expect(after).toContain('aria-label="Merge pull request #30"');
+    pullRead(2);
+    github().intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/merge.yml/dispatches` }).reply(204, "");
+    expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "merge", pull: "30" }, pe.cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=merging&pull=30`);
+  });
+});
