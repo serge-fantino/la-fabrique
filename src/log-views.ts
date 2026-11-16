@@ -119,6 +119,23 @@ export function describe(entry: LogEntry, repo: string): string {
       return `marked ${story} ready for Claude`;
     case "review_requested":
       return `asked @${text(d["reviewer"])} to review pull request ${story}`;
+    case "review_launched":
+      return `${d["trigger"] === "auto" ? "had Claude review" : d["trigger"] === "run" ? "had the sprint's run ask Claude to review" : "asked Claude to review"} pull request ${pull(entry.issue)}${d["model"] ? ` (model <span class="mono">${text(d["model"])}</span>)` : ""}`;
+    case "review_launch_refused":
+      return `could not start Claude's review of pull request ${pull(entry.issue)}: ${text(d["reason"])}`;
+    case "review_finished": {
+      const verdicts: Record<string, string> = { ok: "OK", remarques: `${text(d["advice"])} remark${Number(d["advice"]) === 1 ? "" : "s"}`, bloquant: `blocking (${text(d["blocking"])})` };
+      const link = typeof d["url"] === "string" && d["url"].startsWith("https://github.com/") ? ` (<a href="${escapeHtml(d["url"])}">the review</a>)` : runLink(d["run"]);
+      return d["verdict"] === "failed"
+        ? `saw Claude's review of pull request ${pull(entry.issue)} fail${link}`
+        : `saw Claude review pull request ${pull(entry.issue)}: ${verdicts[String(d["verdict"])] ?? text(d["verdict"])}${link}`;
+    }
+    case "review_forced":
+      return `forced past Claude's blocking review of pull request ${pull(entry.issue)}${typeof d["sha"] === "string" ? ` on commit <span class="mono">${text(String(d["sha"]).slice(0, 7))}</span>` : ""}: “${text(d["reason"])}”`;
+    case "sprint_run_review_started":
+      return `had the sprint's run wait for Claude's review of pull request ${pull(d["pull"])} of ${story}`;
+    case "sprint_run_review_rework":
+      return `had the sprint's run send pull request ${pull(d["pull"])} of ${story} back to Claude: its review is blocking (${text(d["blocking"])})`;
     case "claude_run_finished": {
       const words: Record<string, string> = { success: "finished", failure: "failed", cancelled: "was cancelled", timed_out: "timed out" };
       const url = typeof d["url"] === "string" ? d["url"] : "";

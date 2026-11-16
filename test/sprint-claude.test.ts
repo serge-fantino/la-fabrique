@@ -692,3 +692,52 @@ describe("Force past a blocking review (la-fabrique#382)", () => {
     expect((await post(`/projects/${REPO}/sprint`, { csrf: pe.csrf, action: "merge", pull: "30" }, pe.cookie)).headers.get("location")).toBe(`/projects/${REPO}/sprint?notice=merging&pull=30`);
   });
 });
+
+describe("Claude's review on the story's page (la-fabrique#380)", () => {
+  it("shows the review's state, its findings read on GitHub, blocking first, the hold, and the history", async () => {
+    await seed({ nom: "Widget", workflows: { claude: "claude.yml", revue: "review.yml" }, claude: { plafond: 1 } });
+    await env.DB.batch([
+      env.DB.prepare("UPDATE snapshots SET data = ? WHERE repo = ? AND kind = 'stories'").bind(
+        JSON.stringify([story(1, "Epic", { parent: null, subTotal: 3 }), story(12, "Ready one", { pullRequests: [{ number: 30, url: "https://github.com/acme/widget/pull/30", state: "open" }] })]),
+        REPO,
+      ),
+      env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('lead', 'review_launched', ?, 30, ?)").bind(REPO, JSON.stringify({ pull: 30, trigger: "person", model: "claude-sonnet-5-5" })),
+      env.DB.prepare("INSERT INTO activity_log (actor, action, repo, issue_number, details) VALUES ('github', 'review_finished', ?, 30, ?)").bind(
+        REPO,
+        JSON.stringify({ verdict: "bloquant", sha: "new", blocking: 1, advice: 1, url: "https://github.com/acme/widget/pull/30#r2" }),
+      ),
+    ]);
+    await grantRole("pe", "product_engineer");
+    github().intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).times(3);
+    github().intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30` })
+      .reply(200, JSON.stringify({ number: 30, title: "Story #12", html_url: "https://github.com/acme/widget/pull/30", state: "open", merged_at: null, draft: false, user: { login: "claude[bot]" }, requested_reviewers: [], base: { ref: "main" }, head: { sha: "new" } }), JSON_HEADERS);
+    github()
+      .intercept({ path: `/repos/${REPO}/pulls/30/reviews?per_page=100` })
+      .reply(
+        200,
+        JSON.stringify([
+          {
+            id: 2,
+            body: '### Review by Claude: Blocking\n<!-- fabrique-review {"verdict":"bloquant","summary":"One hole.","findings":[{"area":"performance","level":"conseil","text":"Reads twice"},{"area":"securite","level":"bloquant","file":"src/a.ts","line":3,"text":"Token in the page"}],"model":"claude-sonnet-5-5","sha":"new"} -->',
+            html_url: "https://github.com/acme/widget/pull/30#r2",
+            commit_id: "new",
+            submitted_at: "2026-11-16T10:05:00Z",
+          },
+        ]),
+        JSON_HEADERS,
+      );
+    const page = await (await get(`/projects/${REPO}/sprint/stories/12`, (await signIn("pe")).cookie)).text();
+    expect(page).toContain("Review blocking: 1");
+    expect(page).toContain("Merge held by Claude's blocking review");
+    expect(page).toContain("One hole.");
+    // Blocking first.
+    expect(page.indexOf("Token in the page")).toBeLessThan(page.indexOf("Reads twice"));
+    expect(page).toContain('<span class="pill small alert">Blocking</span> <code>securite</code> <code>src/a.ts:3</code> Token in the page');
+    // The history says it in words.
+    expect(page).toContain("asked Claude to review pull request");
+    expect(page).toContain("saw Claude review pull request");
+    expect(page).toContain("blocking (1)");
+  });
+});

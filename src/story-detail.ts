@@ -11,6 +11,8 @@ import { describe } from "./log-views";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import { lastMergeAttempts, pullDetails, type MergeAttempt, type PullDetail } from "./sprint-pulls";
+import { forcedReviews, heldByReview, isForced, latestReview, pullReviewStates, reviewWorkflow, type Forced, type ReviewMarker, type ReviewState } from "./review";
+import { reviewPill } from "./review-views";
 import { loadStories, type Story } from "./stories";
 import { canValidate } from "./validation";
 import { canLaunchClaude } from "./claude";
@@ -33,6 +35,11 @@ export interface StoryDetail {
   launched: { by: string; at: string } | null;
   history: LogEntry[];
   scenarios: Recorded[];
+  // Claude's review of each pull request (la-fabrique#380, #382): where it
+  // stands, a review forced past, and the findings of the latest one.
+  reviews?: Map<number, ReviewState>;
+  forced?: Map<number, Forced>;
+  findings?: Map<number, ReviewMarker & { url: string }>;
 }
 
 export async function loadStoryDetail(env: Env, project: Project, number: number): Promise<StoryDetail> {
@@ -65,12 +72,25 @@ export async function loadStoryDetail(env: Env, project: Project, number: number
     }
     return { id: row.id, at: row.occurred_at, actor: row.actor, action: row.action, issue: row.issue_number, details: parsed };
   });
+  // Claude's review, when the project declares its workflow: the findings
+  // are read on GitHub for the pull requests that have a finished review.
+  const pulls = numbers.map((pull) => details.get(pull)).filter((pull): pull is PullDetail => Boolean(pull));
+  const reviewed = reviewWorkflow(project)
+    ? await Promise.all([pullReviewStates(env.DB, project.repo, new Map(pulls.map((pull) => [pull.number, pull.head ?? null]))), forcedReviews(env.DB, project.repo)])
+    : null;
+  const withVerdict = reviewed ? pulls.filter((pull) => { const state = reviewed[0].get(pull.number)?.state; return state === "ok" || state === "remarques" || state === "bloquant"; }) : [];
+  const findings = new Map(
+    (await Promise.all(withVerdict.slice(0, 5).map(async (pull) => [pull.number, await latestReview(env, project, pull.number)] as const))).filter(
+      (entry): entry is readonly [number, ReviewMarker & { url: string }] => entry[1] !== null,
+    ),
+  );
   return {
+    ...(reviewed ? { reviews: reviewed[0], forced: reviewed[1], findings } : {}),
     number,
     story: stories.find((candidate) => candidate.number === number) ?? null,
     state,
     cards,
-    pulls: numbers.map((pull) => details.get(pull)).filter((pull): pull is PullDetail => Boolean(pull)),
+    pulls,
     merges,
     runs: runs.filter((run) => run.issue === number),
     launched: launches.get(number) ?? null,
@@ -119,6 +139,36 @@ const FEATURE_FAILURES: Record<string, string> = {
   nothing: "No criterion was recorded for this story yet.",
 };
 
+// Claude's review of a pull request on the story's page (la-fabrique#380):
+// its state, forced past or holding the merge, then the latest findings,
+// blocking first, as the GitHub review says them.
+function reviewBlock(detail: StoryDetail, pull: PullDetail): string {
+  const review = detail.reviews?.get(pull.number);
+  if (!review) return "";
+  const forced = detail.forced?.get(pull.number);
+  const open = pull.state === "open";
+  const status =
+    open && heldByReview(review, forced, pull.head)
+      ? ` <span class="muted small">Merge held by Claude's blocking review</span>`
+      : open && review.state === "bloquant" && !review.stale && isForced(forced, pull.head) && forced
+        ? ` <span class="pill small">Review forced by @${escapeHtml(forced.by)}</span> <span class="muted small">“${escapeHtml(forced.reason)}”</span>`
+        : "";
+  const found = detail.findings?.get(pull.number);
+  const findings = found?.findings.length
+    ? `<ul class="review-findings">${[...found.findings]
+        .sort((a, b) => (a.level === b.level ? 0 : a.level === "bloquant" ? -1 : 1))
+        .map(
+          (finding) =>
+            `<li><span class="pill small${finding.level === "bloquant" ? " alert" : ""}">${finding.level === "bloquant" ? "Blocking" : "Advice"}</span> <code>${escapeHtml(finding.area)}</code>${
+              finding.file ? ` <code>${escapeHtml(finding.file)}${finding.line ? `:${finding.line}` : ""}</code>` : ""
+            } ${escapeHtml(finding.text)}</li>`,
+        )
+        .join("")}</ul>`
+    : "";
+  const summary = found?.summary ? `<p class="small">${escapeHtml(found.summary)}</p>` : "";
+  return `<div class="story-review">${reviewPill(review)}${status}${summary}${findings}</div>`;
+}
+
 export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryDetail, feature: { pull?: number; failed?: string } = {}): string {
   const base = projectUrl(project.repo);
   const github = `https://github.com/${escapeHtml(project.repo)}`;
@@ -161,7 +211,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
             pull.base ? ` <span class="muted small">into <code>${escapeHtml(pull.base)}</code></span>` : ""
           }${pull.mergeable === "dirty" ? ` <span class="pill alert small">In conflict</span>` : ""}${
             attempt && attempt.conclusion !== "success" && pull.state === "open" ? ` <span class="small">Merge refused: ${escapeHtml(attempt.reason ?? "the workflow stopped")}</span>` : ""
-          }${pull.reviewers.length ? ` <span class="muted small">review asked from ${pull.reviewers.map((login) => `@${escapeHtml(login)}`).join(", ")}</span>` : ""}</li>`;
+          }${pull.reviewers.length ? ` <span class="muted small">review asked from ${pull.reviewers.map((login) => `@${escapeHtml(login)}`).join(", ")}</span>` : ""}${reviewBlock(detail, pull)}</li>`;
         })
         .join("")}</ul>`
     : `<p class="muted">No pull request yet.</p>`;

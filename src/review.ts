@@ -409,3 +409,20 @@ export async function reviewHold(env: Env, project: Project, pull: number, head:
   if (!heldByReview(review, forced.get(pull), head)) return null;
   return `Claude's review of #${pull} is blocking (${review?.state === "bloquant" ? review.blocking : 0} blocking finding${review?.state === "bloquant" && review.blocking === 1 ? "" : "s"}): a tech lead or the super admin forces past it, with a reason, before the merge.`;
 }
+
+// The latest review by Claude of a pull request, as posted on GitHub (its
+// marker): what the story's page lists (la-fabrique#380). Null when GitHub
+// does not answer or there is none.
+export async function latestReview(env: Env, project: Project, pull: number): Promise<(ReviewMarker & { url: string }) | null> {
+  try {
+    const token = await installationToken(env, project.installationId);
+    const reviews = await githubJson<RestReview[]>(token, `/repos/${project.repo}/pulls/${pull}/reviews?per_page=100`);
+    for (const review of [...reviews].reverse()) {
+      const marker = parseReviewMarker(review.body);
+      if (marker) return { ...marker, url: review.html_url };
+    }
+  } catch {
+    // The page shows the state from the log anyway.
+  }
+  return null;
+}
