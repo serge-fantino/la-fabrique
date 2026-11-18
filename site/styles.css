@@ -4520,3 +4520,18 @@ main:has(.help-shell) {
 .sl-filters { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
 .sl-check { display: inline-flex; align-items: center; gap: 0.25rem; min-height: 44px; }
 .sl-flags { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+.sl-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+.sl-flat {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sl-feature-col {
+  margin-right: 0.25rem;
+}

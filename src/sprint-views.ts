@@ -7,19 +7,52 @@ import { isRunning, type ClaudeRun } from "./claude";
 import { waitReason, type InProgress } from "./card-lock";
 import type { PullDetail } from "./sprint-pulls";
 import { reviewPill } from "./review-views";
-import { heldByReview, isForced, type Forced, type ReviewState } from "./review";
+import {
+  heldByReview,
+  isForced,
+  type Forced,
+  type ReviewState,
+} from "./review";
 import type { Card } from "./cards";
-import { isFinished, isInDevelopment, isReadyStage, isToTest } from "./lifecycle";
+import {
+  isFinished,
+  isInDevelopment,
+  isReadyStage,
+  isToTest,
+} from "./lifecycle";
 import { notice, projectContext, projectHeader } from "./project-views";
 import type { Project } from "./projects";
 import type { Sprint } from "./sprints";
-import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./sprint-release";
+import type {
+  PlannedCard,
+  PlannedEntry,
+  ReleaseKind,
+  ReleasePlan,
+} from "./sprint-release";
 import { storyStatus } from "./stories-views";
 import { shippedNote, type Progress } from "./progress-stages";
 import { nextAction } from "./sprint-list";
-import { readListView, applyListView, isCustom, isFiltered, matchingStories, SORTS, STAGES, type FeatureFacts, type ListView, type StoryFacts } from "./sprint-filter";
+import {
+  readListView,
+  applyListView,
+  applyStoryView,
+  isCustom,
+  isFiltered,
+  matchingStories,
+  SORTS,
+  STAGES,
+  type FeatureFacts,
+  type ListView,
+  type StoryFacts,
+} from "./sprint-filter";
 import { projectUrl } from "./urls";
-import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
+import {
+  csrfField,
+  escapeHtml,
+  formatDate,
+  layout,
+  type Viewer,
+} from "./views";
 
 export interface SprintData {
   // The sprint running, if any; `legacy` when it was started on a version.
@@ -46,13 +79,28 @@ export interface SprintData {
   // With an integration branch: the go, as Production shows it.
   go?: string | null;
   // The last release started from the sprint, and where it stands.
-  release?: { version: string | null; state: "running" | "published" | "failed"; reason: string | null; run: string | null; at: string; by: string } | null;
+  release?: {
+    version: string | null;
+    state: "running" | "published" | "failed";
+    reason: string | null;
+    run: string | null;
+    at: string;
+    by: string;
+  } | null;
   noIntegration: boolean;
   // The sprint stories' pull requests, as GitHub has them, and who can be
   // asked to review one.
   pulls: Map<number, PullDetail>;
   // The last merge run of each pull request: refused, and why.
-  merges?: Map<number, { conclusion: string | null; reason: string | null; url: string | null; at: string }>;
+  merges?: Map<
+    number,
+    {
+      conclusion: string | null;
+      reason: string | null;
+      url: string | null;
+      at: string;
+    }
+  >;
   // Each card's progress, from its stories.
   progress?: Map<number, Progress>;
   // Merging through the project's workflow (workflows.fusionner), and who may.
@@ -97,7 +145,11 @@ export interface SprintData {
   // The run going on (running, paused, waiting): the page follows it.
   runActive?: boolean;
   // The versions a new sprint may take, after the newest release.
-  versions?: { newest: string | null; minor: string | null; major: string | null };
+  versions?: {
+    newest: string | null;
+    minor: string | null;
+    major: string | null;
+  };
   // The running sprint's version is already out: its newest release and the
   // version to give it instead.
   versionOut?: { newest: string; next: string | null } | null;
@@ -106,22 +158,44 @@ export interface SprintData {
   epics?: Map<number, { title: string; url: string | null }>;
   // Only one story's detail is wanted (la-fabrique#372): the page answers
   // with the fragment shown under its line in the list, read when it unfolds.
-  unfold?: { story: number; card: number; feedbacks: { at: string; actor: string; criterion: string; text: string; comment: string }[] };
+  unfold?: {
+    story: number;
+    card: number;
+    feedbacks: {
+      at: string;
+      actor: string;
+      criterion: string;
+      text: string;
+      comment: string;
+    }[];
+  };
 }
 
 // A run's state: queued, working (since when), done, failed; its link. Done
 // while the story is still in development without a pull request: Claude
 // left no pull request to merge, said as such (la-fabrique#239).
 function runPill(run: ClaudeRun, story?: CardStory): string {
-  const noPull = run.status === "completed" && Boolean(story) && !story?.rework && isInDevelopment(story) && !story?.pulls.some((pull) => pull.state === "open");
+  const noPull =
+    run.status === "completed" &&
+    Boolean(story) &&
+    !story?.rework &&
+    isInDevelopment(story) &&
+    !story?.pulls.some((pull) => pull.state === "open");
   if (noPull) {
     return `<a class="pill warn small" href="${escapeHtml(run.url)}" title="Claude's last run (${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC) ${
-      run.conclusion === "success" ? "ended" : run.conclusion === "cancelled" ? "was cancelled" : "failed"
+      run.conclusion === "success"
+        ? "ended"
+        : run.conclusion === "cancelled"
+          ? "was cancelled"
+          : "failed"
     } without a pull request: see its comment on the issue, then relaunch it">${run.conclusion === "success" ? "Claude done" : run.conclusion === "cancelled" ? "Claude cancelled" : "Claude failed"}: no pull request</a>`;
   }
   const [label, tone] =
     run.status !== "completed"
-      ? [run.status === "in_progress" ? "Claude working" : "Claude queued", "warn"]
+      ? [
+          run.status === "in_progress" ? "Claude working" : "Claude queued",
+          "warn",
+        ]
       : run.conclusion === "success"
         ? ["Claude done", "ok"]
         : run.conclusion === "cancelled"
@@ -133,39 +207,88 @@ function runPill(run: ClaudeRun, story?: CardStory): string {
 // The value of "Nice to have" in a story's priority list.
 const NICE = "nice";
 
-const SORT_LABELS: Record<string, string> = { order: "Sprint's order", priority: "Priority", stage: "Stage", activity: "Last activity" };
-const STAGE_LABELS: Record<string, string> = { ready: "Ready", development: "In development", test: "To test", production: "In production", blocked: "Blocked" };
+const SORT_LABELS: Record<string, string> = {
+  order: "Sprint's order",
+  priority: "Priority",
+  stage: "Stage",
+  activity: "Last activity",
+};
+const STAGE_LABELS: Record<string, string> = {
+  ready: "Ready",
+  development: "In development",
+  test: "To test",
+  production: "In production",
+  blocked: "Blocked",
+};
 
 // The band above the list: a GET form, so a view is an address and works
 // without the script (la-fabrique#373).
-function listBand(data: SprintData, view: ListView, total: number, kept: number): string {
-  const epics = [...new Set(data.sprintCards.map((card) => data.epics?.get(card.id)?.title).filter((value): value is string => Boolean(value)))];
+function listBand(
+  data: SprintData,
+  view: ListView,
+  total: number,
+  kept: number,
+): string {
+  const epics = [
+    ...new Set(
+      data.sprintCards
+        .map((card) => data.epics?.get(card.id)?.title)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
   const check = (name: string, value: string, on: boolean, label: string) =>
     `<label class="sl-check small"><input type="checkbox" name="${name}" value="${escapeHtml(value)}"${on ? " checked" : ""} /> ${escapeHtml(label)}</label>`;
-  const flag = (name: string, on: boolean, label: string) => check(name, "1", on, label);
+  const flag = (name: string, on: boolean, label: string) =>
+    check(name, "1", on, label);
   return `<form class="sl-band" method="get" role="search" aria-label="Search, filter and sort the list">
     <p><input type="search" name="q" value="${escapeHtml(view.q)}" placeholder="Search: title, #204, C147" aria-label="Search a feature or a story" /></p>
     <fieldset class="sl-filters"><legend class="small">Stage</legend>${STAGES.map((stage) => check("stage", stage, view.stages.includes(stage), STAGE_LABELS[stage]!)).join("")}</fieldset>
     ${data.priorities.length ? `<fieldset class="sl-filters"><legend class="small">Priority</legend>${data.priorities.map((value) => check("priority", value, view.priority.includes(value), value)).join("")}</fieldset>` : ""}
     ${epics.length ? `<fieldset class="sl-filters"><legend class="small">Epic</legend>${epics.map((value) => check("epic", value, view.epic.includes(value), value)).join("")}</fieldset>` : ""}
     <p class="sl-flags">${flag("behind", view.behind, "Behind the scenes")}${flag("can", view.can, "What I can do")}${flag("mine", view.mine, "Waiting for me")}</p>
+    <p class="sl-by small" role="group" aria-label="Group the list">Show <label class="sl-check"><input type="radio" name="by" value="feature" data-sprint-by${view.by === "feature" ? " checked" : ""} /> By feature</label> <label class="sl-check"><input type="radio" name="by" value="story" data-sprint-by${view.by === "story" ? " checked" : ""} /> By story</label></p>
     <p><label class="small">Sort <select name="sort">${SORTS.map((key) => `<option value="${key}"${view.sort === key ? " selected" : ""}>${SORT_LABELS[key]}</option>`).join("")}</select></label>
     <button type="submit" class="button quiet small">Apply</button>
     ${isCustom(view) ? `<a class="button quiet small" href="?">Clear</a>` : ""}
-    <span class="muted small" role="status">${isFiltered(view) ? `${kept} of ${total} feature${total === 1 ? "" : "s"} kept` : `${total} feature${total === 1 ? "" : "s"}`}${view.sort !== "order" ? " · reordering is off: sort by the sprint's order to move lines" : ""}</span></p>
+    <span class="muted small" role="status">${(() => {
+      const unit = view.by === "story" ? "stor" : "feature";
+      const word = (n: number) =>
+        view.by === "story"
+          ? `stor${n === 1 ? "y" : "ies"}`
+          : `${unit}${n === 1 ? "" : "s"}`;
+      return isFiltered(view)
+        ? `${kept} of ${total} ${word(total)} kept`
+        : `${total} ${word(total)}`;
+    })()}${view.sort !== "order" ? " · reordering is off: sort by the sprint's order to move lines" : ""}</span></p>
   </form>`;
 }
 
-export function sprintPage(viewer: Viewer, project: Project, data: SprintData): string {
+export function sprintPage(
+  viewer: Viewer,
+  project: Project,
+  data: SprintData,
+): string {
   const base = projectUrl(project.repo);
   const action = `${base}/sprint`;
   const { sprint } = data;
   const lv = data.listView ?? readListView(new URLSearchParams());
   // A small form: one button, the action and what it acts on.
-  const button = (fields: Record<string, string | number>, label: string, text: string, kind = "quiet small") =>
-    `<form method="post" action="${escapeHtml(action)}" class="inline sprint-order" data-busy="…">${csrfField(viewer)}${Object.entries(fields)
-      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
-      .join("")}<button type="submit" class="button ${kind}" aria-label="${escapeHtml(label)}">${text}</button></form>`;
+  const button = (
+    fields: Record<string, string | number>,
+    label: string,
+    text: string,
+    kind = "quiet small",
+  ) =>
+    `<form method="post" action="${escapeHtml(action)}" class="inline sprint-order" data-busy="…">${csrfField(viewer)}${Object.entries(
+      fields,
+    )
+      .map(
+        ([name, value]) =>
+          `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`,
+      )
+      .join(
+        "",
+      )}<button type="submit" class="button ${kind}" aria-label="${escapeHtml(label)}">${text}</button></form>`;
   // Reordered by drag and drop, or the arrow keys on the handle
   // (la-fabrique#181); without the page's script, the arrows remain.
   const sortable = (sortAction: string, card?: number) =>
@@ -181,7 +304,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   const claudeCell = (number: number) => {
     const story = data.stories.get(number);
     const launched = data.claude.launches.get(number);
-    const run = data.claude.runs.find((candidate) => candidate.issue === number);
+    const run = data.claude.runs.find(
+      (candidate) => candidate.issue === number,
+    );
     const last = `${run ? runPill(run, story) : ""}${launched ? `<span class="muted small">launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</span>` : ""}`;
     // Claude is launched in order from the implementation card (la-fabrique#180):
     // here, where the story stands for it.
@@ -193,19 +318,46 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
   // A priority chosen from a list, sent at once (the button without script).
   // A story's list also offers Nice to have (la-fabrique#180).
-  const prioritySelect = (fields: Record<string, string | number>, current: string | null, label: string, withNice = false) =>
-    `<form method="post" action="${escapeHtml(action)}" class="priority-form inline">${csrfField(viewer)}${Object.entries(fields)
-      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`)
-      .join("")}<select name="priority" aria-label="${escapeHtml(label)}" data-autosubmit>${[...data.priorities, ...(withNice ? [NICE] : []), ""]
-      .map((value) => `<option value="${escapeHtml(value)}"${(current ?? "") === value ? " selected" : ""}>${value === NICE ? "Nice to have" : value ? escapeHtml(value) : "No priority"}</option>`)
-      .join("")}</select><button type="submit" class="button quiet small" data-autosubmit-button>Set</button></form>`;
+  const prioritySelect = (
+    fields: Record<string, string | number>,
+    current: string | null,
+    label: string,
+    withNice = false,
+  ) =>
+    `<form method="post" action="${escapeHtml(action)}" class="priority-form inline">${csrfField(viewer)}${Object.entries(
+      fields,
+    )
+      .map(
+        ([name, value]) =>
+          `<input type="hidden" name="${name}" value="${escapeHtml(String(value))}" />`,
+      )
+      .join(
+        "",
+      )}<select name="priority" aria-label="${escapeHtml(label)}" data-autosubmit>${[
+      ...data.priorities,
+      ...(withNice ? [NICE] : []),
+      "",
+    ]
+      .map(
+        (value) =>
+          `<option value="${escapeHtml(value)}"${(current ?? "") === value ? " selected" : ""}>${value === NICE ? "Nice to have" : value ? escapeHtml(value) : "No priority"}</option>`,
+      )
+      .join(
+        "",
+      )}</select><button type="submit" class="button quiet small" data-autosubmit-button>Set</button></form>`;
   // Why a story is not ready, and what fixes it here.
   const readiness = (number: number, controls: boolean) => {
     const story = data.stories.get(number);
     if (!story || story.stage !== "backlog") return "";
     const fixes = controls
       ? [
-          story.missing.includes("not labelled ready") && data.readyLabel ? button({ action: "story_ready", story: number }, `Mark #${number} ready`, "Mark ready") : "",
+          story.missing.includes("not labelled ready") && data.readyLabel
+            ? button(
+                { action: "story_ready", story: number },
+                `Mark #${number} ready`,
+                "Mark ready",
+              )
+            : "",
           story.missing.includes("no acceptance criteria")
             ? `<a class="small" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">Add its criteria on GitHub</a>`
             : "",
@@ -215,11 +367,18 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
   // A story's pull requests: open first; what each waits for; a review to ask.
   const pullsOf = (number: number, controls: boolean, openOnly = false) => {
-    const pulls = [...(data.stories.get(number)?.pulls ?? [])].filter((pull) => !openOnly || pull.state === "open").sort((a, b) => (a.state === "open" ? -1 : 0) - (b.state === "open" ? -1 : 0) || b.number - a.number);
+    const pulls = [...(data.stories.get(number)?.pulls ?? [])]
+      .filter((pull) => !openOnly || pull.state === "open")
+      .sort(
+        (a, b) =>
+          (a.state === "open" ? -1 : 0) - (b.state === "open" ? -1 : 0) ||
+          b.number - a.number,
+      );
     return pulls
       .map((pull) => {
         const detail = data.pulls.get(pull.number);
-        const state = detail?.draft && pull.state === "open" ? "draft" : pull.state;
+        const state =
+          detail?.draft && pull.state === "open" ? "draft" : pull.state;
         const tone = state === "merged" ? "ok" : state === "open" ? "warn" : "";
         const waiting = detail?.reviewers.length
           ? ` <span class="muted small">review asked from ${detail.reviewers.map((login) => `@${escapeHtml(login)}`).join(", ")}</span>`
@@ -228,7 +387,11 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             : "";
         // Who can be asked: La Fabrique's tech leads and super admins, not
         // the author (GitHub refuses it) nor one already asked.
-        const candidates = data.reviewers.filter((login) => login.toLowerCase() !== detail?.author?.toLowerCase() && !detail?.reviewers.includes(login));
+        const candidates = data.reviewers.filter(
+          (login) =>
+            login.toLowerCase() !== detail?.author?.toLowerCase() &&
+            !detail?.reviewers.includes(login),
+        );
         const ask =
           controls && pull.state === "open"
             ? candidates.length
@@ -244,8 +407,12 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
                 : ` <span class="muted small" title="The reviewers are La Fabrique's tech leads and super admins; GitHub does not let the author of a pull request review it.">no one else to ask${detail?.author ? ` (opened as @${escapeHtml(detail.author)})` : ""}</span>`
             : "";
         // Behind or in conflict with its base: Claude can bring it up to date.
-        const stale = pull.state === "open" && (detail?.mergeable === "dirty" || detail?.mergeable === "behind");
-        const against = detail?.base ? ` <code>${escapeHtml(detail.base)}</code>` : " its base";
+        const stale =
+          pull.state === "open" &&
+          (detail?.mergeable === "dirty" || detail?.mergeable === "behind");
+        const against = detail?.base
+          ? ` <code>${escapeHtml(detail.base)}</code>`
+          : " its base";
         const mergeState = stale
           ? ` <span class="pill ${detail?.mergeable === "dirty" ? "alert" : "warn"} small"${
               detail?.mergeable === "dirty" && data.merge?.workflow
@@ -253,26 +420,55 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
                 : ""
             }>${detail?.mergeable === "dirty" ? `In conflict with${against}` : `Behind${against}`}</span>`
           : "";
-        const running = data.claude.runs.some((run) => run.issue === number && isRunning(run));
+        const running = data.claude.runs.some(
+          (run) => run.issue === number && isRunning(run),
+        );
         const update =
-          stale && controls && data.claude.canLaunch && data.claude.workflow && !running
-            ? button({ action: "update", story: number, pull: pull.number }, `Bring pull request #${pull.number} up to date with Claude`, "Update with Claude", "quiet small claude")
+          stale &&
+          controls &&
+          data.claude.canLaunch &&
+          data.claude.workflow &&
+          !running
+            ? button(
+                { action: "update", story: number, pull: pull.number },
+                `Bring pull request #${pull.number} up to date with Claude`,
+                "Update with Claude",
+                "quiet small claude",
+              )
             : "";
         // In conflict, the project's merge workflow may still merge it: La
         // Fabrique's rebuilds the release notes every pull request writes in,
         // and refuses any other conflict, naming the files. Once refused for
         // that, only Claude's update is offered.
-        const lastAttempt = pull.state === "open" ? data.merges?.get(pull.number) : undefined;
-        const filesInConflict = Boolean(lastAttempt && lastAttempt.conclusion !== "success" && /^Conflicts with /.test(lastAttempt.reason ?? ""));
-        const mergeableAsIs = detail?.mergeable !== "dirty" || (Boolean(data.merge?.workflow) && !filesInConflict);
-        const mergeable = pull.state === "open" && !detail?.draft && detail && mergeableAsIs && !running;
+        const lastAttempt =
+          pull.state === "open" ? data.merges?.get(pull.number) : undefined;
+        const filesInConflict = Boolean(
+          lastAttempt &&
+          lastAttempt.conclusion !== "success" &&
+          /^Conflicts with /.test(lastAttempt.reason ?? ""),
+        );
+        const mergeableAsIs =
+          detail?.mergeable !== "dirty" ||
+          (Boolean(data.merge?.workflow) && !filesInConflict);
+        const mergeable =
+          pull.state === "open" &&
+          !detail?.draft &&
+          detail &&
+          mergeableAsIs &&
+          !running;
         // A blocking review of the latest commit holds the merge; a reviewer
         // role forces past it, with a reason (la-fabrique#382).
         const review = data.reviews?.get(pull.number);
         const forcedPast = data.forced?.get(pull.number);
-        const held = pull.state === "open" && heldByReview(review, forcedPast, detail?.head);
+        const held =
+          pull.state === "open" &&
+          heldByReview(review, forcedPast, detail?.head);
         const forcedNote =
-          pull.state === "open" && review?.state === "bloquant" && !review.stale && isForced(forcedPast, detail?.head) && forcedPast
+          pull.state === "open" &&
+          review?.state === "bloquant" &&
+          !review.stale &&
+          isForced(forcedPast, detail?.head) &&
+          forcedPast
             ? ` <span class="pill small" title="${escapeHtml(forcedPast.reason)}">Review forced by @${escapeHtml(forcedPast.by)}</span>`
             : "";
         const force =
@@ -285,24 +481,49 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
                 <button type="submit" class="button quiet small">Force past the review</button>
               </form>`
             : "";
-        const merge = held && controls && data.merge?.can(detail?.base ?? null)
-          ? ` <span class="muted small">Merge held by Claude's blocking review</span>`
-          : mergeable && controls && data.merge?.workflow && data.merge.can(detail.base)
-            ? button({ action: "merge", pull: pull.number }, `Merge pull request #${pull.number}`, "Merge", "small")
-            : mergeable && controls && data.merge && !data.merge.workflow && data.merge.can(detail.base)
-              ? ` <span class="muted small">no merge workflow declared (<a href="${escapeHtml(base)}/setup">workflows.fusionner</a>): <a href="${escapeHtml(pull.url)}">merge it on GitHub</a></span>`
-              : "";
+        const merge =
+          held && controls && data.merge?.can(detail?.base ?? null)
+            ? ` <span class="muted small">Merge held by Claude's blocking review</span>`
+            : mergeable &&
+                controls &&
+                data.merge?.workflow &&
+                data.merge.can(detail.base)
+              ? button(
+                  { action: "merge", pull: pull.number },
+                  `Merge pull request #${pull.number}`,
+                  "Merge",
+                  "small",
+                )
+              : mergeable &&
+                  controls &&
+                  data.merge &&
+                  !data.merge.workflow &&
+                  data.merge.can(detail.base)
+                ? ` <span class="muted small">no merge workflow declared (<a href="${escapeHtml(base)}/setup">workflows.fusionner</a>): <a href="${escapeHtml(pull.url)}">merge it on GitHub</a></span>`
+                : "";
         // Claude reviews it (la-fabrique#378): a tech lead and above, once
         // the project declares its review workflow; a draft waits.
         const claudeReview =
-          controls && pull.state === "open" && !detail?.draft && data.review?.workflow && data.review.can
-            ? button({ action: "claude_review", story: number, pull: pull.number }, `Review pull request #${pull.number} with Claude`, "Review with Claude", "quiet small claude")
+          controls &&
+          pull.state === "open" &&
+          !detail?.draft &&
+          data.review?.workflow &&
+          data.review.can
+            ? button(
+                { action: "claude_review", story: number, pull: pull.number },
+                `Review pull request #${pull.number} with Claude`,
+                "Review with Claude",
+                "quiet small claude",
+              )
             : "";
-        const attempt = pull.state === "open" ? data.merges?.get(pull.number) : undefined;
+        const attempt =
+          pull.state === "open" ? data.merges?.get(pull.number) : undefined;
         const refused =
           attempt && attempt.conclusion !== "success"
             ? ` <span class="sprint-merge-refused"><span class="pill alert small">Merge refused</span> <span class="small">${escapeHtml(attempt.reason ?? "The merge workflow stopped.")}</span>${
-                attempt.url?.startsWith("https://github.com/") ? ` <a class="small" href="${escapeHtml(attempt.url)}">the run</a>` : ""
+                attempt.url?.startsWith("https://github.com/")
+                  ? ` <a class="small" href="${escapeHtml(attempt.url)}">the run</a>`
+                  : ""
               }</span>`
             : "";
         const guessed = pull.guessed
@@ -314,18 +535,38 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
   // A story is a row (la-fabrique#180): its number and title on top, where
   // it stands below, its priority and order at the end.
-  const storyRow = (number: number, card: number, index: number, count: number, controls: boolean, launchable: boolean) => {
+  const storyRow = (
+    number: number,
+    card: number,
+    index: number,
+    count: number,
+    controls: boolean,
+    launchable: boolean,
+  ) => {
     const story = data.stories.get(number);
-    const others = (data.links.byStory.get(number) ?? []).filter((id) => id !== card);
+    const others = (data.links.byStory.get(number) ?? []).filter(
+      (id) => id !== card,
+    );
     const nice = isNice(data.links, card, number);
     const order = controls
       ? `<span class="sprint-controls">${index > 0 ? button({ action: "story_up", card, story: number }, `Move #${number} up`, "↑") : ""}${
-          index < count - 1 ? button({ action: "story_down", card, story: number }, `Move #${number} down`, "↓") : ""
+          index < count - 1
+            ? button(
+                { action: "story_down", card, story: number },
+                `Move #${number} down`,
+                "↓",
+              )
+            : ""
         }</span>`
       : "";
     const priority = data.priorities.length
       ? controls
-        ? prioritySelect({ action: "story_priority", card, story: number }, nice ? NICE : (story?.priority ?? null), `Priority of #${number}`, true)
+        ? prioritySelect(
+            { action: "story_priority", card, story: number },
+            nice ? NICE : (story?.priority ?? null),
+            `Priority of #${number}`,
+            true,
+          )
         : story?.priority
           ? `<span class="pill">${escapeHtml(story.priority)}</span>`
           : ""
@@ -333,10 +574,15 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const claude = launchable ? claudeCell(number) : "";
     // Back in development after feedbacks (la-fabrique#202): nothing starts by
     // itself; a person reworks it with Claude.
-    const reworking = data.claude.runs.some((run) => run.issue === number && isRunning(run));
+    const reworking = data.claude.runs.some(
+      (run) => run.issue === number && isRunning(run),
+    );
     const rework = story?.rework
       ? ` <span class="pill warn small">Back in development</span> <a class="small" href="${escapeHtml(action)}/stories/${number}#feedbacks">${story.feedbacks ?? 0} feedback${story.feedbacks === 1 ? "" : "s"}</a>${
-          data.claude.canLaunch && data.claude.workflow && !reworking && !story.pulls.some((pull) => pull.state === "open")
+          data.claude.canLaunch &&
+          data.claude.workflow &&
+          !reworking &&
+          !story.pulls.some((pull) => pull.state === "open")
             ? ` ${button({ action: "rework", story: number }, `Rework #${number} with Claude, with its test feedbacks`, "Rework with Claude", "quiet small claude")}`
             : ""
         }`
@@ -346,7 +592,13 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     // branch, from its row (la-fabrique#239).
     const lastRun = data.claude.runs.find((run) => run.issue === number);
     const relaunch =
-      story && !story.rework && isInDevelopment(story) && !story.pulls.some((pull) => pull.state === "open") && !(lastRun && isRunning(lastRun)) && data.claude.canRelaunch && data.claude.workflow
+      story &&
+      !story.rework &&
+      isInDevelopment(story) &&
+      !story.pulls.some((pull) => pull.state === "open") &&
+      !(lastRun && isRunning(lastRun)) &&
+      data.claude.canRelaunch &&
+      data.claude.workflow
         ? ` ${button({ action: "relaunch", story: number }, `Relaunch Claude on #${number}, on its branch: no pull request yet`, "Relaunch Claude", "quiet small claude")}`
         : "";
     return `<li id="story-${card}-${number}" class="sprint-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
@@ -355,9 +607,13 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <div class="sprint-story-main">
           <p class="sprint-story-title"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${story ? escapeHtml(story.title) : "not read yet"}</a></p>
           <p class="sprint-story-status">${story ? storyStatus(story) : ""}${
-            isToTest(story) && !story?.validated ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>` : ""
+            isToTest(story) && !story?.validated
+              ? ` <a class="small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>`
+              : ""
           }${rework}${relaunch}${nice ? ` <span class="pill kind small">Nice to have</span>` : ""}${story?.pulls.some((pull) => pull.state === "open") ? ` <span class="muted small">PR open</span>` : ""}${claude ? ` ${claude}` : ""}${
-            others.length ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>` : ""
+            others.length
+              ? ` <span class="muted small">also in ${others.map(cardRef).join(", ")}</span>`
+              : ""
           }${readiness(number, controls)}</p>
         </div>
         ${priority || order ? `<div class="sprint-story-actions">${priority}${order}</div>` : ""}
@@ -367,12 +623,16 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
 
   // A card kept from a closed sprint: its stories already in production are
   // done, folded under it, not work to do.
-  const shown = (_mine: number[], number: number, foldDone: boolean) => !(foldDone && isDone(number));
+  const shown = (_mine: number[], number: number, foldDone: boolean) =>
+    !(foldDone && isDone(number));
   const foldedDone = (card: number, foldDone: boolean) => {
     const done = foldDone ? storiesOf(card).filter(isDone) : [];
     return done.length
       ? `<details class="sprint-done"><summary class="muted small">${done.length} stor${done.length === 1 ? "y" : "ies"} already in production</summary><ul>${done
-          .map((number) => `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> ${escapeHtml(data.stories.get(number)?.title ?? "")}</li>`)
+          .map(
+            (number) =>
+              `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> ${escapeHtml(data.stories.get(number)?.title ?? "")}</li>`,
+          )
           .join("")}</ul></details>`
       : "";
   };
@@ -382,13 +642,20 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     if (!note) return "";
     const named = (ids: number[]) => ids.map(cardRef).join(", ");
     return `<p class="small sprint-dependencies"><span class="pill small">After ${escapeHtml(named(note.after))}</span>${
-      note.stopped.length ? ` <span class="pill warn small">${escapeHtml(named(note.stopped))} stopped</span>` : ""
+      note.stopped.length
+        ? ` <span class="pill warn small">${escapeHtml(named(note.stopped))} stopped</span>`
+        : ""
     }${note.below.length ? ` <span class="pill warn small">Placed above ${escapeHtml(named(note.below))}, which it depends on</span>` : ""}</p>`;
   };
 
   // Cards with their stories; with controls, in an order one can change.
   // Claude is launched from the sprint only.
-  const cardsSection = (cards: Card[], controls: boolean, claude = false, foldDone = false) => {
+  const cardsSection = (
+    cards: Card[],
+    controls: boolean,
+    claude = false,
+    foldDone = false,
+  ) => {
     const launchable = claude && Boolean(data.claude.workflow);
     const html = cards
       .map((card, index) => {
@@ -404,15 +671,32 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           : "";
         const order = controls
           ? `<span class="sprint-controls">${index > 0 ? button({ action: "card_up", card: card.id }, `Move ${cardRef(card.id)} up`, "↑") : ""}${
-              index < cards.length - 1 ? button({ action: "card_down", card: card.id }, `Move ${cardRef(card.id)} down`, "↓") : ""
+              index < cards.length - 1
+                ? button(
+                    { action: "card_down", card: card.id },
+                    `Move ${cardRef(card.id)} down`,
+                    "↓",
+                  )
+                : ""
             }</span>`
           : "";
         return `<section id="card-${card.id}" class="sprint-card"${controls ? ` data-sort-id="${card.id}"` : ""}><div class="sprint-card-head">${controls && cards.length > 1 ? handle(cardRef(card.id)) : ""}<div class="sprint-card-body">${cardGroupHead(
           project.repo,
-          { id: card.id, title: card.title, status: card.status, release: card.release, position: card.position, progress: card.progress },
+          {
+            id: card.id,
+            title: card.title,
+            status: card.status,
+            release: card.release,
+            position: card.position,
+            progress: card.progress,
+          },
           mine.length,
           data.progress?.get(card.id),
-          { countInWords: true, epic: data.epics?.get(card.id) ?? null, backstage: card.backstage },
+          {
+            countInWords: true,
+            epic: data.epics?.get(card.id) ?? null,
+            backstage: card.backstage,
+          },
         )}${priority}${order}</div></div>
           ${dependencyLines(card.id)}
           ${shippedNote(data.progress?.get(card.id)?.shipped, "sprint-shipped small")}
@@ -420,14 +704,27 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           ${
             mine.length
               ? `<ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${mine
-                  .map((number, at) => (shown(mine, number, foldDone) ? storyRow(number, card.id, at, mine.length, controls, launchable) : ""))
+                  .map((number, at) =>
+                    shown(mine, number, foldDone)
+                      ? storyRow(
+                          number,
+                          card.id,
+                          at,
+                          mine.length,
+                          controls,
+                          launchable,
+                        )
+                      : "",
+                  )
                   .join("")}</ol>`
               : `<p class="muted">No story yet: <a href="${escapeHtml(base)}/cards/${card.id}#spec">make them from the card</a>.</p>`
           }
         </section>`;
       })
       .join("");
-    return html && controls && cards.length > 1 ? `<div class="sprint-cards"${sortable("card_order")}>${html}</div>` : html;
+    return html && controls && cards.length > 1
+      ? `<div class="sprint-cards"${sortable("card_order")}>${html}</div>`
+      : html;
   };
 
   // What is left: the needed stories not done yet (a story needed by one
@@ -435,13 +732,22 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   const summary = (cards: Card[]) => {
     const numbers = [...new Set(cards.flatMap((card) => storiesOf(card.id)))];
     const done = numbers.filter(isDone).length;
-    const left = numbers.filter((number) => !isDone(number) && cards.some((card) => storiesOf(card.id).includes(number) && !isNice(data.links, card.id, number))).length;
+    const left = numbers.filter(
+      (number) =>
+        !isDone(number) &&
+        cards.some(
+          (card) =>
+            storiesOf(card.id).includes(number) &&
+            !isNice(data.links, card.id, number),
+        ),
+    ).length;
     return `<p class="test-summary"><span><strong>${left} stor${left === 1 ? "y" : "ies"} left</strong> · ${cards.length} card${cards.length === 1 ? "" : "s"}, ${numbers.length} stor${numbers.length === 1 ? "y" : "ies"}, ${done} in production.</span></p>`;
   };
 
   // Claude Code takes the stories in the sprint's order: the next one is the
   // first ready story not launched yet.
-  const nextStory = data.claude.next !== null ? data.stories.get(data.claude.next) : undefined;
+  const nextStory =
+    data.claude.next !== null ? data.stories.get(data.claude.next) : undefined;
   // Claude's runs on GitHub: those in progress, and where to see them all.
   const running = data.claude.runs.filter(isRunning);
   // With the script, the page follows Claude's runs as GitHub reports them.
@@ -468,10 +774,17 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   // The pull requests open on the sprint's stories, with what each waits
   // for and what can be done (merge, update with Claude, review).
   const openPulls = (cards: Card[]) => {
-    const numbers = [...new Set(cards.flatMap((card) => storiesOf(card.id)))].filter((number) => data.stories.get(number)?.pulls.some((pull) => pull.state === "open"));
+    const numbers = [
+      ...new Set(cards.flatMap((card) => storiesOf(card.id))),
+    ].filter((number) =>
+      data.stories.get(number)?.pulls.some((pull) => pull.state === "open"),
+    );
     return numbers.length
       ? `<ul class="sprint-open-pulls">${numbers
-          .map((number) => `<li><a class="mono" href="${escapeHtml(action)}/stories/${number}">#${number}</a> ${escapeHtml(data.stories.get(number)?.title ?? "")}<br />${pullsOf(number, data.canOrder, true)}</li>`)
+          .map(
+            (number) =>
+              `<li><a class="mono" href="${escapeHtml(action)}/stories/${number}">#${number}</a> ${escapeHtml(data.stories.get(number)?.title ?? "")}<br />${pullsOf(number, data.canOrder, true)}</li>`,
+          )
           .join("")}</ul>`
       : `<p class="muted">No pull request open on the sprint's stories.</p>`;
   };
@@ -484,24 +797,46 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
 
   // The release started when closing the sprint: running (link to the
   // workflow's runs), or failed and why; once out, the sprint is closed.
-  const runs = data.releaseWorkflow ? `https://github.com/${escapeHtml(project.repo)}/actions/workflows/${encodeURIComponent(data.releaseWorkflow)}` : null;
+  const runs = data.releaseWorkflow
+    ? `https://github.com/${escapeHtml(project.repo)}/actions/workflows/${encodeURIComponent(data.releaseWorkflow)}`
+    : null;
   // Only this sprint's release counts (la-fabrique#175).
-  const asTime = (at: string) => Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(at) ? at.replace(" ", "T") : `${at.replace(" ", "T")}Z`);
-  const attempt = data.release && sprint && asTime(data.release.at) >= asTime(sprint.startedAt) - 60_000 ? data.release : null;
+  const asTime = (at: string) =>
+    Date.parse(
+      /[zZ]|[+-]\d\d:?\d\d$/.test(at)
+        ? at.replace(" ", "T")
+        : `${at.replace(" ", "T")}Z`,
+    );
+  const attempt =
+    data.release &&
+    sprint &&
+    asTime(data.release.at) >= asTime(sprint.startedAt) - 60_000
+      ? data.release
+      : null;
   // Closing: the release started, followed step by step until it is out.
   const closing = attempt?.state === "running";
-  const step = (state: "done" | "current" | "waiting" | "failed", text: string) =>
+  const step = (
+    state: "done" | "current" | "waiting" | "failed",
+    text: string,
+  ) =>
     `<li class="story-step ${state === "failed" ? "current" : state}"><span class="story-step-mark" aria-hidden="true">${state === "done" ? "✓" : state === "failed" ? "✕" : state === "current" ? "●" : "○"}</span> ${text}</li>`;
-  const releaseLine = !attempt || attempt.state === "published"
-    ? ""
-    : `<div class="sprint-form-card sprint-closing${attempt.state === "failed" ? " failed" : ""}" role="status">
+  const releaseLine =
+    !attempt || attempt.state === "published"
+      ? ""
+      : `<div class="sprint-form-card sprint-closing${attempt.state === "failed" ? " failed" : ""}" role="status">
         <h3>${attempt.state === "running" ? "Closing" : "The release failed"}: release <span class="mono">${escapeHtml(attempt.version ?? "")}</span></h3>
         <ol class="story-steps">
           ${step("done", `Started by <span class="mono">@${escapeHtml(attempt.by)}</span> on <span class="mono">${formatDate(attempt.at)}</span>`)}
           ${
             attempt.state === "running"
-              ? step("current", `The project's workflow writes the release note, checks it and merges it${runs ? ` · <a href="${runs}">Follow it on GitHub</a>` : ""}`)
-              : step("failed", `${escapeHtml(attempt.reason ?? "The workflow stopped.")}${attempt.run?.startsWith("https://github.com/") ? ` · <a href="${escapeHtml(attempt.run)}">The run</a>` : runs ? ` · <a href="${runs}">The runs</a>` : ""}`)
+              ? step(
+                  "current",
+                  `The project's workflow writes the release note, checks it and merges it${runs ? ` · <a href="${runs}">Follow it on GitHub</a>` : ""}`,
+                )
+              : step(
+                  "failed",
+                  `${escapeHtml(attempt.reason ?? "The workflow stopped.")}${attempt.run?.startsWith("https://github.com/") ? ` · <a href="${escapeHtml(attempt.run)}">The run</a>` : runs ? ` · <a href="${runs}">The runs</a>` : ""}`,
+                )
           }
           ${step("waiting", attempt.state === "running" ? "Out: the sprint closes, each finished card takes the version" : "The sprint is open again: close it once fixed")}
         </ol>
@@ -510,7 +845,20 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   // Starting a sprint: the version it will release, and a name if wanted.
   const startCard = () => {
     const versions = data.versions;
-    const choices = [versions?.minor ? { value: versions.minor, label: `${versions.minor} <span class="muted small">next minor</span>` } : null, versions?.major ? { value: versions.major, label: `${versions.major} <span class="muted small">next major</span>` } : null].filter(
+    const choices = [
+      versions?.minor
+        ? {
+            value: versions.minor,
+            label: `${versions.minor} <span class="muted small">next minor</span>`,
+          }
+        : null,
+      versions?.major
+        ? {
+            value: versions.major,
+            label: `${versions.major} <span class="muted small">next major</span>`,
+          }
+        : null,
+    ].filter(
       (choice): choice is { value: string; label: string } => choice !== null,
     );
     return `<form method="post" action="${escapeHtml(action)}" id="start-sprint" class="sprint-form-card sprint-start-card" data-busy="Starting…">${csrfField(viewer)}
@@ -529,10 +877,24 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   // feature with its next action, its stories folded under it.
   const listView = () => {
     if (!sprint) return "";
-    const numbersLeft = [...new Set(data.sprintCards.flatMap((card) => storiesOf(card.id)))].filter(
-      (number) => !isDone(number) && data.sprintCards.some((card) => storiesOf(card.id).includes(number) && !isNice(data.links, card.id, number)),
+    const numbersLeft = [
+      ...new Set(data.sprintCards.flatMap((card) => storiesOf(card.id))),
+    ].filter(
+      (number) =>
+        !isDone(number) &&
+        data.sprintCards.some(
+          (card) =>
+            storiesOf(card.id).includes(number) &&
+            !isNice(data.links, card.id, number),
+        ),
     ).length;
-    const runningSet = new Set(running.map((run) => run.issue).filter((issue): issue is number => issue !== null && issue !== undefined));
+    const runningSet = new Set(
+      running
+        .map((run) => run.issue)
+        .filter(
+          (issue): issue is number => issue !== null && issue !== undefined,
+        ),
+    );
     const latest = data.claude.runs[0];
     const activity = latest
       ? `Latest: ${runPill(latest)}${latest.issue ? ` <span class="mono">#${latest.issue}</span>` : ""}`
@@ -548,25 +910,45 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         ${releaseLine}
       </section>`;
     const nextOf = (card: Card) => {
-        const entries = storiesOf(card.id).map((number) => ({ number, nice: isNice(data.links, card.id, number) }));
-        return nextAction({
-          stories: entries,
-          byNumber: data.stories,
-          held: data.claude.held,
-          running: runningSet,
-          canMerge: (pull) => {
-            const detail = data.pulls.get(pull);
-            // As the pull request's own Merge button: not refused for conflicts, not while Claude works on it.
-            const attempt = data.merges?.get(pull);
-            const conflicts = Boolean(attempt && attempt.conclusion !== "success" && /^Conflicts with /.test(attempt.reason ?? ""));
-            const asIs = detail?.mergeable !== "dirty" || !conflicts;
-            const story = [...data.stories.values()].find((candidate) => candidate.pulls.some((p) => p.number === pull));
-            const busy = Boolean(story && runningSet.has(story.number));
-            return Boolean(data.canOrder && data.merge?.workflow && detail && detail.state === "open" && !detail.draft && asIs && !busy && data.merge.can(detail.base));
-          },
-          canLaunch: Boolean(data.claude.canLaunch && data.claude.workflow),
-          shipped: data.progress?.get(card.id)?.shipped?.versions.length ? `Shipped in ${data.progress.get(card.id)!.shipped!.versions.join(", ")}` : null,
-        });
+      const entries = storiesOf(card.id).map((number) => ({
+        number,
+        nice: isNice(data.links, card.id, number),
+      }));
+      return nextAction({
+        stories: entries,
+        byNumber: data.stories,
+        held: data.claude.held,
+        running: runningSet,
+        canMerge: (pull) => {
+          const detail = data.pulls.get(pull);
+          // As the pull request's own Merge button: not refused for conflicts, not while Claude works on it.
+          const attempt = data.merges?.get(pull);
+          const conflicts = Boolean(
+            attempt &&
+            attempt.conclusion !== "success" &&
+            /^Conflicts with /.test(attempt.reason ?? ""),
+          );
+          const asIs = detail?.mergeable !== "dirty" || !conflicts;
+          const story = [...data.stories.values()].find((candidate) =>
+            candidate.pulls.some((p) => p.number === pull),
+          );
+          const busy = Boolean(story && runningSet.has(story.number));
+          return Boolean(
+            data.canOrder &&
+            data.merge?.workflow &&
+            detail &&
+            detail.state === "open" &&
+            !detail.draft &&
+            asIs &&
+            !busy &&
+            data.merge.can(detail.base),
+          );
+        },
+        canLaunch: Boolean(data.claude.canLaunch && data.claude.workflow),
+        shipped: data.progress?.get(card.id)?.shipped?.versions.length
+          ? `Shipped in ${data.progress.get(card.id)!.shipped!.versions.join(", ")}`
+          : null,
+      });
     };
     const me = viewer.login.toLowerCase();
     const stageOfStory = (number: number): StoryFacts["stage"] => {
@@ -580,15 +962,34 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     };
     const facts = data.sprintCards.map((card): FeatureFacts => {
       const numbers = storiesOf(card.id);
-      const stories = numbers.map((number): StoryFacts => ({ number, title: data.stories.get(number)?.title ?? "", stage: stageOfStory(number), priority: data.stories.get(number)?.priority ?? null }));
+      const stories = numbers.map((number): StoryFacts => ({
+        number,
+        title: data.stories.get(number)?.title ?? "",
+        stage: stageOfStory(number),
+        priority: data.stories.get(number)?.priority ?? null,
+        activity: data.activity?.get(number) ?? null,
+      }));
       const waitingForMe = numbers.some((number) => {
         const s = data.stories.get(number);
-        const asked = (s?.pulls ?? []).some((pull) => pull.state === "open" && (data.pulls.get(pull.number)?.reviewers ?? []).some((login) => login.toLowerCase() === me));
-        const launchedByMe = data.claude.launches.get(number)?.by.toLowerCase() === me && (s?.pulls ?? []).some((pull) => pull.state === "open" && !pull.guessed);
-        const testing = Boolean(data.ticked?.has(number)) && isToTest(s) && !s?.validated;
+        const asked = (s?.pulls ?? []).some(
+          (pull) =>
+            pull.state === "open" &&
+            (data.pulls.get(pull.number)?.reviewers ?? []).some(
+              (login) => login.toLowerCase() === me,
+            ),
+        );
+        const launchedByMe =
+          data.claude.launches.get(number)?.by.toLowerCase() === me &&
+          (s?.pulls ?? []).some(
+            (pull) => pull.state === "open" && !pull.guessed,
+          );
+        const testing =
+          Boolean(data.ticked?.has(number)) && isToTest(s) && !s?.validated;
         return asked || launchedByMe || testing;
       });
-      const times = numbers.map((number) => data.activity?.get(number)).filter((value): value is string => Boolean(value));
+      const times = numbers
+        .map((number) => data.activity?.get(number))
+        .filter((value): value is string => Boolean(value));
       return {
         id: card.id,
         title: card.title,
@@ -602,12 +1003,57 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       };
     });
     const priorities = data.priorities;
-    const shown = new Set(applyListView(facts, lv, priorities).map((feature) => feature.id));
-    const order = applyListView(facts, lv, priorities).map((feature) => feature.id);
-    const cards = order.map((id) => data.sprintCards.find((card) => card.id === id)!);
+    const shown = new Set(
+      applyListView(facts, lv, priorities).map((feature) => feature.id),
+    );
+    const byStory = lv.by === "story";
+    const storyLines = byStory ? applyStoryView(facts, lv, priorities) : [];
+    const flat = byStory && lv.sort !== "order";
+    const order = byStory
+      ? [...new Set(storyLines.map((line) => line.feature.id))]
+      : applyListView(facts, lv, priorities).map((feature) => feature.id);
+    const cards = order.map((id) =>
+      data.sprintCards.find((card) => card.id === id)!,
+    );
     const custom = isCustom(lv);
-    const searched = new Map(facts.map((feature) => [feature.id, matchingStories(feature, lv)]));
-    const filterBand = listBand(data, lv, facts.length, shown.size);
+    const searched = new Map(
+      facts.map((feature) => [feature.id, matchingStories(feature, lv)]),
+    );
+    const filterBand = listBand(
+      data,
+      lv,
+      byStory
+        ? facts.flatMap((feature) => feature.stories).length
+        : facts.length,
+      byStory ? storyLines.length : shown.size,
+    );
+    const listStory = (
+      card: Card,
+      number: number,
+      at: number,
+      count: number,
+      controls: boolean,
+      column = "",
+    ) => {
+      const s = data.stories.get(number);
+      const nice = isNice(data.links, card.id, number);
+      const done =
+        s?.criteria.filter((criterion) => criterion.done).length ?? 0;
+      const claude = claudeCell(number);
+      return `<li class="sl-story${nice ? " nice" : ""}" data-story-line="${number}"${controls ? ` data-sort-id="${number}"` : ""}>
+        ${controls ? handle(`#${number}`) : ""}
+        <div class="sl-story-body"><p>${column}<a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${s ? escapeHtml(s.title) : "not read yet"}</a></p>
+        <p class="small">${s ? storyStatus(s) : ""} ${pullsOf(number, false, true)} ${claude} ${s?.criteria.length ? `<span class="muted">${done}/${s.criteria.length} criteria</span>` : ""} ${
+          nice
+            ? `<span class="pill kind small">Nice to have</span>`
+            : s?.priority
+              ? `<span class="pill small">${escapeHtml(s.priority)}</span>`
+              : ""
+        }</p>
+        <details class="sl-unfold" data-unfold="${escapeHtml(action)}?unfold=${number}" id="unfold-${number}"><summary class="small">Detail and actions</summary><div class="sl-unfold-body" aria-live="polite"><p class="muted small">Loading…</p></div></details></div>
+        ${controls ? `<span class="sprint-controls">${at > 0 ? button({ action: "story_up", card: card.id, story: number }, `Move #${number} up`, "↑") : ""}${at < count - 1 ? button({ action: "story_down", card: card.id, story: number }, `Move #${number} down`, "↓") : ""}</span>` : ""}
+      </li>`;
+    };
     const lines = cards
       .map((card, index) => {
         const next = nextOf(card);
@@ -616,9 +1062,19 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           next.kind === "test"
             ? `<a class="button small" href="${escapeHtml(base)}/to-test#story-${next.story}">Test ${story(next.story)}</a>`
             : next.kind === "merge"
-              ? button({ action: "merge", pull: next.pull }, `Merge pull request #${next.pull} of #${next.story}`, `Merge ${story(next.story)}`, "small")
+              ? button(
+                  { action: "merge", pull: next.pull },
+                  `Merge pull request #${next.pull} of #${next.story}`,
+                  `Merge ${story(next.story)}`,
+                  "small",
+                )
               : next.kind === "launch"
-                ? button({ action: "launch", story: next.story }, `Launch Claude on #${next.story}`, `Launch Claude on ${story(next.story)}`, "claude small")
+                ? button(
+                    { action: "launch", story: next.story },
+                    `Launch Claude on #${next.story}`,
+                    `Launch Claude on ${story(next.story)}`,
+                    "claude small",
+                  )
                 : next.kind === "prepare"
                   ? `<a class="button quiet small" href="${escapeHtml(action)}/stories/${next.story}">Prepare ${story(next.story)}</a>`
                   : `<span class="muted small">${escapeHtml(next.reason)}</span>`;
@@ -627,55 +1083,78 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           .map((kind) => {
             const count = mine.filter((number) => {
               const s = data.stories.get(number);
-              const k = isFinished(s) ? "done" : isToTest(s) ? "test" : isInDevelopment(s) ? "dev" : isReadyStage(s) ? "ready" : "todo";
+              const k = isFinished(s)
+                ? "done"
+                : isToTest(s)
+                  ? "test"
+                  : isInDevelopment(s)
+                    ? "dev"
+                    : isReadyStage(s)
+                      ? "ready"
+                      : "todo";
               return k === kind;
             }).length;
-            return count ? `<span class="sl-seg ${kind}" style="flex-grow:${count}" title="${count} ${kind}"></span>` : "";
+            return count
+              ? `<span class="sl-seg ${kind}" style="flex-grow:${count}" title="${count} ${kind}"></span>`
+              : "";
           })
           .join("");
         const progress = data.progress?.get(card.id);
         const epic = data.epics?.get(card.id);
         const controls = data.canOrder && !custom;
-        const priority = card.priority ? `<span class="pill small">${escapeHtml(card.priority)}</span>` : "";
-        const listStory = (number: number, at: number) => {
-          const s = data.stories.get(number);
-          const nice = isNice(data.links, card.id, number);
-          const done = s?.criteria.filter((criterion) => criterion.done).length ?? 0;
-          const claude = claudeCell(number);
-          return `<li class="sl-story${nice ? " nice" : ""}" data-story-line="${number}"${controls ? ` data-sort-id="${number}"` : ""}>
-            ${controls ? handle(`#${number}`) : ""}
-            <div class="sl-story-body"><p><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${s ? escapeHtml(s.title) : "not read yet"}</a></p>
-            <p class="small">${s ? storyStatus(s) : ""} ${pullsOf(number, false, true)} ${claude} ${s?.criteria.length ? `<span class="muted">${done}/${s.criteria.length} criteria</span>` : ""} ${
-              nice ? `<span class="pill kind small">Nice to have</span>` : s?.priority ? `<span class="pill small">${escapeHtml(s.priority)}</span>` : ""
-            }</p>
-            <details class="sl-unfold" data-unfold="${escapeHtml(action)}?unfold=${number}" id="unfold-${number}"><summary class="small">Detail and actions</summary><div class="sl-unfold-body" aria-live="polite"><p class="muted small">Loading…</p></div></details></div>
-            ${controls ? `<span class="sprint-controls">${at > 0 ? button({ action: "story_up", card: card.id, story: number }, `Move #${number} up`, "↑") : ""}${at < mine.length - 1 ? button({ action: "story_down", card: card.id, story: number }, `Move #${number} down`, "↓") : ""}</span>` : ""}
-          </li>`;
-        };
+        const priority = card.priority
+          ? `<span class="pill small">${escapeHtml(card.priority)}</span>`
+          : "";
         return `<article id="line-${card.id}" class="sl-feature"${controls ? ` data-sort-id="${card.id}"` : ""}>
           <div class="sl-line">
             ${controls && cards.length > 1 ? handle(cardRef(card.id)) : ""}
             <div class="sl-main">
               <p class="sl-title"><a class="mono" href="${escapeHtml(base)}/cards/${card.id}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}</p>
               <p class="sl-tags small">${progress ? `<span class="muted">${escapeHtml(progress.done + "/" + progress.total)}</span>` : ""}<span class="sl-bar" aria-hidden="true">${bar}</span>${priority}${
-                epic ? ` <span class="pill small epic-pill"><span class="muted">Epic</span> ${escapeHtml(epic.title)}</span>` : ""
+                epic
+                  ? ` <span class="pill small epic-pill"><span class="muted">Epic</span> ${escapeHtml(epic.title)}</span>`
+                  : ""
               }${card.backstage ? ` <span class="pill small">Behind the scenes</span>` : ""}</p>
             </div>
             <div class="sl-action">${button1}</div>
             ${controls ? `<span class="sprint-controls">${index > 0 ? button({ action: "card_up", card: card.id }, `Move ${cardRef(card.id)} up`, "↑") : ""}${index < cards.length - 1 ? button({ action: "card_down", card: card.id }, `Move ${cardRef(card.id)} down`, "↓") : ""}</span>` : ""}
           </div>
           ${
-            mine.length
-              ? `<details class="sl-stories"${searched.get(card.id)?.size ? " open" : ""}><summary>${mine.length} stor${mine.length === 1 ? "y" : "ies"}</summary><ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${mine.map(listStory).join("")}</ol></details>`
-              : ""
+            byStory
+              ? `<ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${storyLines
+                  .filter((line) => line.feature.id === card.id)
+                  .map((line) =>
+                    listStory(
+                      card,
+                      line.story.number,
+                      mine.indexOf(line.story.number),
+                      mine.length,
+                      controls,
+                    ),
+                  )
+                  .join("")}</ol>`
+              : mine.length
+                ? `<details class="sl-stories"${searched.get(card.id)?.size ? " open" : ""}><summary>${mine.length} stor${mine.length === 1 ? "y" : "ies"}</summary><ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${mine.map((number, at) => listStory(card, number, at, mine.length, controls)).join("")}</ol></details>`
+                : ""
           }
         </article>`;
       })
       .join("");
-    return `${head}<section class="sl-features" aria-label="Features"><h2>Features</h2>${filterBand}${
-      lines
-        ? `<div class="sl-list"${data.canOrder && !custom && cards.length > 1 ? sortable("card_order") : ""}>${lines}</div>`
-        : `<p class="muted">${facts.length ? "No feature matches this view." : "No card in the sprint."}</p>`
+    const flatList = `<ol class="sprint-stories-list sl-flat">${storyLines
+      .map((line) => {
+        const card = data.sprintCards.find(
+          (candidate) => candidate.id === line.feature.id,
+        )!;
+        const column = `<a class="pill small sl-feature-col mono" href="${escapeHtml(base)}/cards/${card.id}" title="${escapeHtml(card.title)}">${cardRef(card.id)}</a> `;
+        return listStory(card, line.story.number, 0, 1, false, column);
+      })
+      .join("")}</ol>`;
+    return `${head}<section class="sl-features" aria-label="${byStory ? "Stories" : "Features"}"><h2>${byStory ? "Stories" : "Features"}</h2>${filterBand}${
+      flat && storyLines.length
+        ? flatList
+        : lines
+          ? `<div class="sl-list"${data.canOrder && !custom && cards.length > 1 ? sortable("card_order") : ""}>${lines}</div>`
+          : `<p class="muted">${facts.length ? `No ${byStory ? "story" : "feature"} matches this view.` : "No card in the sprint."}</p>`
     }</section>`;
   };
   // A story's detail and actions, for its line in the list
@@ -693,36 +1172,107 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     const running = runs.some((run) => isRunning(run));
     const busy = data.claude.held.get(number);
     const canClaude = data.claude.canLaunch && Boolean(data.claude.workflow);
-    const hasOpenPull = Boolean(story?.pulls.some((pull) => pull.state === "open"));
+    const hasOpenPull = Boolean(
+      story?.pulls.some((pull) => pull.state === "open"),
+    );
     const actions: string[] = [];
-    if (canClaude && story && isReadyStage(story) && !busy && !running) actions.push(button({ action: "launch", story: number }, `Launch Claude on #${number}`, "Launch Claude", "claude small"));
-    if (story && !story.rework && isInDevelopment(story) && !hasOpenPull && !running && data.claude.canRelaunch && data.claude.workflow)
-      actions.push(button({ action: "relaunch", story: number }, `Relaunch Claude on #${number}, on its branch: no pull request yet`, "Relaunch Claude", "quiet small claude"));
+    if (canClaude && story && isReadyStage(story) && !busy && !running)
+      actions.push(
+        button(
+          { action: "launch", story: number },
+          `Launch Claude on #${number}`,
+          "Launch Claude",
+          "claude small",
+        ),
+      );
+    if (
+      story &&
+      !story.rework &&
+      isInDevelopment(story) &&
+      !hasOpenPull &&
+      !running &&
+      data.claude.canRelaunch &&
+      data.claude.workflow
+    )
+      actions.push(
+        button(
+          { action: "relaunch", story: number },
+          `Relaunch Claude on #${number}, on its branch: no pull request yet`,
+          "Relaunch Claude",
+          "quiet small claude",
+        ),
+      );
     if (story?.rework && canClaude && !running && !hasOpenPull)
-      actions.push(button({ action: "rework", story: number }, `Rework #${number} with Claude, with its test feedbacks`, "Rework with Claude", "quiet small claude"));
-    if (story && controls && story.stage === "backlog" && data.readyLabel && story.missing.includes("not labelled ready")) actions.push(button({ action: "story_ready", story: number }, `Mark #${number} ready`, "Mark ready"));
-    if (isToTest(story) && !story?.validated) actions.push(`<a class="button small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>`);
+      actions.push(
+        button(
+          { action: "rework", story: number },
+          `Rework #${number} with Claude, with its test feedbacks`,
+          "Rework with Claude",
+          "quiet small claude",
+        ),
+      );
+    if (
+      story &&
+      controls &&
+      story.stage === "backlog" &&
+      data.readyLabel &&
+      story.missing.includes("not labelled ready")
+    )
+      actions.push(
+        button(
+          { action: "story_ready", story: number },
+          `Mark #${number} ready`,
+          "Mark ready",
+        ),
+      );
+    if (isToTest(story) && !story?.validated)
+      actions.push(
+        `<a class="button small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>`,
+      );
     const priority =
-      controls && data.priorities.length ? prioritySelect({ action: "story_priority", card: unfold.card, story: number }, nice ? NICE : (story?.priority ?? null), `Priority of #${number}`, true) : "";
+      controls && data.priorities.length
+        ? prioritySelect(
+            { action: "story_priority", card: unfold.card, story: number },
+            nice ? NICE : (story?.priority ?? null),
+            `Priority of #${number}`,
+            true,
+          )
+        : "";
     const feedbacks = unfold.feedbacks.length
       ? `<ul class="feedback-list">${unfold.feedbacks
           .map(
             (entry) =>
               `<li><span class="mono small">${escapeHtml(entry.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(entry.actor)}${entry.criterion ? ` · criterion “${escapeHtml(entry.criterion)}”` : ""}: ${escapeHtml(entry.text)}${
-                entry.comment.startsWith("https://github.com/") ? ` <a href="${escapeHtml(entry.comment)}">On GitHub</a>` : ""
+                entry.comment.startsWith("https://github.com/")
+                  ? ` <a href="${escapeHtml(entry.comment)}">On GitHub</a>`
+                  : ""
               }</li>`,
           )
           .join("")}</ul>`
       : `<p class="muted small">No feedback from testing.</p>`;
-    const pulls = story?.pulls.length ? pullsOf(number, controls) : `<span class="muted small">No pull request yet.</span>`;
+    const pulls = story?.pulls.length
+      ? pullsOf(number, controls)
+      : `<span class="muted small">No pull request yet.</span>`;
     return `<div class="sl-unfolded" data-story="${number}">
       <h4>Acceptance criteria <span class="muted mono small">${done}/${criteria.length}</span></h4>
       ${criteria.length ? `<ul class="criteria">${criteria.map((criterion) => `<li class="${criterion.done ? "done" : ""}"><span class="box" aria-hidden="true">${criterion.done ? "✓" : ""}</span> ${escapeHtml(criterion.text)}</li>`).join("")}</ul>` : `<p class="muted small">No acceptance criteria written.</p>`}
       <h4>Pull requests</h4>
       <p>${pulls}</p>
       <h4>Claude's runs</h4>
-      ${runs.length ? `<ul>${runs.slice(0, 5).map((run) => `<li>${runPill(run, story)} <span class="muted small mono">${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC</span></li>`).join("")}</ul>` : `<p class="muted small">No Claude run seen for this story.</p>`}${
-        launched ? `<p class="muted small">Launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</p>` : ""
+      ${
+        runs.length
+          ? `<ul>${runs
+              .slice(0, 5)
+              .map(
+                (run) =>
+                  `<li>${runPill(run, story)} <span class="muted small mono">${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC</span></li>`,
+              )
+              .join("")}</ul>`
+          : `<p class="muted small">No Claude run seen for this story.</p>`
+      }${
+        launched
+          ? `<p class="muted small">Launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</p>`
+          : ""
       }${busy ? `<p class="muted small">Waits for <span class="mono">#${busy.story}</span></p>` : ""}
       <h4 id="feedbacks-${number}">Feedbacks from testing <span class="muted mono small">${unfold.feedbacks.length}</span></h4>
       ${feedbacks}
@@ -733,16 +1283,22 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
   if (data.unfold) return unfoldView();
   const modeToggle = sprint
-    ? `<div class="sprint-mode" role="group" aria-label="View of the sprint"><button type="button" class="button quiet small" data-sprint-mode="details" aria-pressed="${!isCustom(lv)}">Details</button><button type="button" class="button quiet small" data-sprint-mode="list" aria-pressed="${isCustom(lv)}">List</button></div>`
+    ? `<div class="sprint-mode" role="group" aria-label="View of the sprint"><button type="button" class="button quiet small" data-sprint-mode="details" aria-pressed="${!(isCustom(lv) || lv.by === "story")}">Details</button><button type="button" class="button quiet small" data-sprint-mode="list" aria-pressed="${isCustom(lv) || lv.by === "story"}">List</button></div>`
     : "";
 
   // Something in progress (Claude, a pull request, the run, the release):
   // the page reads itself again every minute, between two events
   // (la-fabrique#187).
-  const inSprint = data.sprintCards.flatMap((card) => data.links.order.get(card.id) ?? []);
+  const inSprint = data.sprintCards.flatMap(
+    (card) => data.links.order.get(card.id) ?? [],
+  );
   const following =
     Boolean(sprint) &&
-    (running.length > 0 || Boolean(data.runActive) || closing || data.pulls.size > 0 || inSprint.some((number) => isInDevelopment(data.stories.get(number))));
+    (running.length > 0 ||
+      Boolean(data.runActive) ||
+      closing ||
+      data.pulls.size > 0 ||
+      inSprint.some((number) => isInDevelopment(data.stories.get(number))));
   const current = sprint
     ? `<div class="sprint-layout"${following ? ` data-follow="60" title="This page follows the sprint: it reads GitHub again every minute while something is in progress."` : ""}>
       <div class="sprint-side">
@@ -804,11 +1360,17 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <p>${lastLine} ${
           data.nextCards.length || data.keptCards.length
             ? `The next sprint takes ${[
-                data.keptCards.length ? `the ${data.keptCards.length} unfinished card${data.keptCards.length === 1 ? "" : "s"} of the last one` : "",
-                data.nextCards.length ? `the ${data.nextCards.length} card${data.nextCards.length === 1 ? "" : "s"} placed in Next release` : "",
+                data.keptCards.length
+                  ? `the ${data.keptCards.length} unfinished card${data.keptCards.length === 1 ? "" : "s"} of the last one`
+                  : "",
+                data.nextCards.length
+                  ? `the ${data.nextCards.length} card${data.nextCards.length === 1 ? "" : "s"} placed in Next release`
+                  : "",
               ]
                 .filter(Boolean)
-                .join(" and ")} on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
+                .join(
+                  " and ",
+                )} on <a href="${escapeHtml(base)}/board?by=release">the board</a>.`
             : `Place the cards of the next sprint in <strong>Next release</strong> on <a href="${escapeHtml(base)}/board?by=release">the board</a>, and get them ready in <a href="${escapeHtml(base)}/refinement">Refinement</a>.`
         }</p>
         ${data.canOrder && (data.nextCards.length || data.keptCards.length) ? startCard() : ""}
@@ -832,7 +1394,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     `${projectHeader(project, "sprint")}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
-      ${sprint ? `<div class="sprint-views" data-mode="${isCustom(lv) ? "list" : "details"}"${isCustom(lv) ? " data-keep-mode" : ""}>${modeToggle}<div class="sprint-list-view">${listView()}</div><div class="sprint-details-view">${current}</div></div>` : current}
+      ${sprint ? `<div class="sprint-views" data-mode="${isCustom(lv) || lv.by === "story" ? "list" : "details"}"${isCustom(lv) || lv.by === "story" ? " data-keep-mode" : ""}>${modeToggle}<div class="sprint-list-view">${listView()}</div><div class="sprint-details-view">${current}</div></div>` : current}
       ${kept}
       ${integration}`,
     viewer,
@@ -842,16 +1404,31 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
 }
 
 // Before the close: what is not done, and a way to postpone (la-fabrique#138).
-export function releaseWarningPage(viewer: Viewer, project: Project, plan: ReleasePlan): string {
+export function releaseWarningPage(
+  viewer: Viewer,
+  project: Project,
+  plan: ReleasePlan,
+): string {
   const base = projectUrl(project.repo);
-  const issue = (number: number) => `<a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a>`;
+  const issue = (number: number) =>
+    `<a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a>`;
   return layout(
     `Before closing the sprint · ${project.check?.config?.nom || project.repo} · La Fabrique extraordinaire`,
     `${projectHeader(project, "sprint")}
       <h2>Before closing the sprint</h2>
       <p>Some merged work is not finished. Its changes stay online but are kept for a later release; the stories stay open, in To test.</p>
       ${plan.notDone.length ? `<h3>Stories not done</h3><ul>${plan.notDone.map((story) => `<li>${issue(story.number)} ${escapeHtml(story.title)}</li>`).join("")}</ul>` : ""}
-      ${plan.entries.some((entry) => entry.partial) ? `<h3>Partial release-note entries</h3><ul>${plan.entries.filter((entry) => entry.partial).map((entry) => `<li>${escapeHtml(entry.title ?? "(untitled)")}<br /><span class="small">${escapeHtml(entry.caveat ?? "")}</span></li>`).join("")}</ul>` : ""}
+      ${
+        plan.entries.some((entry) => entry.partial)
+          ? `<h3>Partial release-note entries</h3><ul>${plan.entries
+              .filter((entry) => entry.partial)
+              .map(
+                (entry) =>
+                  `<li>${escapeHtml(entry.title ?? "(untitled)")}<br /><span class="small">${escapeHtml(entry.caveat ?? "")}</span></li>`,
+              )
+              .join("")}</ul>`
+          : ""
+      }
       <form method="post" action="${escapeHtml(base)}/sprint" class="request-form" data-busy="…">${csrfField(viewer)}
         <input type="hidden" name="action" value="close" />
         <input type="hidden" name="confirm" value="1" />
@@ -870,14 +1447,26 @@ export function releasePage(
   viewer: Viewer,
   project: Project,
   plan: ReleasePlan,
-  options: { kind: ReleaseKind; title: string; error?: string; version?: string | null },
+  options: {
+    kind: ReleaseKind;
+    title: string;
+    error?: string;
+    version?: string | null;
+  },
 ): string {
   const base = projectUrl(project.repo);
   const taken = plan.cards.filter((planned) => planned.done);
   const kept = plan.cards.filter((planned) => !planned.done);
-  const storyLine = (story: { number: number; title: string; done: boolean; reason: string | null }) =>
+  const storyLine = (story: {
+    number: number;
+    title: string;
+    done: boolean;
+    reason: string | null;
+  }) =>
     `<li><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${story.number}">#${story.number}</a> ${escapeHtml(story.title)} ${
-      story.done ? `<span class="pill good small">validated</span>` : `<span class="muted small">not done: ${escapeHtml(story.reason ?? "")}</span>`
+      story.done
+        ? `<span class="pill good small">validated</span>`
+        : `<span class="muted small">not done: ${escapeHtml(story.reason ?? "")}</span>`
     }</li>`;
   const cardBlock = (planned: PlannedCard) =>
     `<li><strong>${escapeHtml(planned.card.title)}</strong>${planned.reason ? ` <span class="muted small">stays: ${escapeHtml(planned.reason)}</span>` : ""}<ul>${planned.stories.map(storyLine).join("")}</ul></li>`;
@@ -896,10 +1485,24 @@ export function releasePage(
       <p class="muted">Newest release: <span class="mono">${escapeHtml(plan.newest ?? "none")}</span>. The project's release workflow numbers and writes the release; La Fabrique writes nothing on the branch.</p>
       <h3>The release takes</h3>
       ${taken.length ? `<ul>${taken.map(cardBlock).join("")}</ul>` : `<p class="muted">No card is done: nothing to release.</p>`}
-      ${entries.some((entry) => entry.taken) ? `<p>Release-note entries it takes:</p><ul>${entries.filter((entry) => entry.taken).map(entryLine).join("")}</ul>` : ""}
+      ${
+        entries.some((entry) => entry.taken)
+          ? `<p>Release-note entries it takes:</p><ul>${entries
+              .filter((entry) => entry.taken)
+              .map(entryLine)
+              .join("")}</ul>`
+          : ""
+      }
       <h3>What stays</h3>
       ${kept.length ? `<ul>${kept.map(cardBlock).join("")}</ul>` : `<p class="muted">No card stays.</p>`}
-      ${entries.some((entry) => !entry.taken) ? `<p>Release-note entries that stay:</p><ul>${entries.filter((entry) => !entry.taken).map(entryLine).join("")}</ul>` : ""}
+      ${
+        entries.some((entry) => !entry.taken)
+          ? `<p>Release-note entries that stay:</p><ul>${entries
+              .filter((entry) => !entry.taken)
+              .map(entryLine)
+              .join("")}</ul>`
+          : ""
+      }
       ${
         taken.length || entries.some((entry) => entry.taken)
           ? `<form method="post" action="${escapeHtml(base)}/sprint" class="sprint-form-card sprint-close-card" data-busy="Closing…">${csrfField(viewer)}

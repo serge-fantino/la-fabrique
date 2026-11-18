@@ -486,19 +486,31 @@
       const fresh = next.getElementById(article.id);
       if (!fresh) continue;
       swap(article.querySelector(".sl-line"), fresh.querySelector(".sl-line"));
-      for (const story of article.querySelectorAll("[data-story-line]")) {
-        const number = story.getAttribute("data-story-line");
-        const other = fresh.querySelector(`[data-story-line="${number}"]`);
-        if (!other) continue;
-        const nowBody = [...story.querySelectorAll(".sl-story-body > p")];
-        const freshBody = [...other.querySelectorAll(".sl-story-body > p")];
-        let changed = false;
-        nowBody.forEach((node, at) => {
-          if (freshBody[at]) changed = swap(node, freshBody[at]) || changed;
-        });
-        const unfold = story.querySelector("details[data-unfold]");
-        if (changed && unfold?.open && !unfold.contains(document.activeElement)) loadUnfold(unfold);
-      }
+      swapStories(article, fresh);
+    }
+    const flat = document.querySelector(".sl-flat");
+    if (flat) swapStories(flat, next.querySelector(".sl-flat"));
+  }
+  function swapStories(scope, fresh) {
+    if (!scope || !fresh) return;
+    const swap = (now, other) => {
+      if (!now || !other || now.innerHTML === other.innerHTML) return false;
+      if (now.contains(document.activeElement) && typing()) return false;
+      now.replaceWith(document.importNode(other, true));
+      return true;
+    };
+    for (const story of scope.querySelectorAll("[data-story-line]")) {
+      const number = story.getAttribute("data-story-line");
+      const other = fresh.querySelector(`[data-story-line="${number}"]`);
+      if (!other) continue;
+      const nowBody = [...story.querySelectorAll(".sl-story-body > p")];
+      const freshBody = [...other.querySelectorAll(".sl-story-body > p")];
+      let changed = false;
+      nowBody.forEach((node, at) => {
+        if (freshBody[at]) changed = swap(node, freshBody[at]) || changed;
+      });
+      const unfold = story.querySelector("details[data-unfold]");
+      if (changed && unfold?.open && !unfold.contains(document.activeElement)) loadUnfold(unfold);
     }
   }
 
@@ -709,6 +721,24 @@
     try {
       saved = localStorage.getItem("lf-sprint-mode");
     } catch {}
+    // By feature or By story (la-fabrique#375): the address says, else the
+    // choice kept on this device.
+    try {
+      if (document.querySelector("[data-sprint-by]") && !new URLSearchParams(location.search).has("by") && localStorage.getItem("lf-sprint-by") === "story") {
+        const url = new URL(location.href);
+        url.searchParams.set("by", "story");
+        location.replace(url);
+        return;
+      }
+    } catch {}
+    views.querySelectorAll("[data-sprint-by]").forEach((radio) =>
+      radio.addEventListener("change", () => {
+        try {
+          localStorage.setItem("lf-sprint-by", radio.value === "story" ? "story" : "feature");
+        } catch {}
+        radio.form?.requestSubmit();
+      }),
+    );
     show(views.hasAttribute("data-keep-mode") ? "list" : saved === "list" ? "list" : "details");
     views.querySelectorAll("[data-sprint-mode]").forEach((button) =>
       button.addEventListener("click", () => {

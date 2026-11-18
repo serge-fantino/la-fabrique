@@ -16,6 +16,8 @@ export interface ListView {
   can: boolean;
   mine: boolean;
   sort: SortKey;
+  // One line per feature (default) or per story, grouped by feature.
+  by: "feature" | "story";
 }
 
 const clean = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))].slice(0, 20);
@@ -31,6 +33,7 @@ export function readListView(params: URLSearchParams): ListView {
     can: params.get("can") === "1",
     mine: params.get("mine") === "1",
     sort: (SORTS as readonly string[]).includes(sort) ? (sort as SortKey) : "order",
+    by: params.get("by") === "story" ? "story" : "feature",
   };
 }
 
@@ -49,6 +52,7 @@ export function listViewQuery(view: ListView): string {
   if (view.can) params.set("can", "1");
   if (view.mine) params.set("mine", "1");
   if (view.sort !== "order") params.set("sort", view.sort);
+  if (view.by === "story") params.set("by", "story");
   const text = params.toString();
   return text ? `?${text}` : "";
 }
@@ -58,6 +62,7 @@ export interface StoryFacts {
   title: string;
   stage: StageFilter | "backlog";
   priority: string | null;
+  activity?: string | null;
 }
 
 export interface FeatureFacts {
@@ -144,4 +149,54 @@ export function applyListView<T extends FeatureFacts>(features: T[], view: ListV
 // The stories of a kept feature to show open: those that match the search.
 export function matchingStories(feature: FeatureFacts, view: ListView): Set<number> {
   return view.q ? matchesSearch(feature, view.q).stories : new Set();
+}
+
+// By story (la-fabrique#375): the stories that pass the view, with their
+// feature. Sorted by the sprint's order they stay grouped by feature; any
+// other sort leaves the groups and the stories are one flat list.
+export interface StoryLine<T extends FeatureFacts> {
+  feature: T;
+  story: StoryFacts;
+}
+
+function storyKept(feature: FeatureFacts, story: StoryFacts, view: ListView): boolean {
+  if (view.q) {
+    const text = view.q.toLowerCase();
+    const number = /^#?(\d+)$/.exec(text)?.[1];
+    const card = /^c(\d+)$/.exec(text)?.[1];
+    if (card !== undefined) {
+      if (feature.id !== Number(card)) return false;
+    } else if (number !== undefined) {
+      if (String(story.number) !== number) return false;
+    } else if (!story.title.toLowerCase().includes(text) && !feature.title.toLowerCase().includes(text)) return false;
+  }
+  if (view.stages.length && !(view.stages as string[]).includes(story.stage)) return false;
+  if (view.priority.length) {
+    const wanted = view.priority.map((value) => value.toLowerCase());
+    const own = story.priority ?? feature.priority;
+    if (!(own ? wanted.includes(own.toLowerCase()) : wanted.includes("none"))) return false;
+  }
+  return true;
+}
+
+export function applyStoryView<T extends FeatureFacts>(features: T[], view: ListView, priorities: string[]): StoryLine<T>[] {
+  const kept = features.filter((feature) => matchesFeature(feature, view));
+  const lines = kept.flatMap((feature) => feature.stories.filter((story) => storyKept(feature, story, view)).map((story) => ({ feature, story })));
+  if (view.sort === "order") return lines;
+  const rank = (value: string | null) => {
+    const at = value ? priorities.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) : -1;
+    return at === -1 ? priorities.length : at;
+  };
+  const indexed = lines.map((line, index) => ({ line, index }));
+  indexed.sort((a, b) => {
+    if (view.sort === "activity") {
+      const left = a.line.story.activity ?? "";
+      const right = b.line.story.activity ?? "";
+      if (left !== right) return left < right ? 1 : -1;
+      return a.index - b.index;
+    }
+    const key = (line: StoryLine<T>) => (view.sort === "priority" ? rank(line.story.priority ?? line.feature.priority) : (STAGE_RANK[line.story.stage] ?? 4));
+    return key(a.line) - key(b.line) || a.index - b.index;
+  });
+  return indexed.map((entry) => entry.line);
 }
