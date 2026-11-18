@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "MCP: run the sprint",
+    "changements": [
+      "From a conversation with Claude, La Fabrique's MCP now shows the sprint's run plan and starts the run once you confirm it."
+    ],
+    "stories": [396],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "The sprint's list by story",
     "changements": [
       "The sprint's list can also show the stories alone: choose By story next to the search to get one line per story, grouped under their feature, with the same columns, unfolding and actions. Search, filters and sort apply to the stories; sorted otherwise than by the sprint's order, the stories leave their groups and the feature becomes a column. The choice is kept on this device."

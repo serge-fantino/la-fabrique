@@ -656,3 +656,80 @@ describe("test_story", () => {
     expect(tools.map((tool) => tool.name).filter((name) => /promote|go$|deploy/.test(name))).toEqual([]);
   });
 });
+
+describe("MCP: run the sprint (sprint_run)", () => {
+  const NOW = "2026-11-01T12:00:00.000Z";
+  async function seedSprint(config: Record<string, unknown> = { nom: "Widget", workflows: { claude: "claude.yml", fusionner: "merge.yml" }, claude: { plafond: 2 } }): Promise<void> {
+    const stories = [12, 13].map((number) => ({
+      number, title: `Story ${number}`, state: "open", url: `https://github.com/${REPO}/issues/${number}`, author: null, labels: [], parent: null,
+      subTotal: 0, subCompleted: 0, createdAt: NOW, updatedAt: NOW, closedAt: null, pullRequests: [], branches: [], criteria: [{ text: "Works", done: false }],
+    }));
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(config)),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2099-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify(stories)),
+      env.DB.prepare("INSERT INTO sprints (repo, release, started_by, started_at) VALUES (?, 'Sprint', 'pe', '2026-10-31T12:00:00.000Z')").bind(REPO),
+    ]);
+    const id = (await env.DB.prepare("INSERT INTO cards (repo, kind, status, title, body, release, position, author) VALUES (?, 'feature', 'validated', 'Week menu', '', 'Sprint', 1, 'pe') RETURNING id").bind(REPO).first<{ id: number }>())?.id ?? 0;
+    await env.DB.batch([12, 13].map((number, index) => env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', ?, ?)").bind(id, String(number), index + 1)));
+  }
+
+  it("shows the plan with a fingerprint, starts nothing, then starts the run once confirmed, refusing a stale fingerprint and a second run", async () => {
+    persistedGithub = true;
+    await seedSprint();
+    await grantRole("pe", "product_engineer");
+    await grantRole("tester", "tester");
+    const { access_token: access } = await connectClaude("pe");
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).persist();
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS).persist();
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, "").persist();
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/12/comments` }).reply(201, "{}", JSON_HEADERS).persist();
+
+    const plan = await call(access, "sprint_run", { project: REPO });
+    expect(plan.isError).toBe(false);
+    expect(plan.data["started"]).toBe(false);
+    const lanes = plan.data["lanes"] as { stories: { story: number; plan: string }[] }[][];
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0]?.[0]?.stories.map((story) => [story.story, story.plan])).toEqual([[12, "launch"], [13, "launch"]]);
+    const fingerprint = plan.data["fingerprint"] as string;
+    expect(fingerprint).toMatch(/^[0-9a-f]{24}$/);
+    expect((await logActions()).map((entry) => entry.action)).not.toContain("sprint_run_started");
+
+    const stale = await call(access, "sprint_run", { project: REPO, confirm: true, fingerprint: "0".repeat(24) });
+    expect(stale.isError).toBe(true);
+    expect(stale.data["error"]).toContain("The plan changed: read it again");
+    expect((await call(access, "sprint_run", { project: REPO, confirm: true })).isError).toBe(true);
+
+    expect((await call(access, "sprint_run", { project: REPO, confirm: true, fingerprint })).data).toMatchObject({ started: true });
+    const actions = await logActions();
+    expect(actions.find((entry) => entry.action === "sprint_run_started")?.actor).toBe("pe");
+    expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["sprint_run"]);
+
+    const again = await call(access, "sprint_run", { project: REPO, confirm: true, fingerprint });
+    expect(again.isError).toBe(true);
+    expect(actions.filter((entry) => entry.action === "sprint_run_started")).toHaveLength(1);
+    expect((await logActions()).filter((entry) => entry.action === "sprint_run_started")).toHaveLength(1);
+
+    const { access_token: tester } = await connectClaude("tester");
+    expect((await call(tester, "sprint_run", { project: REPO })).data["error"]).toContain("does not let you run the sprint");
+  });
+
+  it("refuses when the project declares no merge workflow", async () => {
+    persistedGithub = true;
+    await seedSprint({ nom: "Widget", workflows: { claude: "claude.yml" } });
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).persist();
+    expect((await call(access, "sprint_run", { project: REPO })).data["error"]).toContain("workflows.fusionner");
+  });
+
+  it("says in its instructions what a run does and never does", async () => {
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const instructions = String((await rpc(access, "initialize", { protocolVersion: "2025-11-25" })).result?.["instructions"]);
+    expect(instructions).toContain("each merge puts the work online");
+    expect(instructions).toContain("never closes the sprint");
+  });
+});
