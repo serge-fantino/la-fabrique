@@ -4512,3 +4512,11 @@ main:has(.help-shell) {
 .sl-unfold > summary { cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; }
 .sl-unfolded h4 { margin: 0.75rem 0 0.25rem; font-size: 0.95rem; }
 .sl-unfold-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+
+/* Search, filter and sort the sprint's list (la-fabrique#373) */
+.sl-band { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: end; margin: 0 0 1rem; }
+.sl-band p { margin: 0; }
+.sl-band input[type="search"], .sl-band select { min-height: 44px; }
+.sl-filters { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+.sl-check { display: inline-flex; align-items: center; gap: 0.25rem; min-height: 44px; }
+.sl-flags { display: flex; flex-wrap: wrap; gap: 0.75rem; }

@@ -17,6 +17,7 @@ import type { PlannedCard, PlannedEntry, ReleaseKind, ReleasePlan } from "./spri
 import { storyStatus } from "./stories-views";
 import { shippedNote, type Progress } from "./progress-stages";
 import { nextAction } from "./sprint-list";
+import { readListView, applyListView, isCustom, isFiltered, matchingStories, SORTS, STAGES, type FeatureFacts, type ListView, type StoryFacts } from "./sprint-filter";
 import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, formatDate, layout, type Viewer } from "./views";
 
@@ -86,6 +87,11 @@ export interface SprintData {
   };
   notice?: string | undefined;
   failure?: string | undefined;
+  // Search, filters and sort of the list, from the address (la-fabrique#373).
+  listView?: ListView;
+  // Last activity per story (La Fabrique's log), and the stories this person ticked criteria on.
+  activity?: Map<number, string>;
+  ticked?: Set<number>;
   // The sprint running by itself: its state, or how to start it.
   run?: string;
   // The run going on (running, paused, waiting): the page follows it.
@@ -127,10 +133,34 @@ function runPill(run: ClaudeRun, story?: CardStory): string {
 // The value of "Nice to have" in a story's priority list.
 const NICE = "nice";
 
+const SORT_LABELS: Record<string, string> = { order: "Sprint's order", priority: "Priority", stage: "Stage", activity: "Last activity" };
+const STAGE_LABELS: Record<string, string> = { ready: "Ready", development: "In development", test: "To test", production: "In production", blocked: "Blocked" };
+
+// The band above the list: a GET form, so a view is an address and works
+// without the script (la-fabrique#373).
+function listBand(data: SprintData, view: ListView, total: number, kept: number): string {
+  const epics = [...new Set(data.sprintCards.map((card) => data.epics?.get(card.id)?.title).filter((value): value is string => Boolean(value)))];
+  const check = (name: string, value: string, on: boolean, label: string) =>
+    `<label class="sl-check small"><input type="checkbox" name="${name}" value="${escapeHtml(value)}"${on ? " checked" : ""} /> ${escapeHtml(label)}</label>`;
+  const flag = (name: string, on: boolean, label: string) => check(name, "1", on, label);
+  return `<form class="sl-band" method="get" role="search" aria-label="Search, filter and sort the list">
+    <p><input type="search" name="q" value="${escapeHtml(view.q)}" placeholder="Search: title, #204, C147" aria-label="Search a feature or a story" /></p>
+    <fieldset class="sl-filters"><legend class="small">Stage</legend>${STAGES.map((stage) => check("stage", stage, view.stages.includes(stage), STAGE_LABELS[stage]!)).join("")}</fieldset>
+    ${data.priorities.length ? `<fieldset class="sl-filters"><legend class="small">Priority</legend>${data.priorities.map((value) => check("priority", value, view.priority.includes(value), value)).join("")}</fieldset>` : ""}
+    ${epics.length ? `<fieldset class="sl-filters"><legend class="small">Epic</legend>${epics.map((value) => check("epic", value, view.epic.includes(value), value)).join("")}</fieldset>` : ""}
+    <p class="sl-flags">${flag("behind", view.behind, "Behind the scenes")}${flag("can", view.can, "What I can do")}${flag("mine", view.mine, "Waiting for me")}</p>
+    <p><label class="small">Sort <select name="sort">${SORTS.map((key) => `<option value="${key}"${view.sort === key ? " selected" : ""}>${SORT_LABELS[key]}</option>`).join("")}</select></label>
+    <button type="submit" class="button quiet small">Apply</button>
+    ${isCustom(view) ? `<a class="button quiet small" href="?">Clear</a>` : ""}
+    <span class="muted small" role="status">${isFiltered(view) ? `${kept} of ${total} feature${total === 1 ? "" : "s"} kept` : `${total} feature${total === 1 ? "" : "s"}`}${view.sort !== "order" ? " · reordering is off: sort by the sprint's order to move lines" : ""}</span></p>
+  </form>`;
+}
+
 export function sprintPage(viewer: Viewer, project: Project, data: SprintData): string {
   const base = projectUrl(project.repo);
   const action = `${base}/sprint`;
   const { sprint } = data;
+  const lv = data.listView ?? readListView(new URLSearchParams());
   // A small form: one button, the action and what it acts on.
   const button = (fields: Record<string, string | number>, label: string, text: string, kind = "quiet small") =>
     `<form method="post" action="${escapeHtml(action)}" class="inline sprint-order" data-busy="…">${csrfField(viewer)}${Object.entries(fields)
@@ -517,11 +547,9 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
         <p class="sl-activity small">${activity}</p>
         ${releaseLine}
       </section>`;
-    const cards = data.sprintCards;
-    const lines = cards
-      .map((card, index) => {
+    const nextOf = (card: Card) => {
         const entries = storiesOf(card.id).map((number) => ({ number, nice: isNice(data.links, card.id, number) }));
-        const next = nextAction({
+        return nextAction({
           stories: entries,
           byNumber: data.stories,
           held: data.claude.held,
@@ -539,6 +567,50 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           canLaunch: Boolean(data.claude.canLaunch && data.claude.workflow),
           shipped: data.progress?.get(card.id)?.shipped?.versions.length ? `Shipped in ${data.progress.get(card.id)!.shipped!.versions.join(", ")}` : null,
         });
+    };
+    const me = viewer.login.toLowerCase();
+    const stageOfStory = (number: number): StoryFacts["stage"] => {
+      const s = data.stories.get(number);
+      if (data.claude.held.has(number)) return "blocked";
+      if (isFinished(s)) return "production";
+      if (isToTest(s)) return "test";
+      if (isInDevelopment(s)) return "development";
+      if (isReadyStage(s)) return "ready";
+      return "backlog";
+    };
+    const facts = data.sprintCards.map((card): FeatureFacts => {
+      const numbers = storiesOf(card.id);
+      const stories = numbers.map((number): StoryFacts => ({ number, title: data.stories.get(number)?.title ?? "", stage: stageOfStory(number), priority: data.stories.get(number)?.priority ?? null }));
+      const waitingForMe = numbers.some((number) => {
+        const s = data.stories.get(number);
+        const asked = (s?.pulls ?? []).some((pull) => pull.state === "open" && (data.pulls.get(pull.number)?.reviewers ?? []).some((login) => login.toLowerCase() === me));
+        const launchedByMe = data.claude.launches.get(number)?.by.toLowerCase() === me && (s?.pulls ?? []).some((pull) => pull.state === "open" && !pull.guessed);
+        const testing = Boolean(data.ticked?.has(number)) && isToTest(s) && !s?.validated;
+        return asked || launchedByMe || testing;
+      });
+      const times = numbers.map((number) => data.activity?.get(number)).filter((value): value is string => Boolean(value));
+      return {
+        id: card.id,
+        title: card.title,
+        priority: card.priority ?? null,
+        epic: data.epics?.get(card.id)?.title ?? null,
+        backstage: Boolean(card.backstage),
+        stories,
+        canDo: nextOf(card).kind !== "none",
+        waitingForMe,
+        activity: times.length ? times.sort().at(-1)! : null,
+      };
+    });
+    const priorities = data.priorities;
+    const shown = new Set(applyListView(facts, lv, priorities).map((feature) => feature.id));
+    const order = applyListView(facts, lv, priorities).map((feature) => feature.id);
+    const cards = order.map((id) => data.sprintCards.find((card) => card.id === id)!);
+    const custom = isCustom(lv);
+    const searched = new Map(facts.map((feature) => [feature.id, matchingStories(feature, lv)]));
+    const filterBand = listBand(data, lv, facts.length, shown.size);
+    const lines = cards
+      .map((card, index) => {
+        const next = nextOf(card);
         const story = (number: number) => `#${number}`;
         const button1 =
           next.kind === "test"
@@ -563,7 +635,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           .join("");
         const progress = data.progress?.get(card.id);
         const epic = data.epics?.get(card.id);
-        const controls = data.canOrder;
+        const controls = data.canOrder && !custom;
         const priority = card.priority ? `<span class="pill small">${escapeHtml(card.priority)}</span>` : "";
         const listStory = (number: number, at: number) => {
           const s = data.stories.get(number);
@@ -594,14 +666,16 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           </div>
           ${
             mine.length
-              ? `<details class="sl-stories"><summary>${mine.length} stor${mine.length === 1 ? "y" : "ies"}</summary><ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${mine.map(listStory).join("")}</ol></details>`
+              ? `<details class="sl-stories"${searched.get(card.id)?.size ? " open" : ""}><summary>${mine.length} stor${mine.length === 1 ? "y" : "ies"}</summary><ol class="sprint-stories-list"${controls ? sortable("story_order", card.id) : ""}>${mine.map(listStory).join("")}</ol></details>`
               : ""
           }
         </article>`;
       })
       .join("");
-    return `${head}<section class="sl-features" aria-label="Features"><h2>Features</h2>${
-      lines ? `<div class="sl-list"${data.canOrder && cards.length > 1 ? sortable("card_order") : ""}>${lines}</div>` : `<p class="muted">No card in the sprint.</p>`
+    return `${head}<section class="sl-features" aria-label="Features"><h2>Features</h2>${filterBand}${
+      lines
+        ? `<div class="sl-list"${data.canOrder && !custom && cards.length > 1 ? sortable("card_order") : ""}>${lines}</div>`
+        : `<p class="muted">${facts.length ? "No feature matches this view." : "No card in the sprint."}</p>`
     }</section>`;
   };
   // A story's detail and actions, for its line in the list
@@ -659,7 +733,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
   };
   if (data.unfold) return unfoldView();
   const modeToggle = sprint
-    ? `<div class="sprint-mode" role="group" aria-label="View of the sprint"><button type="button" class="button quiet small" data-sprint-mode="details" aria-pressed="true">Details</button><button type="button" class="button quiet small" data-sprint-mode="list" aria-pressed="false">List</button></div>`
+    ? `<div class="sprint-mode" role="group" aria-label="View of the sprint"><button type="button" class="button quiet small" data-sprint-mode="details" aria-pressed="${!isCustom(lv)}">Details</button><button type="button" class="button quiet small" data-sprint-mode="list" aria-pressed="${isCustom(lv)}">List</button></div>`
     : "";
 
   // Something in progress (Claude, a pull request, the run, the release):
@@ -758,7 +832,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
     `${projectHeader(project, "sprint")}
       ${notice(data.notice, "ok")}
       ${notice(data.failure, "error")}
-      ${sprint ? `<div class="sprint-views" data-mode="details">${modeToggle}<div class="sprint-list-view">${listView()}</div><div class="sprint-details-view">${current}</div></div>` : current}
+      ${sprint ? `<div class="sprint-views" data-mode="${isCustom(lv) ? "list" : "details"}"${isCustom(lv) ? " data-keep-mode" : ""}>${modeToggle}<div class="sprint-list-view">${listView()}</div><div class="sprint-details-view">${current}</div></div>` : current}
       ${kept}
       ${integration}`,
     viewer,

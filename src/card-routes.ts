@@ -24,6 +24,7 @@ import { FOLLOW_MAX_AGE_MS, loadStories } from "./stories";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { EPIC_ISSUE_KIND, epicIssueView, epicIssuesOf, startFromIssue, takenEpicIssues } from "./epic-issue";
 import { isNice, storyCards } from "./card-groups";
+import { readListView } from "./sprint-filter";
 import { releasePage, releaseWarningPage, sprintPage } from "./sprint-views";
 import { cardProgress, isProgressStage, progressSince } from "./card-progress";
 import { canForceReview, canReview, forceReview, forcedReviews, launchReview, pullReviewStates, reviewHold, reviewWorkflow } from "./review";
@@ -1614,12 +1615,29 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       }),
     };
   }
+  // Last activity per story, from the log: no GitHub call (la-fabrique#373).
+  const activity = new Map<number, string>();
+  const ticked = new Set<number>();
+  if (sprint && inSprint.length) {
+    const marks = inSprint.map(() => "?").join(",");
+    const { results: seen } = await env.DB.prepare(`SELECT issue_number, MAX(occurred_at) AS at FROM activity_log WHERE repo = ? AND issue_number IN (${marks}) GROUP BY issue_number`)
+      .bind(project.repo, ...inSprint)
+      .all<{ issue_number: number; at: string }>();
+    for (const row of seen) activity.set(row.issue_number, row.at);
+    const { results: mine } = await env.DB.prepare(`SELECT DISTINCT issue_number FROM activity_log WHERE repo = ? AND actor = ? AND action = 'criterion_checked' AND issue_number IN (${marks})`)
+      .bind(project.repo, viewer.login, ...inSprint)
+      .all<{ issue_number: number }>();
+    for (const row of mine) ticked.add(row.issue_number);
+  }
   const runState = runOfSprint(sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null, sprint);
   return html(
     sprintPage(viewer, view, {
       run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(launchOrder, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
       ...(unfold ? { unfold } : {}),
+      listView: readListView(params),
+      activity,
+      ticked,
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,

@@ -625,7 +625,7 @@
     try {
       saved = localStorage.getItem("lf-sprint-mode");
     } catch {}
-    show(saved === "list" ? "list" : "details");
+    show(views.hasAttribute("data-keep-mode") ? "list" : saved === "list" ? "list" : "details");
     views.querySelectorAll("[data-sprint-mode]").forEach((button) =>
       button.addEventListener("click", () => {
         const mode = button.getAttribute("data-sprint-mode") === "list" ? "list" : "details";
