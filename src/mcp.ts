@@ -31,7 +31,8 @@ import {
   updateCard,
   type Card,
 } from "./cards";
-import { canLaunchClaude, launchClaude } from "./claude";
+import { canLaunchClaude, launchClaude, claudeCap } from "./claude";
+import { loadPlan as loadRunPlan, newRun, runLanes, runRefusal, sprintRunFor, type PlannedCard } from "./sprint-run";
 import type { Env } from "./env";
 import { EPIC_ISSUE_KIND, writeEpicIssue } from "./epic-issue";
 import { installationToken } from "./github-app";
@@ -75,7 +76,7 @@ const INSTRUCTIONS =
   "spec, and the sprint. The cycle: a card (draft) gets a spec in the project's sections (card_spec), is validated, becomes stories on " +
   "GitHub (stories_create, each linked to its card), goes into Next release, then into the sprint (sprint_start); Claude Code is launched " +
   "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested, and the go to production is given by a " +
-  "person on La Fabrique's sprint page (never through this server). A card's status follows its stories once validated. Before testing, read the stories to test " +
+  "person on La Fabrique's sprint page (never through this server). The sprint can run by itself (sprint_run: read the plan, then confirm it with its fingerprint): for each card, its stories one after the other (Claude launched, its pull request merged), several cards side by side within the project's cap; on a project without an integration branch, each merge puts the work online. A run never validates, never ships to production and never closes the sprint. A card's status follows its stories once validated. Before testing, read the stories to test " +
   "(to_test), then record one story's whole test in one call (test_story: validated when everything passes, sent back with feedback otherwise; one verdict per criterion, the steps you played; it is written in the person's name and marked \"via Claude\"). Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
   "write is in the person's name and in La Fabrique's log.";
 
@@ -97,6 +98,8 @@ interface Tool {
   // What the person needs; a write is logged as made through Claude.
   needs: Action | null;
   write: boolean;
+  // When set, only the calls it accepts are writes (logged as such).
+  writeWhen?: (args: Args) => boolean;
   run: (ctx: Context, args: Args) => Promise<unknown>;
 }
 
@@ -998,6 +1001,55 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: "sprint_run",
+    title: "Run the sprint by itself",
+    description:
+      "Without confirm: the plan of the sprint's automatic run (lanes, each card's stories in order, where it stops, the cards left aside) and its fingerprint; nothing starts. With confirm and that fingerprint: the plan is built again and, if unchanged, the run starts in your name (Claude launched on each story, its pull request merged; on a project without integration each merge puts the work online). Never validates, ships or closes the sprint. Product Engineer and super admin.",
+    inputSchema: {
+      type: "object",
+      properties: { ...PROJECT, confirm: { type: "boolean" }, fingerprint: { type: "string", description: "The fingerprint of the plan you read" } },
+      required: ["project"],
+    },
+    needs: null,
+    write: true,
+    writeWhen: (args) => args["confirm"] === true,
+    async run(ctx, args) {
+      if (!can(ctx.role, "promote")) fail(`Your role (${ctx.role}) does not let you run the sprint: it is for Product Engineers and super admins.`);
+      const project = await projectOf(ctx, args);
+      const { plan, running } = await loadRunPlan(ctx.env, project);
+      if (!running) fail("No sprint is running.");
+      const refusal = runRefusal(project);
+      if (refusal) fail(refusal);
+      const lanes = runLanes(plan, claudeCap(project));
+      const fingerprint = await planFingerprint(plan);
+      const sprintUrl = absolute(ctx, `${projectUrl(project.repo)}/sprint`);
+      const card = (planned: PlannedCard) => ({
+        card: cardRef(planned.card.id),
+        title: planned.card.title,
+        stories: planned.stories.map((story) => ({ story: story.number, title: story.title, nice_to_have: story.nice, plan: story.plan, ...(story.why ? { why: story.why } : {}) })),
+      });
+      if (args["confirm"] !== true) {
+        return {
+          started: false,
+          fingerprint,
+          lanes: lanes.lanes.map((lane) => lane.map(card)),
+          left_aside: lanes.idle.map((idle) => ({ ...card(idle.planned), why: idle.why })),
+          next: "Call sprint_run again with confirm: true and this fingerprint to start the run.",
+          sprint: sprintUrl,
+        };
+      }
+      if (args["fingerprint"] !== fingerprint) fail("The plan changed: read it again (sprint_run without confirm) before confirming.");
+      const run = sprintRunFor(ctx.env, project.repo);
+      if (!run) fail("The sprint's run is not available here.");
+      const current = await run?.state();
+      if (current && (current.status === "running" || current.status === "paused")) fail("A run is already going on this sprint.");
+      const state = newRun(project.repo, ctx.login, plan, new Date().toISOString());
+      if (!state.cards.length) fail("Nothing to run: every story of the sprint is merged.");
+      await run?.start(state);
+      return { started: true, cards: state.cards.map((c) => c.id), sprint: sprintUrl };
+    },
+  },
+  {
     name: "sprint_close",
     title: "Close the sprint",
     description:
@@ -1130,7 +1182,7 @@ async function method(id: unknown, name: string, params: Record<string, unknown>
       const ctx: Context = { env, login: props.login, role, app: props.app ?? "Claude", origin: new URL(request.url).origin };
       try {
         const data = await tool.run(ctx, args);
-        if (tool.write) {
+        if (tool.write && (!tool.writeWhen || tool.writeWhen(args))) {
           const repo = typeof args["project"] === "string" ? ((await projectOf(ctx, args).catch(() => null))?.repo ?? null) : null;
           await activityStatement(env.DB, { actor: props.login, action: "mcp_write", ...(repo ? { repo } : {}), details: { tool: tool.name, app: ctx.app } }).run();
         }
@@ -1147,3 +1199,10 @@ async function method(id: unknown, name: string, params: Record<string, unknown>
 }
 
 export const MCP_TOOL_NAMES = TOOLS.map((tool) => tool.name);
+
+// A hash of the plan: the cards, their stories and their order.
+export async function planFingerprint(plan: PlannedCard[]): Promise<string> {
+  const text = JSON.stringify(plan.map((planned) => [planned.card.id, planned.stories.map((story) => [story.number, story.nice, story.plan])]));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].slice(0, 12).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
