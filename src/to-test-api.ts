@@ -65,7 +65,7 @@ async function allowed(request: Request, env: Env, props: GrantProps, projectPar
 // The stories to test: on int, those int has; without int (la-fabrique#210),
 // those merged and still open, as To test lists them, and those back in
 // development after a feedback.
-async function storiesToTest(env: Env, project: Project, onInt: boolean) {
+export async function storiesToTest(env: Env, project: Project, onInt: boolean) {
   if (!onInt) {
     const [snapshot, cards, checks, rules] = await Promise.all([
       readSnapshot<Story[]>(env.DB, project.repo, STORIES),

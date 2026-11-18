@@ -11,6 +11,16 @@
   },
   {
     "version": "next",
+    "date": "2026-11-18",
+    "titre": "Claude lists the stories to test",
+    "changements": [
+      "Through La Fabrique's MCP server, Claude can now list the stories waiting for a test on a project (to_test): the test environment's name and address, and each story with its feature, acceptance criteria, validation and earlier feedback. Testers and above."
+    ],
+    "stories": [385],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-16",
     "titre": "The sprint as a list",
     "changements": [
