@@ -44,7 +44,7 @@ function feedbackOf(story: Story, index: number, actions: CardActions): string {
   const feedback = [...(actions.checks.get(story.number)?.feedbacks ?? [])].reverse().find((candidate) => candidate.criterion === index);
   if (!feedback) return "";
   const rework = isRework(story, actions);
-  return ` <span class="pill ${rework ? "alert" : "warn"} small">${rework ? "Failed" : "To test again"}</span>${
+  return ` <span class="pill ${rework ? "alert" : "warn"} small">${rework ? "Failed" : "To test again"}</span>${feedback.via ? ` <span class="muted small">via Claude</span>` : ""}${
     feedback.url ? ` <a class="small" href="${escapeHtml(feedback.url)}">feedback</a>` : ""
   }`;
 }
@@ -62,7 +62,7 @@ function feedbackList(story: Story, actions: CardActions): string {
       (feedback) =>
         `<li><span class="mono small">${escapeHtml(feedback.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(feedback.by)}${
           feedback.criterion !== null ? ` · criterion ${feedback.criterion + 1}${feedback.criterionText ? ` “${escapeHtml(feedback.criterionText)}”` : ""}` : ""
-        }: ${escapeHtml(feedback.text)}${feedback.url ? ` <a href="${escapeHtml(feedback.url)}">On GitHub</a>` : ""}</li>`,
+        }${feedback.via ? " · via Claude" : ""}: ${escapeHtml(feedback.text)}${feedback.url ? ` <a href="${escapeHtml(feedback.url)}">On GitHub</a>` : ""}</li>`,
     )
     .join("")}</ul></details>`;
 }
@@ -93,7 +93,7 @@ function criteriaList(story: Story, actions: CardActions): string {
 function validation(story: Story, actions: CardActions): string {
   const check = actions.checks.get(story.number);
   const validated = check?.validated
-    ? `<p class="small"><span class="pill ok">Validated</span> by @${escapeHtml(check.validated.by)} on <span class="mono">${formatDate(
+    ? `<p class="small"><span class="pill ok">Validated</span> by @${escapeHtml(check.validated.by)}${check.validated.via ? " via Claude" : ""} on <span class="mono">${formatDate(
         check.validated.at.replace(" ", "T"),
       )}</span>${check.validated.version ? ` (version <span class="mono">${escapeHtml(check.validated.version)}</span>)` : ""}</p>`
     : "";

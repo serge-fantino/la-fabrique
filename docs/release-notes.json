@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "\"via Claude\" shown on tests made through MCP",
+    "changements": [
+      "A validation or a feedback made by Claude through MCP is now marked \"via Claude\" in To test, on the story's page (validation, feedbacks, recorded steps) and in the project's log; the help explains how to test the stories with Claude."
+    ],
+    "stories": [387],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "Unfold a story in the sprint's list",
     "changements": [
       "In the sprint's list, a story unfolds to its criteria (ticked or not), its pull requests with their state and reviews, Claude's runs and the feedbacks from testing, read when you open it. Its actions are there with the same rights as before: launch, relaunch, rework or update with Claude, merge, ask for a review, mark ready, set its priority or nice to have; a link leads to the story's page."

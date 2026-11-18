@@ -29,10 +29,10 @@ const STAGE_TONES: Record<Stage, string> = { backlog: "", ready: "ok", in_dev: "
 
 // Where testing stands for a story that is on int (or merged, without
 // integration): validated, by whom; else how many criteria are ticked.
-export function testingNote(story: { stage: Stage | null; validated?: { by: string; at: string } | null; criteria?: { done: boolean }[] }): string {
+export function testingNote(story: { stage: Stage | null; validated?: { by: string; at: string; via?: "mcp" } | null; criteria?: { done: boolean }[] }): string {
   if (!isToTest(story)) return "";
   if (story.validated) {
-    return ` <span class="pill ok small" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}</span>`;
+    return ` <span class="pill ok small" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}${story.validated.via ? " via Claude" : ""}</span>`;
   }
   const criteria = story.criteria ?? [];
   const ticked = criteria.filter((criterion) => criterion.done).length;
@@ -42,10 +42,10 @@ export function testingNote(story: { stage: Stage | null; validated?: { by: stri
 // One status per story (la-fabrique#186): its stage, except a story to
 // test that is validated, which says Validated, by whom, instead of To
 // validate; else the stage, then how far testing went.
-export function storyStatus(story: { stage: Stage | null; closed?: boolean; validated?: { by: string; at: string } | null; criteria?: { done: boolean }[] }): string {
+export function storyStatus(story: { stage: Stage | null; closed?: boolean; validated?: { by: string; at: string; via?: "mcp" } | null; criteria?: { done: boolean }[] }): string {
   if (!story.stage) return `<span class="pill">${story.closed ? "Closed" : "Open"}</span>`;
   if (isToTest(story) && story.validated) {
-    return `<span class="pill ok stage-validated" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}</span>`;
+    return `<span class="pill ok stage-validated" title="Validated on ${escapeHtml(story.validated.at.slice(0, 16).replace("T", " "))} UTC">Validated</span> <span class="muted small">by @${escapeHtml(story.validated.by)}${story.validated.via ? " via Claude" : ""}</span>`;
   }
   return `${stagePill(story.stage)}${testingNote(story)}`;
 }
