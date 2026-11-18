@@ -637,8 +637,44 @@
     );
   }
 
+  // Sprint list: a story's detail is read when it unfolds, and stays open
+  // across the page's reload after an action (la-fabrique#372).
+  function setUpUnfold() {
+    const key = "lf-sprint-unfold";
+    let open = [];
+    try {
+      open = JSON.parse(sessionStorage.getItem(key) || "[]");
+    } catch {}
+    const save = () => {
+      try {
+        sessionStorage.setItem(key, JSON.stringify([...document.querySelectorAll("details[data-unfold][open]")].map((el) => el.id)));
+      } catch {}
+    };
+    const load = (el) => {
+      const body = el.querySelector(".sl-unfold-body");
+      if (!body) return;
+      fetch(el.getAttribute("data-unfold"), { credentials: "same-origin", headers: { accept: "text/html" } })
+        .then((response) => (response.ok ? response.text() : Promise.reject(new Error("failed"))))
+        .then((text) => {
+          body.innerHTML = text;
+          el.setAttribute("data-loaded", "1");
+        })
+        .catch(() => {
+          body.textContent = "The detail could not be read. Close and open it again.";
+        });
+    };
+    document.querySelectorAll("details[data-unfold]").forEach((el) => {
+      if (open.includes(el.id)) el.open = true;
+      el.addEventListener("toggle", () => {
+        save();
+        if (el.open && !el.hasAttribute("data-loaded")) load(el);
+      });
+    });
+  }
+
   // What each page needs once it is shown.
   function setUp() {
+    setUpUnfold();
     setUpSprintMode();
     setUpKeptAnswers();
     document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });

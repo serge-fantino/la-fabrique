@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "Unfold a story in the sprint's list",
+    "changements": [
+      "In the sprint's list, a story unfolds to its criteria (ticked or not), its pull requests with their state and reviews, Claude's runs and the feedbacks from testing, read when you open it. Its actions are there with the same rights as before: launch, relaunch, rework or update with Claude, merge, ask for a review, mark ready, set its priority or nice to have; a link leads to the story's page."
+    ],
+    "stories": [372],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "Claude records a story's test",
     "changements": [
       "Through La Fabrique's MCP server, Claude can now record the whole test of a story in one call (test_story), in your name and marked \"via Claude\": with one verdict per criterion and the steps it played, the story is validated when everything passes; otherwise the passing criteria are checked, each failing criterion gets a feedback comment, and the story goes back to development. Testers and above; the go to production stays out of reach."
