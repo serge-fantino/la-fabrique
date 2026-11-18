@@ -192,7 +192,7 @@ export async function actOnStoryForApp(request: Request, env: Env, props: GrantP
 // issue: a comment on the story, in the tester's name and the project's
 // language; the story gets the rework label and goes back to development,
 // the criterion unticked. Nothing is launched: a person decides (#202).
-async function giveFeedback(request: Request, env: Env, project: Project, props: GrantProps, story: number): Promise<Response> {
+export async function giveFeedback(request: Request, env: Env, project: Project, props: GrantProps, story: number, via?: "mcp"): Promise<Response> {
   let data: Record<string, unknown> | null = null;
   try {
     const raw = await request.text();
@@ -229,6 +229,7 @@ async function giveFeedback(request: Request, env: Env, project: Project, props:
     `> ${text.replace(/\n/g, "\n> ")}`,
     page ? `${words.feedbackPage} \`${page.replace(/`/g, "")}\`` : "",
     screenshotUrl ? `![screenshot](${screenshotUrl})` : "",
+    via ? words.viaClaude(props.login) : "",
     `---\n${words.feedbackRework}`,
   ]
     .filter(Boolean)
@@ -245,7 +246,7 @@ async function giveFeedback(request: Request, env: Env, project: Project, props:
     await applyIssueEvent(env, project.repo, "labeled", { ...issue, labels: [...new Set([...labels, rework])].map((name) => ({ name })) });
   }
   if (criterion && index !== null && criterion.done) {
-    await tickCriterion(request, env, project, props.login, story, index, criterion.text, false).catch(() => null);
+    await tickCriterion(request, env, project, props.login, story, index, criterion.text, false, via).catch(() => null);
   }
   await activityStatement(env.DB, {
     actor: props.login,
@@ -258,6 +259,7 @@ async function giveFeedback(request: Request, env: Env, project: Project, props:
       comment: commentUrl,
       environment: facts.environment,
       version,
+      ...(via ? { via } : {}),
       ...(stored ? { screenshot: stored } : {}),
     },
   }).run();
