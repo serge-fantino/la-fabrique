@@ -12,6 +12,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "A new sprint starts without the previous run",
+    "changements": [
+      "A new sprint no longer shows the run of the previous one in Running by itself: the run is forgotten when a sprint starts or closes (a run still going is stopped first), and a finished run older than the current sprint is never shown."
+    ],
+    "stories": [356],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "Claude lists the stories to test",
     "changements": [
       "Through La Fabrique's MCP server, Claude can now list the stories waiting for a test on a project (to_test): the test environment's name and address, and each story with its feature, acceptance criteria, validation and earlier feedback. Testers and above."

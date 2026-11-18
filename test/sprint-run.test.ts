@@ -209,7 +209,7 @@ async function seedSprint(): Promise<number> {
       JSON.stringify({ nom: "Widget", workflows: { claude: "claude.yml", fusionner: "merge.yml" }, claude: { plafond: 2 } }),
     ),
     env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2099-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify(stories)),
-    env.DB.prepare("INSERT INTO sprints (repo, release, started_by) VALUES (?, 'Sprint', 'pe')").bind(REPO),
+    env.DB.prepare("INSERT INTO sprints (repo, release, started_by, started_at) VALUES (?, 'Sprint', 'pe', '2026-10-31T12:00:00.000Z')").bind(REPO),
   ]);
   const id = (await env.DB.prepare("INSERT INTO cards (repo, kind, status, title, body, release, position, author) VALUES (?, 'feature', 'validated', 'Week menu', '', 'Sprint', 1, 'pe') RETURNING id").bind(REPO).first<{ id: number }>())?.id ?? 0;
   await env.DB.batch([12, 13].map((number, index) => env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', ?, ?)").bind(id, String(number), index + 1)));

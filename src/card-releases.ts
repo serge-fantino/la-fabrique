@@ -5,6 +5,7 @@ import { productionBranch, type Project } from "./projects";
 import { loadReleases } from "./roadmap";
 import { readSnapshot } from "./snapshots";
 import { activeSprint, endSprint } from "./sprints";
+import { forgetRun } from "./sprint-run";
 
 // The board's releases: the project's own (its release notes), shipped or
 // in progress, and those planned ahead in La Fabrique (a value of the
@@ -141,7 +142,10 @@ export async function boardReleases(env: Env, project: Project, planned: string[
   const sprint = await activeSprint(env.DB, project.repo);
   if (sprint && sprint.release !== SPRINT_LANE) {
     const release = found.get(sprint.release);
-    if (release?.state === "shipped") await endSprint(env.DB, sprint, "la-fabrique", "shipped");
+    if (release?.state === "shipped") {
+      await endSprint(env.DB, sprint, "la-fabrique", "shipped");
+      await forgetRun(env, project.repo, "la-fabrique");
+    }
     else found.set(sprint.release, { ...(release ?? { version: sprint.release, title: null }), state: "in_progress", sprint: true });
   }
   // On a project with an integration branch, a release in progress is

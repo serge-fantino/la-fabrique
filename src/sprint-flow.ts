@@ -10,6 +10,7 @@ import type { Env } from "./env";
 import { isFinished, isInDevelopment, isToTest } from "./lifecycle";
 import type { Project } from "./projects";
 import { activeSprint, type Sprint } from "./sprints";
+import { forgetRun } from "./sprint-run";
 
 // The sprint's life (la-fabrique#109): it takes the cards of Next release,
 // and has no version while it runs. It ends only when someone closes it:
@@ -64,6 +65,7 @@ export async function startSprint(
     env.DB.prepare("INSERT INTO sprints (repo, release, started_by, version, name) VALUES (?, ?, ?, ?, ?)").bind(project.repo, SPRINT_LANE, login, version, name),
     activityStatement(env.DB, { actor: login, action: "sprint_started", repo: project.repo, details: { cards: [...kept, ...next].map((card) => card.id), version, name } }),
   ]);
+  await forgetRun(env, project.repo, login);
   await moveCards(env.DB, next, SPRINT_LANE, login, "sprint started");
   return { ok: true, cards: next.length + kept.length };
 }
@@ -106,6 +108,7 @@ async function endWith(env: Env, project: Project, sprint: Sprint, login: string
       details: { release: version, reason },
     }),
   ]);
+  await forgetRun(env, project.repo, login);
 }
 
 // Close the sprint, by hand: the cards done take the version that shipped
@@ -171,6 +174,7 @@ async function openForWorkOnInt(env: Env, project: Project, releases: Map<string
     repo: project.repo,
     details: { cards: [], version, name: null, forced: true, reason: "int holds work production does not", stories: onInt.slice(0, 20) },
   }).run();
+  await forgetRun(env, project.repo, "la-fabrique");
   return { version, stories: onInt };
 }
 
