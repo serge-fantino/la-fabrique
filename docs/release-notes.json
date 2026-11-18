@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "The sprint's list updates only the lines that change",
+    "changements": [
+      "In the sprint's list, an event (a Claude run, a pull request, a test, the sprint's run) now refreshes only the feature and story lines it changes, and the head band, without reloading the page: what is unfolded, the filters and the scroll stay. It waits while you type or an action is being sent."
+    ],
+    "stories": [374],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "Search, filter and sort the sprint's list",
     "changements": [
       "Search, filter and sort the sprint's list: a search by title, story number (#204) or card (C147); filters by stage, priority, epic and behind the scenes that combine and say how many features they keep; \"What I can do\" and \"Waiting for me\"; sorts by priority, stage or last activity (read from La Fabrique's log). The view is in the page's address, so it can be shared, and works without the script."
