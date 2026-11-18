@@ -800,7 +800,7 @@ export interface StoryState {
   stage: Stage | null;
   closed: boolean;
   // Testing on int: validated, and the criteria ticked.
-  validated?: { by: string; at: string } | null;
+  validated?: { by: string; at: string; via?: "mcp" } | null;
   criteria?: { done: boolean }[];
 }
 

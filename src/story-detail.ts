@@ -99,7 +99,7 @@ function steps(detail: StoryDetail, project: Project): { label: string; state: S
     ["Claude at work", Boolean(detail.launched) || open || merged || closed, detail.launched ? `Launched by @${detail.launched.by} on ${detail.launched.at.slice(0, 10)}` : ""],
     ["Pull request", merged || closed, open ? "Open, waiting for its merge" : merged ? "Merged" : ""],
     [hasIntegration ? "On int" : "Online", online, ""],
-    ["Tested", tested, state?.validated ? `Validated by @${state.validated.by}` : ""],
+    ["Tested", tested, state?.validated ? `Validated by @${state.validated.by}${state.validated.via ? " via Claude" : ""}` : ""],
     ["In production", closed, closed ? "Released, issue closed" : ""],
   ];
   let current = false;
@@ -139,7 +139,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
           .map((entry) => {
             const d = entry.details;
             const text = (key: string) => (typeof d[key] === "string" ? escapeHtml(String(d[key])) : "");
-            return `<li><span class="mono small">${escapeHtml(entry.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(entry.actor)}${
+            return `<li><span class="mono small">${escapeHtml(entry.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(entry.actor)}${d["via"] === "mcp" ? " via Claude" : ""}${
               d["criterion_text"] ? ` · criterion “${text("criterion_text")}”` : ""
             }: ${text("text")}${typeof d["comment"] === "string" && String(d["comment"]).startsWith("https://github.com/") ? ` <a href="${escapeHtml(String(d["comment"]))}">On GitHub</a>` : ""}</li>`;
           })

@@ -128,7 +128,7 @@ export async function storiesToTestForApp(request: Request, env: Env, props: Gra
           card: card ? { id: card.id, title: card.title, url: new URL(`${projectUrl(guard.project.repo)}/cards/${card.id}`, request.url).toString() } : null,
           page: new URL(`${projectUrl(guard.project.repo)}/sprint/stories/${story.number}`, request.url).toString(),
           criteria: (story.criteria ?? []).map((criterion, index) => ({ text: criterion.text, done: criterion.done, failed: failedAt(index) })),
-          validated: validated ? { by: validated.by, at: validated.at, version: validated.version } : null,
+          validated: validated ? { by: validated.by, at: validated.at, version: validated.version, ...(validated.via ? { via: "claude" } : {}) } : null,
           rework,
           feedbacks,
         };

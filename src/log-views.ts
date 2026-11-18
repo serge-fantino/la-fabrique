@@ -21,25 +21,26 @@ export function describe(entry: LogEntry, repo: string): string {
   const runLink = (url: unknown) =>
     typeof url === "string" && url.startsWith("https://github.com/") ? ` (<a href="${escapeHtml(url)}">the run</a>)` : "";
   const d = entry.details;
+  const via = d["via"] === "mcp" ? " via Claude" : "";
   switch (entry.action) {
     case "request_created":
       return `wrote request ${story}${d["title"] ? ` “${text(d["title"])}”` : ""}`;
     case "criterion_checked":
-      return `checked a criterion of ${story}: “${text(d["text"])}”`;
+      return `checked a criterion of ${story}${via}: “${text(d["text"])}”`;
     case "criterion_unchecked":
-      return `unchecked a criterion of ${story}: “${text(d["text"])}”`;
+      return `unchecked a criterion of ${story}${via}: “${text(d["text"])}”`;
     case "story_test_recorded":
-      return `recorded ${Array.isArray(d["steps"]) ? d["steps"].length : 0} steps while checking a criterion of ${story}: “${text(d["text"])}”${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
+      return `recorded ${Array.isArray(d["steps"]) ? d["steps"].length : 0} steps${via} while checking a criterion of ${story}: “${text(d["text"])}”${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "feature_proposed":
       return `proposed ${Number(d["scenarios"]) || 0} recorded scenario${Number(d["scenarios"]) === 1 ? "" : "s"} of ${story} to the project: <a href="https://github.com/${escapeHtml(repo)}/pull/${Number(d["pull"]) || 0}">PR #${Number(d["pull"]) || 0}</a>`;
     case "story_validated":
-      return `validated ${story} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
+      return `validated ${story}${via} on int${d["version"] ? ` (version <span class="mono">${text(d["version"])}</span>)` : ""}`;
     case "story_rework_launched":
       return `launched Claude to rework ${story} with its test feedbacks`;
     case "story_rework_merged":
       return `saw the rework of ${story} merged (pull request ${issue(d["pull"])}): to test again`;
     case "story_feedback":
-      return `gave a feedback on ${story} from testing${d["criterion_text"] ? ` (criterion “${text(d["criterion_text"])}”)` : ""}: “${text(d["text"])}”${d["comment"] ? ` <a href="${escapeHtml(String(d["comment"]))}">On GitHub</a>` : ""}; back in development`;
+      return `gave a feedback on ${story}${via} from testing${d["criterion_text"] ? ` (criterion “${text(d["criterion_text"])}”)` : ""}: “${text(d["text"])}”${d["comment"] ? ` <a href="${escapeHtml(String(d["comment"]))}">On GitHub</a>` : ""}; back in development`;
     case "story_reopened":
       return `opened ${story} again: closed by the merge of ${d["pull"] ? issue(d["pull"]) : `commit <span class="mono">${text(String(d["commit"] ?? "").slice(0, 7))}</span>`}, not validated yet`;
     case "defect_reported":
