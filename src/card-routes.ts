@@ -34,7 +34,7 @@ import { hasIntegration, lastReleaseAttempt, loadPlan, proposeVersion, publishWo
 import { loadReleases } from "./roadmap";
 import { canLaunchClaude, canRelaunchClaude, claudeCap, claudeLaunches, claudeRuns, claudeWorkflow, isRunning, launchClaude, updateWithClaude } from "./claude";
 import { heldStories } from "./card-lock";
-import { loadPlan as loadRunPlan, newRun, planRun, relaunchable, runRefusal, sprintRunFor } from "./sprint-run";
+import { loadPlan as loadRunPlan, newRun, planRun, relaunchable, runOfSprint, runRefusal, sprintRunFor } from "./sprint-run";
 import { runSection } from "./sprint-run-views";
 import { applyCardPriority, markReady, storyPriority } from "./card-priority";
 import { setPriority } from "./backlog";
@@ -1614,7 +1614,7 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
       }),
     };
   }
-  const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
+  const runState = runOfSprint(sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null, sprint);
   return html(
     sprintPage(viewer, view, {
       run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(launchOrder, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
