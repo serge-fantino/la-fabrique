@@ -35,7 +35,7 @@ import { canLaunchClaude, launchClaude } from "./claude";
 import type { Env } from "./env";
 import { EPIC_ISSUE_KIND, writeEpicIssue } from "./epic-issue";
 import { installationToken } from "./github-app";
-import { cycleRules, projectRules } from "./lifecycle";
+import { cycleRules, projectRules, reworkLabelOf } from "./lifecycle";
 import { setPriority } from "./backlog";
 import type { GrantProps } from "./oauth";
 import { findProject, listProjects, productionBranch, type Project } from "./projects";
@@ -52,6 +52,8 @@ import { missingSections, specRubriques } from "./specs";
 import { loadStoryDetail } from "./story-detail";
 import { projectUrl } from "./urls";
 import { wordingFor } from "./wording";
+import { storiesToTest } from "./to-test-api";
+import { testEnvironment } from "./defects";
 
 // La Fabrique as an MCP server (la-fabrique#155): Claude, connected by the
 // person (OAuth, the `fabrique` scope), reads and writes the upstream of
@@ -70,8 +72,8 @@ const INSTRUCTIONS =
   "spec, and the sprint. The cycle: a card (draft) gets a spec in the project's sections (card_spec), is validated, becomes stories on " +
   "GitHub (stories_create, each linked to its card), goes into Next release, then into the sprint (sprint_start); Claude Code is launched " +
   "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested, and the go to production is given by a " +
-  "person on La Fabrique's sprint page (never through this server). A card's status follows its stories once validated. Read before " +
-  "writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
+  "person on La Fabrique's sprint page (never through this server). A card's status follows its stories once validated. Before testing, read the stories to test " +
+  "(to_test). Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
   "write is in the person's name and in La Fabrique's log.";
 
 interface Context {
@@ -477,6 +479,45 @@ const TOOLS: Tool[] = [
         history: detail.history.map((entry) => ({ at: entry.at, actor: entry.actor, action: entry.action, issue: entry.issue, details: entry.details })),
         url: absolute(ctx, `${projectUrl(project.repo)}/sprint/stories/${number}`),
         issue: `https://github.com/${project.repo}/issues/${number}`,
+      };
+    },
+  },
+  {
+    name: "to_test",
+    title: "Stories to test",
+    description:
+      "Read only. The stories waiting for a test on a project's test environment (int, or production for a project without integration), as its To test tab lists them: the environment's name and address; each story with its card, acceptance criteria (index, text, checked), validation and earlier feedback; validated stories last. Use it before testing a project. Needs the tester role.",
+    inputSchema: { type: "object", properties: { ...PROJECT }, required: ["project"] },
+    needs: null,
+    write: false,
+    async run(ctx, args) {
+      const project = await projectOf(ctx, args);
+      if (!can(ctx.role, "validate")) fail("Your role does not let you test stories.");
+      const test = await testEnvironment(ctx.env, project);
+      if (!test) return { project: project.repo, environment: null, message: "This project has no environment to test on.", stories: [] };
+      const onInt = test.environment.type === "integration" || Boolean(project.check?.config?.branches?.integration);
+      const { stories, cards, checks } = await storiesToTest(ctx.env, project, onInt);
+      const rework = reworkLabelOf(project.check?.config);
+      const shaped = stories.map((story) => {
+        const head = (cards.byStory.get(story.number) ?? []).map((id) => cards.cards.get(id)).find((card) => card !== undefined);
+        const state = checks.get(story.number);
+        const validated = state?.validated ?? null;
+        return {
+          number: story.number,
+          title: story.title,
+          card: head ? { ref: cardRef(head.id), title: head.title, url: absolute(ctx, `${projectUrl(project.repo)}/cards/${head.id}`) } : null,
+          criteria: (story.criteria ?? []).map((criterion, index) => ({ index, text: criterion.text, checked: criterion.done })),
+          validated: validated ? { by: validated.by, at: validated.at } : null,
+          back_in_development: story.labels.includes(rework),
+          feedback: (state?.feedbacks ?? []).map((feedback) => ({ criterion: feedback.criterion, text: feedback.text, by: feedback.by, at: feedback.at })),
+          url: absolute(ctx, `${projectUrl(project.repo)}/sprint/stories/${story.number}`),
+          issue: story.url,
+        };
+      });
+      return {
+        project: project.repo,
+        environment: { name: test.name, url: test.environment.url },
+        stories: [...shaped.filter((story) => !story.validated), ...shaped.filter((story) => story.validated)],
       };
     },
   },

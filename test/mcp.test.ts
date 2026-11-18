@@ -412,3 +412,64 @@ describe("La Fabrique's MCP server", () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe("to_test", () => {
+  const now = "2026-11-18T00:00:00.000Z";
+  const story = (number: number, extra: Record<string, unknown> = {}) => ({
+    number, title: `Story ${number}`, state: "open", url: `https://github.com/${REPO}/issues/${number}`, author: null, labels: [], parent: null,
+    subTotal: 0, subCompleted: 0, createdAt: now, updatedAt: now, closedAt: null, pullRequests: [], branches: [], criteria: [], ...extra,
+  });
+  const seedStories = (stories: unknown[], production?: unknown) =>
+    env.DB.batch([
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2099-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify(stories)),
+      ...(production ? [env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, '2099-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify(production))] : []),
+      env.DB.prepare("INSERT INTO cards (id, repo, kind, status, title, body, position, author) VALUES (17, ?, 'feature', 'validated', 'Plan the week', '', 1, 'pe')").bind(REPO),
+      env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (17, 'story', '146')"),
+    ]);
+
+  it("lists the stories on int with their card and criteria, validated ones last, and is described as read only", async () => {
+    const { addProject, CONFIG, INT_URL } = await import("./oauth-helpers");
+    await addProject(CONFIG);
+    await seedStories(
+      [story(146, { criteria: [{ text: "It saves", done: true }, { text: "It shows", done: false }] }), story(147)],
+      { production: "main", integration: "integration", integrationHead: "a", aheadBy: 1, groups: [{ branch: "f", title: "", mergedAt: now, commits: [], issues: [147, 146] }], workflows: [], versions: [], waiting: [], ready: true, blockers: [] },
+    );
+    await env.DB.prepare("INSERT INTO activity_log (occurred_at, actor, action, repo, issue_number, details) VALUES (?, 'tess', 'story_validated', ?, 146, '{\"version\":\"1.1\"}')").bind(now, REPO).run();
+    await grantRole("tess", "tester");
+    const { access_token: access } = await connectClaude("tess");
+
+    const tools = (await rpc(access, "tools/list")).result?.["tools"] as { name: string; description: string; annotations: { readOnlyHint: boolean } }[];
+    const tool = tools.find((entry) => entry.name === "to_test");
+    expect(tool?.annotations.readOnlyHint).toBe(true);
+    expect(tool?.description).toContain("Use it before testing");
+
+    const listed = await call(access, "to_test", { project: REPO });
+    expect(listed.isError).toBe(false);
+    expect(listed.data["environment"]).toEqual({ name: "int", url: INT_URL });
+    const stories = listed.data["stories"] as { number: number; card: { ref: string } | null; criteria: unknown[]; validated: unknown }[];
+    expect(stories.map((entry) => entry.number)).toEqual([147, 146]);
+    expect(stories[1]?.card?.ref).toBe("C17");
+    expect(stories[1]?.criteria).toEqual([{ index: 0, text: "It saves", checked: true }, { index: 1, text: "It shows", checked: false }]);
+    expect(stories[0]?.validated).toBeNull();
+  });
+
+  it("lists the merged stories of a project without int, and says so when there is no environment", async () => {
+    await seedProject({ nom: "Widget", langue: "en", environnements: { production: { url: "https://widget.example.com", version: "/v", type: "production" } } });
+    await env.DB.prepare("DELETE FROM snapshots WHERE repo = ?").bind(REPO).run();
+    await seedStories([story(146, { pullRequests: [{ number: 5, title: "x", state: "merged", url: "u", head: "b", base: "main", draft: false }] }), story(150)]);
+    await grantRole("tess", "tester");
+    const { access_token: access } = await connectClaude("tess");
+    const listed = await call(access, "to_test", { project: REPO });
+    expect((listed.data["environment"] as { name: string }).name).toBe("production");
+    expect((listed.data["stories"] as { number: number }[]).map((entry) => entry.number)).toEqual([146]);
+  });
+
+  it("says the project has no environment to test on", async () => {
+    await seedProject();
+    await grantRole("tess", "tester");
+    const { access_token: access } = await connectClaude("tess");
+    const listed = await call(access, "to_test", { project: REPO });
+    expect(listed.data["stories"]).toEqual([]);
+    expect(listed.data["message"]).toContain("no environment to test on");
+  });
+});
