@@ -65,6 +65,7 @@ export async function tickCriterion(
   index: number,
   text: string,
   done: boolean,
+  via?: "mcp",
 ): Promise<ValidationOutcome> {
   try {
     // Each tick rewrites the issue's text: another one written at the same
@@ -94,7 +95,7 @@ export async function tickCriterion(
     action: done ? "criterion_checked" : "criterion_unchecked",
     repo: project.repo,
     issueNumber: number,
-    details: { index, text },
+    details: { index, text, ...(via ? { via } : {}) },
   }).run();
   await testsChanged(env, project.repo, number, done ? "criterion_checked" : "criterion_unchecked");
   return { ok: true };
@@ -106,8 +107,10 @@ export async function validateStory(
   project: Project,
   login: string,
   number: number,
+  via?: "mcp",
 ): Promise<ValidationOutcome> {
   const words = wordingFor(project);
+  const mark = via ? `\n\n${words.viaClaude(login)}` : "";
   let version: string | null = null;
   // Already in production (a released version declares it, nothing newer of
   // it waits on int): validated, the story is done and its issue closed.
@@ -135,7 +138,7 @@ export async function validateStory(
     version = inProduction || shippedIn ? null : await intVersion(env, project);
     const comment = await write(request, env, project, (token) =>
       githubPost(token, `/repos/${project.repo}/issues/${number}/comments`, {
-        body: shippedIn ? words.validatedShipped(login, shippedIn) : inProduction ? words.validatedInProduction(login) : words.validated(login, version),
+        body: (shippedIn ? words.validatedShipped(login, shippedIn) : inProduction ? words.validatedInProduction(login) : words.validated(login, version)) + mark,
       }),
     );
     if (!comment.ok) return { ok: false, message: `GitHub refused the comment (HTTP ${comment.status}).`, status: 502 };
@@ -165,7 +168,7 @@ export async function validateStory(
     action: "story_validated",
     repo: project.repo,
     issueNumber: number,
-    details: { version, ...(shippedIn ? { shipped_in: shippedIn, closed } : {}) },
+    details: { version, ...(shippedIn ? { shipped_in: shippedIn, closed } : {}), ...(via ? { via } : {}) },
   }).run();
   await testsChanged(env, project.repo, number, "validated");
   return { ok: true };

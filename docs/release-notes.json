@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "Claude records a story's test",
+    "changements": [
+      "Through La Fabrique's MCP server, Claude can now record the whole test of a story in one call (test_story), in your name and marked \"via Claude\": with one verdict per criterion and the steps it played, the story is validated when everything passes; otherwise the passing criteria are checked, each failing criterion gets a feedback comment, and the story goes back to development. Testers and above; the go to production stays out of reach."
+    ],
+    "stories": [386],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "Claude lists the stories to test",
     "changements": [
       "Through La Fabrique's MCP server, Claude can now list the stories waiting for a test on a project (to_test): the test environment's name and address, and each story with its feature, acceptance criteria, validation and earlier feedback. Testers and above."
