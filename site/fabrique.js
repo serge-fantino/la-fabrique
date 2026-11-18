@@ -408,6 +408,10 @@
         // all of them, To test what testing and GitHub's issues change.
         if (!event || !kinds.includes(event.kind) || event.replay) return;
         if ((event.kind === "test" || event.kind === "story") && event.issue !== null && touchedHere(event.issue)) return;
+        if (document.querySelector('.sprint-views[data-mode="list"]')) {
+          refreshLines();
+          return;
+        }
         stop();
         reloadWhenCalm();
       });
@@ -423,6 +427,79 @@
     };
     connect();
     sprintLive = { stop };
+  }
+
+  // Sprint list (la-fabrique#374): an event refreshes the lines it concerns,
+  // not the page. The page is read again in the background; each feature's
+  // line, each story's lines and the head band that differ are replaced.
+  // What is unfolded, the scroll and the filters stay. Never while someone
+  // types or an action is being sent: then it waits.
+  const typing = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement) return true;
+    if (active instanceof HTMLInputElement && !["button", "submit", "checkbox", "radio"].includes(active.type)) return true;
+    return Boolean(document.querySelector("form[data-sent], form[aria-busy='true']")) || dragging;
+  };
+  let linesWait = null;
+  let linesAgain = false;
+  let linesBusy = false;
+  function refreshLines() {
+    if (linesBusy) {
+      linesAgain = true;
+      return;
+    }
+    if (linesWait) return;
+    linesWait = setTimeout(async () => {
+      linesWait = null;
+      if (typing() || document.visibilityState !== "visible") return refreshLines();
+      linesBusy = true;
+      try {
+        const response = await fetch(location.href, { credentials: "same-origin", headers: { accept: "text/html" } });
+        if (!response.ok) throw new Error("failed");
+        const next = new DOMParser().parseFromString(await response.text(), "text/html");
+        if (typing()) {
+          linesAgain = true;
+        } else {
+          swapLines(next);
+        }
+      } catch {
+        // Not readable now: the next event or the minute's read catches up.
+      }
+      linesBusy = false;
+      if (linesAgain) {
+        linesAgain = false;
+        refreshLines();
+      }
+    }, 800);
+  }
+  function swapLines(next) {
+    const same = (a, b) => a.innerHTML === b.innerHTML;
+    const swap = (now, fresh) => {
+      if (!now || !fresh || same(now, fresh)) return false;
+      if (now.contains(document.activeElement) && typing()) return false;
+      now.replaceWith(document.importNode(fresh, true));
+      return true;
+    };
+    swap(document.querySelector(".sprint-head"), next.querySelector(".sprint-head"));
+    swap(document.querySelector(".sprint-runs"), next.querySelector(".sprint-runs"));
+    for (const article of document.querySelectorAll(".sl-feature[id]")) {
+      const fresh = next.getElementById(article.id);
+      if (!fresh) continue;
+      swap(article.querySelector(".sl-line"), fresh.querySelector(".sl-line"));
+      for (const story of article.querySelectorAll("[data-story-line]")) {
+        const number = story.getAttribute("data-story-line");
+        const other = fresh.querySelector(`[data-story-line="${number}"]`);
+        if (!other) continue;
+        const nowBody = [...story.querySelectorAll(".sl-story-body > p")];
+        const freshBody = [...other.querySelectorAll(".sl-story-body > p")];
+        let changed = false;
+        nowBody.forEach((node, at) => {
+          if (freshBody[at]) changed = swap(node, freshBody[at]) || changed;
+        });
+        const unfold = story.querySelector("details[data-unfold]");
+        if (changed && unfold?.open && !unfold.contains(document.activeElement)) loadUnfold(unfold);
+      }
+    }
   }
 
   // Refinement (la-fabrique#226): the ticked features are counted against
@@ -563,11 +640,18 @@
     const holder = document.querySelector("[data-follow]");
     if (!holder) return;
     const every = Math.max(20, Number(holder.getAttribute("data-follow")) || 60) * 1000;
-    const shown = Date.now();
+    let shown = Date.now();
     follow = setInterval(() => {
       if (!holder.isConnected) {
         clearInterval(follow);
         follow = null;
+        return;
+      }
+      if (document.querySelector('.sprint-views[data-mode="list"]')) {
+        if (Date.now() - shown >= every) {
+          shown = Date.now();
+          refreshLines();
+        }
         return;
       }
       if (Date.now() - shown >= every && isCalm()) {
@@ -637,6 +721,20 @@
     );
   }
 
+  function loadUnfold(el) {
+    const body = el.querySelector(".sl-unfold-body");
+    if (!body) return;
+    fetch(el.getAttribute("data-unfold"), { credentials: "same-origin", headers: { accept: "text/html" } })
+      .then((response) => (response.ok ? response.text() : Promise.reject(new Error("failed"))))
+      .then((text) => {
+        body.innerHTML = text;
+        el.setAttribute("data-loaded", "1");
+      })
+      .catch(() => {
+        body.textContent = "The detail could not be read. Close and open it again.";
+      });
+  }
+
   // Sprint list: a story's detail is read when it unfolds, and stays open
   // across the page's reload after an action (la-fabrique#372).
   function setUpUnfold() {
@@ -650,24 +748,11 @@
         sessionStorage.setItem(key, JSON.stringify([...document.querySelectorAll("details[data-unfold][open]")].map((el) => el.id)));
       } catch {}
     };
-    const load = (el) => {
-      const body = el.querySelector(".sl-unfold-body");
-      if (!body) return;
-      fetch(el.getAttribute("data-unfold"), { credentials: "same-origin", headers: { accept: "text/html" } })
-        .then((response) => (response.ok ? response.text() : Promise.reject(new Error("failed"))))
-        .then((text) => {
-          body.innerHTML = text;
-          el.setAttribute("data-loaded", "1");
-        })
-        .catch(() => {
-          body.textContent = "The detail could not be read. Close and open it again.";
-        });
-    };
     document.querySelectorAll("details[data-unfold]").forEach((el) => {
       if (open.includes(el.id)) el.open = true;
       el.addEventListener("toggle", () => {
         save();
-        if (el.open && !el.hasAttribute("data-loaded")) load(el);
+        if (el.open && !el.hasAttribute("data-loaded")) loadUnfold(el);
       });
     });
   }

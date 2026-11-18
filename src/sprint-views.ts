@@ -642,7 +642,7 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
           const nice = isNice(data.links, card.id, number);
           const done = s?.criteria.filter((criterion) => criterion.done).length ?? 0;
           const claude = claudeCell(number);
-          return `<li class="sl-story${nice ? " nice" : ""}"${controls ? ` data-sort-id="${number}"` : ""}>
+          return `<li class="sl-story${nice ? " nice" : ""}" data-story-line="${number}"${controls ? ` data-sort-id="${number}"` : ""}>
             ${controls ? handle(`#${number}`) : ""}
             <div class="sl-story-body"><p><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${s ? escapeHtml(s.title) : "not read yet"}</a></p>
             <p class="small">${s ? storyStatus(s) : ""} ${pullsOf(number, false, true)} ${claude} ${s?.criteria.length ? `<span class="muted">${done}/${s.criteria.length} criteria</span>` : ""} ${
