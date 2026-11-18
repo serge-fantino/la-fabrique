@@ -1,5 +1,5 @@
 import { env, fetchMock, SELF } from "cloudflare:test";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { BASE, get, grantRole, logActions, post, signIn } from "./helpers";
 import { challenge, connect, me, token, VERIFIER, type Tokens } from "./oauth-helpers";
 
@@ -12,7 +12,11 @@ beforeAll(() => {
   fetchMock.disableNetConnect();
 });
 
-afterEach(() => fetchMock.assertNoPendingInterceptors());
+// The persisted fake GitHub of test_story is never fully used: it opts out.
+let persistedGithub = false;
+afterEach(() => {
+  if (!persistedGithub) fetchMock.assertNoPendingInterceptors();
+});
 
 async function seedProject(config: Record<string, unknown> = { nom: "Widget", langue: "en", cycle: { priorites: ["P1", "P2", "P3"] } }): Promise<void> {
   await env.DB.batch([
@@ -471,5 +475,184 @@ describe("to_test", () => {
     const listed = await call(access, "to_test", { project: REPO });
     expect(listed.data["stories"]).toEqual([]);
     expect(listed.data["message"]).toContain("no environment to test on");
+  });
+});
+
+describe("test_story", () => {
+  const now = "2026-11-18T00:00:00.000Z";
+  const J = { headers: { "content-type": "application/json" } };
+  let issueBody = "";
+  let labels: string[] = [];
+  let comments: string[] = [];
+  let patches = 0;
+
+  beforeAll(() => {
+    persistedGithub = true;
+  });
+  afterAll(() => {
+    persistedGithub = false;
+  });
+  afterEach(() => {
+    fetchMock.deactivate();
+    fetchMock.activate();
+    fetchMock.disableNetConnect();
+  });
+
+  const story = (number: number) => ({
+    number, title: `Story ${number}`, state: "open", url: `https://github.com/${REPO}/issues/${number}`, author: null, labels: [...labels], parent: null,
+    subTotal: 0, subCompleted: 0, createdAt: now, updatedAt: now, closedAt: null, pullRequests: [], branches: [], criteria: [],
+  });
+
+  // A GitHub that holds issue 146: reads, edits, comments, labels.
+  function github(): void {
+    const api = fetchMock.get("https://api.github.com");
+    const issue = () => JSON.stringify({ number: 146, title: "Story 146", state: "open", html_url: "", labels: labels.map((name) => ({ name })), user: null, created_at: "", updated_at: "", closed_at: null, body: issueBody });
+    api.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "ghs_x" }), J).persist();
+    api.intercept({ method: "GET", path: `/repos/${REPO}/issues/146` }).reply(200, issue, J).persist();
+    api.intercept({ method: "PATCH", path: `/repos/${REPO}/issues/146` }).reply(200, (options) => {
+      patches++;
+      issueBody = (JSON.parse(String(options.body)) as { body: string }).body;
+      return issue();
+    }, J).persist();
+    api.intercept({ method: "POST", path: `/repos/${REPO}/issues/146/comments` }).reply(201, (options) => {
+      comments.push((JSON.parse(String(options.body)) as { body: string }).body);
+      return JSON.stringify({ html_url: `https://github.com/${REPO}/issues/146#issuecomment-${comments.length}` });
+    }, J).persist();
+    api.intercept({ method: "POST", path: `/repos/${REPO}/issues/146/labels` }).reply(200, (options) => {
+      labels = [...new Set([...labels, ...(JSON.parse(String(options.body)) as { labels: string[] }).labels])];
+      return "[]";
+    }, J).persist();
+  }
+
+  async function setUp(role: "tester" | "tech_lead" = "tester", rework = false): Promise<string> {
+    const { addProject, CONFIG } = await import("./oauth-helpers");
+    await addProject(CONFIG);
+    issueBody = "## Acceptance criteria\n\n- [ ] It saves\n- [ ] It shows\n";
+    labels = rework ? ["rework"] : [];
+    comments = [];
+    patches = 0;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2099-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify([story(146)])),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'production', ?, '2099-01-01T00:00:00.000Z')").bind(
+        REPO,
+        JSON.stringify({ production: "main", integration: "integration", integrationHead: "a", aheadBy: 1, groups: [{ branch: "f", title: "", mergedAt: now, commits: [], issues: [146] }], workflows: [], versions: [], waiting: [], ready: true, blockers: [] }),
+      ),
+    ]);
+    await grantRole("tess", role);
+    github();
+    return (await connectClaude("tess")).access_token;
+  }
+
+  const logged = async () => (await logActions()).filter((entry) => entry.actor === "tess" && entry.action !== "assistant_connected");
+  const verdicts = (...v: ("pass" | "fail")[]) => v.map((verdict, index) => ({ index, verdict, ...(verdict === "fail" ? { saw: `Saw nothing for ${index}` } : {}) }));
+
+  it("checks every criterion and validates when all pass, marked via Claude, steps recorded", async () => {
+    const access = await setUp();
+    const result = await call(access, "test_story", {
+      project: REPO,
+      story: 146,
+      verdicts: [
+        { index: 0, verdict: "pass", steps: [{ kind: "page", page: "/app" }, { kind: "click", name: "Save", page: "/app" }] },
+        { index: 1, verdict: "pass" },
+      ],
+    });
+    expect(result.isError).toBe(false);
+    expect(result.data["result"]).toBe("validated");
+    expect(issueBody).toContain("- [x] It saves");
+    expect(issueBody).toContain("- [x] It shows");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]).toContain("Validated by @tess");
+    expect(comments[0]).toContain("Tested by Claude through La Fabrique extraordinaire's MCP server, in @tess's name.");
+    const entries = await logged();
+    expect(entries.map((entry) => entry.action)).toEqual(expect.arrayContaining(["criterion_checked", "story_test_recorded", "story_validated", "mcp_write"]));
+    const recorded = entries.find((entry) => entry.action === "story_test_recorded");
+    expect(JSON.parse(recorded?.details ?? "{}")).toMatchObject({ index: 0, via: "mcp", steps: [{ kind: "page" }, { kind: "click", name: "Save" }] });
+    expect(entries.filter((entry) => entry.action === "story_test_recorded")).toHaveLength(1);
+    for (const action of ["criterion_checked", "story_validated"]) expect(JSON.parse(entries.find((entry) => entry.action === action)?.details ?? "{}").via).toBe("mcp");
+  });
+
+  it("with one failure: checks the other, a feedback quoting the criterion, rework label, no validation", async () => {
+    const access = await setUp();
+    const result = await call(access, "test_story", { project: REPO, story: 146, verdicts: verdicts("pass", "fail") });
+    expect(result.isError).toBe(false);
+    expect(result.data["validated"]).toBe(false);
+    expect(issueBody).toContain("- [x] It saves");
+    expect(issueBody).toContain("- [ ] It shows");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]).toContain("Criterion 2 fails: “It shows”");
+    expect(comments[0]).toContain("> Saw nothing for 1");
+    expect(comments[0]).toContain("Tested by Claude");
+    expect(labels).toContain("rework");
+    const entries = await logged();
+    expect(entries.map((entry) => entry.action)).not.toContain("story_validated");
+    expect(JSON.parse(entries.find((entry) => entry.action === "story_feedback")?.details ?? "{}").via).toBe("mcp");
+  });
+
+  it("with two failures: one feedback comment each", async () => {
+    const access = await setUp();
+    await call(access, "test_story", { project: REPO, story: 146, verdicts: verdicts("fail", "fail") });
+    expect(comments).toHaveLength(2);
+    expect(comments[0]).toContain("Criterion 1 fails");
+    expect(comments[1]).toContain("Criterion 2 fails");
+    expect(issueBody).not.toContain("[x]");
+  });
+
+  it("a feedback on the whole: one comment quoting no criterion, no validation, even if all pass", async () => {
+    const access = await setUp();
+    const result = await call(access, "test_story", { project: REPO, story: 146, verdicts: verdicts("pass", "pass"), feedback: "The page is slow" });
+    expect(result.data["validated"]).toBe(false);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]).toContain("The story fails.");
+    expect(comments[0]).not.toContain("Criterion");
+    expect(comments[0]).toContain("> The page is slow");
+    expect(labels).toContain("rework");
+    expect((await logged()).map((entry) => entry.action)).not.toContain("story_validated");
+  });
+
+  it("refuses, writing nothing: a story not to test, an unknown index, a missing verdict, feedback waiting for rework", async () => {
+    const access = await setUp();
+    const refused = async (args: Record<string, unknown>) => {
+      const result = await call(access, "test_story", { project: REPO, ...args });
+      expect(result.isError).toBe(true);
+      return String(result.data["error"]);
+    };
+    expect(await refused({ story: 999, verdicts: verdicts("pass", "pass") })).toContain("not one of the stories to test");
+    expect(await refused({ story: 146, verdicts: [...verdicts("pass", "pass"), { index: 5, verdict: "pass" }] })).toContain("no criterion 5");
+    expect(await refused({ story: 146, verdicts: verdicts("pass") })).toContain("missing 1");
+    expect(await refused({ story: 146, verdicts: [{ index: 0, verdict: "fail" }, { index: 1, verdict: "pass" }] })).toContain("what you saw");
+    expect(comments).toHaveLength(0);
+    expect(patches).toBe(0);
+    expect(labels).toEqual([]);
+    expect((await logged()).map((entry) => entry.action)).toEqual([]);
+  });
+
+  it("refuses to validate a story with feedback waiting for rework, as To test does", async () => {
+    const access = await setUp("tester", true);
+    const result = await call(access, "test_story", { project: REPO, story: 146, verdicts: verdicts("pass", "pass") });
+    expect(result.isError).toBe(true);
+    expect(String(result.data["error"])).toBe("This story has feedbacks: it is back in development until its code takes them into account.");
+    expect(patches).toBe(0);
+    expect(comments).toHaveLength(0);
+  });
+
+  it("refuses a role below tester and a project without a test environment, writing nothing", async () => {
+    const access = await setUp();
+    // The role is read again at each call: taken back, nothing is written.
+    await env.DB.prepare("DELETE FROM accounts WHERE github_login = 'tess'").run();
+    const denied = await call(access, "test_story", { project: REPO, story: 146, verdicts: verdicts("pass", "pass") });
+    expect(denied.isError).toBe(true);
+    expect(comments).toHaveLength(0);
+    await grantRole("tess", "tester");
+    await env.DB.prepare("UPDATE project_configs SET config = ? WHERE repo = ?").bind(JSON.stringify({ nom: "Widget", langue: "en" }), REPO).run();
+    const none = await call(access, "test_story", { project: REPO, story: 146, verdicts: verdicts("pass", "pass") });
+    expect(none.isError).toBe(true);
+    expect(String(none.data["error"])).toContain("no environment to test on");
+    expect(patches).toBe(0);
+  });
+
+  it("gives no way to give the go", async () => {
+    const access = await setUp();
+    const tools = (await rpc(access, "tools/list")).result?.["tools"] as { name: string }[];
+    expect(tools.map((tool) => tool.name).filter((name) => /promote|go$|deploy/.test(name))).toEqual([]);
   });
 });

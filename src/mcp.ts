@@ -52,7 +52,10 @@ import { missingSections, specRubriques } from "./specs";
 import { loadStoryDetail } from "./story-detail";
 import { projectUrl } from "./urls";
 import { wordingFor } from "./wording";
-import { storiesToTest } from "./to-test-api";
+import { giveFeedback, storiesToTest } from "./to-test-api";
+import { acceptanceCriteria } from "./stories";
+import { cleanSteps } from "./test-steps";
+import { intVersion, readIssue, tickCriterion, validateStory } from "./validation";
 import { testEnvironment } from "./defects";
 
 // La Fabrique as an MCP server (la-fabrique#155): Claude, connected by the
@@ -73,7 +76,7 @@ const INSTRUCTIONS =
   "GitHub (stories_create, each linked to its card), goes into Next release, then into the sprint (sprint_start); Claude Code is launched " +
   "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested, and the go to production is given by a " +
   "person on La Fabrique's sprint page (never through this server). A card's status follows its stories once validated. Before testing, read the stories to test " +
-  "(to_test). Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
+  "(to_test), then record one story's whole test in one call (test_story: validated when everything passes, sent back with feedback otherwise; one verdict per criterion, the steps you played; it is written in the person's name and marked \"via Claude\"). Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
   "write is in the person's name and in La Fabrique's log.";
 
 interface Context {
@@ -518,6 +521,129 @@ const TOOLS: Tool[] = [
         project: project.repo,
         environment: { name: test.name, url: test.environment.url },
         stories: [...shaped.filter((story) => !story.validated), ...shaped.filter((story) => story.validated)],
+      };
+    },
+  },
+  {
+    name: "test_story",
+    title: "Test a story and record the result",
+    description:
+      "Record the outcome of testing one whole story from to_test, in the person's name, marked \"via Claude\". One verdict per criterion (index, pass or fail, what you saw, the steps you played) and optionally a feedback on the story as a whole. All pass and no whole feedback: every criterion is checked and the story is validated. Otherwise the passing criteria are checked, each failing one gets a feedback comment quoting it, and the story goes back to development; nothing is validated. Everything is checked before anything is written. One call per story. Needs the tester role.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...PROJECT,
+        story: { type: "integer" },
+        verdicts: {
+          type: "array",
+          description: "One per acceptance criterion",
+          items: {
+            type: "object",
+            properties: {
+              index: { type: "integer", description: "The criterion's index, as in to_test" },
+              verdict: { type: "string", enum: ["pass", "fail"] },
+              saw: { type: "string", description: "What you saw (required for a fail)" },
+              steps: { type: "array", items: { type: "object", properties: { kind: { type: "string", enum: ["page", "click", "fill", "select", "check"] }, name: { type: "string" }, page: { type: "string" } } } },
+            },
+            required: ["index", "verdict"],
+          },
+        },
+        feedback: { type: "string", description: "A feedback on the story as a whole (sends it back to development)" },
+      },
+      required: ["project", "story", "verdicts"],
+    },
+    needs: null,
+    write: true,
+    async run(ctx, args) {
+      const project = await projectOf(ctx, args);
+      const number = integer(args, "story");
+      if (!can(ctx.role, "validate")) fail("Your role does not let you test stories.");
+      const test = await testEnvironment(ctx.env, project);
+      if (!test) fail("This project has no environment to test on.");
+      const onInt = (test?.environment.type ?? "") === "integration" || Boolean(project.check?.config?.branches?.integration);
+      const { stories } = await storiesToTest(ctx.env, project, onInt);
+      const target = stories.find((story) => story.number === number);
+      if (!target) fail(`Story #${number} is not one of the stories to test.`);
+      const raw = args["verdicts"];
+      if (!Array.isArray(raw) || raw.length === 0) fail("Give one verdict per criterion (verdicts).");
+      const issue = await readIssue(ctx.env, project, number);
+      if (!issue) fail(`Issue #${number} could not be read.`);
+      const criteria = acceptanceCriteria(issue?.body);
+      if (criteria.length === 0) fail(`Story #${number} has no acceptance criteria to test.`);
+      const verdicts = new Map<number, { pass: boolean; saw: string; steps: ReturnType<typeof cleanSteps> & object }>();
+      for (const entry of raw as unknown[]) {
+        const item = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+        const index = item["index"];
+        if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= criteria.length) fail(`Story #${number} has no criterion ${String(index)}.`);
+        if (verdicts.has(index as number)) fail(`Criterion ${String(index)} has two verdicts.`);
+        if (item["verdict"] !== "pass" && item["verdict"] !== "fail") fail(`The verdict of criterion ${String(index)} must be pass or fail.`);
+        const saw = typeof item["saw"] === "string" ? item["saw"].trim().slice(0, 4000) : "";
+        if (item["verdict"] === "fail" && !saw) fail(`Say what you saw for criterion ${String(index)} (saw).`);
+        const steps = cleanSteps(item["steps"]);
+        if (steps === null) fail("steps must be a list.");
+        verdicts.set(index as number, { pass: item["verdict"] === "pass", saw, steps: steps ?? [] });
+      }
+      const missing = criteria.map((_, index) => index).filter((index) => !verdicts.has(index));
+      if (missing.length) fail(`Every criterion needs a verdict: missing ${missing.join(", ")}.`);
+      const whole = text(args, "feedback", 4000)?.trim() ?? "";
+      const failing = [...verdicts].filter(([, verdict]) => !verdict.pass).map(([index]) => index).sort((a, b) => a - b);
+      const validating = failing.length === 0 && !whole;
+      if (validating && target?.labels.includes(reworkLabelOf(project.check?.config))) {
+        fail("This story has feedbacks: it is back in development until its code takes them into account.");
+      }
+
+      const props = { login: ctx.login } as GrantProps;
+      const request = new Request(ctx.origin, { headers: { "x-fabrique-environment": test?.name ?? "" } });
+      const version = await intVersion(ctx.env, project).catch(() => null);
+      const written: { checked: number[]; feedbacks: { criterion: number | null; comment: string | null }[]; validated: boolean } = { checked: [], feedbacks: [], validated: false };
+      // The passing criteria first, then the feedbacks, then the validation.
+      for (const [index, verdict] of [...verdicts].sort((a, b) => a[0] - b[0])) {
+        const criterion = criteria[index];
+        if (!criterion) continue;
+        if (verdict.pass && !criterion.done) {
+          const done = await tickCriterion(request, ctx.env, project, ctx.login, number, index, criterion.text, true, "mcp");
+          if (!done.ok) fail(done.message);
+        }
+        if (verdict.pass) written.checked.push(index);
+        if (verdict.steps.length > 0 || verdict.saw) {
+          await activityStatement(ctx.env.DB, {
+            actor: ctx.login,
+            action: "story_test_recorded",
+            repo: project.repo,
+            issueNumber: number,
+            details: { index, text: criterion.text, done: verdict.pass, version, via: "mcp", ...(verdict.saw ? { saw: verdict.saw.slice(0, 1000) } : {}), steps: verdict.steps },
+          }).run();
+        }
+      }
+      const feedbackOf = async (criterion: number | null, saw: string) => {
+        const response = await giveFeedback(
+          new Request(ctx.origin, { method: "POST", headers: request.headers, body: JSON.stringify({ text: saw, ...(criterion !== null ? { criterion } : {}) }) }),
+          ctx.env,
+          project,
+          props,
+          number,
+          "mcp",
+        );
+        const data = (await response.json().catch(() => ({}))) as { comment?: string | null; message?: string };
+        if (!response.ok) fail(data.message ?? "GitHub refused the feedback.");
+        written.feedbacks.push({ criterion, comment: data.comment ?? null });
+      };
+      for (const index of failing) await feedbackOf(index, verdicts.get(index)?.saw ?? "");
+      if (whole) await feedbackOf(null, whole);
+      if (validating) {
+        const outcome = await validateStory(request, ctx.env, project, ctx.login, number, "mcp");
+        if (!outcome.ok) fail(outcome.message);
+        written.validated = true;
+      }
+      return {
+        story: number,
+        via: "mcp",
+        result: written.validated ? "validated" : "sent back to development",
+        criteria_checked: written.checked,
+        feedback_comments: written.feedbacks.map((feedback) => ({ criterion: feedback.criterion, url: feedback.comment })),
+        validated: written.validated,
+        issue: target?.url,
+        url: absolute(ctx, `${projectUrl(project.repo)}/sprint/stories/${number}`),
       };
     },
   },
