@@ -19,7 +19,7 @@ export interface CardStory {
   // Its pull requests (by the branch's or the text's #number).
   pulls: LinkedPull[];
   // Validated on int (or in production without integration): by whom, when.
-  validated?: { by: string; at: string } | null;
+  validated?: { by: string; at: string; via?: "mcp" } | null;
   // Back in development after feedbacks from testing (la-fabrique#201,
   // #202), and how many feedbacks it has.
   rework?: boolean;

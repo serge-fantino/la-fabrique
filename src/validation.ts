@@ -236,10 +236,11 @@ export interface Feedback {
   by: string;
   at: string;
   url: string | null;
+  via?: "mcp";
 }
 
 export interface StoryChecks {
-  validated: { by: string; at: string; version: string | null } | null;
+  validated: { by: string; at: string; version: string | null; via?: "mcp" } | null;
   defects: number[];
   // The feedbacks from testing (la-fabrique#201): a criterion that failed
   // (or the story as a whole), what the tester saw, a comment on the story.
@@ -269,7 +270,7 @@ export async function storyChecks(db: D1Database, repo: string): Promise<Map<num
     const details = row.details ? (JSON.parse(row.details) as Record<string, unknown>) : {};
     if (row.action === "story_validated") {
       if (row.issue_number !== null) {
-        entry(row.issue_number).validated = { by: row.actor, at: row.occurred_at, version: typeof details["version"] === "string" ? details["version"] : null };
+        entry(row.issue_number).validated = { by: row.actor, at: row.occurred_at, version: typeof details["version"] === "string" ? details["version"] : null, ...(details["via"] === "mcp" ? { via: "mcp" as const } : {}) };
       }
     } else if (row.action === "story_feedback") {
       if (row.issue_number !== null) {
@@ -283,6 +284,7 @@ export async function storyChecks(db: D1Database, repo: string): Promise<Map<num
             by: row.actor,
             at: row.occurred_at,
             url: typeof details["comment"] === "string" ? details["comment"] : null,
+            ...(details["via"] === "mcp" ? { via: "mcp" as const } : {}),
           },
         ];
       }

@@ -227,6 +227,18 @@ const USE_CASES: UseCase[] = [
     after: "A failed story goes back to In development with the rework label. A tech lead launches Rework with Claude; once its pull request is merged, the story is to test again.",
   },
   {
+    slug: "test-with-claude",
+    moment: "ship",
+    title: "Test the stories with Claude",
+    situation: "Several stories wait in To test and you want Claude to play their criteria.",
+    steps: [
+      { text: (h) => `Connect Claude to La Fabrique if it is not done (${h.signedIn ? `<a href="/apps">Connected apps</a>` : "Connected apps"}).`, ref: "claude-costs#mcp" },
+      { text: `Ask Claude to test a project's stories: it lists them with their criteria (to_test), plays each criterion and records the result for one story at a time (test_story).`, ref: "testing#claude" },
+      { text: (h) => `Open ${h.app("/to-test", "To test")}: what Claude wrote is in your name and marked “via Claude”.`, ref: "testing#claude" },
+    ],
+    after: "A story whose criteria all pass is validated; otherwise it goes back to In development with a feedback per failing criterion. The go to production is never given by Claude.",
+  },
+  {
     slug: "triage-defect",
     moment: "ship",
     title: "Triage a defect reported from the app",
@@ -699,6 +711,12 @@ const REFERENCE: RefPage[] = [
         id: "validate",
         title: "Criteria and validation",
         body: `<p>Each criterion is a button: tick the ones that hold (tester and above; ticked in the issue on GitHub, logged). ${b("Validate")} waits until every criterion is ticked (“Check every criterion to validate.”); who and when are kept in La Fabrique's log. A story sent back shows ${b("Validate again")} once reworked.</p>`,
+      },
+      {
+        id: "claude",
+        title: "Testing with Claude (MCP)",
+        body: `<p>Connect Claude to La Fabrique (Settings → ${b("Connected apps")}; see Claude, costs and MCP), then ask it to test a project's stories. It reads the stories to test (criteria, validation, earlier feedback), plays them, and writes one story at a time in your name, with your tester rights read again at each call: every criterion gets a verdict and the steps played. All pass: the criteria are ticked and the story is validated. Otherwise the passing criteria are ticked, each failing one gets a feedback comment on the story and it goes back to In development; nothing is validated. Claude never gives the go.</p>
+          <p>Everything it writes is marked ${b("via Claude")}: “Validated by @you via Claude” and “via Claude” on each feedback in To test, on the story's page (validation, feedbacks, and the steps recorded in its history), and in the project's log. A validation or a feedback made by a person, in To test or in the app's panel, carries no mark.</p>`,
       },
       {
         id: "feedback",
