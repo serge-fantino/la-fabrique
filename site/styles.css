@@ -4506,3 +4506,9 @@ main:has(.help-shell) {
     justify-content: center;
   }
 }
+
+/* A story unfolded in the sprint's list (la-fabrique#372) */
+.sl-unfold { margin-top: 0.25rem; }
+.sl-unfold > summary { cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; }
+.sl-unfolded h4 { margin: 0.75rem 0 0.25rem; font-size: 0.95rem; }
+.sl-unfold-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }

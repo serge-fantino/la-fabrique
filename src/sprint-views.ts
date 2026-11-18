@@ -98,6 +98,9 @@ export interface SprintData {
   // Each card's epic, when it has one: its title, and its page when the
   // epic is a card of the project.
   epics?: Map<number, { title: string; url: string | null }>;
+  // Only one story's detail is wanted (la-fabrique#372): the page answers
+  // with the fragment shown under its line in the list, read when it unfolds.
+  unfold?: { story: number; card: number; feedbacks: { at: string; actor: string; criterion: string; text: string; comment: string }[] };
 }
 
 // A run's state: queued, working (since when), done, failed; its link. Done
@@ -572,7 +575,8 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
             <div class="sl-story-body"><p><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> <a href="${escapeHtml(action)}/stories/${number}">${s ? escapeHtml(s.title) : "not read yet"}</a></p>
             <p class="small">${s ? storyStatus(s) : ""} ${pullsOf(number, false, true)} ${claude} ${s?.criteria.length ? `<span class="muted">${done}/${s.criteria.length} criteria</span>` : ""} ${
               nice ? `<span class="pill kind small">Nice to have</span>` : s?.priority ? `<span class="pill small">${escapeHtml(s.priority)}</span>` : ""
-            }</p></div>
+            }</p>
+            <details class="sl-unfold" data-unfold="${escapeHtml(action)}?unfold=${number}" id="unfold-${number}"><summary class="small">Detail and actions</summary><div class="sl-unfold-body" aria-live="polite"><p class="muted small">Loading…</p></div></details></div>
             ${controls ? `<span class="sprint-controls">${at > 0 ? button({ action: "story_up", card: card.id, story: number }, `Move #${number} up`, "↑") : ""}${at < mine.length - 1 ? button({ action: "story_down", card: card.id, story: number }, `Move #${number} down`, "↓") : ""}</span>` : ""}
           </li>`;
         };
@@ -600,6 +604,60 @@ export function sprintPage(viewer: Viewer, project: Project, data: SprintData): 
       lines ? `<div class="sl-list"${data.canOrder && cards.length > 1 ? sortable("card_order") : ""}>${lines}</div>` : `<p class="muted">No card in the sprint.</p>`
     }</section>`;
   };
+  // A story's detail and actions, for its line in the list
+  // (la-fabrique#372): the same buttons, rights and forms as the details view.
+  const unfoldView = () => {
+    const unfold = data.unfold!;
+    const number = unfold.story;
+    const story = data.stories.get(number);
+    const controls = data.canOrder;
+    const nice = isNice(data.links, unfold.card, number);
+    const criteria = story?.criteria ?? [];
+    const done = criteria.filter((criterion) => criterion.done).length;
+    const runs = data.claude.runs.filter((run) => run.issue === number);
+    const launched = data.claude.launches.get(number);
+    const running = runs.some((run) => isRunning(run));
+    const busy = data.claude.held.get(number);
+    const canClaude = data.claude.canLaunch && Boolean(data.claude.workflow);
+    const hasOpenPull = Boolean(story?.pulls.some((pull) => pull.state === "open"));
+    const actions: string[] = [];
+    if (canClaude && story && isReadyStage(story) && !busy && !running) actions.push(button({ action: "launch", story: number }, `Launch Claude on #${number}`, "Launch Claude", "claude small"));
+    if (story && !story.rework && isInDevelopment(story) && !hasOpenPull && !running && data.claude.canRelaunch && data.claude.workflow)
+      actions.push(button({ action: "relaunch", story: number }, `Relaunch Claude on #${number}, on its branch: no pull request yet`, "Relaunch Claude", "quiet small claude"));
+    if (story?.rework && canClaude && !running && !hasOpenPull)
+      actions.push(button({ action: "rework", story: number }, `Rework #${number} with Claude, with its test feedbacks`, "Rework with Claude", "quiet small claude"));
+    if (story && controls && story.stage === "backlog" && data.readyLabel && story.missing.includes("not labelled ready")) actions.push(button({ action: "story_ready", story: number }, `Mark #${number} ready`, "Mark ready"));
+    if (isToTest(story) && !story?.validated) actions.push(`<a class="button small" href="${escapeHtml(base)}/to-test#story-${number}">Test it</a>`);
+    const priority =
+      controls && data.priorities.length ? prioritySelect({ action: "story_priority", card: unfold.card, story: number }, nice ? NICE : (story?.priority ?? null), `Priority of #${number}`, true) : "";
+    const feedbacks = unfold.feedbacks.length
+      ? `<ul class="feedback-list">${unfold.feedbacks
+          .map(
+            (entry) =>
+              `<li><span class="mono small">${escapeHtml(entry.at.slice(0, 16).replace("T", " "))}</span> @${escapeHtml(entry.actor)}${entry.criterion ? ` · criterion “${escapeHtml(entry.criterion)}”` : ""}: ${escapeHtml(entry.text)}${
+                entry.comment.startsWith("https://github.com/") ? ` <a href="${escapeHtml(entry.comment)}">On GitHub</a>` : ""
+              }</li>`,
+          )
+          .join("")}</ul>`
+      : `<p class="muted small">No feedback from testing.</p>`;
+    const pulls = story?.pulls.length ? pullsOf(number, controls) : `<span class="muted small">No pull request yet.</span>`;
+    return `<div class="sl-unfolded" data-story="${number}">
+      <h4>Acceptance criteria <span class="muted mono small">${done}/${criteria.length}</span></h4>
+      ${criteria.length ? `<ul class="criteria">${criteria.map((criterion) => `<li class="${criterion.done ? "done" : ""}"><span class="box" aria-hidden="true">${criterion.done ? "✓" : ""}</span> ${escapeHtml(criterion.text)}</li>`).join("")}</ul>` : `<p class="muted small">No acceptance criteria written.</p>`}
+      <h4>Pull requests</h4>
+      <p>${pulls}</p>
+      <h4>Claude's runs</h4>
+      ${runs.length ? `<ul>${runs.slice(0, 5).map((run) => `<li>${runPill(run, story)} <span class="muted small mono">${escapeHtml(run.createdAt.slice(0, 16).replace("T", " "))} UTC</span></li>`).join("")}</ul>` : `<p class="muted small">No Claude run seen for this story.</p>`}${
+        launched ? `<p class="muted small">Launched by @${escapeHtml(launched.by)} on ${escapeHtml(launched.at.slice(0, 10))}</p>` : ""
+      }${busy ? `<p class="muted small">Waits for <span class="mono">#${busy.story}</span></p>` : ""}
+      <h4 id="feedbacks-${number}">Feedbacks from testing <span class="muted mono small">${unfold.feedbacks.length}</span></h4>
+      ${feedbacks}
+      ${story ? readiness(number, controls) : ""}
+      <p class="sl-unfold-actions">${actions.join(" ")}${priority}</p>
+      <p class="small"><a href="${escapeHtml(action)}/stories/${number}">Open the story's page</a></p>
+    </div>`;
+  };
+  if (data.unfold) return unfoldView();
   const modeToggle = sprint
     ? `<div class="sprint-mode" role="group" aria-label="View of the sprint"><button type="button" class="button quiet small" data-sprint-mode="details" aria-pressed="true">Details</button><button type="button" class="button quiet small" data-sprint-mode="list" aria-pressed="false">List</button></div>`
     : "";
