@@ -1590,11 +1590,36 @@ async function showSprint(request: Request, env: Env, viewer: Viewer, project: P
   const next =
     launchOrder.flatMap((card) => links.order.get(card.id) ?? []).find((number) => isReadyStage(stories.get(number)) && !launches.has(number) && !held.has(number)) ?? null;
   const launched = Number(params.get("story"));
+  // A story unfolded in the list (la-fabrique#372): read when it opens.
+  const unfoldStory = Number(params.get("unfold"));
+  let unfold: { story: number; card: number; feedbacks: { at: string; actor: string; criterion: string; text: string; comment: string }[] } | undefined;
+  if (params.has("unfold")) {
+    const owner = sprintCards.find((card) => (links.order.get(card.id) ?? []).includes(unfoldStory));
+    if (!sprint || !Number.isInteger(unfoldStory) || !owner) return new Response("Not a story of the sprint.", { status: 404, headers: { "cache-control": "no-store" } });
+    const { results } = await env.DB.prepare(`SELECT occurred_at, actor, details FROM activity_log WHERE repo = ? AND action = 'story_feedback' AND issue_number = ? ORDER BY id DESC LIMIT 50`)
+      .bind(project.repo, unfoldStory)
+      .all<{ occurred_at: string; actor: string; details: string | null }>();
+    unfold = {
+      story: unfoldStory,
+      card: owner.id,
+      feedbacks: results.map((row) => {
+        let d: Record<string, unknown> = {};
+        try {
+          d = row.details ? (JSON.parse(row.details) as Record<string, unknown>) : {};
+        } catch {
+          // An unreadable detail stays out.
+        }
+        const text = (key: string) => (typeof d[key] === "string" ? String(d[key]) : "");
+        return { at: row.occurred_at, actor: row.actor, criterion: text("criterion_text"), text: text("text"), comment: text("comment") };
+      }),
+    };
+  }
   const runState = sprint ? ((await sprintRunFor(env, project.repo)?.state().catch(() => null)) ?? null) : null;
   return html(
     sprintPage(viewer, view, {
       run: sprint ? runSection(viewer, project, runState, can(viewer.role, "promote"), runRefusal(project), planRun(launchOrder, links, stories), claudeCap(project), canRelaunchClaude(viewer.role)) : "",
       runActive: runState?.status === "running" || runState?.status === "paused" || runState?.status === "waiting",
+      ...(unfold ? { unfold } : {}),
       sprint,
       legacy: Boolean(sprint && sprint.release !== SPRINT_LANE),
       last: !sprint && latest?.endedAt ? latest : null,
