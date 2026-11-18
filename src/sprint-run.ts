@@ -657,9 +657,37 @@ export class SprintRun extends DurableObject<Env> {
   // A new sprint, or a run over: forgotten.
   async clear(): Promise<void> {
     await this.serial(async () => {
+      await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
     });
   }
+
+  // A sprint starts, closes or stops (la-fabrique#356): a run still going is
+  // stopped first (and logged), then everything is forgotten.
+  async forget(login: string): Promise<void> {
+    await this.serial(async () => {
+      const state = await this.state();
+      if (state && (state.status === "running" || state.status === "paused" || state.status === "waiting")) {
+        await activityStatement(this.env.DB, { actor: login, action: "sprint_run_stopped", repo: state.repo, details: { reason: "sprint ended or started" } }).run();
+      }
+      await this.ctx.storage.deleteAlarm();
+      await this.ctx.storage.deleteAll();
+    });
+  }
+}
+
+// Forget the automatic run of a project: its sprint changed.
+export async function forgetRun(env: Env, repo: string, login: string): Promise<void> {
+  await sprintRunFor(env, repo)?.forget(login).catch(() => undefined);
+}
+
+// The run belongs to the sprint in progress only if it started after the
+// sprint did; a run left by a previous sprint is not shown (la-fabrique#356).
+export function runOfSprint(state: RunState | null, sprint: { startedAt: string } | null): RunState | null {
+  if (!state || !sprint) return null;
+  const started = Date.parse(state.startedAt);
+  const since = Date.parse(sprint.startedAt);
+  return Number.isNaN(started) || Number.isNaN(since) || started >= since - 1000 ? state : null;
 }
 
 // Whether Claude can be relaunched on the story a stopped card is at

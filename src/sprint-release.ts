@@ -13,6 +13,7 @@ import { applyIssueEvent, type RestIssue } from "./stories";
 import type { RestWorkflowRun } from "./claude";
 import { activeSprint, type Sprint } from "./sprints";
 import { sprintLiveFor } from "./live";
+import { forgetRun } from "./sprint-run";
 import { runFailure } from "./sprint-pulls";
 
 // Closing the sprint on a project without an integration branch makes the
@@ -274,6 +275,7 @@ async function closeAfterRelease(env: Env, project: Project, sprint: Sprint | nu
     .bind(version, sprint.id)
     .run();
   await activityStatement(env.DB, { actor: "github", action: "sprint_shipped", repo: project.repo, details: { release: version, reason: "closed" } }).run();
+  await forgetRun(env, project.repo, "github");
 }
 
 export interface ReleaseAttempt {
