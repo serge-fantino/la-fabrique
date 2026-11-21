@@ -89,6 +89,29 @@
     visit(url.href, true);
   });
 
+  // A project's menu, on a phone: the button opens and closes it; Escape,
+  // a click outside or a page chosen closes it.
+  const navMenu = () => document.querySelector("[data-project-nav]");
+  const setNav = (open) => {
+    const nav = navMenu();
+    if (!nav) return;
+    nav.classList.toggle("open", open);
+    nav.querySelector("[data-nav-toggle]")?.setAttribute("aria-expanded", String(open));
+  };
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("[data-nav-toggle]")) {
+      setNav(!navMenu()?.classList.contains("open"));
+      return;
+    }
+    if (navMenu()?.classList.contains("open") && (!target?.closest("[data-project-nav]") || target.closest("a[href]"))) setNav(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !navMenu()?.classList.contains("open")) return;
+    setNav(false);
+    navMenu()?.querySelector("[data-nav-toggle]")?.focus();
+  });
+
   // A criterion ticked in To test: at once on the page, sent in the
   // background, one after another (each tick rewrites the issue's text: two
   // at once would undo each other); GitHub's answer confirms it, or the tick
@@ -792,7 +815,6 @@
     setUpUnfold();
     setUpSprintMode();
     setUpKeptAnswers();
-    document.querySelector('.tabs [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
     setUpFragments();
     setUpDiagnostic();
     setUpRefresh();

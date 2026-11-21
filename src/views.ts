@@ -115,11 +115,24 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
       ${nav}
     </header>
     ${subbar}
-    <main>
-${externalLinks(body)}
-    </main>
+    ${shell(externalLinks(body))}
   </body>
 </html>`;
+}
+
+// A project's page opens with its menu (projectNav): the menu goes on the
+// left, beside the page; any other page is the page alone.
+const PROJECT_NAV = /^\s*(<nav class="project-nav"[\s\S]*?<\/nav>)/;
+
+function shell(body: string): string {
+  const found = PROJECT_NAV.exec(body);
+  if (!found) return `<main>\n${body}\n    </main>`;
+  return `<div class="project-shell">
+    ${found[1]}
+    <main>
+${body.slice(found[0].length)}
+    </main>
+    </div>`;
 }
 
 // The (i) next to the name: the version running, when it was released

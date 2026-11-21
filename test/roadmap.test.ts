@@ -117,14 +117,22 @@ function mockNotes(): void {
 }
 
 describe("Roadmap and Releases tabs", () => {
-  it("puts versions, closed stories and epics on the month's calendar", async () => {
+  it("puts versions, closed stories and epics done on the Releases calendar, beside the notes", async () => {
     await seed();
     mockNotes();
-    const page = await (await get(`/projects/${REPO}/roadmap?month=2026-10`, (await signIn("admin-one")).cookie)).text();
+    const page = await (await get(`/projects/${REPO}/releases?month=2026-10`, (await signIn("admin-one")).cookie)).text();
 
-    expect(page).toContain(`href="/projects/${REPO}/releases?month=2026-10#day-2026-10-29">2 versions</a>`);
-    expect(page).toContain("1.166 → 1.167");
+    expect(page).toContain('<aside class="release-side" aria-label="Calendar of the releases">');
+    expect(page).toMatch(/<td class="has-release"><a href="#day-2026-10-29" title="29 October 2026: 2 versions: 1.166 → 1.167; 1 story closed"/);
+    expect(page).toContain('<a href="#v-1.167"><span class="mono">1.167</span> Recettes</a>');
+    expect(page).toContain(`href="/projects/${REPO}/releases?month=2026-10" aria-current="true">October 2026</a>`);
     expect(page).toContain("<strong>October 2026</strong>");
+  });
+
+  it("shows GitHub epics on the Roadmap, without the calendar", async () => {
+    await seed();
+    const page = await (await get(`/projects/${REPO}/roadmap`, (await signIn("admin-one")).cookie)).text();
+    expect(page).not.toContain("release-side");
     expect(page).toContain(`href="https://github.com/${REPO}/issues/48">#48</a> Refonte`);
     expect(page).toContain("2/3 done");
     expect(page).toContain("<title>2026-10-25: 1/3 done</title>");

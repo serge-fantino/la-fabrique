@@ -1,6 +1,57 @@
 [
   {
     "version": "next",
+    "date": "2026-11-21",
+    "titre": "Project menu on the left",
+    "changements": [
+      "A project's pages are now in a menu on the left, grouped by moment (Plan, Build, Check, Ship, Project), instead of the tabs under the header; on a phone, the button with the page's name at the top opens it."
+    ],
+    "stories": [401],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "Board: drill down on an epic",
+    "changements": [
+      "On the board, a card's Epic tag (and its other tags) drills down: the board shows only that epic's cards, in the same lanes, with the epic, its progress and a way back above the board."
+    ],
+    "stories": [402],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "Move to refinement in one go",
+    "changements": [
+      "On a feature's page, Move to refinement puts it in Next release; on an epic's page, Move its features to refinement does it for all its features not yet in refinement, in the sprint or shipped."
+    ],
+    "stories": [403],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "Releases: the calendar on the side",
+    "changements": [
+      "Releases has the calendar now, in a side panel: the month's days with a version lead to their notes, then the month's versions and every month with one."
+    ],
+    "stories": [404],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "Roadmap: sprints to come and dependency tree",
+    "changements": [
+      "Roadmap plans the sprints to come: the sprint, Next release, then the features not placed yet, proposed by priority, board order and dependencies, so many per sprint; plan a feature by hand, keep the whole proposal or clear it. Below, the dependency tree: the epics in dependency order, and each epic's features by wave."
+    ],
+    "stories": [405],
+    "liens": null
+  },
+
+  {
+    "version": "next",
     "date": "2026-11-18",
     "titre": "MCP: run the sprint",
     "changements": [

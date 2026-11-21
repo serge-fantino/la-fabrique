@@ -486,42 +486,6 @@ th {
   }
 }
 
-.tabs {
-  display: flex;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  font-size: 0.94rem;
-  gap: 0 0.9rem;
-  border-bottom: 1px solid var(--rule);
-  margin: 0 0 1.5rem;
-}
-
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.tabs a {
-  flex: none;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  color: var(--encre-faint);
-  text-decoration: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.tabs a:hover {
-  color: var(--encre);
-}
-
-.tabs a[aria-current="page"] {
-  color: var(--encre);
-  border-bottom-color: var(--accent);
-  font-weight: 500;
-}
-
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -1109,39 +1073,6 @@ textarea {
   align-items: center;
 }
 
-.calendar {
-  table-layout: fixed;
-}
-
-.calendar th {
-  text-align: center;
-}
-
-.calendar td {
-  vertical-align: top;
-  height: 5.5rem;
-  padding: 0.35rem;
-  border: 1px solid var(--rule);
-  font-size: 0.82rem;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.calendar td.outside {
-  color: var(--encre-faint);
-  background: color-mix(in srgb, var(--encre) 3%, transparent);
-}
-
-.day-number {
-  display: block;
-  font-family: var(--mono);
-  color: var(--encre-faint);
-}
-
-.day-full {
-  display: none;
-}
-
 .epic {
   border-top: 1px solid var(--rule);
   padding-top: 0.5rem;
@@ -1169,36 +1100,6 @@ textarea {
 
 .closed-stories {
   font-size: 0.92rem;
-}
-
-@media (max-width: 640px) {
-  .calendar thead {
-    display: none;
-  }
-
-  .calendar td {
-    height: auto;
-    border: 0;
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .calendar td.empty,
-  .calendar td.outside {
-    display: none;
-  }
-
-  .calendar .day-full {
-    display: inline;
-  }
-
-  .calendar .day-short {
-    display: none;
-  }
-
-  .calendar .day-number {
-    font-weight: 500;
-    color: var(--encre);
-  }
 }
 
 /* What production will get: stories and release-notes entries side by side. */
@@ -1386,26 +1287,6 @@ main:focus {
 .criteria li.done .box {
   border-color: var(--bon);
   color: var(--bon);
-}
-
-/* On a phone, the tabs scroll sideways on one line. */
-@media (max-width: 640px) {
-  .tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    margin-left: -1rem;
-    margin-right: -1rem;
-    padding: 0 1rem;
-  }
-
-  .tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tabs a {
-    flex: none;
-  }
 }
 
 /* In development: a card per story, a line per branch. */
@@ -1974,7 +1855,7 @@ p.about-version-choice {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.tabs a.outside {
+.project-nav a.outside {
   font-style: italic;
 }
 
@@ -4534,4 +4415,630 @@ main:has(.help-shell) {
 }
 .sl-feature-col {
   margin-right: 0.25rem;
+}
+
+/* A tag that drills down: the board filtered on its value, lanes kept. */
+a.tag-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.tag-link:hover,
+a.tag-link:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.board-focus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.board-focus-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  padding: 0.35rem 0.5rem 0.35rem 1rem;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.board-focus-progress .epic-progress,
+.board-focus-progress > * {
+  margin: 0;
+}
+
+/* A project's pages: a menu on the left, beside the page; on a phone, a
+   button with the page's name opens it. */
+.project-shell {
+  display: grid;
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+  align-items: start;
+}
+
+.project-shell > main {
+  width: 100%;
+  min-width: 0;
+}
+
+.project-nav {
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  min-height: calc(100vh - 7.5rem);
+  overflow-y: auto;
+  padding: 1.25rem 0.75rem 2rem 1rem;
+  border-right: 1px solid var(--rule);
+  font-size: 0.94rem;
+}
+
+.project-nav-toggle {
+  display: none;
+}
+
+.project-nav-group {
+  margin: 1rem 0 0.25rem 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--encre-faint);
+}
+
+.project-nav-group:first-child {
+  margin-top: 0;
+}
+
+.project-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.project-nav a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  color: var(--encre-faint);
+  text-decoration: none;
+}
+
+@media (pointer: fine) {
+  .project-nav a {
+    min-height: 2.35rem;
+  }
+}
+
+.project-nav a:hover {
+  color: var(--encre);
+  background: color-mix(in srgb, var(--encre) 5%, transparent);
+}
+
+.project-nav a[aria-current="page"] {
+  color: var(--encre);
+  font-weight: 500;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Wide pages keep their width beside the menu. */
+.project-shell > main:has(.board-scroll) {
+  max-width: none;
+}
+
+.project-shell .board-scroll {
+  width: auto;
+  margin-left: -1.25rem;
+  margin-right: -1.25rem;
+}
+
+.project-shell .board-free .board-cell {
+  width: calc(100vw - 13.5rem - 2.5rem);
+}
+
+@media (max-width: 900px) {
+  .project-shell {
+    display: block;
+  }
+
+  .project-nav {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    padding: 0.35rem 1rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+    background: var(--fond);
+  }
+
+  .js .project-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 44px;
+    padding: 0 1rem 0 0.75rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--encre);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .burger {
+    display: inline-grid;
+    gap: 4px;
+    width: 18px;
+  }
+
+  .burger i {
+    display: block;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .project-nav.open .burger i:nth-child(1) {
+    transform: translateY(6px) rotate(45deg);
+  }
+
+  .project-nav.open .burger i:nth-child(2) {
+    opacity: 0;
+  }
+
+  .project-nav.open .burger i:nth-child(3) {
+    transform: translateY(-6px) rotate(-45deg);
+  }
+
+  /* Without the script, the menu stays open, its pages side by side. */
+  .project-nav-menu ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.25rem;
+  }
+
+  .js .project-nav:not(.open) .project-nav-menu {
+    display: none;
+  }
+
+  .js .project-nav-menu {
+    position: absolute;
+    left: 0.75rem;
+    right: 0.75rem;
+    top: calc(100% + 0.35rem);
+    max-height: min(75vh, 40rem);
+    overflow-y: auto;
+    padding: 1rem 0.75rem;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 12px 32px rgba(24, 33, 27, 0.18);
+  }
+
+  .js .project-nav-menu ul {
+    display: block;
+  }
+
+  .project-shell .board-free .board-cell {
+    width: calc(100vw - 2.5rem);
+  }
+}
+
+/* Releases: the notes, and beside them a small calendar to move through
+   them (the month's days with a version, the month's versions, every
+   month with one). */
+.releases-layout {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.releases-main {
+  min-width: 0;
+}
+
+.release-side {
+  background: #fff;
+  border-radius: 22px;
+  padding: 1rem 1.1rem 1.25rem;
+  font-size: 0.92rem;
+}
+
+@media (min-width: 1000px) {
+  .project-shell > main:has(.releases-layout) {
+    max-width: 1240px;
+  }
+
+  .releases-layout {
+    grid-template-columns: 17rem minmax(0, 1fr);
+  }
+
+  .release-side {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}
+
+.month-nav.compact {
+  margin: 0 0 0.25rem;
+}
+
+.month-nav.compact a {
+  min-width: 44px;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.mini-calendar {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.mini-calendar th {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--encre-faint);
+  text-align: center;
+  padding: 0.1rem 0;
+  border: 0;
+}
+
+.mini-calendar abbr {
+  text-decoration: none;
+}
+
+.mini-calendar td {
+  padding: 1px;
+  text-align: center;
+  border: 0;
+}
+
+.mini-calendar td > a,
+.mini-calendar td > span {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 2rem;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--encre);
+  text-decoration: none;
+}
+
+.mini-calendar td.outside > span {
+  color: color-mix(in srgb, var(--encre) 35%, transparent);
+}
+
+.mini-calendar td.has-release > a {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+.mini-calendar td.has-release > a:hover,
+.mini-calendar td.has-release > a:focus-visible {
+  background: var(--alerte);
+}
+
+.cal-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bon);
+}
+
+.mini-calendar .cal-dot {
+  position: absolute;
+  bottom: 3px;
+  left: calc(50% - 2.5px);
+}
+
+.mini-calendar td.has-release .cal-dot {
+  background: #fff;
+}
+
+.cal-dot.epic-done {
+  background: var(--moyen);
+}
+
+.cal-key {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  background: var(--accent);
+  vertical-align: -0.1rem;
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.4rem;
+  margin: 0.5rem 0 0;
+}
+
+.side-title {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--encre-faint);
+  margin: 1.1rem 0 0.35rem;
+}
+
+.release-index,
+.release-months {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.release-index li,
+.release-months li {
+  padding: 0.15rem 0;
+}
+
+.release-index a {
+  text-decoration: none;
+}
+
+.release-months a[aria-current="true"] {
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.release-note {
+  scroll-margin-top: 1rem;
+}
+
+/* The Roadmap: the sprints to come side by side, then the dependency tree. */
+.project-shell > main:has(.roadmap-plan) {
+  max-width: 1480px;
+}
+
+.plan-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.plan-capacity {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.plan-capacity label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.9rem;
+}
+
+.plan-capacity input {
+  width: 5.5rem;
+}
+
+.plan-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.75rem;
+}
+
+.plan-columns {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  width: max-content;
+  min-width: 100%;
+}
+
+.plan-column {
+  width: 16.5rem;
+  flex: none;
+  padding: 0.75rem;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--encre) 4%, transparent);
+}
+
+.plan-column.now {
+  background: color-mix(in srgb, var(--bon) 10%, transparent);
+}
+
+.plan-column.next {
+  background: color-mix(in srgb, var(--moyen) 16%, transparent);
+}
+
+.plan-column h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.plan-column > p {
+  margin: 0 0 0.5rem;
+}
+
+.plan-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.plan-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 0.55rem 0.7rem 0.6rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  scroll-margin-top: 4rem;
+}
+
+.plan-card.proposed {
+  background: color-mix(in srgb, #fff 70%, transparent);
+  outline: 1px dashed color-mix(in srgb, var(--encre) 25%, transparent);
+}
+
+.plan-card:target {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.plan-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.plan-title {
+  display: block;
+  margin: 0.25rem 0;
+  color: var(--encre);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.plan-notes {
+  margin: 0.3rem 0 0;
+}
+
+.plan-proposed {
+  font-style: italic;
+}
+
+.plan-move {
+  margin-top: 0.4rem;
+}
+
+.plan-move select {
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.graph-scroll {
+  overflow-x: auto;
+  margin: 0 0 1.25rem;
+  padding: 0.75rem;
+  border-radius: 22px;
+  background: #fff;
+}
+
+.epic-graph {
+  display: block;
+  font-family: "Archivo", system-ui, sans-serif;
+}
+
+.graph-node rect:first-of-type {
+  fill: var(--fond);
+  stroke: color-mix(in srgb, var(--encre) 22%, transparent);
+}
+
+.graph-node:hover rect:first-of-type,
+.graph-node:focus-visible rect:first-of-type {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.graph-node.done rect:first-of-type {
+  fill: color-mix(in srgb, var(--bon) 12%, #fff);
+}
+
+.graph-title {
+  fill: var(--encre);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.graph-sub {
+  fill: color-mix(in srgb, var(--encre) 68%, transparent);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.graph-track {
+  fill: color-mix(in srgb, var(--encre) 10%, transparent);
+}
+
+.graph-done {
+  fill: var(--bon);
+}
+
+.graph-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--encre) 45%, transparent);
+  stroke-width: 1.5;
+}
+
+#graph-arrow path {
+  fill: color-mix(in srgb, var(--encre) 45%, transparent);
+}
+
+.tree-group {
+  background: #fff;
+  border-radius: 18px;
+  padding: 0.5rem 1rem;
+  margin: 0 0 0.6rem;
+}
+
+.tree-group summary {
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+
+.tree-waves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-wave {
+  position: relative;
+  padding: 0.3rem 0 0.3rem 1rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  margin-left: 0.4rem;
+}
+
+.tree-wave-label {
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.tree-wave ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1rem;
+}
+
+.tree-wave li {
+  margin: 0.15rem 0;
 }

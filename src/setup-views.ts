@@ -49,7 +49,7 @@ const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
   },
   release_notes: {
     title: "Release notes in the Fabrique format",
-    why: "They feed Production (what will ship), the Roadmap calendar and Releases, and what a defect can be about.",
+    why: "They feed Production (what will ship), Releases and its calendar, and what a defect can be about.",
     how: `<p>A JSON array, newest first; an entry without <code>heure</code> is not released yet; <code>stories</code> lists the issues it brings (the only link between a version and its stories: require it in your version check). ${guide("notes-de-version-format-fabrique")}.</p>
       ${code(`"version": { "fichier": "docs/release-notes.json", "forme": "0.N" }`)}
       ${code(`[\n  {\n    "version": "0.2",\n    "date": "2026-10-30",\n    "heure": "10:05",\n    "titre": "Sign in",\n    "changements": ["Sign in with GitHub."],\n    "stories": [3],\n    "liens": null\n  }\n]`)}`,

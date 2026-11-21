@@ -8,7 +8,7 @@ import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
 import { goSection } from "./production-views";
 import { storyChecks } from "./validation";
-import { boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, epicConversionPage, importPage, specFormPage, splitPage, statusPill, storyPage, type StoryState } from "./card-views";
+import { boardDrill, boardPage, cardFormPage, cardPage, cardPermalink, cardRef, cardTile, cardUrl, epicConversionPage, importPage, specFormPage, splitPage, statusPill, storyPage, type StoryState } from "./card-views";
 import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
@@ -22,6 +22,7 @@ import { criteriaOf, criteriaRubrique, criteriaText, moveCriterion } from "./sto
 import { nextStep, refinementCards, refinementPage, withFeatureOrder } from "./refinement";
 import { FOLLOW_MAX_AGE_MS, loadStories } from "./stories";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
+import { moveToRefinement, refinementCounts, refinementScope } from "./to-refinement";
 import { EPIC_ISSUE_KIND, epicIssueView, epicIssuesOf, startFromIssue, takenEpicIssues } from "./epic-issue";
 import { isNice, storyCards } from "./card-groups";
 import { readListView } from "./sprint-filter";
@@ -153,7 +154,7 @@ export async function showBoard(request: Request, env: Env, viewer: Viewer, proj
   const progress = await cardProgress(env, project, cards);
   // The epic lanes' headers show the epic's progress (la-fabrique#305).
   const epics = new Map<string, { id: number; progress: EpicProgress }>();
-  if (board.by === "epic" || board.then === "epic") {
+  if (board.by === "epic" || board.then === "epic" || board.filters.values.epic) {
     const found = allCards.filter((card) => card.kind === "epic" && !card.archivedAt);
     for (const [id, one] of await epicProgresses(env, project, found, allCards)) {
       const epic = found.find((card) => card.id === id);
@@ -284,7 +285,9 @@ export async function boardAction(request: Request, form: FormData, env: Env, vi
   if (moved.epic !== card.epic) await syncEpicLink(env.DB, moved, viewer.login);
   if (moved.release !== card.release) await ensureEpicIssue(env, project, moved, viewer.login, new URL(request.url).origin);
   const [spends, working, progress] = await Promise.all([cardSpends(env.DB, project.repo), workingCards(env.DB, project.repo), cardProgress(env, project, [moved])]);
-  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id)) });
+  // The tile keeps its drill-down links: the board's address comes along.
+  const drill = boardDrill(projectUrl(project.repo), readBoardQuery(new URLSearchParams(String(form.get("back") ?? ""))));
+  return json({ ok: true, html: cardTile(moved, true, spends.get(moved.id), working.has(moved.id), progress.get(moved.id), drill) });
 }
 
 async function refusalFor(env: Env, repo: string, card: Card, what: "dropped" | "archived"): Promise<string | null> {
@@ -382,6 +385,12 @@ export async function replaceMention(db: D1Database, repo: string, login: string
   ]);
   await syncEpicText(db, source, source.body, body, login);
   return source.id;
+}
+
+function refinementNotice(card: Card, moved: number): string {
+  return card.kind === "epic"
+    ? `${moved} feature${moved === 1 ? "" : "s"} of this epic moved into refinement (Next release).`
+    : "Moved into refinement (Next release): it is on the Refinement page, up to GO / NO-GO.";
 }
 
 const CARD_NOTICES: Record<string, string> = {
@@ -557,7 +566,7 @@ async function renderCard(
       canValidate: step.step === "approve",
       created: params.get("created") === "1",
       attachedOnCreate: params.has("attached") ? Number(params.get("attached")) || 0 : undefined,
-      notice: notice ? CARD_NOTICES[notice] : undefined,
+      notice: notice === "refinement" ? refinementNotice(card, Number(params.get("moved")) || 0) : notice ? CARD_NOTICES[notice] : undefined,
       failure: extra.failure,
       warnings: warningTexts(params.get("warn"), allCards),
       ...(extra.confirmMove !== undefined ? { confirmMove: extra.confirmMove } : {}),
@@ -590,6 +599,7 @@ async function renderCard(
       epicHistory: card.kind === "epic" ? await epicHistory(env.DB, project.repo, card.id) : undefined,
       epicFeatures: card.kind === "epic" ? await epicFeatures(env.DB, card) : [],
       ...(card.kind === "epic" ? { epicDeps: epicDependencies(card, allCards, await projectLinks(env.DB, project.repo)) } : {}),
+      refinement: refinementCounts(refinementScope(card, allCards), (await knownValues(env, project, allCards)).releases),
       attachable: card.kind === "epic" ? allCards.filter((c) => c.kind === "feature" && !c.archivedAt && attachedTitles.get(c.id) !== card.title) : [],
     }),
     { cookies, status: extra.status ?? 200 },
@@ -813,6 +823,13 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const failed = await applyCardBackstage(env, project, { ...card, backstage: on }, viewer.login);
     if (failed.length) return renderCard(request, env, viewer, project, { ...card, backstage: on }, { failure: `Saved on the card; GitHub refused the label for ${failed.join("; ")}`, status: 502 });
     return redirect(`${url}?notice=${on ? "backstage" : "public"}`);
+  }
+  // Into refinement in one go: the feature, or the epic's features.
+  if (action === "to_refinement") {
+    if (card.archivedAt) return redirect(url);
+    const { releases } = await knownValues(env, project, await listCards(env.DB, project.repo));
+    const moved = await moveToRefinement(env, project, card, releases, viewer.login, new URL(request.url).origin);
+    return redirect(`${url}?notice=${moved.length ? `refinement&moved=${moved.length}` : "unchanged"}`);
   }
   if (action === "status") {
     const to = form.get("status");

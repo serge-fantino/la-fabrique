@@ -59,6 +59,7 @@
     const data = new FormData();
     data.set("csrf", board.getAttribute("data-csrf") || "");
     data.set("action", "move");
+    data.set("back", board.getAttribute("data-back") || "");
     data.set("card", card.getAttribute("data-card") || "");
     data.set("before", siblings[index + 1]?.getAttribute("data-card") || "");
     data.set("after", siblings[index - 1]?.getAttribute("data-card") || "");

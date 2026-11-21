@@ -330,7 +330,7 @@ const REFERENCE: RefPage[] = [
   {
     slug: "getting-around",
     title: "Getting around",
-    summary: "Your role, the perspective, the dashboard and a project's tabs.",
+    summary: "Your role, the perspective, the dashboard and a project's menu.",
     sections: [
       {
         id: "role",
@@ -345,12 +345,12 @@ const REFERENCE: RefPage[] = [
       {
         id: "perspective",
         title: "The perspective",
-        body: `<p>Next to your login, the perspective chooses which tabs you see. A Product Engineer starts in <em>Product</em>: Overview, Board, Refinement, Sprint, Stories, Backlog, To test, Defects, Roadmap, Releases, Requests. <em>All</em> shows every tab. A perspective hides; it never forbids.</p>`,
+        body: `<p>Next to your login, the perspective chooses which pages the project's menu shows. A Product Engineer starts in <em>Product</em>: Overview, Board, Epics, Roadmap, Refinement, Sprint, Stories, Backlog, To test, Defects, Releases, Requests. <em>All</em> shows every page. A perspective hides; it never forbids.</p>`,
       },
       {
         id: "tabs",
-        title: "A project's tabs",
-        body: (h: Helpers) => `<dl class="help-tabs">
+        title: "A project's menu",
+        body: (h: Helpers) => `<p>A project's pages are in the menu on the left, grouped by moment: Plan, Build, Check, Ship, Project. On a phone, the button with the page's name, at the top, opens it.</p><dl class="help-tabs">
             <dt>${h.app("", "Overview")}</dt><dd>Where the project is: production, test, development.</dd>
             <dt>${h.app("/board", "Board")}</dt><dd>The cards, arranged by two dimensions. ${h.ref("board", "Reference")}</dd>
             <dt>${h.app("/refinement", "Refinement")}</dt><dd>The features of Next release, up to GO / NO-GO. ${h.ref("refinement", "Reference")}</dd>
@@ -359,8 +359,8 @@ const REFERENCE: RefPage[] = [
             <dt>${h.app("/backlog", "Backlog")}</dt><dd>What is not started yet, by card, in priority order.</dd>
             <dt>${h.app("/to-test", "To test")}</dt><dd>The stories to check. ${h.ref("testing", "Reference")}</dd>
             <dt>${h.app("/defects", "Defects")}</dt><dd>The defects reported. ${h.ref("defects", "Reference")}</dd>
-            <dt>${h.app("/roadmap", "Roadmap")}</dt><dd>The releases, past and coming.</dd>
-            <dt>${h.app("/releases", "Releases")}</dt><dd>The release notes, version by version.</dd>
+            <dt>${h.app("/roadmap", "Roadmap")}</dt><dd>The sprints to come, proposed from the priorities and the dependencies, planned by hand; and the dependency tree of the epics and their features.</dd>
+            <dt>${h.app("/releases", "Releases")}</dt><dd>The release notes, version by version, with their calendar on the side.</dd>
             <dt>${h.app("/requests", "Requests")}</dt><dd>Requests written with the project's form, outside the cards.</dd>
           </dl>`,
       },
@@ -466,7 +466,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "filters",
         title: "Filters and search",
-        body: `<p><em>Filters</em> (the fold says how many are on): <em>Type</em>, <em>Status</em>, and each of Epic, Domain, Segment, Release (a value, or <em>Not set</em>); <em>Text</em>; <em>Dropped and archived</em>. ${b("Show")} applies them, <em>Clear the filters</em> removes them.</p>
+        body: `<p><em>Filters</em> (the fold says how many are on): <em>Type</em>, <em>Status</em>, and each of Epic, Domain, Segment, Release (a value, or <em>Not set</em>); <em>Text</em>; <em>Dropped and archived</em>. ${b("Show")} applies them, <em>Clear the filters</em> removes them.</p><p>A card's tag drills down: press its <em>Epic</em> (or Domain, Segment, Release) and the board shows only the cards with that value, in the same lanes. Above the board, the epic, its progress and a link to its page; <em>Every epic ✕</em> goes back to the whole board.</p>
           <p><em>Text</em> keeps the cards where every word is found in the title, the text, the number (<code>C12</code>), or one of its stories: <code>#170</code> or <code>170</code>.</p>`,
       },
       {
@@ -573,7 +573,7 @@ const REFERENCE: RefPage[] = [
       {
         id: "page",
         title: "The page",
-        body: `<p>Refinement shows the features of <em>Next release</em> as cards, in the board's order (dropped and archived left out), each with its next step:</p>
+        body: `<p>A feature gets there from the board (its Release, <em>Next release</em>), from its page (${b("Move to refinement")}), from its epic's page (${b("Move its features to refinement")}, every feature not yet in refinement, in the sprint or shipped), or from the Roadmap.</p><p>Refinement shows the features of <em>Next release</em> as cards, in the board's order (dropped and archived left out), each with its next step:</p>
           <ul>
             <li><strong>Specify</strong>: no spec yet; Claude writes it.</li>
             <li><strong>Answer</strong>: Claude asks; the questions are in the card (“Answer (2)”).</li>
@@ -806,7 +806,7 @@ const REFERENCE: RefPage[] = [
             <dt>Sprint</dt><dd>The release in progress, with its version.</dd>
             <dt>int</dt><dd>The integration environment, where the merged work is tested and waits for the go.</dd>
             <dt>Go</dt><dd>The decision to put a version in production.</dd>
-            <dt>Perspective</dt><dd>Which tabs you see; it never changes what you may do.</dd>
+            <dt>Perspective</dt><dd>Which pages the menu shows; it never changes what you may do.</dd>
           </dl>`,
       },
     ],

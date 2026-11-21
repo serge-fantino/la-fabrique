@@ -57,8 +57,10 @@ function epicSection(progress: EpicProgress): string {
     </article>`;
 }
 
-function calendar(project: Project, month: string, releases: Release[], stories: Story[]): string {
-  const releasesUrl = `${projectUrl(project.repo)}/releases`;
+// The Releases side panel: the month's calendar, small, each day with a
+// version leading to its notes on the page, each day with closed stories
+// or an epic done marked; then the month's versions and the other months.
+function sideCalendar(base: string, month: string, releases: Release[], stories: Story[]): string {
   const rows = monthGrid(month)
     .map(
       (week) =>
@@ -67,48 +69,75 @@ function calendar(project: Project, month: string, releases: Release[], stories:
             const ofDay = releases.filter((release) => release.date === day);
             const closed = stories.filter((story) => story.state === "closed" && story.closedAt?.startsWith(day));
             const epicsDone = closed.filter((story) => story.subTotal > 0);
-            const items = [
-              ofDay.length
-                ? `<a href="${escapeHtml(releasesUrl)}?month=${day.slice(0, 7)}#day-${day}">${ofDay.length} version${ofDay.length > 1 ? "s" : ""}</a><br /><span class="mono">${escapeHtml(
-                    ofDay.length > 1 ? `${ofDay.at(-1)?.version} → ${ofDay[0]?.version}` : (ofDay[0]?.version ?? ""),
-                  )}</span>`
-                : "",
-              closed.length ? `<span>${closed.length} closed</span>` : "",
-              ...epicsDone.map((epic) => `<span class="pill ok">Epic #${epic.number} done</span>`),
+            const title = [
+              ofDay.length ? `${ofDay.length} version${ofDay.length > 1 ? "s" : ""}: ${ofDay.map((release) => release.version).reverse().join(" → ")}` : "",
+              closed.length ? `${closed.length} stor${closed.length > 1 ? "ies" : "y"} closed` : "",
+              ...epicsDone.map((epic) => `Epic #${epic.number} done`),
             ].filter(Boolean);
-            return `<td class="${inMonth ? "" : "outside"}${items.length ? "" : " empty"}">
-              <span class="day-number"><span class="day-short">${Number(day.slice(8, 10))}</span><span class="day-full">${dayTitle(day)}</span></span>
-              ${items.join("<br />")}
-            </td>`;
+            const number = `<span class="cal-day">${Number(day.slice(8, 10))}</span>${closed.length ? `<span class="cal-dot${epicsDone.length ? " epic-done" : ""}" aria-hidden="true"></span>` : ""}`;
+            const label = `${dayTitle(day)}${title.length ? `: ${title.join("; ")}` : ""}`;
+            const cell =
+              ofDay.length && inMonth
+                ? `<a href="#day-${day}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${number}</a>`
+                : `<span${title.length ? ` title="${escapeHtml(label)}"` : ""}>${number}</span>`;
+            return `<td class="${[inMonth ? "" : "outside", ofDay.length && inMonth ? "has-release" : ""].filter(Boolean).join(" ")}">${cell}</td>`;
           })
           .join("")}</tr>`,
     )
     .join("");
-  return `<table class="calendar">
-      <thead><tr>${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((name) => `<th>${name}</th>`).join("")}</tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  const ofMonth = releases.filter((release) => release.date.startsWith(month));
+  // Every month with a version, newest first: a way across the year.
+  const months = [...new Map(releases.map((release) => [release.date.slice(0, 7), 0])).keys()].map((value) => ({
+    value,
+    count: releases.filter((release) => release.date.startsWith(value)).length,
+  }));
+  return `<aside class="release-side" aria-label="Calendar of the releases">
+      <nav class="month-nav compact" aria-label="Month">
+        <a href="${escapeHtml(base)}?month=${shiftMonth(month, -1)}" aria-label="${monthTitle(shiftMonth(month, -1))}">←</a>
+        <strong>${monthTitle(month)}</strong>
+        <a href="${escapeHtml(base)}?month=${shiftMonth(month, 1)}" aria-label="${monthTitle(shiftMonth(month, 1))}">→</a>
+      </nav>
+      <table class="mini-calendar">
+        <thead><tr>${["M", "T", "W", "T", "F", "S", "S"].map((name, i) => `<th><abbr title="${["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][i]}">${name}</abbr></th>`).join("")}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p class="muted small cal-legend"><span class="cal-key has-release" aria-hidden="true"></span> a version <span class="cal-dot" aria-hidden="true"></span> stories closed <span class="cal-dot epic-done" aria-hidden="true"></span> an epic done</p>
+      ${
+        ofMonth.length
+          ? `<h2 class="side-title">In ${monthTitle(month)}</h2><ul class="release-index">${ofMonth
+              .map(
+                (release) =>
+                  `<li><a href="#v-${escapeHtml(release.version)}"><span class="mono">${escapeHtml(release.version)}</span>${release.title ? ` ${escapeHtml(release.title)}` : ""}</a>${release.upcoming ? ` <span class="pill warn small">Upcoming</span>` : ""}</li>`,
+              )
+              .join("")}</ul>`
+          : ""
+      }
+      ${
+        months.length
+          ? `<h2 class="side-title">Months</h2><ul class="release-months">${months
+              .map(
+                (one) =>
+                  `<li><a href="${escapeHtml(base)}?month=${one.value}"${one.value === month ? ' aria-current="true"' : ""}>${monthTitle(one.value)}</a> <span class="mono muted small">${one.count}</span></li>`,
+              )
+              .join("")}</ul>`
+          : ""
+      }
+    </aside>`;
 }
 
 export function roadmapPage(
   viewer: Viewer,
   project: Project,
-  data: { month: string; releases: Release[]; stories: Story[]; epics: EpicProgress[]; failure?: string | undefined },
+  data: { epics: EpicProgress[]; plan?: string; failure?: string | undefined },
 ): string {
   const name = project.check?.config?.nom || project.repo;
-  const base = `${projectUrl(project.repo)}/roadmap`;
   return layout(
     `Roadmap · ${name} · La Fabrique extraordinaire`,
     `${projectHeader(project, "roadmap")}
       ${notice(data.failure, "error")}
+      ${data.plan ?? ""}
       <section>
-        <h2>Calendar</h2>
-        ${monthNav(base, data.month)}
-        ${calendar(project, data.month, data.releases, data.stories)}
-        <p class="muted">Versions from the project's “Quoi de neuf” file on the production branch; stories closed and epics done from GitHub (UTC).</p>
-      </section>
-      <section>
-        <h2>Epics</h2>
+        <h2>GitHub epics</h2>
         ${data.epics.length ? data.epics.map(epicSection).join("") : `<p class="muted">No epic yet: an epic is an issue with sub-issues.</p>`}
       </section>`,
     viewer,
@@ -177,15 +206,22 @@ export function releasesPage(
             </section>`,
           )
           .join("")
-      : `<p class="muted">No version in ${monthTitle(data.month)}.</p>`;
+      : `<p class="muted">No version in ${monthTitle(data.month)}.${
+          data.releases[0] ? ` The latest: <a href="${escapeHtml(base)}?month=${data.releases[0].date.slice(0, 7)}#v-${escapeHtml(data.releases[0].version)}">${escapeHtml(data.releases[0].version)}</a>, ${dayTitle(data.releases[0].date)}.` : ""
+        }</p>`;
 
   return layout(
     `Releases · ${name} · La Fabrique extraordinaire`,
     `${projectHeader(project, "releases")}
       ${notice(data.failure, "error")}
-      ${monthNav(base, data.month)}
-      ${body}
-      <p class="muted">Stories are matched to a version by their closing time (UTC) against the version's date and time, so the split is approximate around a release.</p>`,
+      <div class="releases-layout">
+        ${project.check?.config?.version?.fichier ? sideCalendar(base, data.month, data.releases, data.stories) : ""}
+        <div class="releases-main">
+          ${monthNav(base, data.month)}
+          ${body}
+          <p class="muted">Versions from the project's “Quoi de neuf” file; stories closed and epics done from GitHub (UTC). Stories are matched to a version by their closing time against the version's date and time, so the split is approximate around a release.</p>
+        </div>
+      </div>`,
     viewer,
     [],
     projectContext(project),

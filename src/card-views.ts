@@ -39,6 +39,7 @@ import { NEXT_RELEASE, RELEASE_STATE_LABELS, SPRINT_LANE, type BoardRelease } fr
 import { isActive, jobLabel, type Job, type JobEvent, type JobKind } from "./jobs";
 import type { Stage } from "./lifecycle";
 import { epicDependenciesSection, type EpicDependencies } from "./epic-dependencies";
+import type { RefinementCounts } from "./to-refinement";
 import { epicProgressSection, epicProgressSummary, type EpicProgress } from "./epic-progress";
 import type { EpicIssueView } from "./epic-issue";
 import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
@@ -81,8 +82,17 @@ export function cardDraftKey(repo: string): string {
   return `lf-card:${repo.toLowerCase()}`;
 }
 
-function tag(dimension: FreeDimension, value: string): string {
-  return `<span class="tag"><span class="tag-dim">${DIMENSION_LABELS[dimension]}</span> ${escapeHtml(value)}</span>`;
+function tag(dimension: FreeDimension, value: string, href?: string | null): string {
+  const inner = `<span class="tag-dim">${DIMENSION_LABELS[dimension]}</span> ${escapeHtml(value)}`;
+  return href
+    ? `<a class="tag tag-link" href="${escapeHtml(href)}" title="Show only the cards of this ${DIMENSION_LABELS[dimension].toLowerCase()}, in the same lanes">${inner}</a>`
+    : `<span class="tag">${inner}</span>`;
+}
+
+// The board's address with one more filter, the lanes kept: a card's tag
+// drills down (la-fabrique: an epic, then its features only).
+export function drillHref(base: string, board: BoardQuery, dimension: FreeDimension, value: string): string {
+  return `${base}/board${boardQueryString({ ...board, filters: { ...board.filters, values: { ...board.filters.values, [dimension]: value } } })}`;
 }
 
 // `status`: what stands for the status pill (the form that changes it).
@@ -104,10 +114,12 @@ export function statusPill(card: Pick<Card, "status" | "progress">, progress?: P
 }
 
 // One card on the board: a white card, its text and its tags.
-export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = false, progress?: Progress | null): string {
+// `drill`: the board's address filtered on a tag's value; absent, the tags
+// are plain.
+export function cardTile(card: Card, canMove: boolean, spend?: Spend, working = false, progress?: Progress | null, drill?: (dimension: FreeDimension, value: string) => string | null): string {
   const url = cardUrl(card.repo, card.id);
   const text = excerpt(card.body);
-  const free = FREE_DIMENSIONS.filter((dimension) => card[dimension]).map((dimension) => tag(dimension, card[dimension] ?? ""));
+  const free = FREE_DIMENSIONS.filter((dimension) => card[dimension]).map((dimension) => tag(dimension, card[dimension] ?? "", drill?.(dimension, card[dimension] ?? "")));
   return `<article class="fiche${card.archivedAt ? " archived" : ""}" id="card-${card.id}" data-card="${card.id}">
       <div class="fiche-top">
         <a class="fiche-id mono" href="${escapeHtml(url)}">${cardRef(card.id)}</a>
@@ -260,6 +272,38 @@ export interface BoardData {
   epics?: Map<string, { id: number; progress: EpicProgress }>;
 }
 
+// A tag drills down unless the board is already arranged or filtered by it.
+export function boardDrill(base: string, board: BoardQuery): (dimension: FreeDimension, value: string) => string | null {
+  return (dimension, value) => {
+    if (!value || board.by === dimension || board.then === dimension) return null;
+    if (board.filters.values[dimension]?.toLowerCase() === value.toLowerCase()) return null;
+    return drillHref(base, board, dimension, value);
+  };
+}
+
+// Above the board, the filters drilled into: an epic with its progress and
+// a link to its page, each one with a way back to the whole board.
+function focusBar(project: Project, board: BoardQuery, data: BoardData): string {
+  const base = projectUrl(project.repo);
+  const chips = FREE_DIMENSIONS.flatMap((dimension) => {
+    const value = board.filters.values[dimension];
+    if (value === undefined) return [];
+    const without = { ...board.filters.values };
+    delete without[dimension];
+    const back = `${base}/board${boardQueryString({ ...board, filters: { ...board.filters, values: without } })}`;
+    const epic = dimension === "epic" && value ? data.epics?.get(value.trim().toLowerCase()) : undefined;
+    const name = epic ? `<a href="${escapeHtml(cardUrl(project.repo, epic.id))}"><span class="mono">${cardRef(epic.id)}</span> ${escapeHtml(value)}</a>` : `<strong>${escapeHtml(value || "Not set")}</strong>`;
+    return [
+      `<div class="board-focus-item">
+        <span class="tag-dim">${DIMENSION_LABELS[dimension]}</span> ${name}
+        ${epic ? `<span class="board-focus-progress">${epicProgressSummary(epic.progress, true)}</span>` : ""}
+        <a class="button quiet small" href="${escapeHtml(back)}" aria-label="Every ${DIMENSION_LABELS[dimension].toLowerCase()}: remove this filter">Every ${DIMENSION_LABELS[dimension].toLowerCase()} ✕</a>
+      </div>`,
+    ];
+  });
+  return chips.length ? `<div class="board-focus" role="region" aria-label="Drilled down">${chips.join("")}</div>` : "";
+}
+
 // Shipped is done, in progress is on its way, planned is not started.
 const RELEASE_TONES: Record<BoardRelease["state"], string> = { shipped: "ok", in_progress: "warn", planned: "kind" };
 
@@ -300,10 +344,11 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
   };
   const columns = lanes(board.by);
   const rows = lanes(board.then);
+  const drill = boardDrill(base, board);
   const cell = (columnValue: string, rowValue: string) => {
     const placed = { [board.by]: columnValue, [board.then]: rowValue };
     const cards = data.cards.filter((card) => valueOf(card, board.by) === columnValue && valueOf(card, board.then) === rowValue);
-    return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite, data.spends.get(card.id), data.working.has(card.id), data.progress?.get(card.id))).join("")}</div>`;
+    return `<div class="board-cell" data-cell${cellAttributes(placed)}>${cards.map((card) => cardTile(card, canWrite, data.spends.get(card.id), data.working.has(card.id), data.progress?.get(card.id), drill)).join("")}</div>`;
   };
   const count = (predicate: (card: Card) => boolean) => data.cards.filter(predicate).length;
   const epicNote = (axis: Axis, value: string) => {
@@ -380,9 +425,10 @@ export function boardPage(viewer: Viewer, project: Project, data: BoardData): st
         </div>
       </div>
       ${data.total === 0 ? `<p class="muted">No card yet. A card is a few lines about a feature or an idea, before it becomes a story (if ever).</p>` : ""}
+      ${focusBar(project, board, data)}
       <p class="board-status muted" data-board-status role="status" aria-live="polite"></p>
       <div class="board-scroll">
-        <div class="board" data-board data-by="${board.by}" data-then="${board.then}" data-move="${escapeHtml(base)}/board" data-csrf="${escapeHtml(viewer.csrfToken)}">
+        <div class="board" data-board data-by="${board.by}" data-then="${board.then}" data-back="${escapeHtml(back)}" data-move="${escapeHtml(base)}/board" data-csrf="${escapeHtml(viewer.csrfToken)}">
           ${grid}
         </div>
       </div>
@@ -656,6 +702,8 @@ export interface CardPageData {
   epicHistory?: EpicHistoryEntry[] | undefined;
   epicFeatures?: Card[];
   epicDeps?: EpicDependencies;
+  // What "Move to refinement" would do: the feature, or the epic's features.
+  refinement?: RefinementCounts;
   attachable?: Card[];
   // The GitHub epic issue an epic card started from (la-fabrique#287).
   epicIssue?: EpicIssueView;
@@ -896,6 +944,33 @@ function statusForm(viewer: Viewer, url: string, card: Pick<Card, "status" | "pr
     </form>`;
 }
 
+// "Move to refinement": a feature, or every feature of an epic, into Next
+// release in one go; what is already in refinement, in the sprint or
+// shipped stays where it is.
+function refinementAction(viewer: Viewer, url: string, base: string, card: Card, counts: RefinementCounts | undefined): string {
+  if (!counts || (card.kind !== "feature" && card.kind !== "epic")) return "";
+  const n = counts.refinable.length;
+  const open = `<a class="button quiet" href="${escapeHtml(base)}/refinement">Open Refinement</a>`;
+  if (card.kind === "feature") {
+    if (counts.inRefinement) return `<span class="pill ok" title="In Next release: refined on the Refinement page">In refinement</span> ${open}`;
+    if (!n) return "";
+    return `<form method="post" action="${escapeHtml(url)}" class="inline" data-busy="Moving…">${csrfField(viewer)}
+        <input type="hidden" name="action" value="to_refinement" />
+        <button type="submit" class="button quiet" title="Puts the feature in Next release, where Refinement takes it up to GO / NO-GO">Move to refinement</button>
+      </form>`;
+  }
+  const stays = [
+    counts.inRefinement ? `${counts.inRefinement} already in refinement` : "",
+    counts.inSprint ? `${counts.inSprint} in the sprint` : "",
+    counts.underWay ? `${counts.underWay} on their way or shipped` : "",
+  ].filter(Boolean);
+  if (!n) return counts.inRefinement ? open : "";
+  return `<form method="post" action="${escapeHtml(url)}" class="inline" data-busy="Moving…">${csrfField(viewer)}
+      <input type="hidden" name="action" value="to_refinement" />
+      <button type="submit" class="button quiet" title="${escapeHtml(`${counts.refinable.map((f) => cardRef(f.id)).join(", ")} into Next release${stays.length ? `; ${stays.join(", ")} stay where they are` : ""}`)}">Move its ${n} feature${n === 1 ? "" : "s"} to refinement</button>
+    </form>${counts.inRefinement ? ` ${open}` : ""}`;
+}
+
 function validationHtml(viewer: Viewer, url: string, data: CardPageData): string {
   const v = data.validation;
   if (!v || data.shown || data.card.kind !== "feature") return "";
@@ -937,6 +1012,7 @@ export function cardPage(viewer: Viewer, project: Project, data: CardPageData): 
     data.canWrite && !shown
       ? `<div class="card-actions">
           <a class="button" href="${escapeHtml(url)}/edit">Edit</a>
+          ${card.archivedAt ? "" : refinementAction(viewer, url, base, card, data.refinement)}
           ${
             card.kind === "epic"
               ? data.epicState
