@@ -1,3 +1,4 @@
+import { growClass } from "./charts";
 import type { DependencyNote } from "./sprint-dependencies";
 import { RELEASE_STATE_LABELS, type BoardRelease } from "./card-releases";
 import { cardGroupHead, isNice, type StoryCards } from "./card-groups";
@@ -1079,6 +1080,7 @@ export function sprintPage(
                   ? `<a class="button quiet small" href="${escapeHtml(action)}/stories/${next.story}">Prepare ${story(next.story)}</a>`
                   : `<span class="muted small">${escapeHtml(next.reason)}</span>`;
         const mine = storiesOf(card.id);
+        const barTotal = mine.length;
         const bar = ["done", "test", "dev", "ready", "todo"]
           .map((kind) => {
             const count = mine.filter((number) => {
@@ -1095,7 +1097,7 @@ export function sprintPage(
               return k === kind;
             }).length;
             return count
-              ? `<span class="sl-seg ${kind}" style="flex-grow:${count}" title="${count} ${kind}"></span>`
+              ? `<span class="sl-seg ${kind} ${growClass(count, barTotal)}" title="${count} ${kind}"></span>`
               : "";
           })
           .join("");

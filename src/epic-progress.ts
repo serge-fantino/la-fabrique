@@ -1,3 +1,4 @@
+import { growClass } from "./charts";
 import { shownStatus, shownStatusLabel, SHOWN_STATUSES, type Card, type ShownStatus } from "./cards";
 import { compareVersions, NEXT_RELEASE, SPRINT_LANE } from "./card-releases";
 import type { Progress } from "./progress-stages";
@@ -76,7 +77,7 @@ export function epicProgressSummary(progress: EpicProgress, compact = false): st
   const bar = progress.parts
     .map((part) => {
       const tip = `${part.label}: ${part.count} ${part.count === 1 ? "feature" : "features"}`;
-      return `<span class="epic-part" tabindex="0" role="img" style="flex:${part.count}" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">${part.label} <span class="mono">${part.count}</span></span>`;
+      return `<span class="epic-part ${growClass(part.count, total)}" tabindex="0" role="img" title="${escapeHtml(tip)}" aria-label="${escapeHtml(tip)}">${part.label} <span class="mono">${part.count}</span></span>`;
     })
     .join("");
   const line = `<${compact ? "span" : "p"} class="epic-line">Epic status: <span class="pill">${EPIC_STATUS_LABELS[progress.status ?? "draft"]}</span> · <span class="mono">${progress.inProduction}/${total}</span> features in production</${compact ? "span" : "p"}>`;

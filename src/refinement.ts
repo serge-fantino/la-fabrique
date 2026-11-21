@@ -1,3 +1,4 @@
+import { gaugeSvg } from "./charts";
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
 import { EDITOR_DEFAULT_BUTTON, storyBlocks, type StoryEditorData } from "./story-editor";
@@ -268,7 +269,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
 
   const progress = releaseProgress(data.features, data.links, data.stories);
   const meter = (label: string, value: number, total: number, tip: string) =>
-    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <span class="bar"><span style="width:${total ? Math.round((value / total) * 100) : 0}%"></span></span></div>`;
+    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> ${gaugeSvg(value, total, "release-gauge")}</div>`;
   const go = progress.features > 0 && progress.blockers.length === 0;
   const blockersList = progress.blockers.length
     ? `<ul class="plain">${progress.blockers.map((b) => `<li><a href="#card-${b.card.id}"><span class="mono">${cardRef(b.card.id)}</span> ${escapeHtml(b.card.title)}</a>: ${escapeHtml(b.reason)}</li>`).join("")}</ul>`
@@ -297,6 +298,11 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${meter("Ready", progress.ready, progress.features, "Features whose every needed story meets the Definition of Ready")}
       <p class="release-stories" tabindex="0" title="Stories of these features: needed ones hold the release back, nice to have ones never do"><span class="mono">${progress.needed + progress.nice}</span> stories: <span class="mono">${progress.needed}</span> needed, <span class="mono">${progress.nice}</span> nice to have</p>
       ${verdictAll}
+    </section>`;
+  // The document for the review before the sprint, and its share links:
+  // folded, under the status and the actions.
+  const preparation = `<details class="card refine-preparation" id="preparation">
+      <summary><strong>Preparation document</strong> <span class="muted small">and share links</span></summary>
       <form method="get" action="${escapeHtml(base)}/refinement/preparation" class="inline preparation-form">
         <label>Level of detail <select name="level">
           <option value="1">1 · Features and their specs</option>
@@ -307,7 +313,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
         <button type="submit" class="button quiet">Download the preparation document</button>
       </form>
       ${shareSection()}
-    </section>`;
+    </details>`;
   const sortUrl = `${base}/refinement`;
   const priority = (card: Card) =>
     data.priorities.length
@@ -335,7 +341,8 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     return `<article class="card refinement-card" id="card-${card.id}"${sortable ? ` data-sort-id="${card.id}"` : ""}>
       <div class="refinement-head">
       ${sortable ? `<button type="button" class="sort-handle" data-sort-handle aria-label="Move ${cardRef(card.id)}: drag it, or use the up and down arrow keys" title="Drag to reorder">⠿</button>` : ""}
-      <h3>${tickable(card, next) ? `<input type="checkbox" form="refine-launch" name="card" value="${card.id}" data-refine-tick aria-label="Select ${cardRef(card.id)} for Claude's next step" /> ` : ""}<a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
+      ${tickable(card, next) ? `<input type="checkbox" class="refine-tick" form="refine-launch" name="card" value="${card.id}" data-refine-tick aria-label="Select ${cardRef(card.id)} for Claude's next step" />` : ""}
+      <h3><a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
       </div>
       <p>${priority(card)} ${order(card, index, total)}</p>
       <p class="muted">${escapeHtml(synopsisOf(card))}</p>
@@ -383,11 +390,19 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${notice(data.failure, "error")}
       <div data-refinement-live="${escapeHtml(base)}/refinement/live" hidden></div>
       <p class="muted">The features of <a href="${escapeHtml(base)}/board?by=release">Next release</a>, in priority order, and what each needs before the <a href="${escapeHtml(base)}/sprint">sprint</a>. Nothing is read from GitHub here: the stories are as La Fabrique last saw them.</p>
-      ${summary}
-      ${launch}
-      ${testsForm}
-      ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
-      ${apart}`,
+      <div class="refinement-layout">
+        <aside class="refinement-side" aria-label="Status and actions">
+          ${summary}
+          ${launch}
+          ${testsForm}
+          ${preparation}
+        </aside>
+        <div class="refinement-main">
+          <h2 class="refinement-main-title">Features <span class="mono muted small">${data.features.length}</span></h2>
+          ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
+          ${apart}
+        </div>
+      </div>`,
     viewer,
     [],
     projectContext(project, false),
