@@ -279,6 +279,31 @@ describe("La Fabrique's MCP server", () => {
     expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["epic_create", "epic_update"]);
   });
 
+  it("renames an epic with a new document and keeps its features", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const epic = (await call(access, "epic_create", { project: REPO, title: "F13 A new product", document: "## Features\n\nC2" })).data["created"] as { id: number };
+    const make = async (title: string) => ((await call(access, "card_create", { project: REPO, title, epic: epic.id })).data["created"] as { id: number }).id;
+    const a = await make("Add a project");
+    const b = await make("The starter");
+
+    const renamed = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 1, title: "F13 Onboard a product", document: "## Features\n\nC99" });
+    expect(renamed.data).toMatchObject({ changed: ["title", "document"], epic: { title: "F13 Onboard a product" } });
+
+    const read = await call(access, "epic", { project: REPO, epic: epic.id });
+    expect((read.data["features"] as { number: number }[]).map((f) => f.number).sort()).toEqual([a, b].sort());
+    const feature = await call(access, "card", { project: REPO, card: a });
+    expect(feature.data["epic"]).toBe("F13 Onboard a product");
+    const board = await call(access, "board", { project: REPO, epic: "F13 Onboard a product" });
+    expect((board.data["cards"] as { id: number }[]).map((card) => card.id).sort()).toEqual([a, b].sort());
+
+    const renames = (await logActions()).filter((entry) => entry.action === "epic_renamed");
+    expect(renames).toHaveLength(1);
+    const details = JSON.parse(renames[0]?.details ?? "{}") as { card: number; from: string; to: string; features: number[] };
+    expect({ ...details, features: details.features.sort() }).toEqual({ card: epic.id, from: "F13 A new product", to: "F13 Onboard a product", features: [a, b].sort() });
+  });
+
   it("writes an epic's technical GitHub issue on create and update, and survives a GitHub refusal", async () => {
     await seedProject();
     await grantRole("pe", "product_engineer");

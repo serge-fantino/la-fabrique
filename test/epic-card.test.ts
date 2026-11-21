@@ -104,4 +104,49 @@ describe("Epic cards as values of the Epic dimension", () => {
     expect(board).toContain("Feat A");
     expect(board).not.toContain("Feat B");
   });
+
+  it("renamed from its page, its features and the dependencies on it follow the new title; an older version brings the old one back", async () => {
+    const s = await seed();
+    const mk = async (fields: Record<string, string>) => {
+      const r = await post(`/projects/${REPO}/cards`, { csrf: s.csrf, action: "save", status: "draft", ...fields }, s.cookie);
+      return Number(/cards\/(\d+)/.exec(r.headers.get("location") ?? "")?.[1]);
+    };
+    const epic = await mk({ kind: "epic", title: "Onboarding", section_why: "Because" });
+    const linked = await mk({ kind: "feature", title: "Feat A" });
+    await post(`/projects/${REPO}/cards/${linked}`, { csrf: s.csrf, action: "set_epic", epic: "Onboarding" }, s.cookie);
+    // Named by the old title only, as before epics were cards: linked now.
+    const named = await mk({ kind: "feature", title: "Feat B", body: "{epic: Onboarding}" });
+    await env.DB.prepare("DELETE FROM card_links WHERE kind = 'feature' AND ref = ?").bind(String(named)).run();
+    const other = await mk({ kind: "feature", title: "Feat C", epic: "Something else" });
+    const needs = await mk({ kind: "feature", title: "Needs the epic" });
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref) VALUES (?, 'depends_epic', 'Onboarding')").bind(needs).run();
+
+    // The same document, sent back section by section, under a new title.
+    const epicCard = await findCard(env.DB, REPO, epic);
+    const { texts } = parseEpicBody(epicCard?.body ?? "", DEFAULT_EPIC_SECTIONS);
+    const sections = Object.fromEntries(Object.entries(texts).map(([key, text]) => [`section_${key}`, text]));
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf: s.csrf, action: "save", status: "draft", title: "Onboard a product", ...sections, rev: String(epicCard?.rev) }, s.cookie);
+
+    expect((await findCard(env.DB, REPO, linked))?.epic).toBe("Onboard a product");
+    const b = await findCard(env.DB, REPO, named);
+    expect(b?.epic).toBe("Onboard a product");
+    expect(b?.body).toBe("{epic: Onboard a product}");
+    expect((await findCard(env.DB, REPO, other))?.epic).toBe("Something else");
+    const { epicFeatures } = await import("../src/card-epics");
+    expect((await epicFeatures(env.DB, (await findCard(env.DB, REPO, epic))!)).map((card) => card.id).sort()).toEqual([linked, named].sort());
+    const deps = await env.DB.prepare("SELECT ref FROM card_links WHERE card_id = ? AND kind = 'depends_epic'").bind(needs).all<{ ref: string }>();
+    expect(deps.results.map((row) => row.ref)).toEqual(["Onboard a product"]);
+    // No epic created under the old name by the text's sync.
+    expect((await listCards(env.DB, REPO)).filter((card) => card.kind === "epic").map((card) => card.title)).toEqual(["Onboard a product"]);
+
+    const page = await (await get(`/projects/${REPO}/cards/${epic}`, s.cookie)).text();
+    expect(page).toContain("Feat A");
+    expect(page).toContain("Feat B");
+
+    // The version just before the rename: same document, old title.
+    await post(`/projects/${REPO}/cards/${epic}`, { csrf: s.csrf, action: "restore_version", rev: String(epicCard?.rev) }, s.cookie);
+    expect((await findCard(env.DB, REPO, epic))?.title).toBe("Onboarding");
+    expect((await findCard(env.DB, REPO, linked))?.epic).toBe("Onboarding");
+    expect((await findCard(env.DB, REPO, named))?.epic).toBe("Onboarding");
+  });
 });

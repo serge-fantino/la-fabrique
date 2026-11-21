@@ -40,7 +40,7 @@ import { cycleRules, projectRules, reworkLabelOf } from "./lifecycle";
 import { setPriority } from "./backlog";
 import type { GrantProps } from "./oauth";
 import { findProject, listProjects, productionBranch, type Project } from "./projects";
-import { syncEpicLink } from "./card-epics";
+import { followEpicRename, syncEpicLink } from "./card-epics";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
@@ -754,6 +754,7 @@ const TOOLS: Tool[] = [
         });
         const outcome = await updateCard(ctx.env.DB, card, ctx.login, input, card.rev);
         if (outcome === "conflict") fail("The card changed while writing: read it again.");
+        if (outcome === "saved") await followEpicRename(ctx.env.DB, card, input.title, ctx.login);
         if (outcome === "saved") {
           if (epicChanges) changes.push("epic");
           if (title !== undefined || body !== undefined || kind !== undefined) changes.push("text");
@@ -833,10 +834,12 @@ const TOOLS: Tool[] = [
       const input = await cardInput(ctx, project, { title: title || found.title, body: document ?? found.body, kind: "epic", status: found.status, epic: found.epic, domain: found.domain, segment: found.segment, release: found.release });
       const outcome = await updateCard(ctx.env.DB, found, ctx.login, input, found.rev);
       if (outcome === "conflict") fail("The card changed while writing: read it again.");
+      if (outcome === "saved") await followEpicRename(ctx.env.DB, found, input.title, ctx.login);
       const current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? found;
+      const changed = outcome === "saved" ? [...(input.title !== found.title ? ["title"] : []), ...(input.body !== found.body ? ["document"] : [])] : [];
       const technical = text(args, "technical", 50_000)?.trim();
       const issue = technical ? await writeEpicIssue(ctx.env, project, ctx.env.DB, current, technical, absolute(ctx, cardPermalink(current.id, current.rev)), ctx.login) : undefined;
-      return { changed: outcome === "saved" ? ["document"] : [], epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) }, ...(issue ? { github_issue: issue } : {}) };
+      return { changed, epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) }, ...(issue ? { github_issue: issue } : {}) };
     },
   },
   {

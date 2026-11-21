@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-21",
+    "titre": "A renamed epic keeps its features",
+    "changements": [
+      "Renaming an epic, from its page, through Claude (MCP) or by bringing back an older version, keeps all its features: each feature's Epic follows the new name, and so does a feature that depends on the epic."
+    ],
+    "stories": [409],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
     "titre": "Project menu on the left",
     "changements": [
       "A project's pages are now in a menu on the left, grouped by moment (Plan, Build, Check, Ship, Project), instead of the tabs under the header; on a phone, the button with the page's name at the top opens it."
