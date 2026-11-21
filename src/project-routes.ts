@@ -33,8 +33,8 @@ import { loadActivity, RANGES } from "./activity";
 import { activityPage } from "./activity-views";
 import { deliveryReady, loadDelivery } from "./delivery";
 import { deliveryContent, deliveryLoading, deliveryPage } from "./delivery-views";
-import { epicProgress, loadReleases, storiesBetween, type Release } from "./roadmap";
-import { releasesPage, roadmapPage } from "./roadmap-views";
+import { loadReleases, storiesBetween, type Release } from "./roadmap";
+import { releasesPage } from "./roadmap-views";
 import { messagePage, type Viewer } from "./views";
 import { loadBranches } from "./branches";
 import { forgetReference } from "./reference";
@@ -349,23 +349,6 @@ async function branchReleases(env: Env, view: ProjectView): Promise<{ releases: 
 function monthParam(request: Request): string {
   const month = new URL(request.url).searchParams.get("month") ?? "";
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : new Date().toISOString().slice(0, 7);
-}
-
-export async function showRoadmap(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
-  const project = await findProject(env.DB, repo);
-  if (!project) return notFound(viewer);
-  const { view, cookies } = await projectView(request, env, project, viewer);
-  const [releases, stories] = await Promise.all([branchReleases(env, view), loadStories(env, project)]);
-  return html(
-    roadmapPage(viewer, view, {
-      month: monthParam(request),
-      releases: releases.releases,
-      stories: stories.stories,
-      epics: epicProgress(stories.stories, new Date().toISOString().slice(0, 10)),
-      failure: releases.failure ?? stories.failure,
-    }),
-    { cookies },
-  );
 }
 
 export async function showReleases(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {

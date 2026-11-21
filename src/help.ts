@@ -281,7 +281,7 @@ function projectPicker(projects: Project[], links: Links, action: string, compac
     return `<p class="help-note help-note-line small">Reading without an account: the links into La Fabrique go through <a href="/auth/login?next=${encodeURIComponent(action)}">sign-in</a>.</p>`;
   }
   if (!links.signedIn) {
-    return `<aside class="help-note"><p><strong>Reading without an account.</strong> The links into La Fabrique ask you to sign in first, then open the page. Once signed in, they open the tabs of your project.</p><p><a class="button" href="/auth/login?next=${encodeURIComponent(action)}">Sign in with GitHub</a></p></aside>`;
+    return `<aside class="help-note"><p><strong>Reading without an account.</strong> The links into La Fabrique ask you to sign in first, then open the page. Once signed in, they open the pages of your project.</p><p><a class="button" href="/auth/login?next=${encodeURIComponent(action)}">Sign in with GitHub</a></p></aside>`;
   }
   if (!links.project) return `<aside class="help-note"><p>No project yet: the links lead to the list of projects. A super admin adds a project in <a href="/projects">Projects</a>.</p></aside>`;
   if (projects.length < 2) {

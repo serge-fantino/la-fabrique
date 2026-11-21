@@ -13,7 +13,8 @@ import { checkKey, claudeSettings, usageReport } from "./llm";
 import { consumeJobs } from "./jobs";
 import { changePeople, showPeople } from "./people";
 import { showComponent, showComponents } from "./components-routes";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showRoadmap, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
+import { roadmapAction, showRoadmap } from "./roadmap-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
@@ -275,7 +276,10 @@ const app = {
         return method === "GET" ? showBranches(env, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/roadmap") {
-        return method === "GET" ? showRoadmap(request, env, viewer, repo) : methodNotAllowed();
+        if (method === "GET") return showRoadmap(request, env, viewer, repo);
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        return form ? roadmapAction(request, form, env, viewer, repo) : forbidden(viewer);
       }
       if (projectRoute[2] === "/components") {
         return method === "GET" ? showComponents(request, env, viewer, repo) : methodNotAllowed();

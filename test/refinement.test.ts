@@ -73,8 +73,9 @@ describe("The Refinement tab", () => {
 
     const page = await (await get(`/projects/${REPO}/refinement`, cookie)).text();
     expect(page).toContain('href="/projects/acme/widget/refinement"');
-    expect(page.indexOf(">Board<")).toBeLessThan(page.indexOf(">Refinement<"));
-    expect(page.indexOf(">Refinement<")).toBeLessThan(page.indexOf(">Sprint<"));
+    const menu = page.slice(page.indexOf('class="project-nav-menu"'));
+    expect(menu.indexOf(">Board<")).toBeLessThan(menu.indexOf(">Refinement<"));
+    expect(menu.indexOf(">Refinement<")).toBeLessThan(menu.indexOf(">Sprint<"));
     expect(page.indexOf("First")).toBeLessThan(page.indexOf("Second"));
     expect(page).toContain("Body of the card");
     expect(page).toContain(">Specify</button>");

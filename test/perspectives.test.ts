@@ -23,7 +23,7 @@ function choose(session: { cookie: string; csrf: string }, perspective: string, 
 }
 
 function tabs(page: string): string[] {
-  const nav = page.slice(page.indexOf('<nav class="tabs"'), page.indexOf("</nav>", page.indexOf('<nav class="tabs"')));
+  const nav = page.slice(page.indexOf('<nav class="project-nav"'), page.indexOf("</nav>", page.indexOf('<nav class="project-nav"')));
   return [...nav.matchAll(/>([^<]+)<\/a>/g)].map((match) => match[1] ?? "");
 }
 
@@ -40,11 +40,11 @@ describe("Perspectives", () => {
     expect(response.headers.get("location")).toBe(`/projects/${REPO}/board`);
     const product = await (await get(`/projects/${REPO}/board`, session.cookie)).text();
     expect(product).toContain("<summary><span class=\"muted\">Perspective</span> Product</summary>");
-    expect(tabs(product)).toEqual(["Overview", "Board", "Epics", "Refinement", "Sprint", "Stories", "Backlog", "To test", "Defects", "Roadmap", "Releases", "Requests"]);
+    expect(tabs(product)).toEqual(["Overview", "Board", "Epics", "Roadmap", "Refinement", "Sprint", "Stories", "Backlog", "To test", "Defects", "Releases", "Requests"]);
 
     await choose(session, "administration");
     const admin = await (await get(`/projects/${REPO}`, session.cookie)).text();
-    expect(tabs(admin)).toEqual(["Overview", "Production", "To test", "Defects", "In development", "Delivery", "Activity", "Releases", "Components", "Log", "Setup"]);
+    expect(tabs(admin)).toEqual(["Overview", "In development", "To test", "Defects", "Releases", "Production", "Delivery", "Components", "Activity", "Log", "Setup"]);
   });
 
   it("keeps the tab one is on, marked, when it is outside the perspective", async () => {

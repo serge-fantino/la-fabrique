@@ -27,26 +27,31 @@ export type ProjectTab =
   | "log"
   | "setup";
 
-const TABS: { id: ProjectTab; label: string; path: string }[] = [
-  { id: "overview", label: "Overview", path: "" },
-  { id: "board", label: "Board", path: "/board" },
-  { id: "epics", label: "Epics", path: "/epics" },
-  { id: "refinement", label: "Refinement", path: "/refinement" },
-  { id: "sprint", label: "Sprint", path: "/sprint" },
-  { id: "stories", label: "Stories", path: "/stories" },
-  { id: "backlog", label: "Backlog", path: "/backlog" },
-  { id: "in_dev", label: "In development", path: "/in-development" },
-  { id: "to_test", label: "To test", path: "/to-test" },
-  { id: "defects", label: "Defects", path: "/defects" },
-  { id: "roadmap", label: "Roadmap", path: "/roadmap" },
-  { id: "releases", label: "Releases", path: "/releases" },
-  { id: "components", label: "Components", path: "/components" },
-  { id: "production", label: "Production", path: "/production" },
-  { id: "delivery", label: "Delivery", path: "/delivery" },
-  { id: "activity", label: "Activity", path: "/activity" },
-  { id: "requests", label: "Requests", path: "/requests" },
-  { id: "log", label: "Log", path: "/log" },
-  { id: "setup", label: "Setup", path: "/setup" },
+// The project's pages, in the side menu, by moment of the work: plan it,
+// build it, check it, ship it, and the project itself.
+export const TAB_GROUPS = ["Plan", "Build", "Check", "Ship", "Project"] as const;
+type TabGroup = (typeof TAB_GROUPS)[number];
+
+const TABS: { id: ProjectTab; label: string; path: string; group: TabGroup }[] = [
+  { id: "overview", label: "Overview", path: "", group: "Plan" },
+  { id: "board", label: "Board", path: "/board", group: "Plan" },
+  { id: "epics", label: "Epics", path: "/epics", group: "Plan" },
+  { id: "roadmap", label: "Roadmap", path: "/roadmap", group: "Plan" },
+  { id: "refinement", label: "Refinement", path: "/refinement", group: "Plan" },
+  { id: "sprint", label: "Sprint", path: "/sprint", group: "Build" },
+  { id: "stories", label: "Stories", path: "/stories", group: "Build" },
+  { id: "backlog", label: "Backlog", path: "/backlog", group: "Build" },
+  { id: "in_dev", label: "In development", path: "/in-development", group: "Build" },
+  { id: "to_test", label: "To test", path: "/to-test", group: "Check" },
+  { id: "defects", label: "Defects", path: "/defects", group: "Check" },
+  { id: "releases", label: "Releases", path: "/releases", group: "Ship" },
+  { id: "production", label: "Production", path: "/production", group: "Ship" },
+  { id: "delivery", label: "Delivery", path: "/delivery", group: "Ship" },
+  { id: "requests", label: "Requests", path: "/requests", group: "Project" },
+  { id: "components", label: "Components", path: "/components", group: "Project" },
+  { id: "activity", label: "Activity", path: "/activity", group: "Project" },
+  { id: "log", label: "Log", path: "/log", group: "Project" },
+  { id: "setup", label: "Setup", path: "/setup", group: "Project" },
 ];
 
 // A project as shown to someone: with the reference branch chosen in the
@@ -120,28 +125,41 @@ export function projectContext(project: Project, branch = true): string {
       ${view && branch ? branchMenu(view) : ""}`;
 }
 
+// The project's pages, in a menu on the left (a button opens it on a
+// phone). A perspective hides pages; the page one is on stays, marked.
+export function projectNav(project: Project, active: ProjectTab): string {
+  const view = asView(project);
+  const wanted = PERSPECTIVE_TABS[view?.perspective ?? "all"];
+  const shown = TABS.filter((tab) => !wanted || wanted.includes(tab.id) || tab.id === active);
+  const groups = TAB_GROUPS.map((group) => {
+    const items = shown.filter((tab) => tab.group === group);
+    if (!items.length) return "";
+    const links = items
+      .map((tab) => {
+        const outside = wanted && !wanted.includes(tab.id);
+        return `<li><a href="${escapeHtml(projectUrl(project.repo) + tab.path)}"${tab.id === active ? ' aria-current="page"' : ""}${
+          outside ? ' class="outside" title="Not in this perspective"' : ""
+        }>${tab.label}</a></li>`;
+      })
+      .join("");
+    return `<p class="project-nav-group" id="nav-${group.toLowerCase()}">${group}</p><ul aria-labelledby="nav-${group.toLowerCase()}">${links}</ul>`;
+  }).join("");
+  const current = TABS.find((tab) => tab.id === active)?.label ?? "";
+  return `<nav class="project-nav" aria-label="Project" data-project-nav>
+      <button type="button" class="project-nav-toggle" aria-expanded="false" aria-controls="project-nav-menu" data-nav-toggle><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="visually-hidden">Menu: </span><span class="project-nav-current">${escapeHtml(current)}</span></button>
+      <div class="project-nav-menu" id="project-nav-menu">${groups}</div>
+    </nav>`;
+}
+
 export function projectHeader(project: Project, active: ProjectTab, heading?: string): string {
   const view = asView(project);
-  // A perspective hides tabs; the tab one is on stays, marked.
-  const wanted = PERSPECTIVE_TABS[view?.perspective ?? "all"];
-  const shown = wanted
-    ? [...wanted.flatMap((id) => TABS.filter((tab) => tab.id === id)), ...TABS.filter((tab) => tab.id === active && !wanted.includes(tab.id))]
-    : TABS;
-  const tabs = shown
-    .map((tab) => {
-      const outside = wanted && !wanted.includes(tab.id);
-      return `<a href="${escapeHtml(projectUrl(project.repo) + tab.path)}"${tab.id === active ? ' aria-current="page"' : ""}${
-        outside ? ' class="outside" title="Not in this perspective"' : ""
-      }>${tab.label}</a>`;
-    })
-    .join("");
   const production = productionBranch(project) ?? "main";
   // The board, the cards and the sprint read no branch: no banner there.
   const banner = view?.ref && active !== "board" && active !== "refinement" && active !== "sprint"
     ? `<p class="ref-banner" role="status">Reference branch <code>${escapeHtml(view.ref)}</code>; production is <code>${escapeHtml(production)}</code>.
         <a href="${escapeHtml(view.path)}?ref=">Back to production</a></p>`
     : "";
-  return `<nav class="tabs" aria-label="Project">${tabs}</nav>
+  return `${projectNav(project, active)}
       ${banner}
       ${
         heading

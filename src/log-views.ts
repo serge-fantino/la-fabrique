@@ -109,6 +109,20 @@ export function describe(entry: LogEntry, repo: string): string {
       return `set the priority of card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} to ${text(d["to"]) || "none"}`;
     case "card_backstage_set":
       return `${d["backstage"] ? "put" : "took"} card ${card(d["card"])}${d["title"] ? ` “${text(d["title"])}”` : ""} ${d["backstage"] ? "behind the scenes" : "out of the scenes: public release notes"}`;
+    case "card_planned":
+    case "card_unplanned":
+    case "plan_kept":
+    case "plan_cleared": {
+      const plans = (Array.isArray(d["plans"]) ? d["plans"] : []) as { card?: unknown; sprint?: unknown }[];
+      const what = plans.map((plan) => `${card(plan.card)}${plan.sprint ? ` in ${text(plan.sprint)}` : ""}`).join(", ");
+      if (entry.action === "plan_kept") return `kept the proposed plan of the sprints to come: ${what}`;
+      if (entry.action === "plan_cleared") return `cleared the plan of the sprints to come (${what})`;
+      return entry.action === "card_planned" ? `planned ${what}` : `took ${what} out of the planned sprints`;
+    }
+    case "cards_to_refinement": {
+      const moved = (Array.isArray(d["cards"]) ? d["cards"] : []).map((id) => card(id)).join(", ");
+      return `moved ${d["epic"] ? `the features of epic ${card(d["epic"])}` : "card"} ${moved} into refinement (Next release)`;
+    }
     case "card_backstage_applied":
       return `${d["backstage"] ? "labelled" : "unlabelled"} ${text(d["label"])} the stories of card ${card(d["card"])}: ${(Array.isArray(d["stories"]) ? d["stories"] : []).map((n) => `#${text(n)}`).join(", ")}`;
     case "card_dependency_added":
