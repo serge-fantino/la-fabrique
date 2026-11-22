@@ -2,9 +2,9 @@
   {
     "version": "next",
     "date": "2026-11-22",
-    "titre": "The feature in the sticky bar, stories marked ready in place",
+    "titre": "The feature in the sticky bar, validation in one gesture",
     "changements": [
-      "In the stories editor, the bar that stays at the top now carries the feature's title, status and priority (changed there), with a small shadow under it; on a phone it stays short. On Refinement, Mark the stories ready labels every story that lacks only its label at once, without leaving the page."
+      "In the stories editor, the bar that stays at the top now carries the feature's title, status and priority (changed there), with a small shadow under it; on a phone it stays short. On Refinement, a feature whose stories lack only their ready label is validated in one gesture: Validate the feature labels them ready for Claude, then validates it, without leaving the page; when they lack something else, the card says what, by reason, and so does the status' bubble on the board."
     ],
     "stories": [416],
     "liens": null

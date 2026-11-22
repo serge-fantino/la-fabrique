@@ -107,7 +107,13 @@ export function releaseProgress(features: Card[], links: StoryCards, known: Map<
       : next.step === "answer" ? `${next.questions} question${next.questions === 1 ? "" : "s"} waiting`
       : next.step === "refine" ? "spec complete, no stories"
       : next.step === "approve" ? (next.validation.state === "outdated" ? `to validate again: ${next.validation.why.join(", ")}` : "not validated")
-      : `${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready`;
+      : (() => {
+          // Says what they lack: "not validated, 2 stories without the ready label".
+          const reasons = [...new Set(next.stories.flatMap((number) => known.get(number)?.missing ?? []))];
+          return reasons.length === 1 && reasons[0] === "not labelled ready"
+            ? `not validated (${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} to label ready, done by validating)`
+            : `${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready${reasons.length ? `: ${reasons.join(", ")}` : ""}`;
+        })();
     out.blockers.push({ card, reason });
   }
   return out;
@@ -248,19 +254,29 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
         return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Then refine")}`;
       }
       case "validate": {
-        // In place: the stories that lack only their label are marked ready
-        // here at once; what else they lack is said on each story above.
-        const labelable = data.canWrite && data.readyLabel ? next.stories.filter((number) => data.stories.get(number)?.missing?.includes("not labelled ready")) : [];
+        // In place, never another page. Stories that lack only their ready
+        // label: one gesture, Validate the feature, labels them ready for
+        // Claude then validates. Anything else they lack is said here.
+        const lacks = (number: number) => data.stories.get(number)?.missing ?? [];
+        const onlyLabel = (number: number) => lacks(number).length > 0 && lacks(number).every((reason) => reason === "not labelled ready");
         const n = next.stories.length;
-        const others = n - labelable.length;
+        const numbers = (list: number[]) => list.map((number) => `#${number}`).join(", ");
+        if (data.canWrite && data.readyLabel && next.stories.every(onlyLabel)) {
+          return `<strong>Next:</strong> ${form(`${base}/refinement`, { action: "validate_ready", card: card.id }, "Validate the feature", `Validate ${cardRef(card.id)}: label ${numbers(next.stories)} ready for Claude, then validate`).replace('class="button quiet small"', 'class="button small"')}
+            <span class="muted small">Its stories are complete; validating labels ${numbers(next.stories)} <code>${escapeHtml(data.readyLabel)}</code> (ready for Claude).</span>`;
+        }
+        const byReason = new Map<string, number[]>();
+        for (const number of next.stories) for (const reason of lacks(number).length ? lacks(number) : ["not read yet"]) byReason.set(reason, [...(byReason.get(reason) ?? []), number]);
+        const labelable = data.canWrite && data.readyLabel ? next.stories.filter(onlyLabel) : [];
         const mark = labelable.length
-          ? `<form method="post" action="${escapeHtml(base)}/refinement" class="inline" data-busy="Marking…">${csrfField(viewer)}${hidden({ action: "story_ready", card: card.id })}${labelable
+          ? ` <form method="post" action="${escapeHtml(base)}/refinement" class="inline" data-busy="Marking…">${csrfField(viewer)}${hidden({ action: "story_ready", card: card.id })}${labelable
               .map((number) => `<input type="hidden" name="story" value="${number}" />`)
-              .join("")}<button type="submit" class="button small" aria-label="Mark ${labelable.map((number) => `#${number}`).join(", ")} ready">Mark ${labelable.length === 1 ? `#${labelable[0]}` : `the ${labelable.length} stories`} ready</button></form>`
+              .join("")}<button type="submit" class="button quiet small" aria-label="Mark ${numbers(labelable)} ready">Mark ${labelable.length === 1 ? `#${labelable[0]}` : `the ${labelable.length} stories`} ready</button></form>`
           : "";
-        return `<strong>Next:</strong> ${n} stor${n === 1 ? "y" : "ies"} not ready yet. ${mark}${
-          others > 0 ? ` <span class="muted small">${labelable.length ? `${others} more need${others === 1 ? "s" : ""} something else: ` : ""}what each one lacks is said above${data.priorities.length ? "; the priority is set for the card and its stories" : ""}.</span>` : ""
-        }`;
+        return `<strong>Next:</strong> ${n} stor${n === 1 ? "y" : "ies"} to complete before validating.
+          <ul class="plain small lacking">${[...byReason]
+            .map(([reason, list]) => `<li><span class="muted">${escapeHtml(reason)}:</span> ${numbers(list)}${reason === "no priority" && data.priorities.length ? ` <span class="muted">(set the card's priority above: its stories take it)</span>` : ""}</li>`)
+            .join("")}</ul>${mark}`;
       }
       case "approve":
         return `<strong>Next:</strong> ${next.validation.state === "outdated" ? `<span class="muted small">Validated by @${escapeHtml(next.validation.by)}, but ${escapeHtml(next.validation.why.join(" and "))}.</span> ` : ""}${

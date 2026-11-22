@@ -52,7 +52,14 @@ export function progressOf(
   if (need(developed) === counted.length) return at("to_test", counts.validated);
   if (counted.some((number) => isInDevelopment(story(number))) || need(developed) > 0) return at("in_dev", counts.developed);
   if (sprintLane !== null && card.release === sprintLane) return at("in_sprint", counts.ready);
-  return at(need(isReady) === counted.length ? "ready" : "to_prepare", counts.ready);
+  if (need(isReady) === counted.length) return at("ready", counts.ready);
+  // What the needed stories not ready yet lack, by reason.
+  const lacking = new Map<string, number[]>();
+  for (const number of counted.filter((n) => !isReady(n))) {
+    const reasons = story(number)?.missing ?? [];
+    for (const reason of reasons.length ? reasons : ["not read yet"]) lacking.set(reason, [...(lacking.get(reason) ?? []), number]);
+  }
+  return { ...at("to_prepare", counts.ready), lacking: [...lacking].map(([reason, numbers]) => ({ reason, stories: numbers })) };
 }
 
 // What shipped a card (la-fabrique#189), once one of its stories is out:

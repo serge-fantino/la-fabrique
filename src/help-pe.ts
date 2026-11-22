@@ -99,8 +99,8 @@ const USE_CASES: UseCase[] = [
     steps: [
       { text: (h) => `On ${h.app("/refinement", "Refinement")}, the features whose next step is <em>Validate</em> are ready for you.`, ref: "refinement#page" },
       { text: `In each card, review Claude's proposed stories in the editor: keep, rewrite, mark <em>nice to have</em>, create them on GitHub.`, ref: "stories#editor" },
-      { text: `A story says it is not ready: ${b("Mark ready")} on its line, or, for all of them at once, ${b("Mark the N stories ready")} in the card's next step; what else one lacks (criteria, priority) is said on its line. You stay on Refinement.`, ref: "stories#ready" },
-      { text: `${b("Validate the feature")}, in the card. It shows <em>Ready for the sprint</em>.`, ref: "refinement#validate" },
+      { text: `Its stories lack only their ready label: ${b("Validate the feature")}, in the card, labels them and validates it at once. They lack something else: the card's next step lists it by reason; complete it (the card's priority, the criteria on GitHub), then validate.`, ref: "refinement#validate" },
+      { text: `The card shows <em>Ready for the sprint</em>. You stay on Refinement.`, ref: "refinement#validate" },
       { text: `Watch the meters: Features, Specified, Refined, Ready, and the stories, needed and nice to have.`, ref: "refinement#progress" },
     ],
     after: "A feature validated and then changed must be validated again: Refinement shows it back at Validate.",
@@ -611,7 +611,9 @@ const REFERENCE: RefPage[] = [
       {
         id: "validate",
         title: "Validating a feature",
-        body: `<p>${b("Validate the feature")} is the last step, for a feature, by a Product Engineer or above: offered once no question waits and every story is out of the backlog (ready). From Refinement or the card's page; otherwise “Waiting for a Product Engineer to validate it.” The card says <em>Not validated</em>, <em>Validated by @…</em> or <em>To validate again</em> when its text, spec or stories changed.</p>`,
+        body: `<p>${b("Validate the feature")} is the last step, for a feature, by a Product Engineer or above: it says the feature and its stories are right, and gives Claude the go on them. Offered once no question waits and every story is ready (the project's <em>Definition of Ready</em>: criteria, epic, priority, the ready label, as its <code>.fabrique.json</code> asks).</p>
+          <p>When the stories lack only their ready label, Refinement offers ${b("Validate the feature")} at once: it labels them ready for Claude, then validates, in one gesture, without leaving the page. When they lack something else, the card's next step lists it by reason (“no priority: #251”), and the status' bubble on the board says it too (“Missing: not labelled ready: #249, #250”).</p>
+          <p>The card then says <em>Ready for the sprint</em>; otherwise <em>Not validated</em>, <em>Validated by @…</em>, or <em>To validate again</em> when its text, spec or stories changed.</p>`,
       },
       {
         id: "test-cases",
