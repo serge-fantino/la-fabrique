@@ -47,6 +47,10 @@ import { HOW_TO, OPTIONAL } from "./setup-views";
 import onboardingGuide from "../docs/onboarding.md";
 import integrationClaudeExample from "../docs/exemples/claude.yml";
 import ownClaudeWorkflow from "../.github/workflows/claude.yml";
+import ownMergeWorkflow from "../.github/workflows/merge.yml";
+import ownReleaseWorkflow from "../.github/workflows/release.yml";
+import fusionExample from "../docs/exemples/fusionner.yml";
+import { RELEASE_NOTES_KIT_VERSION, RELEASE_NOTES_TOOL } from "./kit";
 import { followEpicRename, syncEpicLink } from "./card-epics";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { createIssue } from "./requests";
@@ -355,7 +359,7 @@ const TOOLS: Tool[] = [
     title: "A project's setup",
     description:
       "Read only. What La Fabrique needs to follow a project, as its Setup tab lists it: each item with its state (done, missing, optional, unknown), what La Fabrique found, why it matters and how to do it. " +
-      "Also the onboarding guide for Claude Code (how to bring a project into La Fabrique in one pull request: read the repository, ask the person, write what is missing, keep the code and the hosting) and the example claude workflow that fits the project. " +
+      "Also the onboarding guide for Claude Code (how to bring a project into La Fabrique in one pull request: read the repository, ask the person, write what is missing, keep the code and the hosting), the example workflows that fit the project (claude, merge, release) and La Fabrique's release-notes tool to copy. " +
       "With branch, reads that branch instead of the production branch: a pull request's, to see what it turns green before its merge. Needs the tech lead role.",
     inputSchema: {
       type: "object",
@@ -396,11 +400,20 @@ const TOOLS: Tool[] = [
           how: htmlText(HOW_TO[item.key].how, ctx.origin),
         })),
         guide: onboardingGuide,
-        examples: {
-          "claude.yml": hasIntegration(project)
-            ? { from: "L'épicerie extraordinaire (pull requests to integration)", text: integrationClaudeExample }
-            : { from: "La Fabrique extraordinaire (no integration branch: pull requests to the production branch)", text: ownClaudeWorkflow },
-        },
+        // What fits the project: with an integration branch, L'épicerie's;
+        // without, La Fabrique's own. The release-notes tool is the same for all.
+        examples: hasIntegration(project)
+          ? {
+              "claude.yml": { from: "L'épicerie extraordinaire (pull requests to integration)", text: integrationClaudeExample },
+              "fusionner.yml": { from: "L'épicerie extraordinaire (merge into integration, release notes numbered: --mode number)", text: fusionExample },
+              "release-notes.js": { from: `La Fabrique's release-notes tool ${RELEASE_NOTES_KIT_VERSION}, copied as it is (version.outil)`, text: RELEASE_NOTES_TOOL },
+            }
+          : {
+              "claude.yml": { from: "La Fabrique extraordinaire (no integration branch: pull requests to the production branch)", text: ownClaudeWorkflow },
+              "merge.yml": { from: "La Fabrique extraordinaire (merge into production, entries kept next: --mode next)", text: ownMergeWorkflow },
+              "release.yml": { from: "La Fabrique extraordinaire (the release at the close of the sprint: publish)", text: ownReleaseWorkflow },
+              "release-notes.js": { from: `La Fabrique's release-notes tool ${RELEASE_NOTES_KIT_VERSION}, copied as it is (version.outil)`, text: RELEASE_NOTES_TOOL },
+            },
         url: absolute(ctx, `${projectUrl(project.repo)}/setup`),
       };
     },

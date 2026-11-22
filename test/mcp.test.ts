@@ -314,6 +314,11 @@ describe("La Fabrique's MCP server", () => {
     // No integration branch: La Fabrique's own workflow, pull requests to the production branch.
     expect(data.examples["claude.yml"]?.from).toContain("no integration branch");
     expect(data.examples["claude.yml"]?.text).toContain("workflow_dispatch");
+    // And the merge and release workflows, with the release-notes tool to copy.
+    expect(Object.keys(data.examples).sort()).toEqual(["claude.yml", "merge.yml", "release-notes.js", "release.yml"]);
+    expect(data.examples["merge.yml"]?.text).toContain("--mode next");
+    expect(data.examples["release-notes.js"]?.text).toContain("FabriqueReleaseNotes");
+    expect(data.guide).toContain("`version.outil`");
     expect(data.url).toBe(`${BASE}/projects/${REPO}/setup`);
 
     const { access_token: tester } = await connectClaude("tester");

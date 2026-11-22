@@ -58,10 +58,14 @@ Do what the `setup` items say is missing, in this order. Run each check locally 
    - keep the code Lovable generated, which is the project's code now.
 
    Lovable pushes straight onto the production branch, outside any pull request. Disconnecting its GitHub sync is a step for the person.
-3. **Release notes** in the Fabrique format: `docs/release-notes.json`, newest first.
-   - Move each past release into it (`version`, `date`, `heure`, `titre`, `changements` in plain words, `stories: []`, `liens: null`).
-   - Add one entry for this onboarding, the next version. An entry without `heure` is not released yet. With no integration branch and no merge workflow (`workflows.fusionner`), date this entry as the last commit before the merge.
-   - This is temporary. La Fabrique is moving every project to one release-notes tool, the same file copied into each project (`kit/release-notes.js`, declared in `version.outil`). With it, a pull request writes its entry as `next`, the merge workflow numbers it, and the release-notes file is no longer a point of conflict between pull requests. Once it is there, the onboarding pull request copies the tool and the merge workflow instead of dating by hand.
+3. **Release notes** in the Fabrique format, `docs/release-notes.json`, newest first, written by La Fabrique's release-notes tool. The tool is the same for every project, so two pull requests never conflict on that file. Its guide: `/guide/release-notes-kit` (`docs/release-notes-kit.md`).
+   - Move each past release into the file: `version`, `date`, `heure`, `titre`, `changements` in plain words, `stories: []`, `liens: null`.
+   - Copy the tool as it is: the `release-notes.js` that `setup` gives in `examples`. Put it at `scripts/fabrique/release-notes.js`, or `.mjs` when the project's `package.json` is not `"type": "module"`, and declare it in `version.outil`. Never adapt it: the project's own way goes into the command's options and its workflows.
+   - Add the merge workflow (`workflows.fusionner`), adapted from the example in `examples` with the project's own checks:
+     - without an integration branch: `merge.yml`, which runs `merge --mode next`, plus the release workflow `release.yml` (`workflows.publier`), which runs `publish` at the close of the sprint;
+     - with an integration branch: `fusionner.yml`, which runs `merge --mode number` and takes the tool from the integration branch.
+   - Add one entry for this onboarding, on top, as `"version": "next"`: the date of the day, no `heure`, its `stories`. Never give it a number: the release at the close of the sprint gives it (without integration), or the merge does (with integration).
+   - The workflows only run once they are on the production branch, so this first pull request is merged by hand.
    - Keep the README's "What's new" as a link to the file, not a copy.
 4. **The version served**, the same as the first released entry:
    - a server answers its version path (`/api/version`) with `{"numero": "0.3", "environnement": "production"}`;
@@ -79,7 +83,7 @@ Do what the `setup` items say is missing, in this order. Run each check locally 
    - it uses the secrets `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) and `FABRIQUE_TOKEN`, and `allowed_bots: la-fabrique-extraordinaire`.
 7. **`CLAUDE.md`**, short:
    - the product's sentence, the stack, how to run, test and build;
-   - the conventions: every change starts from a card in La Fabrique and its story (an issue); one pull request per story; a release-notes entry that lists its `stories`; never push onto the production branch;
+   - the conventions: every change starts from a card in La Fabrique and its story (an issue); one pull request per story; a release-notes entry on top, `"version": "next"`, that lists its `stories`, never a number written by hand; never push onto the production branch;
    - links to the existing docs, which are not copied.
 8. **`.fabrique.json`** at the root, last, from what is now true:
 
@@ -92,8 +96,8 @@ Do what the `setup` items say is missing, in this order. Run each check locally 
      "environnements": {
        "production": { "url": "<address>", "version": "/version.json", "type": "production", "signalement": false }
      },
-     "workflows": { "ci": "ci.yml", "claude": "claude.yml", "promouvoir": null },
-     "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
+     "workflows": { "ci": "ci.yml", "claude": "claude.yml", "fusionner": "merge.yml", "publier": "release.yml", "promouvoir": null },
+     "version": { "fichier": "docs/release-notes.json", "forme": "0.N", "outil": "scripts/fabrique/release-notes.js" },
      "documentation": [
        { "titre": "The project", "chemin": "CLAUDE.md" },
        { "titre": "Read me", "chemin": "README.md" }
@@ -113,7 +117,7 @@ Do what the `setup` items say is missing, in this order. Run each check locally 
 
    A server's version path is `/api/version`. A project with int adds `branches.integration`, the int environment (`"type": "integration"`) and its deployment workflow.
 
-Not in this pull request (later, from *Setup* or the sprint): the merge and release workflows (`fusionner`, `publier`), the report kit, an int environment.
+Not in this pull request (later, from *Setup* or the sprint): the report kit, an int environment. Once the project uses the release-notes tool, *Setup* compares its copy with La Fabrique's and proposes each new version as a pull request.
 
 ### By hosting
 
@@ -156,3 +160,5 @@ Pull request #4 of `serge-fantino/roadwise-helper` (version 0.3):
 - `claude.yml`, `CLAUDE.md` and `.fabrique.json`.
 
 Its production stayed on Netlify. The next pull request (#5, version 0.4) showed the same number on the splash screen.
+
+The release notes of that onboarding were still dated by hand. Pull request #6 (opened on 22 November 2026) brings the release-notes tool (`scripts/fabrique/release-notes.js`), `merge.yml` (`--mode next`) and `release.yml`, as step 4.3 now says.

@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "Setup follows each project's release-notes tool",
+    "changements": [
+      "Setup now checks each project's copy of the release-notes tool: declared, there, and up to date with La Fabrique's. When it is behind or missing, Propose the update opens a pull request under your name that replaces it, as for the report kit.",
+      "The onboarding guide now installs the release-notes tool and the merge workflow from the first pull request, and writes its entry as next: no more release notes dated by hand. Claude (MCP setup) gets the merge and release workflows that fit the project, and the tool to copy."
+    ],
+    "stories": [430],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "Onboard a project with Claude Code",
     "changements": [
       "A project's Setup now says how to let Claude Code do what is missing, and links to a new onboarding guide: Claude Code, open on the repository and connected to La Fabrique, reads the project's setup, asks what it cannot find, and proposes everything in one pull request, keeping the code and the hosting.",

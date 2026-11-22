@@ -5,6 +5,7 @@ import type { ConfigCheck } from "./projects";
 import type { Release } from "./roadmap";
 import { branchIssue, type Story } from "./stories";
 import { describeReview, reviewSettings } from "./review-settings";
+import { compareVersions } from "./kit-update";
 
 export type SetupState = "done" | "missing" | "optional" | "unknown";
 
@@ -22,6 +23,7 @@ export type SetupKey =
   | "promotion"
   | "merge_workflow"
   | "release_workflow"
+  | "release_tool"
   | "claude_workflow"
   | "review"
   | "app"
@@ -41,6 +43,8 @@ export interface SetupInput {
   branches: string[];
   // From the last production read: what each environment answers.
   versions?: VersionState[] | null;
+  // The project's copy of the release-notes tool (version.outil), when read.
+  releaseTool?: { path: string | null; branch: string; version: string | null; exists: boolean; latest: string; failure?: string } | null;
   // The project's connected app, when Setup read it.
   app?: { reporting: string[]; registered: boolean; missing: number; connections: number } | null;
 }
@@ -57,7 +61,7 @@ function item(key: SetupKey, ok: boolean, found: string, optional = false): Setu
 
 // What a project needs for La Fabrique to follow it well, computed from
 // its own files and what GitHub says; integration is optional.
-export function setupChecklist({ check, releases, stories, branches, versions, app }: SetupInput): SetupItem[] {
+export function setupChecklist({ check, releases, stories, branches, versions, app, releaseTool }: SetupInput): SetupItem[] {
   const config = check?.config ?? null;
   const items: SetupItem[] = [];
 
@@ -242,6 +246,29 @@ export function setupChecklist({ check, releases, stories, branches, versions, a
       true,
     ),
   );
+  // Optional: La Fabrique's release-notes tool, the same for every project,
+  // run by the merge and release workflows (docs/release-notes-kit.md).
+  if (releaseTool) {
+    const runner = typeof merge === "string" ? `, run by \`${merge}\`` : "; no `workflows.fusionner` runs it yet";
+    if (!releaseTool.path) {
+      items.push(item("release_tool", false, "No `version.outil`: the release notes are written without La Fabrique's tool.", true));
+    } else if (releaseTool.failure) {
+      items.push({ key: "release_tool", state: "unknown", found: `\`${releaseTool.path}\` could not be read: ${releaseTool.failure}` });
+    } else if (!releaseTool.exists) {
+      items.push(item("release_tool", false, `\`${releaseTool.path}\` is not on \`${releaseTool.branch}\` yet; ${releaseTool.latest} is available.`));
+    } else {
+      const current = releaseTool.version !== null && compareVersions(releaseTool.version, releaseTool.latest) >= 0;
+      items.push(
+        item(
+          "release_tool",
+          current,
+          current
+            ? `\`${releaseTool.path}\` on \`${releaseTool.branch}\`: ${releaseTool.version}, up to date${runner}.`
+            : `\`${releaseTool.path}\` on \`${releaseTool.branch}\`: ${releaseTool.version ?? "unknown version"}; ${releaseTool.latest} is available${runner}.`,
+        ),
+      );
+    }
+  }
   const claude = config?.workflows?.["claude"];
   items.push(
     item(

@@ -105,6 +105,12 @@ export const HOW_TO: Record<SetupKey, { title: string; why: string; how: string 
     how: `<p>A workflow on the production branch, started by <code>workflow_dispatch</code>, with inputs <code>version</code> (the number chosen: minor or major), <code>titre</code> (the release title), <code>stories</code> (the done stories, comma-separated) and <code>par</code> (who closed the sprint). It replaces the <code>next</code> entries that declare one of those stories by a single entry (number, date and time in Paris, title, every change, every story), keeps the others <code>next</code>, opens a pull request on the production branch and merges it; the merge deploys. Its push must use a token that triggers the project's CI and deployment. La Fabrique then gives the version to the cards done and closes their validated stories. It runs La Fabrique's release-notes tool (<a href="/kit/release-notes.js">release-notes.js</a> <code>publish</code>, <a href="/guide/release-notes-kit">how</a>). Example: <a href="/guide/exemples/release.yml">La Fabrique's own</a>.</p>
       ${code(`"workflows": { "publier": "publier.yml" }`)}`,
   },
+  release_tool: {
+    title: "The release-notes tool",
+    why: "Optional, with the merge and release workflows. One tool for every project writes the release notes at each merge and at each release, so two pull requests never conflict on that file. The project keeps a copy, as it is, and La Fabrique proposes its updates.",
+    how: `<p>Copy <a href="/kit/release-notes.js">release-notes.js</a> into the repository as it is (its version is on its first line), declare where in <code>.fabrique.json</code>, and run it from the merge workflow (<code>merge --mode next</code> into production, <code>--mode number</code> into an integration branch) and the release workflow (<code>publish</code>). <a href="/guide/release-notes-kit">How</a>. A pull request then writes its entry as <code>next</code>, on top. When a newer version is out, La Fabrique proposes it here as a pull request.</p>
+      ${code(`"version": { "fichier": "docs/release-notes.json", "forme": "0.N", "outil": "scripts/fabrique/release-notes.js" }`)}`,
+  },
   claude_workflow: {
     title: "Claude workflow",
     why: "Optional. Tech leads and super admins launch Claude Code on a ready story, from the sprint (Launch the next story) or the Backlog; the project's own workflow runs it, with its own key.",
@@ -162,7 +168,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-export const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "review", "app"]);
+export const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "release_tool", "claude_workflow", "review", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",
@@ -216,7 +222,7 @@ function lifecycleSection(viewer: Viewer, project: Project, form: LifecycleForm)
 export function setupPage(
   viewer: Viewer,
   project: Project,
-  data: { items: SetupItem[]; failure?: string | undefined; notice?: string | undefined; lifecycle: LifecycleForm; app?: string },
+  data: { items: SetupItem[]; failure?: string | undefined; notice?: string | undefined; lifecycle: LifecycleForm; app?: string; releaseTool?: string },
 ): string {
   const name = project.check?.config?.nom || project.repo;
   const count = (state: SetupState) => data.items.filter((entry) => entry.state === state).length;
@@ -257,6 +263,7 @@ export function setupPage(
           : ""
       }
       <ul class="setup-list">${items}</ul>
+      ${data.releaseTool ?? ""}
       ${data.app ?? ""}
       ${lifecycleSection(viewer, project, data.lifecycle)}`,
     viewer,
@@ -273,4 +280,28 @@ ${rendered.html}
       </article>`,
     viewer,
   );
+}
+
+// The project's copy of the release-notes tool, behind or missing: a pull
+// request to bring it to La Fabrique's.
+export function releaseToolSection(
+  viewer: Viewer,
+  project: Project,
+  tool: { path: string | null; branch: string; version: string | null; exists: boolean; latest: string; current: boolean; failure?: string },
+  canPropose: boolean,
+  proposed?: { number: number; url: string },
+): string {
+  if (!tool.path || tool.failure || (tool.current && !proposed)) return "";
+  const done = proposed
+    ? `<p class="notice ok" role="status">Pull request <a href="${escapeHtml(proposed.url)}">#${proposed.number}</a> opened on <code>${escapeHtml(tool.branch)}</code>: the tool is up to date once it is merged.</p>`
+    : "";
+  const offer = tool.current
+    ? ""
+    : canPropose
+      ? `<form method="post" action="${escapeHtml(projectUrl(project.repo))}/release-tool">${csrfField(viewer)}<button type="submit" class="button">${
+          tool.exists ? `Propose the update to ${escapeHtml(tool.latest)}` : `Propose the tool ${escapeHtml(tool.latest)}`
+        }</button></form>
+         <p class="muted small">A pull request on <code>${escapeHtml(tool.branch)}</code>, under your GitHub name, replacing <code>${escapeHtml(tool.path)}</code> with La Fabrique's; the project reviews and merges it.</p>`
+      : `<p class="muted small">Tech leads and super admins propose the update.</p>`;
+  return `<section class="release-tool" id="release-tool"><h2>Release-notes tool</h2>${done}${offer}</section>`;
 }
