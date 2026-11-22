@@ -5120,7 +5120,40 @@ a.tag-link:focus-visible {
   padding: 0.6rem 0.75rem;
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 4px 16px rgba(24, 33, 27, 0.08);
+  transition: box-shadow 0.15s ease;
+}
+
+/* Stuck at the top: a small shadow under it, over the stories. */
+.split-bar.is-stuck {
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 8px 14px -8px rgba(24, 33, 27, 0.35);
+}
+
+.split-bar-feature {
+  display: none;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.split-bar.is-stuck .split-bar-feature {
+  display: flex;
+}
+
+.split-bar-feature-title {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.split-bar-priority {
+  min-height: 36px;
+  padding: 0 0.6rem;
+  border-radius: 999px;
+  font-family: "Archivo", system-ui, sans-serif;
+  font-size: 0.9rem;
 }
 
 .split-bar-title {
@@ -5382,6 +5415,28 @@ li.criterion.sorting {
   padding: 0.5rem 0 0.75rem;
   border: 0;
   border-top: 1px solid var(--rule);
+}
+
+/* On a phone, the stuck bar stays short: the feature, then the buttons. */
+@media (max-width: 640px) {
+  .split-bar.is-stuck .split-bar-title {
+    display: none;
+  }
+
+  .split-bar.is-stuck .split-bar-feature {
+    border-bottom: 0;
+    padding-bottom: 0.2rem;
+  }
+
+  .split-bar-feature-title {
+    font-size: 0.92rem;
+  }
+
+  .split-bar-actions .button {
+    min-height: 40px;
+    padding: 0 0.9rem;
+    font-size: 0.9rem;
+  }
 }
 
 /* The Capabilities tab (ADR 0006, epic F15). */

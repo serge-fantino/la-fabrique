@@ -622,6 +622,8 @@ describe("Split into stories", () => {
     // The buttons sit in the bar at the top, and the form comes back here.
     expect(page).toMatch(/class="split-bar"[\s\S]*?value="create" data-split-create/);
     expect(page).toContain(`name="back" value="/projects/${REPO}/refinement"`);
+    // Once stuck, the bar shows the feature: its title, status and priority.
+    expect(page).toMatch(new RegExp(`class="split-bar" data-split-bar>\\s*<div class="split-bar-feature"><a class="split-bar-feature-title" href="/projects/${REPO}/cards/${id}"><span class="mono">C${id}</span>`));
   });
 
   it("comes back to Refinement after creating, saving, or what is missing", async () => {
