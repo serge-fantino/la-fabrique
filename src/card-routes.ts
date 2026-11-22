@@ -1,3 +1,4 @@
+import { decisionOf, recordDecision } from "./agent-requests";
 import { applyCardBackstage } from "./card-backstage";
 import { epicDependencies } from "./epic-dependencies";
 import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
@@ -762,7 +763,20 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     return redirect(`${url}#claude-job`);
   }
   if (action === "review_discard" && card.kind === "epic") {
-    if (card.data.review) await saveEpicReview(env.DB, card, viewer.login, null);
+    if (card.data.review) {
+      const findings = card.data.review.findings;
+      await saveEpicReview(env.DB, card, viewer.login, null);
+      // Findings already applied count as kept; the open ones are dropped.
+      const applied = findings.filter((finding) => finding.state === "applied").length;
+      await recordDecision(env.DB, {
+        repo: project.repo,
+        cardId: card.id,
+        capability: "epic_review",
+        login: viewer.login,
+        decision: findings.length ? decisionOf(applied, findings.length) : "rejected",
+        details: { kept: applied, of: findings.length },
+      });
+    }
     return redirect(`${url}?notice=review_discarded#features`);
   }
   if ((action === "review_apply" || action === "review_dismiss") && card.kind === "epic") {
@@ -1790,6 +1804,14 @@ export async function featuresRoute(_request: Request, env: Env, viewer: Viewer,
   const action = String(form.get("action") ?? "");
   if (action === "discard") {
     await saveFeaturesProposal(env.DB, card, viewer.login, null);
+    await recordDecision(env.DB, {
+      repo: project.repo,
+      cardId: card.id,
+      capability: "epic_features",
+      login: viewer.login,
+      decision: "rejected",
+      details: { kept: 0, of: proposal.features.length, reason: String(form.get("reason") ?? "") },
+    });
     return redirect(`${url}?notice=features_discarded#features`);
   }
   const edited = readFeaturesForm(form, proposal, known);
@@ -1803,6 +1825,14 @@ export async function featuresRoute(_request: Request, env: Env, viewer: Viewer,
   const blank = edited.kept.filter((index) => !edited.proposal.features[index]?.title);
   if (blank.length) return page(edited.proposal, edited.kept, `Give a title to ${blank.map((index) => `P${index + 1}`).join(", ")}.`, 422);
   const made = await createFeatures(env.DB, project, card, viewer.login, edited.proposal, edited.kept);
+  await recordDecision(env.DB, {
+    repo: project.repo,
+    cardId: card.id,
+    capability: "epic_features",
+    login: viewer.login,
+    decision: decisionOf(made.ids.length, edited.proposal.features.length),
+    details: { kept: made.ids.length, of: edited.proposal.features.length, reason: String(form.get("reason") ?? ""), ...((card.data.spec?.at ?? "") !== edited.proposal.specAt ? { outdated: true } : {}) },
+  });
   return redirect(`${url}?notice=${made.skipped.length ? "features_skipped" : "features_created"}#features`);
 }
 
@@ -1863,6 +1893,14 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const action = String(form.get("action") ?? "");
   if (action === "discard") {
     await saveSplit(env.DB, card, viewer.login, null);
+    await recordDecision(env.DB, {
+      repo: project.repo,
+      cardId: card.id,
+      capability: "stories",
+      login: viewer.login,
+      decision: "rejected",
+      details: { kept: 0, of: split.stories.length + (split.review ?? []).filter((story) => story.verdict === "change").length, reason: String(form.get("reason") ?? "") },
+    });
     return redirect(`${url}?notice=split_discarded#spec`);
   }
   const edited = readSplitForm(form, split, rubriques);
@@ -1940,6 +1978,17 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   if (card.backstage && created.length) await applyCardBackstage(env, project, card, viewer.login);
   const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
   await saveSplit(env.DB, current, viewer.login, null);
+  // The decision on Claude's proposal (ADR 0006): what was kept of it.
+  const proposed = split.stories.length + (split.review ?? []).filter((story) => story.verdict === "change").length;
+  const keptCount = created.length + commented.length;
+  await recordDecision(env.DB, {
+    repo: project.repo,
+    cardId: card.id,
+    capability: "stories",
+    login: viewer.login,
+    decision: decisionOf(keptCount, proposed),
+    details: { kept: keptCount, of: proposed, reason: String(form.get("reason") ?? ""), ...(card.data.spec?.at !== split.specAt ? { outdated: true } : {}) },
+  });
   if (review) {
     await activityStatement(env.DB, {
       actor: viewer.login,

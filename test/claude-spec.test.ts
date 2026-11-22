@@ -662,6 +662,53 @@ describe("Split into stories", () => {
     expect(page).toContain("1 done on GitHub, then: GitHub refused to create the issue (HTTP 403). The rest is still here.");
   });
 
+  it("records each request with its capability and the card when asked, and the decision on what it proposed (la-fabrique#415)", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const request = async () =>
+      (await env.DB.prepare("SELECT id, capability, target, decision, decided_by, decision_details FROM claude_jobs WHERE card_id = ? AND kind = 'spec_split' ORDER BY id DESC LIMIT 1")
+        .bind(id)
+        .first<{ id: number; capability: string; target: string; decision: string | null; decided_by: string | null; decision_details: string | null }>())!;
+    const first = await request();
+    expect(first.capability).toBe("stories");
+    expect(JSON.parse(first.target)).toMatchObject({ rev: expect.any(Number), spec_at: expect.any(String) });
+    expect(first.decision).toBeNull();
+
+    // Discarded with a reason: rejected, logged.
+    await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "discard", reason: "Une seule story : c'est petit." }, cookie);
+    const rejected = await request();
+    expect(rejected).toMatchObject({ decision: "rejected", decided_by: "pe" });
+    expect(JSON.parse(rejected.decision_details ?? "{}")).toEqual({ kept: 0, of: 2, reason: "Une seule story : c'est petit." });
+    const logged = await env.DB.prepare("SELECT details FROM activity_log WHERE action = 'request_decided'").first<{ details: string }>();
+    expect(JSON.parse(logged?.details ?? "{}")).toMatchObject({ card: id, capability: "stories", decision: "rejected", request: rejected.id });
+
+    // Asked again: Claude reads why the earlier proposal was discarded.
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_split" }, cookie);
+    const sent: { body?: Record<string, unknown> } = {};
+    claudeStream(sent, TWO_STORIES);
+    await runQueue();
+    const user = (sent.body?.["messages"] as { content: string }[])[0]?.content ?? "";
+    expect(user).toContain("The person discarded earlier proposals of stories on this card");
+    expect(user).toContain("<discarded>\nUne seule story : c'est petit.\n</discarded>");
+
+    // Asked once more without deciding: the waiting proposal is replaced.
+    const second = await request();
+    await post(`/projects/${REPO}/cards/${id}`, { csrf, action: "spec_split" }, cookie);
+    claudeStream({}, TWO_STORIES);
+    await runQueue();
+    expect((await env.DB.prepare("SELECT decision FROM claude_jobs WHERE id = ?").bind(second.id).first<{ decision: string }>())?.decision).toBe("replaced");
+
+    // One of two stories kept: partly.
+    mockIssues([], [301]);
+    await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "create", keep_0: "1" }, cookie);
+    const partly = await request();
+    expect(partly.decision).toBe("partly");
+    expect(JSON.parse(partly.decision_details ?? "{}")).toEqual({ kept: 1, of: 2 });
+
+    // The Capabilities tab counts them.
+    const page = await (await get(`/projects/${REPO}/capabilities`, cookie)).text();
+    expect(page).toMatch(/<tr id="stories">[\s\S]*?Proposals: 1 partly kept · 1 rejected/);
+  });
+
   it("discards the proposal", async () => {
     const { cookie, csrf, id } = await withSplit();
     const response = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "discard" }, cookie);
@@ -963,6 +1010,12 @@ describe("An epic's features with Claude (#282)", () => {
       { card_id: epic, kind: "feature", ref: String(second) },
     ]));
     expect((await logActions()).map((entry) => entry.action)).toContain("epic_features_created");
+    // Two of three kept: the request is recorded as partly kept (la-fabrique#415).
+    expect(await env.DB.prepare("SELECT capability, decision, decision_details FROM claude_jobs WHERE card_id = ?").bind(epic).first()).toEqual({
+      capability: "epic_features",
+      decision: "partly",
+      decision_details: JSON.stringify({ kept: 2, of: 3 }),
+    });
 
     const after = await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text();
     expect(after).toContain("Epic tab filters");
@@ -1038,6 +1091,12 @@ describe("An epic's features with Claude (#282)", () => {
     expect(await (await get(`/projects/${REPO}/cards/${epic}`, cookie)).text()).toContain("Dismissed");
     const actions = (await logActions()).map((entry) => entry.action);
     expect(actions).toEqual(expect.arrayContaining(["epic_reviewed", "epic_finding_applied", "epic_finding_dismissed"]));
+    // Every finding dealt with: the review is decided, three of four applied (la-fabrique#415).
+    expect(await env.DB.prepare("SELECT capability, decision, decision_details FROM claude_jobs WHERE card_id = ? AND kind = 'epic_review'").bind(epic).first()).toEqual({
+      capability: "epic_review",
+      decision: "partly",
+      decision_details: JSON.stringify({ kept: 3, of: 4 }),
+    });
 
     await grantRole("tess", "tester");
     const tester = await signIn("tess");

@@ -1,4 +1,5 @@
 import { ROLE_LABELS, type Role } from "./accounts";
+import type { DecisionCounts } from "./agent-requests";
 import { ENDING_LABELS, PLACE_LABELS, PLACES, type Capability, type Usage } from "./capabilities";
 import { formatUsd } from "./llm";
 import { projectContext, projectHeader } from "./project-views";
@@ -37,6 +38,19 @@ export interface CapabilityRow {
   capability: Capability;
   available: { ok: boolean; reason: string };
   usage?: Usage;
+  decisions?: DecisionCounts;
+}
+
+// How its proposals were decided (ADR 0006 § 3).
+function decisionsCell(counts: DecisionCounts | undefined): string {
+  if (!counts) return "";
+  const parts = [
+    counts.kept ? `${counts.kept} kept` : "",
+    counts.partly ? `${counts.partly} partly kept` : "",
+    counts.rejected ? `${counts.rejected} rejected` : "",
+    counts.waiting ? `${counts.waiting} waiting` : "",
+  ].filter(Boolean);
+  return parts.length ? `<br><span class="small">Proposals: ${parts.join(" · ")}</span>` : "";
 }
 
 export function capabilitiesPage(viewer: Viewer, project: Project, rows: CapabilityRow[]): string {
@@ -45,7 +59,7 @@ export function capabilitiesPage(viewer: Viewer, project: Project, rows: Capabil
     const own = rows.filter((row) => row.capability.place === place);
     if (!own.length) return "";
     const body = own
-      .map(({ capability, available, usage }) => {
+      .map(({ capability, available, usage, decisions }) => {
         const writes = [...capability.writes.answer.map((line) => ({ line, when: "" })), ...capability.writes.decision.map((line) => ({ line, when: "Once decided: " }))];
         return `<tr id="${escapeHtml(capability.id)}"${capability.planned ? ' class="planned"' : ""}>
           <td><strong>${escapeHtml(capability.label)}</strong> <span class="mono muted small">${escapeHtml(capability.id)}</span>
@@ -54,7 +68,7 @@ export function capabilitiesPage(viewer: Viewer, project: Project, rows: Capabil
           <td><span class="pill ${ENDING_PILL[capability.ending]}">${ENDING_LABELS[capability.ending]}</span></td>
           <td class="small"><ul class="plain">${writes.map((entry) => `<li>${entry.when ? `<span class="muted">${entry.when}</span>` : ""}${escapeHtml(entry.line)}</li>`).join("") || "<li class=\"muted\">Nothing</li>"}</ul></td>
           <td class="small">${escapeHtml(who(capability))}</td>
-          <td class="small">${available.ok ? `<span class="pill ok small">${escapeHtml(available.reason)}</span>` : `<span class="pill small">${escapeHtml(available.reason)}</span>`}<br>${usageCell(capability, usage)}</td>
+          <td class="small">${available.ok ? `<span class="pill ok small">${escapeHtml(available.reason)}</span>` : `<span class="pill small">${escapeHtml(available.reason)}</span>`}<br>${usageCell(capability, usage)}${decisionsCell(decisions)}</td>
         </tr>`;
       })
       .join("");

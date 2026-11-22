@@ -1594,6 +1594,10 @@ export function splitPage(
       <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
         ${review ? `<h2>The stories already made</h2>${reviewed}${split.stories.length ? `<h2>New stories</h2>` : ""}` : ""}
         ${stories}
+        <div class="field discard-reason">
+          <label for="discard_reason">If you discard it: why? <span class="muted">(optional; Claude reads it before proposing again)</span></label>
+          <textarea id="discard_reason" name="reason" rows="2" maxlength="1000"></textarea>
+        </div>
         <div class="card-actions">
           <button type="submit" class="button" name="action" value="create"${!review && !data.kept.size ? " disabled" : ""}>${submit}</button>
           <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>

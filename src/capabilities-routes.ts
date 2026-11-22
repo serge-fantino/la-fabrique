@@ -1,3 +1,4 @@
+import { decisionCounts } from "./agent-requests";
 import { availability, CAPABILITIES, usageOn } from "./capabilities";
 import { capabilitiesPage } from "./capabilities-views";
 import type { Env } from "./env";
@@ -11,10 +12,11 @@ export async function showCapabilities(request: Request, env: Env, viewer: Viewe
   const project = await findProject(env.DB, repo);
   if (!project) return html(messagePage("Not found", "There is no such project in La Fabrique extraordinaire.", viewer), { status: 404 });
   const { view, cookies } = await projectView(request, env, project, viewer);
-  const usage = await usageOn(env.DB, project.repo);
+  const [usage, decided] = await Promise.all([usageOn(env.DB, project.repo), decisionCounts(env.DB, project.repo)]);
   const rows = CAPABILITIES.map((capability) => {
     const used = usage.get(capability.id);
-    return { capability, available: availability(capability, project, env), ...(used ? { usage: used } : {}) };
+    const decisions = decided.get(capability.id);
+    return { capability, available: availability(capability, project, env), ...(used ? { usage: used } : {}), ...(decisions ? { decisions } : {}) };
   });
   return html(capabilitiesPage(viewer, view, rows), { cookies });
 }

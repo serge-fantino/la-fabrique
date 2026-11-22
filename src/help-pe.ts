@@ -536,7 +536,7 @@ const REFERENCE: RefPage[] = [
             <li>the criteria one per line: ↑, ↓, <em>Remove</em>, <em>Add a criterion</em>;</li>
             <li><em>What GitHub will receive</em>, as it will read.</li>
           </ul>
-          <p>${b("Save my edits")} keeps them for later; ${b("Discard the proposal")} drops it. ${b("Create the checked stories on GitHub")} creates them in your name; if GitHub fails part-way, what is done is said and the rest stays here.</p>`,
+          <p>${b("Save my edits")} keeps them for later; ${b("Discard the proposal")} drops it: say why if you like (the field above the buttons), Claude reads it before proposing again. What you keep, or discard, is recorded with Claude's request. ${b("Create the checked stories on GitHub")} creates them in your name; if GitHub fails part-way, what is done is said and the rest stays here.</p>`,
       },
       {
         id: "one-story",

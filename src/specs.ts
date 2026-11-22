@@ -1,3 +1,4 @@
+import { rejectionsFor, rejectionsForClaude } from "./agent-requests";
 import { cardRef } from "./card-views";
 import { cardStories, type CardStory } from "./card-stories";
 import { cardLinks, DIMENSION_LABELS, excerpt, FREE_DIMENSIONS, KIND_LABELS, listCards, STATUS_LABELS, type Card, type CardSpec, type CardSplit, type CardTests, type EpicFeaturesProposal, type ProposedFeature, type StoryReview } from "./cards";
@@ -387,7 +388,13 @@ export async function splitSpec(
   if (!spec) return { ok: false, message: "There is no spec to split yet.", retryable: false };
   const rubriques = specRubriques(project);
   const numbers = (await cardLinks(env.DB, card.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
-  const [document, read, made] = await Promise.all([projectDocument(env, project), cardContext(env, project, card), cardStories(env, project, numbers)]);
+  const [document, read, made, rejected] = await Promise.all([
+    projectDocument(env, project),
+    cardContext(env, project, card),
+    cardStories(env, project, numbers),
+    rejectionsFor(env.DB, card.id, "stories"),
+  ]);
+  const refused = rejectionsForClaude(rejected, "stories");
   const existing = [...made.values()];
   watch.read?.({ document: document ? `${document.path} (${Math.round(document.text.length / 1000)}k characters)` : null, cards: read.cards, stories: read.stories });
   const ask = existing.length
@@ -401,7 +408,7 @@ The stories already made from this card, on GitHub; the specification may have c
 <stories>
 ${existing.map(storyForClaude).join("\n\n")}
 </stories>
-${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}${refused}
 Review these stories against the specification.
 - "existing": one entry per story above. "fits" when it still matches the specification, with an empty comment. "change" otherwise, with a comment for the team, written in the language of the specification: what to add, change or remove in this story, short and concrete. A story in production or closed does not change any more: say instead what a new story has to do, and propose that story.
 - "stories": only the new stories for what the existing ones do not cover; none is a fine answer. Each can be built, tested on int and put in production on its own. "title": short, what the person can do once the story is there. "sections": the story's own specification, in the same sections, with its own acceptance criteria. "nice": true when the feature stands without it (done if there is time), false otherwise.
@@ -411,7 +418,7 @@ The specification to split:
 <spec>
 ${currentSpec(spec, rubriques)}
 </spec>
-${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}${refused}
 Split this specification into stories. Each story can be built, tested on int and put in production on its own, and gives people something they can see; together they cover the whole specification, without overlap. As few stories as make sense, from one to six: one story is a fine answer for a small feature.
 - "title": short, what the person can do once the story is there.
 - "sections": the story's own specification, in the same sections. Its acceptance criteria are its own: each criterion of the specification belongs to exactly one story. The context can be shared; say what this story adds. The release note says what this story makes visible.
@@ -610,7 +617,12 @@ export async function proposeFeatures(
   const document = epic.data.spec ? currentSpec(epic.data.spec, rubriques) : epic.body.trim();
   if (!document) return { ok: false, message: "The epic has no document yet: write it first.", retryable: false };
   const priorities = cycleRules(project.check?.config).priorities;
-  const [description, read, cards] = await Promise.all([projectDocument(env, project), epicContext(env, project, epic), listCards(env.DB, project.repo)]);
+  const [description, read, cards, rejected] = await Promise.all([
+    projectDocument(env, project),
+    epicContext(env, project, epic),
+    listCards(env.DB, project.repo),
+    rejectionsFor(env.DB, epic.id, "epic_features"),
+  ]);
   watch.read?.({ document: description ? `${description.path} (${Math.round(description.text.length / 1000)}k characters)` : null, cards: read.cards, stories: 0 });
   const others = cards.filter((card) => card.id !== epic.id && card.kind !== "epic" && !card.archivedAt);
   const attached = new Set(epicFeatures(cards, epic).map((card) => card.id));
@@ -621,7 +633,7 @@ The epic's document:
 <document>
 ${document}
 </document>
-${elsewhere.length ? `\nOther features of the project, which a new feature may depend on:\n${elsewhere.map((card) => `- ${cardRef(card.id)} ${card.title}`).join("\n")}\n` : ""}${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}
+${elsewhere.length ? `\nOther features of the project, which a new feature may depend on:\n${elsewhere.map((card) => `- ${cardRef(card.id)} ${card.title}`).join("\n")}\n` : ""}${instruction ? `\nThe person asks:\n<request>\n${instruction}\n</request>\n` : ""}${rejectionsForClaude(rejected, "features")}
 Propose the features this epic still misses. ${attached.size ? "Its existing features are listed above: propose none of them again, only what they do not cover; none is a fine answer." : "From one to eight features."} Each feature can be refined into stories and shipped on its own.
 - "title": short, what the person can do once the feature is there.
 - "synopsis": two or three sentences on what the feature is.
