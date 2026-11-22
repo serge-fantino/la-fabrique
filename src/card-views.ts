@@ -1604,6 +1604,10 @@ export function splitPage(
         )}
         ${review ? `<h2>The stories already made</h2>${reviewed}${split.stories.length ? `<h2>New stories</h2>` : ""}` : ""}
         ${stories}
+        <div class="field discard-reason">
+          <label for="discard_reason">If you discard the proposal: why? <span class="muted">(optional; Claude reads it before proposing again)</span></label>
+          <textarea id="discard_reason" name="reason" rows="2" maxlength="1000"></textarea>
+        </div>
       </form>`,
     viewer,
     [],

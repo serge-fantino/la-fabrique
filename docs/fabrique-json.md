@@ -64,7 +64,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `workflows.deploiement_int`, `migrations_production` | Workflows suivis (état, dernier passage). |
 | `workflows.promouvoir` | Workflow `workflow_dispatch` que le « go » du super admin déclenche. `null` : pas de go depuis La Fabrique. |
 | `workflows.publier` | Workflow `workflow_dispatch` (entrées `version`, `titre`, `stories` — numéros séparés par des virgules —, `par`) que « Close the sprint » déclenche sur un projet sans branche d'intégration : une seule version (mineure ou majeure), une seule entrée de notes de version (numéro, date et heure de Paris, titre, changements, stories) à la place des entrées `next` qui déclarent une story faite, une PR sur la branche de production fusionnée (le déploiement suit). Réservé au Product Engineer et au super admin. `null` ou absent : la fermeture du sprint est refusée avec un lien vers Setup. |
-| `workflows.claude` | Workflow qui fait travailler Claude sur une demande (`workflow_dispatch` avec le numéro d'issue `issue`, et `par`, qui l'a lancé). Il prend aussi `pr` (remettre une PR à jour), `revue` (`true` avec `pr` : la revue de Claude sur cette PR est bloquante, Claude traite ses remarques bloquantes ; la-fabrique#381) et `rework` (`true` : la story a des retours de test, Claude retravaille son code sur une nouvelle branche de la même story ; « Rework with Claude » du sprint, la-fabrique#202). `null` : pas de bouton « Lancer Claude ». |
+| `workflows.claude` | Workflow qui fait travailler Claude sur une demande (`workflow_dispatch` avec le numéro d'issue `issue`, et `par`, qui l'a lancé). Il prend aussi `pr` (remettre une PR à jour), `revue` (`true` avec `pr` : la revue de Claude sur cette PR est bloquante, Claude traite ses remarques bloquantes ; la-fabrique#381) et `rework` (`true` : la story a des retours de test, Claude retravaille son code sur une nouvelle branche de la même story ; « Rework with Claude » du sprint, la-fabrique#202). `null` : pas de bouton « Lancer Claude ». Pour être compté (jetons et coût équivalent API, la-fabrique#418), il écrit à la fin une annotation `::notice title=Claude usage::` suivie d'une ligne JSON tirée du fichier d'exécution de Claude Code : `auth` (`subscription` ou `api`), `turns`, `duration_ms`, `cost_usd`, et `models`, par modèle `input`, `output`, `cache_read`, `cache_write`, `cost_usd` ; la transcription complète reste un artifact du run (étapes *Usage* et *Transcript* du `claude.yml` de La Fabrique, à recopier). Le workflow `revue` peut écrire la même. |
 | `workflows.fusionner` | Workflow `workflow_dispatch` (entrées `pr` et `par`) que le bouton « Merge » d'une PR du sprint déclenche : il numérote et date les notes de version au moment de la fusion, relance les vérifications et fusionne. Vers la branche de production, c'est un go : Product Engineer et super admin ; vers une autre branche, tech lead. `null` ou absent : pas de bouton. |
 | `version.fichier`, `.forme` | Le fichier des notes de version, au format Fabrique (ci-dessous), et la forme des numéros (`v1.N`, `0.N`…). Il alimente Production (ce qui va sortir), Roadmap (calendrier) et Releases. |
 | `documentation[]` | Pages publiées dans La Fabrique : un fichier Markdown ou un dossier (tous ses `.md`), rendus depuis la branche de production. |
@@ -74,6 +74,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `claude.plafond` | Combien de Claude lancés depuis La Fabrique peuvent tourner en même temps sur le projet (1 à 10 ; 2 par défaut). |
 | `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
 | `composants.dossier` | Le dossier des composants du projet (ci-dessous) ; `components` par défaut. Sans `composants` : pas de composants. |
+| `decisions.dossier` | Le dossier des décisions du projet, une par fichier (ci-dessous) ; `docs/decisions` par défaut. Sans `decisions` : La Fabrique les cherche dans `docs/adr`, `docs/decisions`, `docs/architecture/decisions`, `adr` et `decisions`. |
 | `epiques.rubriques[]` | Les sections du document d'une fiche de type *Epic* : `cle`, `titre`, `aide` (texte d'aide). Elles remplacent les sections par défaut (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions). Le document est le texte de la fiche, un titre `##` par section. Absent : les sections par défaut. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
 | `epiques.rubriques[]` | Les rubriques du document d'une épique (même forme que `demandes.rubriques[]`) ; sans `epiques`, celles par défaut de La Fabrique : *Why*, *Decisions*, *Features*, *Open questions*. Pas de critères : ils sont aux features. |
@@ -169,6 +170,46 @@ components/
 | `origine` | Repris d'un autre projet (le partage passe par git) : `depot` (adresse https), `chemin`, `version`, `commit`. |
 
 La Fabrique lit les composants à chaque commit (comme la documentation) et les montre dans l'onglet *Components* du projet ; un `component.json` invalide y est listé avec ses raisons. Elle ne garde rien d'autre que ce cache.
+
+## Décisions
+
+Une décision qui surprendrait le prochain lecteur s'écrit une fois, dans le dépôt du projet : un fichier par décision (un ADR, *architecture decision record*), numéroté, dans le dossier que déclare `decisions` (épique F15) :
+
+```json
+"decisions": { "dossier": "docs/decisions" }
+```
+
+```
+docs/decisions/
+  README.md                 ← l'index : une ligne par décision, avec son statut
+  0000-template.md          ← le modèle (jamais lu comme une décision)
+  0001-claude-in-the-background.md
+  open-decisions.md         ← facultatif : les décisions pas encore prises
+```
+
+Un fichier `NNNN-titre.md` commence par son titre et ses champs, avant la première rubrique :
+
+```markdown
+# 0003. The engineering loop of a story
+
+- Status: Proposed
+- Date: 2026-11-21
+- Deciders: serge-fantino
+- Serves: C12, #384
+
+## Context
+```
+
+| Champ | Sert à |
+|---|---|
+| `Status` | `Proposed`, `Accepted`, `Rejected`, `Superseded by NNNN`, `Deprecated` (le premier mot compte ; la suite est montrée telle quelle : « Accepted, amended by 0055 »). Une rubrique `## Status` (format de Nygard) est lue aussi. |
+| `Date` | Le jour où elle a été proposée ou prise. |
+| `Deciders` | Les identifiants GitHub de ceux qui la valident. Sans eux, personne ne peut la valider. |
+| `Serves` | Facultatif : l'épique, la fiche ou l'issue qu'elle sert (`#74`, `C12`). Les fiches et les issues nommées ailleurs dans le texte sont reliées aussi. |
+
+Un agent de code (Claude, lancé depuis La Fabrique ou non) propose une décision et ne la prend jamais : il l'écrit `Proposed`. Un de ses `Deciders` la valide.
+
+La Fabrique lit les décisions à chaque commit (comme la documentation) et les montre dans l'onglet *Decisions* du projet : leur statut, leurs décideurs, ce qu'elles servent, les décisions qu'elles nomment et celles qui les nomment. Elle ne garde rien d'autre que ce cache.
 
 ## Revue
 

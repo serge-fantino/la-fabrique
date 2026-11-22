@@ -13,6 +13,7 @@ describe("La Fabrique as its own project", () => {
       "README.md",
       "docs/fabrique-json.md",
       "docs/release-notes.json",
+      "docs/decisions/README.md",
       ".github/workflows/ci.yml",
       ".github/workflows/deploy.yml",
       ".github/workflows/claude.yml",
@@ -22,7 +23,7 @@ describe("La Fabrique as its own project", () => {
     ];
     const result = validateFabriqueConfig(JSON.stringify(ownConfig), {
       files: new Set(files),
-      folders: new Set(["docs", ".github", ".github/workflows", "components"]),
+      folders: new Set(["docs", "docs/decisions", ".github", ".github/workflows", "components"]),
       complete: true,
     });
     expect(result.errors).toEqual([]);

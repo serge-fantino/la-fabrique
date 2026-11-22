@@ -1,6 +1,9 @@
-# 0002 · Next release, and a sprint without a version
+# 0002. Next release, and a sprint without a version
 
-October 31, 2026 · decided by the owner · epic #108
+- Status: Accepted
+- Date: 2026-10-31
+- Deciders: serge-fantino
+- Serves: epic #108
 
 ## Context
 

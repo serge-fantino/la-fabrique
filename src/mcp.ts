@@ -1,3 +1,5 @@
+import { runnerUsageOn } from "./runner-runs";
+import { availability, CAPABILITIES, usageOn } from "./capabilities";
 import { applyCardBackstage } from "./card-backstage";
 import { effectiveRole, type Role } from "./accounts";
 import { activityStatement } from "./activity-log";
@@ -314,6 +316,53 @@ const TOOLS: Tool[] = [
             url: absolute(ctx, projectUrl(project.repo)),
           })),
         ),
+      };
+    },
+  },
+  {
+    name: "capabilities",
+    title: "Capabilities",
+    description:
+      "The catalogue of what can be asked of Claude, or of a person, on a project (ADR 0006): each capability's id, what it does, its parameters, where it runs (La Fabrique, the project's runner, a person), how it ends (decision: waits for a person; pose: written at once, the earlier state kept; report; person), what it writes, the right it needs, where it is launched, whether the project can run it now and, for La Fabrique's own, what it has cost there.",
+    inputSchema: { type: "object", properties: { ...PROJECT }, required: ["project"] },
+    needs: null,
+    write: false,
+    async run(ctx, args) {
+      const project = await projectOf(ctx, args);
+      const [usage, runs] = await Promise.all([usageOn(ctx.env.DB, project.repo), runnerUsageOn(ctx.env.DB, project.repo)]);
+      return {
+        project: project.repo,
+        capabilities: CAPABILITIES.map((capability) => {
+          const used = usage.get(capability.id);
+          const ran = runs.get(capability.id);
+          const available = availability(capability, project, ctx.env);
+          return {
+            id: capability.id,
+            label: capability.label,
+            does: capability.does,
+            params: capability.params,
+            runs_in: capability.place,
+            ends: capability.ending,
+            writes: capability.writes,
+            right: capability.right,
+            launched_from: capability.from,
+            planned: capability.planned ? `ADR ${capability.planned}` : null,
+            available: available.ok,
+            why: available.reason,
+            usage: used ? { calls: used.calls, cost_usd: used.costMicros / 1_000_000, unpriced: used.unpriced, last: used.last } : null,
+            runs: ran
+              ? {
+                  runs: ran.runs,
+                  counted: ran.counted,
+                  on_subscription: ran.subscription,
+                  tokens: { new_in: ran.input + ran.cacheWrite, cache_read: ran.cacheRead, out: ran.output },
+                  api_equivalent_usd: ran.apiCostMicros / 1_000_000,
+                  paid_usd: ran.realCostMicros / 1_000_000,
+                  last: ran.last,
+                }
+              : null,
+          };
+        }),
       };
     },
   },

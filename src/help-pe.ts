@@ -536,7 +536,7 @@ const REFERENCE: RefPage[] = [
             <li>the criteria one per line: drag one by its handle (or the arrow keys on it) to reorder, × to remove, ${b("+ Add a criterion")};</li>
             <li><em>What GitHub will receive</em>, as it will read.</li>
           </ul>
-          <p>The buttons are in the bar at the top, which stays in sight while you scroll through the stories, with how many are checked. ${b("Save my edits")} keeps them for later; ${b("Discard the proposal")} drops it (on the card's page). ${b("Create the checked stories on GitHub")} creates them in your name and brings you back where you were: on Refinement, the same page, the card in sight. If GitHub fails part-way, what is done is said and the rest stays proposed.</p>`,
+          <p>The buttons are in the bar at the top, which stays in sight while you scroll through the stories, with how many are checked. ${b("Save my edits")} keeps them for later; ${b("Discard the proposal")} drops it (on the card's page): say why if you like, in the field under the stories, Claude reads it before proposing again. What you keep, or discard, is recorded with Claude's request. ${b("Create the checked stories on GitHub")} creates them in your name and brings you back where you were: on Refinement, the same page, the card in sight. If GitHub fails part-way, what is done is said and the rest stays proposed.</p>`,
       },
       {
         id: "one-story",

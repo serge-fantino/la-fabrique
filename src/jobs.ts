@@ -1,3 +1,4 @@
+import { capabilityOfJob, replacedStatement, waitsForDecision, type Target } from "./agent-requests";
 import { advanceStatus, findCard, reopenStatus, saveEpicReview, saveFeaturesProposal, saveSpec, saveSplit, saveTests } from "./cards";
 import type { Env } from "./env";
 import { formatUsd, type Progress } from "./llm";
@@ -32,6 +33,9 @@ export interface Job {
   attempts: number;
   error: string | null;
   callId: number | null;
+  // The capability of the catalogue it asks for (ADR 0006); null on a job
+  // older than the record.
+  capability: string | null;
   createdAt: string;
   queuedAt: string | null;
   startedAt: string | null;
@@ -61,6 +65,9 @@ const LABELS: Record<JobKind, string> = {
   epic_review: "Claude is reviewing the epic against its features",
 };
 
+// Every kind of background job, for the catalogue of capabilities to cover.
+export const JOB_KINDS = Object.keys(LABELS) as JobKind[];
+
 export function ordinal(n: number): string {
   const tens = n % 100;
   const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
@@ -87,6 +94,7 @@ interface JobRow {
   attempts: number;
   error: string | null;
   call_id: number | null;
+  capability?: string | null;
   created_at: string;
   queued_at: string | null;
   started_at: string | null;
@@ -111,6 +119,7 @@ function toJob(row: JobRow): Job {
     attempts: row.attempts,
     error: row.error,
     callId: row.call_id,
+    capability: row.capability ?? null,
     createdAt: row.created_at,
     queuedAt: row.queued_at,
     startedAt: row.started_at,
@@ -272,10 +281,20 @@ export async function enqueue(
   // A free place: straight to the queue. Otherwise it waits its turn.
   const busy = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM claude_jobs WHERE status IN ('queued', 'running')) AS busy, (SELECT COUNT(*) FROM claude_jobs WHERE status = 'waiting') AS waiting").first<{ busy: number; waiting: number }>();
   const direct = (busy?.busy ?? 0) < MAX_RUNNING && !busy?.waiting;
+  // The record of the request (ADR 0006): its capability, and the card as it
+  // was when asked.
+  const card = await env.DB.prepare("SELECT kind, rev, data FROM cards WHERE id = ?").bind(data.cardId).first<{ kind: string; rev: number; data: string | null }>();
+  let specAt: string | null = null;
+  try {
+    specAt = (JSON.parse(card?.data ?? "{}") as { spec?: { at?: string } }).spec?.at ?? null;
+  } catch {
+    // An unreadable card has no spec.
+  }
+  const target: Target = { rev: card?.rev ?? 0, spec_at: specAt };
   const row = await env.DB.prepare(
-    `INSERT INTO claude_jobs (repo, card_id, kind, status, request, login, queued_at) VALUES (?, ?, ?, ?, ?, ?, ${direct ? "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" : "NULL"}) RETURNING *`,
+    `INSERT INTO claude_jobs (repo, card_id, kind, status, request, login, queued_at, capability, target) VALUES (?, ?, ?, ?, ?, ?, ${direct ? "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" : "NULL"}, ?, ?) RETURNING *`,
   )
-    .bind(data.repo, data.cardId, data.kind, direct ? "queued" : "waiting", JSON.stringify(data.request), data.login)
+    .bind(data.repo, data.cardId, data.kind, direct ? "queued" : "waiting", JSON.stringify(data.request), data.login, capabilityOfJob(data.kind, card?.kind === "epic"), JSON.stringify(target))
     .first<JobRow>();
   if (!row) return { ok: false, message: "The request could not be saved." };
   const job = toJob(row);
@@ -368,7 +387,11 @@ export async function runJob(env: Env, id: number): Promise<"done" | "retry" | "
   // The card may have changed meanwhile: the result goes on its newest version.
   const finish = async (callId: number, summary: string, cost: number | null) => {
     await Promise.allSettled(pending);
-    await env.DB.prepare("UPDATE claude_jobs SET call_id = ? WHERE id = ?").bind(callId, job.id).run();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE claude_jobs SET call_id = ? WHERE id = ?").bind(callId, job.id),
+      // A new proposal replaces the one still waiting for a decision.
+      ...(job.capability && waitsForDecision(job.capability) ? [replacedStatement(env.DB, job.cardId, job.capability, job.id)] : []),
+    ]);
     await say(env, running, `Done: ${summary} Cost ${formatUsd(cost)}.`, "done");
     return "done" as const;
   };

@@ -131,6 +131,11 @@ describe("La Fabrique's MCP server", () => {
     expect(String(init.result?.["instructions"])).toContain("never through this server");
     const tools = ((await rpc(access, "tools/list")).result?.["tools"] as { name: string }[]).map((tool) => tool.name);
     expect(tools).toContain("card_create");
+    expect(tools).toContain("capabilities");
+    const catalogue = await call(access, "capabilities", { project: REPO });
+    const entries = catalogue.data["capabilities"] as { id: string; ends: string; available: boolean; why: string }[];
+    expect(entries.find((entry) => entry.id === "stories")).toMatchObject({ ends: "decision", available: true });
+    expect(entries.find((entry) => entry.id === "story_loop")).toMatchObject({ available: false, why: "Planned (ADR 0003)" });
     // A Product Engineer does not launch Claude nor merge.
     expect(tools).not.toContain("launch_claude");
     expect(tools).not.toContain("merge");
