@@ -20,10 +20,11 @@ describe("La Fabrique as its own project", () => {
       ".github/workflows/merge.yml",
       ".github/workflows/release.yml",
       ".github/workflows/review.yml",
+      "kit/release-notes.js",
     ];
     const result = validateFabriqueConfig(JSON.stringify(ownConfig), {
       files: new Set(files),
-      folders: new Set(["docs", "docs/decisions", ".github", ".github/workflows", "components"]),
+      folders: new Set(["docs", "docs/decisions", ".github", ".github/workflows", "components", "kit"]),
       complete: true,
     });
     expect(result.errors).toEqual([]);
@@ -33,7 +34,7 @@ describe("La Fabrique as its own project", () => {
     const all = parseReleases(JSON.stringify(releaseNotes));
     expect(all).toHaveLength(releaseNotes.length);
     // A pull request does not number its entry: "next", no time; the merge
-    // workflow numbers and dates it (scripts/release-at-merge.ts). Only on
+    // workflow numbers and dates it (kit/release-notes.js). Only on
     // top, and never on main.
     const drafts = all.filter((release) => release.version === "next");
     expect(all.slice(0, drafts.length).every((release) => release.version === "next"), "the entries to number are on top").toBe(true);

@@ -2,17 +2,24 @@ import { css, script } from "./http";
 import reportCss from "../kit/fabrique-report.css";
 import reportJs from "../kit/fabrique-report.js";
 import earlyJs from "../kit/fabrique-report-early.js";
+import releaseNotesJs from "../kit/release-notes.js";
 import reportKitGuide from "../docs/report-kit.md";
+import releaseNotesKitGuide from "../docs/release-notes-kit.md";
 
 // The report kit a project copies into its own app (docs/report-kit.md):
 // served for download, from any origin, never run by La Fabrique's pages.
 export const KIT_GUIDE_PATH = "/guide/report-kit";
 export { reportKitGuide };
+// The release-notes tool every project runs at its merges (docs/release-notes-kit.md).
+export const RELEASE_NOTES_GUIDE_PATH = "/guide/release-notes-kit";
+export { releaseNotesKitGuide };
 
 const FILES: Record<string, { body: string; serve: typeof css }> = {
   "/kit/fabrique-report.js": { body: reportJs, serve: script },
   "/kit/fabrique-report.css": { body: reportCss, serve: css },
   "/kit/fabrique-report-early.js": { body: earlyJs, serve: script },
+  // The release-notes tool every project copies (docs/release-notes-kit.md): run by Node in its workflows.
+  "/kit/release-notes.js": { body: releaseNotesJs, serve: script },
 };
 
 // The version the kit's files carry in their first line.
@@ -64,6 +71,9 @@ export const KIT_CHANGES: { version: string; relay: string | null }[] = [
   },
   { version: "1.0.0", relay: null },
 ];
+
+// The version of the release-notes tool, on its first line.
+export const RELEASE_NOTES_KIT_VERSION = /FabriqueReleaseNotes (\d+\.\d+\.\d+)/.exec(releaseNotesJs)?.[1] ?? "unknown";
 
 export const KIT_VERSION = /FabriqueReport (\d+\.\d+\.\d+)/.exec(reportJs)?.[1] ?? "unknown";
 

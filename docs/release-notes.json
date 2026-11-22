@@ -32,6 +32,17 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "One release-notes tool for every project",
+    "changements": [
+      "La Fabrique's release-notes tool is served for the projects to copy (/kit/release-notes.js, guide at /guide/release-notes-kit): at each merge it rebuilds the release notes from the target branch's with the pull request's entries on top, kept next into production or numbered without time into an integration branch, so two pull requests never conflict on that file again; it also makes the release of a sprint.",
+      "Setup's Merge and Release workflows point to the tool and to example workflows (La Fabrique's own merge and release, L'épicerie's merge into integration); .fabrique.json takes version.outil, where a project keeps its copy."
+    ],
+    "stories": [],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "Claude's runs in a project, counted",
     "changements": [
       "The runs of Claude in a project (code a story, rework, update a pull request, review) are now counted when they end: tokens per model (new, read from cache, out) and what they would cost on the API, even on the subscription, shown per capability in the Capabilities tab, with what was really paid on an API key.",

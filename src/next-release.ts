@@ -2,7 +2,7 @@ import { activityStatement } from "./activity-log";
 import type { Env } from "./env";
 import { refreshUserToken } from "./github";
 import { githubFetch, githubPost, githubPut } from "./github-app";
-import { formatEntry } from "./release-merge";
+import { formatEntry } from "./release-entry";
 import type { Project } from "./projects";
 import { userToken } from "./session";
 
