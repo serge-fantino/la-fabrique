@@ -6,6 +6,7 @@ import { projectUrl } from "./urls";
 import { csrfField, escapeHtml, layout, type Viewer } from "./views";
 
 export const GUIDE_PATH = "/guide/fabrique-json";
+export const ONBOARDING_PATH = "/guide/onboarding";
 
 const STATES: Record<SetupState, string> = {
   done: `<span class="pill ok">Done</span>`,
@@ -23,7 +24,7 @@ function guide(anchor: string, text = "The format"): string {
 }
 
 // What each item is for, and how to set it up.
-const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
+export const HOW_TO: Record<SetupKey, { title: string; why: string; how: string }> = {
   config: {
     title: "A valid .fabrique.json",
     why: "The project describes itself to La Fabrique: branches, environments, workflows, documentation, request form.",
@@ -161,7 +162,7 @@ function withCode(text: string): string {
 }
 
 // Items a project may leave out.
-const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "review", "app"]);
+export const OPTIONAL = new Set<SetupKey>(["integration", "cycle", "promotion", "merge_workflow", "release_workflow", "claude_workflow", "review", "app"]);
 
 const CHECK_LABELS: Record<ReadyCheck, string> = {
   criteres: "Acceptance criteria written, under an Acceptance criteria heading",
@@ -250,6 +251,11 @@ export function setupPage(
         "le-fichier-fabriquejson",
         "the .fabrique.json format",
       )} is the reference.</p>
+      ${
+        count("missing")
+          ? `<p class="setup-claude">Let Claude Code do what is missing: in a Claude Code session on the repository, connected to La Fabrique (MCP), ask it to onboard this project. It reads this list with the <code>setup</code> tool and follows <a href="${ONBOARDING_PATH}">the onboarding guide</a>, then opens one pull request for you to review.</p>`
+          : ""
+      }
       <ul class="setup-list">${items}</ul>
       ${data.app ?? ""}
       ${lifecycleSection(viewer, project, data.lifecycle)}`,

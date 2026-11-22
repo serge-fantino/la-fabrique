@@ -152,6 +152,16 @@ describe("Setup tab", () => {
     expect(page).toContain("<strong>1 of 9 done</strong> · 8 missing · integration optional");
     expect(page).toContain("<strong>Release notes in the Fabrique format</strong>");
     expect(page).toContain('href="/guide/fabrique-json#notes-de-version-format-fabrique"');
+    // What is missing can be done by Claude Code, from the onboarding guide.
+    expect(page).toContain('the <code>setup</code> tool and follows <a href="/guide/onboarding">the onboarding guide</a>');
+  });
+
+  it("serves the onboarding guide to a signed-in person", async () => {
+    const { cookie } = await signIn("admin-one");
+    const page = await (await get("/guide/onboarding", cookie)).text();
+    expect(page).toContain("<title>Onboarding a project with Claude Code · La Fabrique extraordinaire</title>");
+    expect(page).toContain("One pull request");
+    expect((await get("/guide/onboarding")).status).toBe(303);
   });
 
   it("serves the format documentation, with the anchors the how-to links use", async () => {

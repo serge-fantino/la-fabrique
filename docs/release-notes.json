@@ -1,6 +1,17 @@
 [
   {
     "version": "next",
+    "date": "2026-11-22",
+    "titre": "Onboard a project with Claude Code",
+    "changements": [
+      "A project's Setup now says how to let Claude Code do what is missing, and links to a new onboarding guide: Claude Code, open on the repository and connected to La Fabrique, reads the project's setup, asks what it cannot find, and proposes everything in one pull request, keeping the code and the hosting.",
+      "Claude (MCP) can read a project's setup: each item, its state, what was found and how to do it, on the production branch or another one, with the onboarding guide and the example Claude workflow that fits the project."
+    ],
+    "stories": [420],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-21",
     "titre": "A renamed epic keeps its features",
     "changements": [

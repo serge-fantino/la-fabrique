@@ -38,11 +38,12 @@ import { WHATS_NEW_PATH } from "./urls";
 import { ownReleases, selfRepo, whatsNewPage } from "./whats-new";
 import { onlineVersion, setCommit } from "./build";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
+import onboardingGuide from "../docs/onboarding.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
 import promotionExample from "../docs/exemples/promouvoir.yml";
 import claudeExample from "../docs/exemples/claude.yml";
 import { renderMarkdown } from "./markdown";
-import { GUIDE_PATH, guidePage } from "./setup-views";
+import { GUIDE_PATH, guidePage, ONBOARDING_PATH } from "./setup-views";
 import { HELP_PROJECT_COOKIE, HELP_ROUTE, showHelp } from "./help";
 
 import { SHARE_PATH, showSharedDocument } from "./share-links";
@@ -360,6 +361,22 @@ const app = {
       case GUIDE_PATH:
         if (!viewer) return redirect("/");
         return method === "GET" ? html(guidePage(viewer, renderGuide())) : methodNotAllowed();
+
+      case ONBOARDING_PATH:
+        if (!viewer) return redirect("/");
+        return method === "GET"
+          ? html(
+              guidePage(
+                viewer,
+                renderMarkdown(onboardingGuide, {
+                  path: "docs/onboarding.md",
+                  isPage: (candidate) => candidate.startsWith("guide/"),
+                  pageUrl: (candidate) => `/${candidate}`,
+                  githubUrl: () => ONBOARDING_PATH,
+                }),
+              ),
+            )
+          : methodNotAllowed();
 
       case KIT_GUIDE_PATH:
         if (!viewer) return redirect("/");

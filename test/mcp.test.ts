@@ -279,6 +279,44 @@ describe("La Fabrique's MCP server", () => {
     expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["epic_create", "epic_update"]);
   });
 
+  it("reads a project's setup for onboarding: items with how to do them, the guide and the fitting claude workflow; tech lead and above", async () => {
+    await seedProject({ nom: "Widget", langue: "en" });
+    await grantRole("lead", "tech_lead");
+    await grantRole("tester", "tester");
+    const { access_token: lead } = await connectClaude("lead");
+    const read = await call(lead, "setup", { project: "widget" });
+    expect(read.isError).toBe(false);
+    const data = read.data as {
+      project: string;
+      summary: { required_done: number; required: number; missing: string[] };
+      items: { key: string; state: string; optional: boolean; title: string; found: string; why: string; how: string }[];
+      guide: string;
+      examples: Record<string, { from: string; text: string }>;
+      url: string;
+    };
+    expect(data.project).toBe(REPO);
+    expect(data.summary.missing).toEqual(expect.arrayContaining(["release_notes", "ci", "environments"]));
+    expect(data.summary.required_done).toBeLessThan(data.summary.required);
+    const notes = data.items.find((item) => item.key === "release_notes");
+    expect(notes).toMatchObject({ state: "missing", optional: false, title: "Release notes in the Fabrique format", found: "No `version.fichier`." });
+    // The page's explanation as text: code kept and indented, links absolute.
+    expect(notes?.how).toContain('```\n"version": { "fichier": "docs/release-notes.json", "forme": "0.N" }\n```');
+    expect(notes?.how).toContain('    "version": "0.2",');
+    expect(notes?.how).toContain("(https://");
+    expect(notes?.how).not.toMatch(/<[a-z]/);
+    expect(data.items.find((item) => item.key === "integration")?.optional).toBe(true);
+    expect(data.guide).toContain("# Onboarding a project with Claude Code");
+    // No integration branch: La Fabrique's own workflow, pull requests to the production branch.
+    expect(data.examples["claude.yml"]?.from).toContain("no integration branch");
+    expect(data.examples["claude.yml"]?.text).toContain("workflow_dispatch");
+    expect(data.url).toBe(`${BASE}/projects/${REPO}/setup`);
+
+    const { access_token: tester } = await connectClaude("tester");
+    const refused = await call(tester, "setup", { project: REPO });
+    expect(refused.isError).toBe(true);
+    expect(refused.data["error"]).toContain("tech lead and above");
+  });
+
   it("renames an epic with a new document and keeps its features", async () => {
     await seedProject();
     await grantRole("pe", "product_engineer");
