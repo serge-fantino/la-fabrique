@@ -1,8 +1,9 @@
 # Merges a pull request into main, which is La Fabrique's production (la-fabrique#113): started by the super admin
 # from La Fabrique ("Merge" on a pull request of the sprint), or by hand (Actions > Merge > Run workflow).
 # The release notes are numbered and dated here, not while the pull request is written: main is merged into the pull
-# request's branch, docs/release-notes.json is rebuilt from main's with the pull request's own entries on top, numbered
-# after main's newest and dated now (Paris; scripts/release-at-merge.ts). Any other conflict stops the merge: bring the
+# request's branch, docs/release-notes.json is rebuilt from main's with the pull request's own entries on top, kept
+# "next" (kit/release-notes.js merge --mode next: the tool every project runs, docs/release-notes-kit.md; an entry numbered
+# by hand is numbered and dated now). Never a conflict on that file; any other conflict stops the merge: bring the
 # pull request up to date first ("Update with Claude"). The checks run again, the branch is pushed, then the pull
 # request is squash-merged; the push to main deploys as usual.
 # Repository secret: FABRIQUE_TOKEN (fine-grained, this repository: Contents, Pull requests and Issues, read and write):
@@ -83,7 +84,7 @@ jobs:
           cp "$NOTES" "$tmp/branch.json"
           git show "origin/main:$NOTES" > "$tmp/main.json"
           git merge --no-commit --no-ff origin/main >/dev/null 2>&1 || true
-          versions=$(node --experimental-strip-types scripts/release-at-merge.ts "$tmp/base.json" "$tmp/branch.json" "$tmp/main.json" "$NOTES")
+          versions=$(node kit/release-notes.js merge "$tmp/base.json" "$tmp/branch.json" "$tmp/main.json" "$NOTES" --mode next)
           git add "$NOTES"
           left=$(git diff --name-only --diff-filter=U | tr '\n' ' ' | sed 's/ $//')
           [ -z "$left" ] || refuse "Conflicts with main in: $left. Bring the pull request up to date first (Update with Claude), then merge again."

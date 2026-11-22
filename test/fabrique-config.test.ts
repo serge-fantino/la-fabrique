@@ -35,6 +35,16 @@ describe(".fabrique.json validation", () => {
     expect(result.config?.demandes?.rubriques?.map((rubrique) => rubrique.cle)).toContain("donnees_personnelles");
   });
 
+  it("reads where the project keeps its copy of the release-notes tool", () => {
+    const tree = treeOf([...EXAMPLE_TREE.files, "scripts/fabrique/release-notes.js"]);
+    const ok = validateFabriqueConfig(JSON.stringify({ nom: "W", version: { outil: "scripts/fabrique/release-notes.js" } }), tree);
+    expect(ok.errors).toEqual([]);
+    expect(ok.config?.version?.outil).toBe("scripts/fabrique/release-notes.js");
+    expect(validateFabriqueConfig(JSON.stringify({ nom: "W", version: { outil: "scripts/gone.js" } }), tree).errors).toEqual([
+      "`version.outil`: `scripts/gone.js` does not exist.",
+    ]);
+  });
+
   it("reports broken JSON in a readable way", () => {
     const result = validateFabriqueConfig('{ "nom": "x", }', EXAMPLE_TREE);
     expect(result.config).toBeNull();

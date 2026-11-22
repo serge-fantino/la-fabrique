@@ -7,7 +7,7 @@
   "rules": [
     {
       "type": "Text",
-      "globs": ["**/*.css", "**/site/*.js", "**/docs/*.md", "**/docs/exemples/*.yml", "**/.github/workflows/claude.yml", "**/kit/*.js", "**/kit/*.css"],
+      "globs": ["**/*.css", "**/site/*.js", "**/docs/*.md", "**/docs/exemples/*.yml", "**/.github/workflows/claude.yml", "**/.github/workflows/merge.yml", "**/.github/workflows/release.yml", "**/kit/*.js", "**/kit/*.css"],
       "fallthrough": true
     }
   ],
