@@ -140,6 +140,10 @@ export function featuresPage(
       <p>Claude proposes ${proposal.features.length} feature${proposal.features.length === 1 ? "" : "s"}${proposal.note ? `: ${escapeHtml(proposal.note)}` : "."} Edit what you want, uncheck those you do not want. Each checked one becomes a draft card attached to the epic, in the <em>Not set</em> release lane; you assign the releases.</p>
       <form method="post" action="${escapeHtml(url)}/features" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}
         ${blocks}
+        <div class="field discard-reason">
+          <label for="discard_reason">If you discard it: why? <span class="muted">(optional; Claude reads it before proposing again)</span></label>
+          <textarea id="discard_reason" name="reason" rows="2" maxlength="1000"></textarea>
+        </div>
         <div class="card-actions">
           <button type="submit" class="button" name="action" value="create"${data.kept.size ? "" : " disabled"}>Create the checked features</button>
           <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>

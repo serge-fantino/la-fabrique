@@ -1,3 +1,4 @@
+import { decisionOf, recordDecision } from "./agent-requests";
 import { applyCardBackstage } from "./card-backstage";
 import { epicDependencies } from "./epic-dependencies";
 import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from "./epic-progress";
@@ -763,7 +764,20 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     return redirect(`${url}#claude-job`);
   }
   if (action === "review_discard" && card.kind === "epic") {
-    if (card.data.review) await saveEpicReview(env.DB, card, viewer.login, null);
+    if (card.data.review) {
+      const findings = card.data.review.findings;
+      await saveEpicReview(env.DB, card, viewer.login, null);
+      // Findings already applied count as kept; the open ones are dropped.
+      const applied = findings.filter((finding) => finding.state === "applied").length;
+      await recordDecision(env.DB, {
+        repo: project.repo,
+        cardId: card.id,
+        capability: "epic_review",
+        login: viewer.login,
+        decision: findings.length ? decisionOf(applied, findings.length) : "rejected",
+        details: { kept: applied, of: findings.length },
+      });
+    }
     return redirect(`${url}?notice=review_discarded#features`);
   }
   if ((action === "review_apply" || action === "review_dismiss") && card.kind === "epic") {
@@ -1411,14 +1425,48 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       await advanceStatus(env.DB, project.repo, found.id, viewer.login, "shaping", "Claude asked");
       return redirect(`${base}?notice=launched&n=1${here}`);
     }
+    // One gesture when the stories lack only their ready label: they are
+    // labelled ready for Claude, then the feature is validated.
+    if (action === "validate_ready") {
+      const cardId = Number(form.get("card"));
+      const found = Number.isInteger(cardId) && cardId > 0 ? await findCard(env.DB, project.repo, cardId) : null;
+      if (!found || found.kind !== "feature" || found.archivedAt || found.release !== NEXT_RELEASE) return redirect(base);
+      const anchor = `#card-${found.id}`;
+      const numbers = (await cardLinks(env.DB, found.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
+      // As Refinement shows them: the stories as La Fabrique last saw them
+      // (the webhook and markReady keep that copy up to date).
+      const before = await cardStories(env, project, numbers, "cache");
+      const step = nextStep(found, numbers, before);
+      if (step.step === "validate") {
+        const blocked = step.stories.filter((number) => (before.get(number)?.missing ?? []).some((reason) => reason !== "not labelled ready"));
+        if (blocked.length) return redirect(`${base}?failure=${encodeURIComponent(`Not validated: ${blocked.map((n) => `#${n}`).join(", ")} lack${blocked.length === 1 ? "s" : ""} more than the ready label.`)}${anchor}`);
+        for (const story of step.stories) {
+          const outcome = await markReady(env, project, story, viewer.login);
+          if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(`#${story}: ${outcome.message}`)}${anchor}`);
+        }
+      }
+      const after = nextStep(found, numbers, await cardStories(env, project, numbers, "cache"));
+      if (after.step !== "approve") {
+        return redirect(`${base}?${step.step === "validate" ? "notice=ready&n=" + step.stories.length + "&" : ""}failure=${encodeURIComponent("Not validated yet: GitHub does not show every story ready. Try again in a moment.")}${anchor}`);
+      }
+      await validateFeature(env.DB, found, numbers, viewer.login);
+      return redirect(`${base}?notice=validated&n=${step.step === "validate" ? step.stories.length : 0}${anchor}`);
+    }
+    // One story, or several of a feature at once ("Mark the 3 stories
+    // ready"); back on the feature's card.
     if (action === "story_ready") {
-      const story = Number(form.get("story"));
+      const stories = [...new Set(form.getAll("story").map(Number))].filter((n) => Number.isInteger(n) && n > 0).slice(0, 50);
       const links = await storyCards(env.DB, project.repo);
       const inNext = (await listCards(env.DB, project.repo)).filter((card) => card.release === NEXT_RELEASE && !card.archivedAt);
-      if (!Number.isInteger(story) || !inNext.some((card) => (links.order.get(card.id) ?? []).includes(story))) return redirect(base);
-      const outcome = await markReady(env, project, story, viewer.login);
-      if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(outcome.message)}`);
-      return redirect(`${base}?notice=ready`);
+      const cardId = Number(form.get("card"));
+      const anchor = Number.isInteger(cardId) && cardId > 0 ? `#card-${cardId}` : "";
+      const allowed = stories.filter((story) => inNext.some((card) => (links.order.get(card.id) ?? []).includes(story)));
+      if (!allowed.length) return redirect(`${base}${anchor}`);
+      for (const story of allowed) {
+        const outcome = await markReady(env, project, story, viewer.login);
+        if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(`#${story}: ${outcome.message}`)}${anchor}`);
+      }
+      return redirect(`${base}?notice=ready&n=${allowed.length}${anchor}`);
     }
     return redirect(base);
   }
@@ -1469,7 +1517,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       priorities: cycleRules(project.check?.config).priorities,
       sprint: running ? { label: sprintLabel(running) } : null,
       shares: await listShareLinks(env.DB, project.repo),
-      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : notice === "stories_created" ? `${Number(params.get("created")) || 0} stor${Number(params.get("created")) === 1 ? "y" : "ies"} created on GitHub, each linked to its card.` : notice === "split_saved" ? "Your edits are saved." : notice === "validated" ? `Feature validated: ready for the sprint.${Number(params.get("n")) ? ` ${Number(params.get("n"))} stor${Number(params.get("n")) === 1 ? "y" : "ies"} labelled ready for Claude.` : ""}` : params.get("notice") === "ready" ? (Number(params.get("n")) > 1 ? `${Number(params.get("n"))} stories are labelled ready.` : "The story is labelled ready.") : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },
@@ -1793,6 +1841,14 @@ export async function featuresRoute(_request: Request, env: Env, viewer: Viewer,
   const action = String(form.get("action") ?? "");
   if (action === "discard") {
     await saveFeaturesProposal(env.DB, card, viewer.login, null);
+    await recordDecision(env.DB, {
+      repo: project.repo,
+      cardId: card.id,
+      capability: "epic_features",
+      login: viewer.login,
+      decision: "rejected",
+      details: { kept: 0, of: proposal.features.length, reason: String(form.get("reason") ?? "") },
+    });
     return redirect(`${url}?notice=features_discarded#features`);
   }
   const edited = readFeaturesForm(form, proposal, known);
@@ -1806,6 +1862,14 @@ export async function featuresRoute(_request: Request, env: Env, viewer: Viewer,
   const blank = edited.kept.filter((index) => !edited.proposal.features[index]?.title);
   if (blank.length) return page(edited.proposal, edited.kept, `Give a title to ${blank.map((index) => `P${index + 1}`).join(", ")}.`, 422);
   const made = await createFeatures(env.DB, project, card, viewer.login, edited.proposal, edited.kept);
+  await recordDecision(env.DB, {
+    repo: project.repo,
+    cardId: card.id,
+    capability: "epic_features",
+    login: viewer.login,
+    decision: decisionOf(made.ids.length, edited.proposal.features.length),
+    details: { kept: made.ids.length, of: edited.proposal.features.length, reason: String(form.get("reason") ?? ""), ...((card.data.spec?.at ?? "") !== edited.proposal.specAt ? { outdated: true } : {}) },
+  });
   return redirect(`${url}?notice=${made.skipped.length ? "features_skipped" : "features_created"}#features`);
 }
 
@@ -1864,15 +1928,28 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   }
 
   const action = String(form.get("action") ?? "");
+  // Sent from another page (Refinement): back there once done, the card
+  // in sight, with what happened.
+  const backRaw = String(form.get("back") ?? "");
+  const back = backRaw.startsWith(`${projectUrl(project.repo)}/`) && !backRaw.includes("?") && !backRaw.includes("#") ? backRaw : null;
+  const backTo = (query: string) => redirect(`${back}?${query}#card-${card.id}`);
   if (action === "discard") {
     await saveSplit(env.DB, card, viewer.login, null);
+    await recordDecision(env.DB, {
+      repo: project.repo,
+      cardId: card.id,
+      capability: "stories",
+      login: viewer.login,
+      decision: "rejected",
+      details: { kept: 0, of: split.stories.length + (split.review ?? []).filter((story) => story.verdict === "change").length, reason: String(form.get("reason") ?? "") },
+    });
     return redirect(`${url}?notice=split_discarded#spec`);
   }
   const edited = readSplitForm(form, split, rubriques);
   const rules = await projectRules(env.DB, project);
   if (action === "save") {
     await saveSplit(env.DB, card, viewer.login, edited.split);
-    return redirect(`${url}/stories?notice=saved`);
+    return back ? backTo("notice=split_saved") : redirect(`${url}/stories?notice=saved`);
   }
   // A move of a criterion, or a change of what is kept: the edits come
   // back as they are, the preview following them; nothing is saved.
@@ -1899,6 +1976,14 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   }
   const review = edited.split.review;
   const show = { kept: edited.kept, commented: edited.commented };
+  if (back && ((!review && !edited.kept.length) || Object.keys(errors).length)) {
+    // Back on the page it came from, the edits kept, with what is missing.
+    await saveSplit(env.DB, card, viewer.login, edited.split);
+    const why = !edited.kept.length
+      ? "Keep at least one story, or discard the proposal."
+      : Object.entries(errors).map(([index, text]) => `Story ${Number(index) + 1}: ${text}`).join(" ");
+    return backTo(`failure=${encodeURIComponent(`Nothing sent to GitHub. ${why}`)}`);
+  }
   if (!review && !edited.kept.length) return page(edited.split, { ...show, error: "Keep at least one story, or discard the proposal.", status: 422 });
   if (Object.keys(errors).length) return page(edited.split, { ...show, errors, status: 422 });
   const silent = (review ?? []).filter((story) => edited.commented.includes(story.number) && !story.comment).map((story) => `#${story.number}`);
@@ -1919,7 +2004,9 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
     await saveSplit(env.DB, current, viewer.login, left);
     const reason = outcome.reason === "signed_out" ? "GitHub no longer accepts your sign-in. Sign out and sign in again." : `GitHub refused ${what} (HTTP ${outcome.status ?? "?"}).`;
-    return redirect(`${url}/stories?notice=partial&created=${commented.length + created.length}&reason=${encodeURIComponent(reason)}`);
+    const done = commented.length + created.length;
+    if (back) return backTo(`failure=${encodeURIComponent(`${done} done on GitHub, then: ${reason} The rest is still proposed.`)}`);
+    return redirect(`${url}/stories?notice=partial&created=${done}&reason=${encodeURIComponent(reason)}`);
   };
   for (const story of review ?? []) {
     if (!edited.commented.includes(story.number)) continue;
@@ -1943,6 +2030,17 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   if (card.backstage && created.length) await applyCardBackstage(env, project, card, viewer.login);
   const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
   await saveSplit(env.DB, current, viewer.login, null);
+  // The decision on Claude's proposal (ADR 0006): what was kept of it.
+  const proposed = split.stories.length + (split.review ?? []).filter((story) => story.verdict === "change").length;
+  const keptCount = created.length + commented.length;
+  await recordDecision(env.DB, {
+    repo: project.repo,
+    cardId: card.id,
+    capability: "stories",
+    login: viewer.login,
+    decision: decisionOf(keptCount, proposed),
+    details: { kept: keptCount, of: proposed, reason: String(form.get("reason") ?? ""), ...(card.data.spec?.at !== split.specAt ? { outdated: true } : {}) },
+  });
   if (review) {
     await activityStatement(env.DB, {
       actor: viewer.login,
@@ -1952,6 +2050,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     }).run();
   }
   await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", review ? "stories reviewed" : "stories made");
+  if (back) return backTo(`notice=stories_created&created=${created.length}`);
   return redirect(`${url}?notice=${review ? "reviewed" : "stories"}&created=${created.length}#stories`);
 }
 

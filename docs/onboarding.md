@@ -61,6 +61,7 @@ Do what the `setup` items say is missing, in this order. Run each check locally 
 3. **Release notes** in the Fabrique format: `docs/release-notes.json`, newest first.
    - Move each past release into it (`version`, `date`, `heure`, `titre`, `changements` in plain words, `stories: []`, `liens: null`).
    - Add one entry for this onboarding, the next version. An entry without `heure` is not released yet. With no integration branch and no merge workflow (`workflows.fusionner`), date this entry as the last commit before the merge.
+   - This is temporary. La Fabrique is moving every project to one release-notes tool, the same file copied into each project (`kit/release-notes.js`, declared in `version.outil`). With it, a pull request writes its entry as `next`, the merge workflow numbers it, and the release-notes file is no longer a point of conflict between pull requests. Once it is there, the onboarding pull request copies the tool and the merge workflow instead of dating by hand.
    - Keep the README's "What's new" as a link to the file, not a copy.
 4. **The version served**, the same as the first released entry:
    - a server answers its version path (`/api/version`) with `{"numero": "0.3", "environnement": "production"}`;

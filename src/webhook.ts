@@ -1,3 +1,4 @@
+import { runnerRunEvent } from "./runner-runs";
 import { promotionRunEvent } from "./go";
 import { releaseRunEvent } from "./sprint-release";
 import { sprintRunFor } from "./sprint-run";
@@ -97,6 +98,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     if (payload.workflow_run) await reviewRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
     // A merge run: merged, or refused and why.
     if (payload.workflow_run) await mergeRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
+    // A run of Claude in the runner, counted (la-fabrique#418).
+    if (payload.workflow_run) await runnerRunEvent(env, project, payload.action ?? "", payload.workflow_run).catch(() => false);
     await productionChanged(env, project.repo);
     await deliveryChanged(env, project.repo);
     await inDevChanged(env, project.repo);

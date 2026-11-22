@@ -1,3 +1,4 @@
+import { decisionOf, recordDecision } from "./agent-requests";
 import { addDependency, projectLinks, DEPENDS } from "./card-dependencies";
 import { cardRef, cardUrl } from "./card-views";
 import {
@@ -164,6 +165,18 @@ export type ApplyOutcome = { ok: true; result: string; preview?: boolean } | { o
 // - overlap, conflict: a note on the epic.
 // Dismissing changes nothing but the finding.
 export async function applyFinding(db: D1Database, project: Project, epic: Card, login: string, index: number, dismiss: boolean): Promise<ApplyOutcome> {
+  const outcome = await settleFinding(db, project, epic, login, index, dismiss);
+  // The last finding dealt with: the review is decided (ADR 0006), kept as
+  // far as its findings were applied.
+  const findings = epic.data.review?.findings ?? [];
+  if (outcome.ok && findings.length && findings.every((finding, at) => at === index || finding.state !== "open")) {
+    const applied = findings.filter((finding, at) => (at === index ? !dismiss : finding.state === "applied")).length;
+    await recordDecision(db, { repo: project.repo, cardId: epic.id, capability: "epic_review", login, decision: decisionOf(applied, findings.length), details: { kept: applied, of: findings.length } });
+  }
+  return outcome;
+}
+
+async function settleFinding(db: D1Database, project: Project, epic: Card, login: string, index: number, dismiss: boolean): Promise<ApplyOutcome> {
   const review = epic.data.review;
   const finding = review?.findings[index];
   if (!review || !finding) return { ok: false, reason: "That finding is gone." };

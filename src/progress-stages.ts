@@ -26,6 +26,9 @@ export interface Progress {
   total: number;
   // All the counts, for the pill's title: "3 stories: 3 ready, 2 developed…".
   counts?: { ready: number; developed: number; validated: number; out: number; nice?: number };
+  // Stories to prepare: what the needed stories not ready yet lack, each
+  // reason with its stories ("not labelled ready: #249, #250").
+  lacking?: { reason: string; stories: number[] }[];
   // Once a story is out (la-fabrique#189): the versions that shipped the
   // card's stories, oldest first, and what is left: stories needed, and
   // nice to have.
@@ -80,6 +83,12 @@ export function progressPill(progress: Progress | null | undefined, since?: stri
   const breakdown = counts
     ? `${progress.total} stor${progress.total === 1 ? "y" : "ies"}${counts.nice ? ` (${counts.nice} nice to have)` : ""}: ${counts.ready} ready, ${counts.developed} developed, ${counts.validated} validated, ${counts.out} in production`
     : `${progress.total} stor${progress.total === 1 ? "y" : "ies"}`;
-  const title = `Status from the card's stories. ${breakdown}${since ? `. Since ${since.slice(0, 16).replace("T", " ")} UTC` : ""}.`;
+  const lacking = progress.lacking?.length ? `. Missing: ${escapeHtml(lackingText(progress.lacking))}` : "";
+  const title = `Status from the card's stories. ${breakdown}${lacking}${since ? `. Since ${since.slice(0, 16).replace("T", " ")} UTC` : ""}.`;
   return `<span class="pill card-${progress.stage}" title="${title}">${PROGRESS_LABELS[progress.stage]}${detail ? ` <span class="mono">${detail}</span>` : ""}</span>`;
+}
+
+// "not labelled ready: #249, #250; no priority: #251".
+export function lackingText(lacking: { reason: string; stories: number[] }[]): string {
+  return lacking.map((one) => `${one.reason}: ${one.stories.map((n) => `#${n}`).join(", ")}`).join("; ");
 }

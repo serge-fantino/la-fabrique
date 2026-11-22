@@ -1,6 +1,7 @@
+import { gaugeSvg } from "./charts";
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
-import { EDITOR_DEFAULT_BUTTON, storyBlocks, type StoryEditorData } from "./story-editor";
+import { EDITOR_DEFAULT_BUTTON, splitBar, storyBlocks, type StoryEditorData } from "./story-editor";
 import { warningsHtml, type DependencyWarning } from "./dependency-warnings";
 import { cardRef, cardUrl, statusPill } from "./card-views";
 import { jobLabel, type Job } from "./jobs";
@@ -106,7 +107,13 @@ export function releaseProgress(features: Card[], links: StoryCards, known: Map<
       : next.step === "answer" ? `${next.questions} question${next.questions === 1 ? "" : "s"} waiting`
       : next.step === "refine" ? "spec complete, no stories"
       : next.step === "approve" ? (next.validation.state === "outdated" ? `to validate again: ${next.validation.why.join(", ")}` : "not validated")
-      : `${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready`;
+      : (() => {
+          // Says what they lack: "not validated, 2 stories without the ready label".
+          const reasons = [...new Set(next.stories.flatMap((number) => known.get(number)?.missing ?? []))];
+          return reasons.length === 1 && reasons[0] === "not labelled ready"
+            ? `not validated (${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} to label ready, done by validating)`
+            : `${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready${reasons.length ? `: ${reasons.join(", ")}` : ""}`;
+        })();
     out.blockers.push({ card, reason });
   }
   return out;
@@ -147,7 +154,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     const missing = known?.stage === "backlog" ? known.missing : [];
     const fixes =
       data.canWrite && missing.includes("not labelled ready") && data.readyLabel
-        ? form(`${base}/refinement`, { action: "story_ready", story: number }, "Mark ready", `Mark #${number} ready`)
+        ? form(`${base}/refinement`, { action: "story_ready", story: number, card: card.id }, "Mark ready", `Mark #${number} ready`)
         : "";
     const stage = known ? (known.closed ? "Closed" : known.stage === "backlog" ? "Not ready" : (known.stage ?? "").replace("_", " ")) : "Not read yet";
     return `<li id="story-${card.id}-${number}"><a class="mono" href="https://github.com/${escapeHtml(project.repo)}/issues/${number}">#${number}</a> ${escapeHtml(known?.title ?? "")}${nice ? ' <span class="pill small">Nice to have</span>' : ""}
@@ -218,19 +225,59 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       case "refine": {
         const editor = data.editors?.get(card.id);
         if (editor && data.canWrite) {
-          return `<strong>Next:</strong> Claude proposed ${editor.split.stories.length} stor${editor.split.stories.length === 1 ? "y" : "ies"}: review them.
-            <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
+          const total = editor.split.stories.length;
+          // The feature, its status and its priority come with the bar once
+          // it sticks: the priority is changed there through its own form,
+          // outside the editor's.
+          const prioId = `prio-bar-${card.id}`;
+          const prioOptions = [...data.priorities, ""]
+            .map((value) => `<option value="${escapeHtml(value)}"${(card.priority ?? "") === value ? " selected" : ""}>${value ? escapeHtml(value) : "No priority"}</option>`)
+            .join("");
+          const prioForm = data.priorities.length ? `<form method="post" action="${escapeHtml(base)}/refinement" id="${prioId}" hidden>${csrfField(viewer)}${hidden({ action: "card_priority", card: card.id })}</form>` : "";
+          const prioField = data.priorities.length
+            ? `<select name="priority" form="${prioId}" class="split-bar-priority" aria-label="Priority of ${cardRef(card.id)} and its stories" title="Priority, for the card and its stories" data-autosubmit>${prioOptions}</select>`
+            : "";
+          const feature = `<a class="split-bar-feature-title" href="${escapeHtml(url)}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)} ${prioField}`;
+          return `${prioForm}<form method="post" action="${escapeHtml(url)}/stories" class="split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
+              <input type="hidden" name="back" value="${escapeHtml(`${base}/refinement`)}" />
+              ${splitBar(
+                `<strong>Next:</strong> Claude proposed ${total} stor${total === 1 ? "y" : "ies"}: review them.`,
+                `<button type="submit" class="button" name="action" value="create" data-split-create${editor.kept.size ? "" : " disabled"}>Create the checked stories on GitHub</button>
+                 <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>`,
+                total,
+                editor.kept.size,
+                feature,
+              )}
               ${storyBlocks({ ...editor, repo: project.repo, errors: {}, prefix: `r${card.id}-` })}
-              <div class="card-actions">
-                <button type="submit" class="button" name="action" value="create"${editor.kept.size ? "" : " disabled"}>Create the checked stories on GitHub</button>
-                <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>
-              </div>
             </form>`;
         }
         return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Then refine")}`;
       }
-      case "validate":
-        return `<strong>Next:</strong> <a class="button quiet small" href="${escapeHtml(url)}#stories">Validate</a> <span class="muted small">${next.stories.length} stor${next.stories.length === 1 ? "y" : "ies"} not ready</span>`;
+      case "validate": {
+        // In place, never another page. Stories that lack only their ready
+        // label: one gesture, Validate the feature, labels them ready for
+        // Claude then validates. Anything else they lack is said here.
+        const lacks = (number: number) => data.stories.get(number)?.missing ?? [];
+        const onlyLabel = (number: number) => lacks(number).length > 0 && lacks(number).every((reason) => reason === "not labelled ready");
+        const n = next.stories.length;
+        const numbers = (list: number[]) => list.map((number) => `#${number}`).join(", ");
+        if (data.canWrite && data.readyLabel && next.stories.every(onlyLabel)) {
+          return `<strong>Next:</strong> ${form(`${base}/refinement`, { action: "validate_ready", card: card.id }, "Validate the feature", `Validate ${cardRef(card.id)}: label ${numbers(next.stories)} ready for Claude, then validate`).replace('class="button quiet small"', 'class="button small"')}
+            <span class="muted small">Its stories are complete; validating labels ${numbers(next.stories)} <code>${escapeHtml(data.readyLabel)}</code> (ready for Claude).</span>`;
+        }
+        const byReason = new Map<string, number[]>();
+        for (const number of next.stories) for (const reason of lacks(number).length ? lacks(number) : ["not read yet"]) byReason.set(reason, [...(byReason.get(reason) ?? []), number]);
+        const labelable = data.canWrite && data.readyLabel ? next.stories.filter(onlyLabel) : [];
+        const mark = labelable.length
+          ? ` <form method="post" action="${escapeHtml(base)}/refinement" class="inline" data-busy="Marking…">${csrfField(viewer)}${hidden({ action: "story_ready", card: card.id })}${labelable
+              .map((number) => `<input type="hidden" name="story" value="${number}" />`)
+              .join("")}<button type="submit" class="button quiet small" aria-label="Mark ${numbers(labelable)} ready">Mark ${labelable.length === 1 ? `#${labelable[0]}` : `the ${labelable.length} stories`} ready</button></form>`
+          : "";
+        return `<strong>Next:</strong> ${n} stor${n === 1 ? "y" : "ies"} to complete before validating.
+          <ul class="plain small lacking">${[...byReason]
+            .map(([reason, list]) => `<li><span class="muted">${escapeHtml(reason)}:</span> ${numbers(list)}${reason === "no priority" && data.priorities.length ? ` <span class="muted">(set the card's priority above: its stories take it)</span>` : ""}</li>`)
+            .join("")}</ul>${mark}`;
+      }
       case "approve":
         return `<strong>Next:</strong> ${next.validation.state === "outdated" ? `<span class="muted small">Validated by @${escapeHtml(next.validation.by)}, but ${escapeHtml(next.validation.why.join(" and "))}.</span> ` : ""}${
           data.canWrite ? form(url, { action: "validate_feature", back: `${base}/refinement#card-${card.id}` }, "Validate the feature", `Validate ${cardRef(card.id)}`) : `<span class="muted small">Waiting for a Product Engineer to validate it.</span>`
@@ -268,7 +315,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
 
   const progress = releaseProgress(data.features, data.links, data.stories);
   const meter = (label: string, value: number, total: number, tip: string) =>
-    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> <span class="bar"><span style="width:${total ? Math.round((value / total) * 100) : 0}%"></span></span></div>`;
+    `<div class="release-meter" tabindex="0" role="group" aria-label="${escapeHtml(`${label}: ${value} of ${total}. ${tip}`)}" title="${escapeHtml(tip)}"><span class="muted small">${label}</span> <span class="mono">${value}/${total}</span> ${gaugeSvg(value, total, "release-gauge")}</div>`;
   const go = progress.features > 0 && progress.blockers.length === 0;
   const blockersList = progress.blockers.length
     ? `<ul class="plain">${progress.blockers.map((b) => `<li><a href="#card-${b.card.id}"><span class="mono">${cardRef(b.card.id)}</span> ${escapeHtml(b.card.title)}</a>: ${escapeHtml(b.reason)}</li>`).join("")}</ul>`
@@ -297,6 +344,11 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${meter("Ready", progress.ready, progress.features, "Features whose every needed story meets the Definition of Ready")}
       <p class="release-stories" tabindex="0" title="Stories of these features: needed ones hold the release back, nice to have ones never do"><span class="mono">${progress.needed + progress.nice}</span> stories: <span class="mono">${progress.needed}</span> needed, <span class="mono">${progress.nice}</span> nice to have</p>
       ${verdictAll}
+    </section>`;
+  // The document for the review before the sprint, and its share links:
+  // folded, under the status and the actions.
+  const preparation = `<details class="card refine-preparation" id="preparation">
+      <summary><strong>Preparation document</strong> <span class="muted small">and share links</span></summary>
       <form method="get" action="${escapeHtml(base)}/refinement/preparation" class="inline preparation-form">
         <label>Level of detail <select name="level">
           <option value="1">1 · Features and their specs</option>
@@ -307,7 +359,7 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
         <button type="submit" class="button quiet">Download the preparation document</button>
       </form>
       ${shareSection()}
-    </section>`;
+    </details>`;
   const sortUrl = `${base}/refinement`;
   const priority = (card: Card) =>
     data.priorities.length
@@ -335,7 +387,8 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
     return `<article class="card refinement-card" id="card-${card.id}"${sortable ? ` data-sort-id="${card.id}"` : ""}>
       <div class="refinement-head">
       ${sortable ? `<button type="button" class="sort-handle" data-sort-handle aria-label="Move ${cardRef(card.id)}: drag it, or use the up and down arrow keys" title="Drag to reorder">⠿</button>` : ""}
-      <h3>${tickable(card, next) ? `<input type="checkbox" form="refine-launch" name="card" value="${card.id}" data-refine-tick aria-label="Select ${cardRef(card.id)} for Claude's next step" /> ` : ""}<a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
+      ${tickable(card, next) ? `<input type="checkbox" class="refine-tick" form="refine-launch" name="card" value="${card.id}" data-refine-tick aria-label="Select ${cardRef(card.id)} for Claude's next step" />` : ""}
+      <h3><a href="${escapeHtml(cardUrl(project.repo, card.id))}"><span class="mono">${cardRef(card.id)}</span> ${escapeHtml(card.title)}</a> ${statusPill(card)}</h3>
       </div>
       <p>${priority(card)} ${order(card, index, total)}</p>
       <p class="muted">${escapeHtml(synopsisOf(card))}</p>
@@ -383,11 +436,19 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       ${notice(data.failure, "error")}
       <div data-refinement-live="${escapeHtml(base)}/refinement/live" hidden></div>
       <p class="muted">The features of <a href="${escapeHtml(base)}/board?by=release">Next release</a>, in priority order, and what each needs before the <a href="${escapeHtml(base)}/sprint">sprint</a>. Nothing is read from GitHub here: the stories are as La Fabrique last saw them.</p>
-      ${summary}
-      ${launch}
-      ${testsForm}
-      ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
-      ${apart}`,
+      <div class="refinement-layout">
+        <aside class="refinement-side" aria-label="Status and actions">
+          ${summary}
+          ${launch}
+          ${testsForm}
+          ${preparation}
+        </aside>
+        <div class="refinement-main">
+          <h2 class="refinement-main-title">Features <span class="mono muted small">${data.features.length}</span></h2>
+          ${data.features.length ? `<div class="refinement-cards"${data.canWrite && data.features.length > 1 ? ` data-sortable="card_order" data-sort-url="${escapeHtml(sortUrl)}" data-csrf="${escapeHtml(viewer.csrfToken)}"` : ""}>${data.features.map((card, index) => feature(card, index, data.features.length)).join("")}</div>` : `<p class="muted">No feature in Next release.</p>`}
+          ${apart}
+        </div>
+      </div>`,
     viewer,
     [],
     projectContext(project, false),

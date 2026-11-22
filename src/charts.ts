@@ -107,3 +107,19 @@ export function barChart(options: {
 
   return `<div class="chart-scroll"><svg class="chart" viewBox="0 0 ${WIDTH} ${height}" role="img" aria-label="${escape(options.label)}">${grid}${marks}</svg></div>`;
 }
+
+// A part of a bar in proportion to its count, without an inline style (the
+// pages' security policy allows none): a class among .grow-1 … .grow-24, the
+// counts scaled down when they add up to more.
+export const GROW_STEPS = 24;
+export function growClass(count: number, total: number): string {
+  const scaled = total > GROW_STEPS ? Math.round((count * GROW_STEPS) / total) : count;
+  return `grow-${Math.min(GROW_STEPS, Math.max(1, scaled))}`;
+}
+
+// A gauge: a track and its filled part, drawn in SVG so its width needs no
+// inline style.
+export function gaugeSvg(value: number, total: number, className = "gauge"): string {
+  const share = total > 0 ? Math.max(0, Math.min(1, value / total)) : 0;
+  return `<svg class="${className}" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="gauge-track" width="100" height="6" /><rect class="gauge-fill" width="${Math.round(share * 1000) / 10}" height="6" /></svg>`;
+}

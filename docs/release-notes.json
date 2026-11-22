@@ -12,12 +12,85 @@
   },
   {
     "version": "next",
+    "date": "2026-11-22",
+    "titre": "Claude's runs in a project, counted",
+    "changements": [
+      "The runs of Claude in a project (code a story, rework, update a pull request, review) are now counted when they end: tokens per model (new, read from cache, out) and what they would cost on the API, even on the subscription, shown per capability in the Capabilities tab, with what was really paid on an API key.",
+      "La Fabrique's own Claude and review workflows report their usage and keep their full transcript with the run, for 30 days."
+    ],
+    "stories": [418],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "Claude's proposals keep the decision taken on them",
+    "changements": [
+      "Each request to Claude in La Fabrique now records what it was asked for and the card as it was; the decision taken on what it proposed (stories, an epic's features, an epic's review) is kept with it and logged: kept, partly kept, or discarded.",
+      "When you discard proposed stories or features, you can say why: Claude reads it before proposing again, and does not propose again what you refused.",
+      "The Capabilities tab says, for each kind of proposal, how many were kept, partly kept, rejected, and how many wait."
+    ],
+    "stories": [415],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "Capabilities: what can be asked of Claude, in one place",
+    "changements": [
+      "A project's Capabilities tab, under Project, lists everything that can be asked of Claude, or of a person: what it does, where it runs (La Fabrique with its own key, the project's runner with its secrets), how it ends (waits for a decision, written at once, a report, a person's task), what it writes, who launches it, whether the project can run it now, and what La Fabrique's own have cost on the project. Claude connected to La Fabrique reads the same catalogue (capabilities)."
+    ],
+    "stories": [414],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-21",
     "titre": "A renamed epic keeps its features",
     "changements": [
       "Renaming an epic, from its page, through Claude (MCP) or by bringing back an older version, keeps all its features: each feature's Epic follows the new name, and so does a feature that depends on the epic."
     ],
     "stories": [409],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "Decisions: a project's ADRs in La Fabrique",
+    "changements": [
+      "A project's decisions (its ADRs, one file per decision in its repository) are now in a Decisions tab, under Project: their status, date and deciders, the cards and issues they serve, the decisions they name and those that name them; proposed decisions are said as waiting for a decider. La Fabrique finds them in docs/adr or docs/decisions, or in the folder .fabrique.json declares (decisions)."
+    ],
+    "stories": [411],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "The feature in the sticky bar, validation in one gesture",
+    "changements": [
+      "In the stories editor, the bar that stays at the top now carries the feature's title, status and priority (changed there), with a small shadow under it; on a phone it stays short. On Refinement, a feature whose stories lack only their ready label is validated in one gesture: Validate the feature labels them ready for Claude, then validates it, without leaving the page; when they lack something else, the card says what, by reason, and so does the status' bubble on the board."
+    ],
+    "stories": [416],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "The stories editor, easier to review",
+    "changements": [
+      "The stories Claude proposes are easier to review: each story folded to its title and context (Edit unfolds it), soft beige fields across the whole width, criteria dragged by their handle, removed by a cross or added with + Add a criterion, and the buttons in a bar that stays at the top while you scroll the stories. Creating them, or saving, keeps you on Refinement, the card in sight."
+    ],
+    "stories": [412],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "Refinement: true gauges and two columns",
+    "changements": [
+      "Refinement's gauges show the real share again (Specified, Refined, Ready), as do the epics' and the sprint list's bars; on a wide screen, the page has two columns: the features in the middle, the release's status and the actions on the right, the preparation document folded under them."
+    ],
+    "stories": [407],
     "liens": null
   },
   {

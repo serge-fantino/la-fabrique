@@ -161,7 +161,7 @@ export function readComponentJson(raw: string, id: string, folder: string, exist
 
 // The files of the repository at a commit, cached with the documentation
 // (one GitHub read per commit).
-async function repositoryFiles(env: Env, project: Project, branch: string | null, sha: string): Promise<Set<string>> {
+export async function repositoryFiles(env: Env, project: Project, branch: string | null, sha: string): Promise<Set<string>> {
   const path = ":tree";
   const cached = await env.DB.prepare("SELECT markdown FROM doc_cache WHERE repo = ? AND commit_sha = ? AND path = ?").bind(project.repo, sha, path).first<string>("markdown");
   if (cached !== null) return new Set(JSON.parse(cached) as string[]);
