@@ -150,6 +150,36 @@ jobs:
                {"summary": "two or three sentences for the author", "findings": [{"area": "<a focus area above>", "level": "bloquant" or "conseil", "file": "path or empty", "line": number or null, "text": "what is wrong and what to do, in one or two sentences"}]}
                Write in English. Then stop.
       # The review posted on GitHub, with the verdict La Fabrique reads.
+      # What the run cost (ADR 0004, la-fabrique#418): one notice "Claude usage", a JSON line La Fabrique reads when the run
+      # ends (tokens per model: input, output, cache writes, cache reads; turns, duration; subscription or API key, from
+      # Claude Code's own init message) and prices at the API's rates. The full transcript stays here, an artifact of the run.
+      - name: Usage
+        if: ${{ always() && steps.claude.outputs.execution_file != '' }}
+        env:
+          OUTPUT: ${{ steps.claude.outputs.execution_file }}
+          OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          [ -f "$OUTPUT" ] || exit 0
+          jq -c --arg oauth "$OAUTH" '
+            ([.[] | select(.type == "system" and .subtype == "init")][0].apiKeySource // "") as $source
+            | ([.[] | select(.type == "result")] | last // {}) as $r
+            | {v: 1,
+               auth: (if $source == "ANTHROPIC_API_KEY" then "api" elif $oauth == "true" then "subscription" else "api" end),
+               turns: ($r.num_turns // null), duration_ms: ($r.duration_ms // null), cost_usd: ($r.total_cost_usd // null),
+               models: (($r.modelUsage // {}) | with_entries(.value |= {input: (.inputTokens // 0), output: (.outputTokens // 0),
+                 cache_read: (.cacheReadInputTokens // 0), cache_write: (.cacheCreationInputTokens // 0), cost_usd: (.costUSD // null)}))}
+          ' "$OUTPUT" > "$RUNNER_TEMP/usage.json" || exit 0
+          echo "::notice title=Claude usage::$(cat "$RUNNER_TEMP/usage.json")"
+
+      - name: Transcript
+        if: ${{ always() && steps.claude.outputs.execution_file != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-transcript
+          path: ${{ steps.claude.outputs.execution_file }}
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: Review
         if: steps.pull.outputs.skip != 'true'
         env:

@@ -158,6 +158,36 @@ jobs:
             You have one turn: the run ends as soon as you stop, and nothing wakes you up again. Run every command in the foreground and wait for it (the full test suite takes a few minutes), never in the background; commit, push and open the pull request before you finish, even if something is left (say it in the pull request).
             Never push to main; touch neither secrets nor workflows.
 
+      # What the run cost (ADR 0004, la-fabrique#418): one notice "Claude usage", a JSON line La Fabrique reads when the run
+      # ends (tokens per model: input, output, cache writes, cache reads; turns, duration; subscription or API key, from
+      # Claude Code's own init message) and prices at the API's rates. The full transcript stays here, an artifact of the run.
+      - name: Usage
+        if: ${{ always() && steps.claude.outputs.execution_file != '' }}
+        env:
+          OUTPUT: ${{ steps.claude.outputs.execution_file }}
+          OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        run: |
+          [ -f "$OUTPUT" ] || exit 0
+          jq -c --arg oauth "$OAUTH" '
+            ([.[] | select(.type == "system" and .subtype == "init")][0].apiKeySource // "") as $source
+            | ([.[] | select(.type == "result")] | last // {}) as $r
+            | {v: 1,
+               auth: (if $source == "ANTHROPIC_API_KEY" then "api" elif $oauth == "true" then "subscription" else "api" end),
+               turns: ($r.num_turns // null), duration_ms: ($r.duration_ms // null), cost_usd: ($r.total_cost_usd // null),
+               models: (($r.modelUsage // {}) | with_entries(.value |= {input: (.inputTokens // 0), output: (.outputTokens // 0),
+                 cache_read: (.cacheReadInputTokens // 0), cache_write: (.cacheCreationInputTokens // 0), cost_usd: (.costUSD // null)}))}
+          ' "$OUTPUT" > "$RUNNER_TEMP/usage.json" || exit 0
+          echo "::notice title=Claude usage::$(cat "$RUNNER_TEMP/usage.json")"
+
+      - name: Transcript
+        if: ${{ always() && steps.claude.outputs.execution_file != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-transcript
+          path: ${{ steps.claude.outputs.execution_file }}
+          retention-days: 30
+          if-no-files-found: ignore
+
       # Claude finished without a change (la-fabrique#239): the branch it was given is empty. Say so on the issue, with
       # Claude's last words and the run's link; drop the empty branch, so the story is ready again rather than "in
       # development by hand"; and fail the run, so La Fabrique says why. Work left uncommitted or not pushed is

@@ -2,6 +2,17 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "Claude's runs in a project, counted",
+    "changements": [
+      "The runs of Claude in a project (code a story, rework, update a pull request, review) are now counted when they end: tokens per model (new, read from cache, out) and what they would cost on the API, even on the subscription, shown per capability in the Capabilities tab, with what was really paid on an API key.",
+      "La Fabrique's own Claude and review workflows report their usage and keep their full transcript with the run, for 30 days."
+    ],
+    "stories": [418],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "Claude's proposals keep the decision taken on them",
     "changements": [
       "Each request to Claude in La Fabrique now records what it was asked for and the card as it was; the decision taken on what it proposed (stories, an epic's features, an epic's review) is kept with it and logged: kept, partly kept, or discarded.",

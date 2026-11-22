@@ -1,3 +1,4 @@
+import type { RunnerUsage } from "./runner-runs";
 import { ROLE_LABELS, type Role } from "./accounts";
 import type { DecisionCounts } from "./agent-requests";
 import { ENDING_LABELS, PLACE_LABELS, PLACES, type Capability, type Usage } from "./capabilities";
@@ -30,7 +31,6 @@ function usageCell(capability: Capability, usage: Usage | undefined): string {
       average !== null ? ` <span class="muted small">(${escapeHtml(formatUsd(Math.round(average)))} each)</span>` : ""
     }${usage.unpriced ? ` <span class="muted small">${usage.unpriced} unpriced</span>` : ""}${usage.last ? `<br><span class="muted small">last on ${escapeHtml(usage.last.slice(0, 10))}</span>` : ""}`;
   }
-  if (capability.place === "runner") return `<span class="muted small">Counted from the agents' queue (epic F15)</span>`;
   return "";
 }
 
@@ -39,6 +39,28 @@ export interface CapabilityRow {
   available: { ok: boolean; reason: string };
   usage?: Usage;
   decisions?: DecisionCounts;
+  runs?: RunnerUsage;
+}
+
+// Thousands of tokens, short: "12.3k", "1.2M".
+function tokens(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
+}
+
+// The runs of a runner capability (ADR 0004 § 4): tokens, and what they
+// would cost on the API, even on the subscription.
+function runsCell(runs: RunnerUsage | undefined): string {
+  if (!runs) return `<span class="muted">No run yet</span>`;
+  const notCounted = runs.runs - runs.counted;
+  return `<span class="mono">${runs.runs}</span> run${runs.runs === 1 ? "" : "s"}${
+    runs.counted
+      ? ` · <span class="mono">${escapeHtml(formatUsd(runs.apiCostMicros))}</span> <span class="muted small">at API rates</span><br><span class="small">${tokens(runs.input + runs.cacheWrite)} new in, ${tokens(runs.cacheRead)} read from cache, ${tokens(runs.output)} out</span>${
+          runs.subscription ? `<br><span class="small">${runs.subscription === runs.counted ? "All" : runs.subscription} on the subscription${runs.realCostMicros ? `; paid on the API: <span class="mono">${escapeHtml(formatUsd(runs.realCostMicros))}</span>` : ""}</span>` : runs.realCostMicros ? `<br><span class="small">Paid on the API</span>` : ""
+        }`
+      : ""
+  }${notCounted ? `<br><span class="muted small">${notCounted} without reported usage (an older workflow)</span>` : ""}${runs.last ? `<br><span class="muted small">last on ${escapeHtml(runs.last.slice(0, 10))}</span>` : ""}`;
 }
 
 // How its proposals were decided (ADR 0006 § 3).
@@ -59,7 +81,7 @@ export function capabilitiesPage(viewer: Viewer, project: Project, rows: Capabil
     const own = rows.filter((row) => row.capability.place === place);
     if (!own.length) return "";
     const body = own
-      .map(({ capability, available, usage, decisions }) => {
+      .map(({ capability, available, usage, decisions, runs }) => {
         const writes = [...capability.writes.answer.map((line) => ({ line, when: "" })), ...capability.writes.decision.map((line) => ({ line, when: "Once decided: " }))];
         return `<tr id="${escapeHtml(capability.id)}"${capability.planned ? ' class="planned"' : ""}>
           <td><strong>${escapeHtml(capability.label)}</strong> <span class="mono muted small">${escapeHtml(capability.id)}</span>
@@ -68,7 +90,7 @@ export function capabilitiesPage(viewer: Viewer, project: Project, rows: Capabil
           <td><span class="pill ${ENDING_PILL[capability.ending]}">${ENDING_LABELS[capability.ending]}</span></td>
           <td class="small"><ul class="plain">${writes.map((entry) => `<li>${entry.when ? `<span class="muted">${entry.when}</span>` : ""}${escapeHtml(entry.line)}</li>`).join("") || "<li class=\"muted\">Nothing</li>"}</ul></td>
           <td class="small">${escapeHtml(who(capability))}</td>
-          <td class="small">${available.ok ? `<span class="pill ok small">${escapeHtml(available.reason)}</span>` : `<span class="pill small">${escapeHtml(available.reason)}</span>`}<br>${usageCell(capability, usage)}${decisionsCell(decisions)}</td>
+          <td class="small">${available.ok ? `<span class="pill ok small">${escapeHtml(available.reason)}</span>` : `<span class="pill small">${escapeHtml(available.reason)}</span>`}<br>${capability.place === "runner" && !capability.planned ? runsCell(runs) : usageCell(capability, usage)}${decisionsCell(decisions)}</td>
         </tr>`;
       })
       .join("");

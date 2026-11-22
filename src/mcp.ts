@@ -1,3 +1,4 @@
+import { runnerUsageOn } from "./runner-runs";
 import { availability, CAPABILITIES, usageOn } from "./capabilities";
 import { applyCardBackstage } from "./card-backstage";
 import { effectiveRole, type Role } from "./accounts";
@@ -328,18 +329,19 @@ const TOOLS: Tool[] = [
     write: false,
     async run(ctx, args) {
       const project = await projectOf(ctx, args);
-      const usage = await usageOn(ctx.env.DB, project.repo);
+      const [usage, runs] = await Promise.all([usageOn(ctx.env.DB, project.repo), runnerUsageOn(ctx.env.DB, project.repo)]);
       return {
         project: project.repo,
         capabilities: CAPABILITIES.map((capability) => {
           const used = usage.get(capability.id);
+          const ran = runs.get(capability.id);
           const available = availability(capability, project, ctx.env);
           return {
             id: capability.id,
             label: capability.label,
             does: capability.does,
             params: capability.params,
-            runs: capability.place,
+            runs_in: capability.place,
             ends: capability.ending,
             writes: capability.writes,
             right: capability.right,
@@ -348,6 +350,17 @@ const TOOLS: Tool[] = [
             available: available.ok,
             why: available.reason,
             usage: used ? { calls: used.calls, cost_usd: used.costMicros / 1_000_000, unpriced: used.unpriced, last: used.last } : null,
+            runs: ran
+              ? {
+                  runs: ran.runs,
+                  counted: ran.counted,
+                  on_subscription: ran.subscription,
+                  tokens: { new_in: ran.input + ran.cacheWrite, cache_read: ran.cacheRead, out: ran.output },
+                  api_equivalent_usd: ran.apiCostMicros / 1_000_000,
+                  paid_usd: ran.realCostMicros / 1_000_000,
+                  last: ran.last,
+                }
+              : null,
           };
         }),
       };
