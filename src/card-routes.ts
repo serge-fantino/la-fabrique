@@ -1466,7 +1466,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       priorities: cycleRules(project.check?.config).priorities,
       sprint: running ? { label: sprintLabel(running) } : null,
       shares: await listShareLinks(env.DB, project.repo),
-      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : notice === "stories_created" ? `${Number(params.get("created")) || 0} stor${Number(params.get("created")) === 1 ? "y" : "ies"} created on GitHub, each linked to its card.` : notice === "split_saved" ? "Your edits are saved." : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },
@@ -1861,6 +1861,11 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   }
 
   const action = String(form.get("action") ?? "");
+  // Sent from another page (Refinement): back there once done, the card
+  // in sight, with what happened.
+  const backRaw = String(form.get("back") ?? "");
+  const back = backRaw.startsWith(`${projectUrl(project.repo)}/`) && !backRaw.includes("?") && !backRaw.includes("#") ? backRaw : null;
+  const backTo = (query: string) => redirect(`${back}?${query}#card-${card.id}`);
   if (action === "discard") {
     await saveSplit(env.DB, card, viewer.login, null);
     return redirect(`${url}?notice=split_discarded#spec`);
@@ -1869,7 +1874,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   const rules = await projectRules(env.DB, project);
   if (action === "save") {
     await saveSplit(env.DB, card, viewer.login, edited.split);
-    return redirect(`${url}/stories?notice=saved`);
+    return back ? backTo("notice=split_saved") : redirect(`${url}/stories?notice=saved`);
   }
   // A move of a criterion, or a change of what is kept: the edits come
   // back as they are, the preview following them; nothing is saved.
@@ -1896,6 +1901,14 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
   }
   const review = edited.split.review;
   const show = { kept: edited.kept, commented: edited.commented };
+  if (back && ((!review && !edited.kept.length) || Object.keys(errors).length)) {
+    // Back on the page it came from, the edits kept, with what is missing.
+    await saveSplit(env.DB, card, viewer.login, edited.split);
+    const why = !edited.kept.length
+      ? "Keep at least one story, or discard the proposal."
+      : Object.entries(errors).map(([index, text]) => `Story ${Number(index) + 1}: ${text}`).join(" ");
+    return backTo(`failure=${encodeURIComponent(`Nothing sent to GitHub. ${why}`)}`);
+  }
   if (!review && !edited.kept.length) return page(edited.split, { ...show, error: "Keep at least one story, or discard the proposal.", status: 422 });
   if (Object.keys(errors).length) return page(edited.split, { ...show, errors, status: 422 });
   const silent = (review ?? []).filter((story) => edited.commented.includes(story.number) && !story.comment).map((story) => `#${story.number}`);
@@ -1916,7 +1929,9 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     const current = (await findCard(env.DB, project.repo, card.id)) ?? saved;
     await saveSplit(env.DB, current, viewer.login, left);
     const reason = outcome.reason === "signed_out" ? "GitHub no longer accepts your sign-in. Sign out and sign in again." : `GitHub refused ${what} (HTTP ${outcome.status ?? "?"}).`;
-    return redirect(`${url}/stories?notice=partial&created=${commented.length + created.length}&reason=${encodeURIComponent(reason)}`);
+    const done = commented.length + created.length;
+    if (back) return backTo(`failure=${encodeURIComponent(`${done} done on GitHub, then: ${reason} The rest is still proposed.`)}`);
+    return redirect(`${url}/stories?notice=partial&created=${done}&reason=${encodeURIComponent(reason)}`);
   };
   for (const story of review ?? []) {
     if (!edited.commented.includes(story.number)) continue;
@@ -1949,6 +1964,7 @@ export async function splitRoute(request: Request, env: Env, viewer: Viewer, pro
     }).run();
   }
   await advanceStatus(env.DB, project.repo, card.id, viewer.login, "validated", review ? "stories reviewed" : "stories made");
+  if (back) return backTo(`notice=stories_created&created=${created.length}`);
   return redirect(`${url}?notice=${review ? "reviewed" : "stories"}&created=${created.length}#stories`);
 }
 

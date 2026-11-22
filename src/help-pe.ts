@@ -31,7 +31,7 @@ const USE_CASES: UseCase[] = [
       { text: `Under <em>Claude asks</em>, at most five questions, each with its field. Answer what you can, ${b("Send my answers to Claude")}; it never asks twice. When it has enough for you, ${b("Enough questions")}.`, ref: "claude-spec#questions" },
       { text: `The card is <em>To validate</em>. Read the spec section by section. Something is wrong: ${b("Ask Claude for a change")}, in your words. It holds: ${b("Validate the feature")}.`, ref: "claude-spec#change" },
       { text: `${b("Split into stories with Claude")}. Each proposed story has its acceptance criteria; Claude marks some <em>nice to have</em>.`, ref: "stories#split" },
-      { text: `${b("Review and create the stories")}: in the editor, untick what you leave out, rewrite titles and sections, reorder the criteria (one per line, <em>When I…, I see…</em>), tick <em>Nice to have</em>. <em>What GitHub will receive</em> shows the result. ${b("Create the checked stories on GitHub")}.`, ref: "stories#editor" },
+      { text: `${b("Review and create the stories")}: in the editor, untick what you leave out, rewrite titles and sections, drag the criteria to reorder them (one per line, <em>When I…, I see…</em>), tick <em>Nice to have</em>. <em>What GitHub will receive</em> shows the result. ${b("Create the checked stories on GitHub")}.`, ref: "stories#editor" },
       { text: `When every story is ready, ${b("Validate the feature")}.`, ref: "refinement#validate" },
     ],
     after: "Each story is an issue on GitHub, signed with your login, with a permanent link to the exact version of the spec (“story 2 of 3”). The card lists them with their stage, and its status now follows them.",
@@ -529,14 +529,14 @@ const REFERENCE: RefPage[] = [
       {
         id: "editor",
         title: "The stories editor",
-        body: `<p>Each proposed story is a block:</p>
+        body: `<p>Each proposed story is one line, folded: its box (untick it to leave the story out), its title and its context. ${b("Edit")} unfolds it; ${b("Unfold all")} opens them all.</p>
           <ul>
-            <li><em>Create this story</em> (untick to leave it out) and <em>Nice to have</em> (its priority one level below the card's);</li>
+            <li><em>Nice to have</em> (its priority one level below the card's);</li>
             <li><em>Title</em>, then each of the project's sections in a field that grows with its text;</li>
-            <li>the criteria one per line: ↑, ↓, <em>Remove</em>, <em>Add a criterion</em>;</li>
+            <li>the criteria one per line: drag one by its handle (or the arrow keys on it) to reorder, × to remove, ${b("+ Add a criterion")};</li>
             <li><em>What GitHub will receive</em>, as it will read.</li>
           </ul>
-          <p>${b("Save my edits")} keeps them for later; ${b("Discard the proposal")} drops it. ${b("Create the checked stories on GitHub")} creates them in your name; if GitHub fails part-way, what is done is said and the rest stays here.</p>`,
+          <p>The buttons are in the bar at the top, which stays in sight while you scroll through the stories, with how many are checked. ${b("Save my edits")} keeps them for later; ${b("Discard the proposal")} drops it (on the card's page). ${b("Create the checked stories on GitHub")} creates them in your name and brings you back where you were: on Refinement, the same page, the card in sight. If GitHub fails part-way, what is done is said and the rest stays proposed.</p>`,
       },
       {
         id: "one-story",

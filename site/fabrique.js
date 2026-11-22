@@ -112,6 +112,149 @@
     navMenu()?.querySelector("[data-nav-toggle]")?.focus();
   });
 
+  // The story editor (Claude's proposal): criteria dragged by their handle
+  // or moved with the arrow keys, removed by their cross, added by "+ Add a
+  // criterion", all in the page (the form sends them in their order); the
+  // folded title follows the field; the count of checked stories and the
+  // create button follow the boxes. Without this script, the buttons ask
+  // the server.
+  const criterionRow = (list) => {
+    const story = list.getAttribute("data-story") || "0";
+    const row = document.createElement("li");
+    row.className = "criterion";
+    row.setAttribute("data-crit", "");
+    const grip = document.createElement("button");
+    grip.type = "button";
+    grip.className = "crit-grip";
+    grip.setAttribute("data-crit-grip", "");
+    grip.setAttribute("aria-label", "Move this criterion: drag it, or use the up and down arrow keys");
+    grip.textContent = "⠿";
+    const field = document.createElement("textarea");
+    field.name = `c_${story}`;
+    field.rows = 1;
+    field.className = "soft-field";
+    field.setAttribute("data-grow", "");
+    field.setAttribute("aria-label", "New criterion");
+    const tools = document.createElement("span");
+    tools.className = "criterion-tools";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "button quiet small crit-del";
+    remove.setAttribute("data-crit-del", "");
+    remove.setAttribute("aria-label", "Remove this criterion");
+    remove.textContent = "×";
+    tools.append(remove);
+    row.append(grip, field, tools);
+    return row;
+  };
+  const splitCount = (form) => {
+    if (!form) return;
+    const boxes = [...form.querySelectorAll("[data-split-keep]")];
+    const kept = boxes.filter((box) => box.checked).length;
+    const count = form.querySelector("[data-split-count]");
+    if (count) count.textContent = `${kept} of ${boxes.length} checked`;
+    const create = form.querySelector("[data-split-create]");
+    if (create) create.disabled = kept === 0;
+  };
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const del = target?.closest("[data-crit-del]");
+    if (del && del.closest("[data-criteria]")) {
+      event.preventDefault();
+      const row = del.closest("[data-crit]");
+      const next = row?.nextElementSibling || row?.previousElementSibling;
+      row?.remove();
+      next?.querySelector("textarea")?.focus();
+      return;
+    }
+    const add = target?.closest("[data-crit-add]");
+    if (add) {
+      const list = add.parentElement?.querySelector("[data-criteria]");
+      if (!list) return;
+      event.preventDefault();
+      const row = criterionRow(list);
+      list.append(row);
+      row.querySelector("textarea")?.focus();
+      return;
+    }
+    const all = target?.closest("[data-split-all]");
+    if (all) {
+      const bodies = [...(all.closest("form")?.querySelectorAll("[data-split-body]") || [])];
+      const open = !bodies.every((body) => body.open);
+      bodies.forEach((body) => (body.open = open));
+      all.textContent = open ? "Fold all" : "Unfold all";
+    }
+  });
+  document.addEventListener("input", (event) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement) || !field.hasAttribute("data-split-title")) return;
+    const shown = field.closest("[data-split-story]")?.querySelector("[data-split-title-text]");
+    if (shown) shown.textContent = field.value.trim() || "Untitled";
+  });
+  document.addEventListener("change", (event) => {
+    const box = event.target;
+    if (!(box instanceof HTMLInputElement)) return;
+    const story = box.closest("[data-split-story]");
+    if (box.hasAttribute("data-split-keep")) {
+      story?.classList.toggle("left-out", !box.checked);
+      splitCount(box.form);
+    }
+    if (box.hasAttribute("data-split-nice")) {
+      const pill = story?.querySelector("[data-split-nice-pill]");
+      if (pill) pill.hidden = !box.checked;
+    }
+  });
+  // Enter in a field of the editor does not send it (its default button
+  // reloads the proposal, on another page).
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.closest(".split-form") && event.target.type !== "checkbox") event.preventDefault();
+  });
+  // A story unfolded: its fields take the height of their text.
+  document.addEventListener(
+    "toggle",
+    (event) => {
+      if (event.target instanceof HTMLDetailsElement && event.target.open) event.target.querySelectorAll("textarea[data-grow]").forEach((field) => grow(field));
+    },
+    true,
+  );
+  let critDrag = null;
+  document.addEventListener("pointerdown", (event) => {
+    const grip = event.target instanceof Element ? event.target.closest("[data-crit-grip]") : null;
+    if (!grip || event.button !== 0) return;
+    const row = grip.closest("[data-crit]");
+    if (!row) return;
+    event.preventDefault();
+    critDrag = { row, list: row.parentElement };
+    row.classList.add("sorting");
+  });
+  document.addEventListener("pointermove", (event) => {
+    if (!critDrag) return;
+    event.preventDefault();
+    let node = document.elementFromPoint(event.clientX, event.clientY);
+    while (node && node.parentElement !== critDrag.list) node = node.parentElement;
+    if (!node || node === critDrag.row) return;
+    const box = node.getBoundingClientRect();
+    critDrag.list.insertBefore(critDrag.row, event.clientY > box.top + box.height / 2 ? node.nextSibling : node);
+  });
+  const endCritDrag = () => {
+    if (!critDrag) return;
+    critDrag.row.classList.remove("sorting");
+    critDrag = null;
+  };
+  document.addEventListener("pointerup", endCritDrag);
+  document.addEventListener("pointercancel", endCritDrag);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const grip = event.target instanceof Element ? event.target.closest("[data-crit-grip]") : null;
+    const row = grip?.closest("[data-crit]");
+    if (!row) return;
+    event.preventDefault();
+    const other = event.key === "ArrowUp" ? row.previousElementSibling : row.nextElementSibling;
+    if (!other) return;
+    row.parentElement.insertBefore(row, event.key === "ArrowUp" ? other : other.nextSibling);
+    grip.focus();
+  });
+
   // A criterion ticked in To test: at once on the page, sent in the
   // background, one after another (each tick rewrites the issue's text: two
   // at once would undo each other); GitHub's answer confirms it, or the tick
@@ -812,6 +955,7 @@
 
   // What each page needs once it is shown.
   function setUp() {
+    document.querySelectorAll("[data-split-all]").forEach((button) => (button.hidden = false));
     setUpUnfold();
     setUpSprintMode();
     setUpKeptAnswers();
