@@ -39,6 +39,7 @@ export const BREAK_LABELS: Record<BreakKind, string> = {
 };
 
 export interface LoopEvent {
+  id: number;
   story: number;
   runId: number;
   phase: Phase;
@@ -50,13 +51,18 @@ export interface LoopEvent {
   breakKind: BreakKind | null;
   breakReason: string | null;
   at: string;
+  // A break answered by a person (C186).
+  answeredBy: string | null;
+  answeredAt: string | null;
 }
+
+export type ReadEvent = Omit<LoopEvent, "id" | "story" | "runId" | "at" | "answeredBy" | "answeredAt">;
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const count = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 1_000_000 ? value : null);
 
 // The body of an event, checked: the event, or what is wrong.
-export function readEvent(raw: unknown): { event: Omit<LoopEvent, "story" | "runId" | "at"> } | { errors: string[] } {
+export function readEvent(raw: unknown): { event: ReadEvent } | { errors: string[] } {
   if (!isObject(raw)) return { errors: ["The body must be a JSON object."] };
   const errors: string[] = [];
   const phase = raw["phase"];
@@ -173,7 +179,9 @@ export async function receiveLoopEvent(request: Request, env: Env): Promise<Resp
   return json({ ok: true }, { status: 201 });
 }
 
-interface EventRow {
+export interface EventRow {
+  id: number;
+  repo: string;
   story: number;
   run_id: number;
   phase: string;
@@ -185,6 +193,8 @@ interface EventRow {
   break_kind: string | null;
   break_reason: string | null;
   at: string;
+  answered_by?: string | null;
+  answered_at?: string | null;
 }
 
 function parse<T>(text: string | null): T | null {
@@ -196,8 +206,9 @@ function parse<T>(text: string | null): T | null {
   }
 }
 
-function toEvent(row: EventRow): LoopEvent {
+export function toEvent(row: EventRow): LoopEvent {
   return {
+    id: row.id,
     story: row.story,
     runId: row.run_id,
     phase: row.phase as Phase,
@@ -209,6 +220,8 @@ function toEvent(row: EventRow): LoopEvent {
     breakKind: row.break_kind as BreakKind | null,
     breakReason: row.break_reason,
     at: row.at,
+    answeredBy: row.answered_by ?? null,
+    answeredAt: row.answered_at ?? null,
   };
 }
 

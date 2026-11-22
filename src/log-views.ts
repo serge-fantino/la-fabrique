@@ -207,6 +207,10 @@ export function describe(entry: LogEntry, repo: string): string {
       return "saw the sprint's run over: every card's stories merged";
     case "sprint_run_waiting":
       return "saw the sprint's run wait for a person: a card stopped";
+    case "loop_break":
+      return `saw Claude stop on ${story}: ${text(d["reason"])}`;
+    case "loop_break_answered":
+      return `answered Claude's stop on ${story}${d["relaunched"] === true ? " and relaunched Claude" : ""}: ${text(d["text"])}${typeof d["comment"] === "string" && d["comment"].startsWith("https://github.com/") ? ` <a href="${escapeHtml(d["comment"])}">On GitHub</a>` : ""}`;
     case "mcp_write":
       return `did <span class="mono">${text(d["tool"])}</span> through ${text(d["app"]) || "Claude"} (MCP)`;
     case "card_value_added":

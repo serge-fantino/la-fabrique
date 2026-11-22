@@ -5498,3 +5498,14 @@ ol.loop li {
 ol.loop li.loop-break {
   color: var(--alerte, #8a2a0f);
 }
+
+/* Claude stopped on a story, waiting for a person (C186, la-fabrique#431). */
+section.loop-stop {
+  border-left: 4px solid var(--alerte, #8a2a0f);
+  padding: 0.25rem 0 0.25rem 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+section.loop-stop textarea {
+  width: 100%;
+}

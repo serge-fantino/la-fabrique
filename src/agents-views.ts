@@ -4,6 +4,8 @@ import { cardUrl } from "./card-views";
 import type { AgentState, AgentsView, AgentTask } from "./agents";
 import { RECENT_DAYS } from "./agents";
 import { formatUsd } from "./llm";
+import { BREAK_OWNERS, type OpenBreak } from "./loop-breaks";
+import { BREAK_LABELS } from "./loop-events";
 import { projectUrl } from "./urls";
 import { escapeHtml, layout, type Viewer } from "./views";
 
@@ -89,10 +91,30 @@ function table(tasks: AgentTask[], columns: "active" | "decision" | "ended", emp
   return `<table class="table agents"><thead><tr>${head}</tr></thead><tbody>${tasks.map((task) => row(task, columns)).join("")}</tbody></table>`;
 }
 
+// The loop's stops waiting for a person (C186): what stopped Claude, who
+// answers, and the story's page where they do.
+function breaksTable(breaks: OpenBreak[]): string {
+  if (!breaks.length) return `<p class="muted">No stop waits for a person.</p>`;
+  return `<table class="table agents"><thead><tr><th>Project</th><th>Story</th><th>Why Claude stopped</th><th>Since</th><th>Who answers</th><th></th></tr></thead><tbody>${breaks
+    .map((brk) => {
+      const kind = brk.breakKind ?? "code";
+      return `<tr>
+      <td class="small"><a href="${escapeHtml(projectUrl(brk.repo))}">${escapeHtml(brk.repo)}</a></td>
+      <td><a class="mono" href="https://github.com/${escapeHtml(brk.repo)}/issues/${brk.story}">#${brk.story}</a></td>
+      <td><span class="pill alert small">${escapeHtml(BREAK_LABELS[kind])}</span><br><span class="small">${escapeHtml(brk.breakReason ?? "")}</span></td>
+      <td>${when(brk.at)}</td>
+      <td class="small">${escapeHtml(BREAK_OWNERS[kind].who)}</td>
+      <td class="small"><a class="button small" href="${escapeHtml(`${projectUrl(brk.repo)}/sprint/stories/${brk.story}#stop`)}">Answer</a></td>
+    </tr>`;
+    })
+    .join("")}</tbody></table>`;
+}
+
 export function agentsPage(viewer: Viewer, data: AgentsView, filters: AgentFilters): string {
   const keep = (task: AgentTask) => (!filters.project || task.repo.toLowerCase() === filters.project.toLowerCase()) && (!filters.capability || task.capability === filters.capability);
   const active = data.active.filter(keep);
   const decisions = data.decisions.filter(keep);
+  const breaks = data.breaks.filter((brk) => (!filters.project || brk.repo.toLowerCase() === filters.project.toLowerCase()) && (!filters.capability || ["code", "rework", "update", "story_loop"].includes(filters.capability)));
   const ended = data.ended.filter(keep);
   const budgets = data.budgets.filter((entry) => !filters.project || entry.repo.toLowerCase() === filters.project.toLowerCase());
   const form = `<form method="get" action="/agents" class="filters agents-filters">
@@ -118,6 +140,9 @@ export function agentsPage(viewer: Viewer, data: AgentsView, filters: AgentFilte
       <section id="decisions"><h2>Waiting for a decision <span class="muted small">(${decisions.length})</span></h2>
         <p class="muted small">Claude's proposals are applied only once a person keeps them: a Product Engineer and above decides on stories, features and an epic's review.</p>
         ${table(decisions, "decision", "No proposal waits for a decision.")}</section>
+      <section id="stops"><h2>Claude stopped, waiting for a person <span class="muted small">(${breaks.length})</span></h2>
+        <p class="muted small">Each stop goes to the role that can unblock it: a decision or a doubt on the spec to a Product Engineer, tests, code or the review to a tech lead. Their answer goes on the issue, and Claude resumes with it.</p>
+        ${breaksTable(breaks)}</section>
       <section id="ended"><h2>Ended these last ${RECENT_DAYS} days <span class="muted small">(${ended.length})</span></h2>${table(ended, "ended", "Nothing ended these last days.")}</section>
       <section id="months"><h2>This month, per project</h2>${months}</section>`,
     viewer,

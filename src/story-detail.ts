@@ -1,4 +1,5 @@
-import { loopHtml } from "./loop-views";
+import { breakHtml, loopHtml } from "./loop-views";
+import { openBreakOf } from "./loop-breaks";
 import { storyLoop, type LoopEvent } from "./loop-events";
 import { recordedCriteria, type Recorded } from "./gherkin";
 import { scenarioBlock } from "./gherkin-views";
@@ -125,7 +126,7 @@ const FEATURE_FAILURES: Record<string, string> = {
   nothing: "No criterion was recorded for this story yet.",
 };
 
-export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryDetail, feature: { pull?: number; failed?: string } = {}): string {
+export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryDetail, feature: { pull?: number; failed?: string; message?: { text: string; kind: "ok" | "error" } } = {}): string {
   const base = projectUrl(project.repo);
   const github = `https://github.com/${escapeHtml(project.repo)}`;
   const state = detail.state;
@@ -189,6 +190,8 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
         detail.cards.length ? ` <span class="muted small">from ${detail.cards.map((card) => `<a class="mono" href="${escapeHtml(cardUrl(project.repo, card.id))}">${cardRef(card.id)}</a> ${escapeHtml(card.title)}`).join(", ")}</span>` : ""
       }</p>
       <section class="story-detail">
+        ${feature.message ? notice(feature.message.text, feature.message.kind) : ""}
+        ${breakHtml(viewer, base, detail.number, openBreakOf(detail.loop ?? []))}
         <h2>Steps</h2>
         <ol class="story-steps">${timeline}</ol>
         <h2>Acceptance criteria <span class="muted mono">${criteria.filter((criterion) => criterion.done).length}/${criteria.length}</span></h2>

@@ -1,5 +1,6 @@
+import { BREAK_OWNERS, canAnswer } from "./loop-breaks";
 import { BREAK_LABELS, PHASE_LABELS, type LoopEvent } from "./loop-events";
-import { escapeHtml } from "./views";
+import { csrfField, escapeHtml, type Viewer } from "./views";
 
 // The loop of a story on its page (ADR 0003, la-fabrique#424): each run's
 // phases in order, with their numbers, and the break that stopped it.
@@ -23,7 +24,9 @@ export function loopHtml(events: LoopEvent[]): string {
         .map((event) => {
           const label = PHASE_LABELS[event.phase] ?? event.phase;
           const head = `<span class="mono small">${escapeHtml(event.at.slice(11, 16))}</span> <strong>${escapeHtml(label)}</strong>${event.iteration > 1 ? ` <span class="pill small">${event.iteration}</span>` : ""}`;
-          const brk = event.phase === "break" && event.breakKind ? ` <span class="pill alert small">${escapeHtml(BREAK_LABELS[event.breakKind])}</span><br>${escapeHtml(event.breakReason ?? "")}` : "";
+          const brk = event.phase === "break" && event.breakKind ? ` <span class="pill alert small">${escapeHtml(BREAK_LABELS[event.breakKind])}</span><br>${escapeHtml(event.breakReason ?? "")}${
+                  event.answeredAt ? `<br><span class="small">Answered by @${escapeHtml(event.answeredBy ?? "")} on ${escapeHtml(event.answeredAt.slice(0, 16).replace("T", " "))}</span>` : ""
+                }` : "";
           return `<li class="loop-${escapeHtml(event.phase)}">${head}${numbers(event)}${brk}${event.summary ? `<br><span class="small">${escapeHtml(event.summary)}</span>` : ""}</li>`;
         })
         .join("");
@@ -31,4 +34,29 @@ export function loopHtml(events: LoopEvent[]): string {
     })
     .join("");
   return `<h2>The loop</h2>${blocks}`;
+}
+
+// A story's open break, as a task (C186): what stopped Claude, who answers,
+// and for them the form that answers it and relaunches Claude.
+export function breakHtml(viewer: Viewer, base: string, story: number, brk: LoopEvent | null): string {
+  if (!brk?.breakKind) return "";
+  const owner = BREAK_OWNERS[brk.breakKind];
+  const head = `<h2 id="stop">Claude stopped <span class="pill alert small">${escapeHtml(BREAK_LABELS[brk.breakKind])}</span></h2>
+      <p>${escapeHtml(brk.breakReason ?? "")} <span class="muted small mono">${escapeHtml(brk.at.slice(0, 16).replace("T", " "))} UTC, run ${brk.runId}</span></p>`;
+  if (!canAnswer(viewer.role, brk.breakKind)) {
+    return `<section class="loop-stop">${head}<p class="muted">Waits for ${escapeHtml(owner.who)}.</p></section>`;
+  }
+  return `<section class="loop-stop">${head}
+      <form method="post" action="${escapeHtml(base)}/sprint/stories/${story}" data-busy="Sending…">
+        ${csrfField(viewer)}
+        <input type="hidden" name="action" value="answer_break" />
+        <input type="hidden" name="event" value="${brk.id}" />
+        <label for="break-answer">Your answer <span class="muted small">${escapeHtml(owner.hint)} It goes on the issue in your name, and Claude reads it when it resumes.</span></label>
+        <textarea id="break-answer" name="answer" rows="5" required maxlength="4000"></textarea>
+        <p class="actions">
+          <button type="submit" name="relaunch" value="1" class="button claude">Answer and relaunch Claude</button>
+          <button type="submit" name="relaunch" value="0" class="button quiet">Answer only</button>
+        </p>
+      </form>
+    </section>`;
 }

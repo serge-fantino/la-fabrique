@@ -1,3 +1,4 @@
+import { openBreaks, type OpenBreak } from "./loop-breaks";
 import { lastPhases, PHASE_LABELS } from "./loop-events";
 import { CAPABILITIES, capability } from "./capabilities";
 import { budgetState, type BudgetState } from "./claude-budget";
@@ -39,6 +40,8 @@ export interface AgentTask {
 export interface AgentsView {
   active: AgentTask[];
   decisions: AgentTask[];
+  // The loop's breaks no one answered yet (C186), the oldest first.
+  breaks: OpenBreak[];
   ended: AgentTask[];
   budgets: { repo: string; name: string; budget: BudgetState }[];
   repos: string[];
@@ -138,7 +141,7 @@ const JOB_SELECT =`SELECT j.id, j.repo, j.card_id, j.kind, j.status, j.capabilit
 // decision, what ended these last days; and each project's month.
 export async function loadAgents(env: Env, now: Date = new Date()): Promise<AgentsView> {
   const recent = new Date(now.getTime() - RECENT_DAYS * 24 * 3600 * 1000).toISOString();
-  const [activeJobs, decidingJobs, endedJobs, activeRuns, endedRuns, projects] = await Promise.all([
+  const [activeJobs, decidingJobs, endedJobs, activeRuns, endedRuns, projects, breaks] = await Promise.all([
     env.DB.prepare(`${JOB_SELECT} WHERE j.status IN ('waiting', 'queued', 'running') ORDER BY j.id`).all<JobRow>(),
     env.DB.prepare(`${JOB_SELECT} WHERE j.status = 'done' AND j.decision IS NULL AND j.capability IN (${DECIDED.map(() => "?").join(", ")}) ORDER BY j.id`)
       .bind(...DECIDED)
@@ -147,6 +150,7 @@ export async function loadAgents(env: Env, now: Date = new Date()): Promise<Agen
     env.DB.prepare("SELECT * FROM runner_runs WHERE status <> 'completed' ORDER BY started_at").all<RunRow>(),
     env.DB.prepare("SELECT * FROM runner_runs WHERE status = 'completed' AND finished_at >= ? ORDER BY finished_at DESC LIMIT 200").bind(recent).all<RunRow>(),
     listProjects(env.DB),
+    openBreaks(env.DB),
   ]);
   const deciding = new Set(decidingJobs.results.map((row) => row.id));
   const phases = await lastPhases(env.DB, activeRuns.results.map((row) => row.run_id));
@@ -162,6 +166,7 @@ export async function loadAgents(env: Env, now: Date = new Date()): Promise<Agen
       }),
     ],
     decisions,
+    breaks,
     ended,
     budgets,
     repos: projects.map((project) => project.repo),

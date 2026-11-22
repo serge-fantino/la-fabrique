@@ -559,6 +559,11 @@ const REFERENCE: RefPage[] = [
         body: `<p>Where a story is, read from GitHub: backlog, ready, in development (a branch or an open pull request), merged and <em>To validate</em>, on test, validated, in production. Each story has its page in the sprint: its steps, criteria, pull requests, Claude's runs and history.</p>`,
       },
       {
+        id: "stopped",
+        title: "When Claude stops",
+        body: `<p>Claude's run on a story goes through its phases (the story's page, <em>The loop</em>). When it cannot finish, it stops and says why: a decision to take, a doubt on the spec, tests that will not pass, a change past its limits, a review that still blocks, a usage limit. The stop goes to the person who can unblock it: a decision or a doubt on the spec to a Product Engineer and above, the others to a tech lead and above. It is on the story's page (<em>Claude stopped</em>) and in Agents.</p><p>Write your answer, then ${b("Answer and relaunch Claude")} or ${b("Answer only")}: it goes on the issue in your name and in the project's log, and Claude resumes the story with it. A stop is answered once, by a person.</p>`,
+      },
+      {
         id: "linking",
         title: "Linking a story to a card",
         body: `<p>A story made from a card is linked to it. An issue that names a card (“C5”) without being linked is proposed on the card (<em>Stories that name C5</em>) and in To test: ${b("Link to C5")}. Nothing is linked by itself.</p>`,

@@ -5,6 +5,7 @@ import { epicFeatures as featuresOfEpic, epicProgress, type EpicProgress } from 
 import { readSnapshot } from "./snapshots";
 import { STORIES, type Story } from "./stories";
 import { loadStoryDetail, storyDetailPage } from "./story-detail";
+import { answerBreak } from "./loop-breaks";
 import { goSummary, lastGo } from "./go";
 import { loadProduction } from "./production";
 import { goSection } from "./production-views";
@@ -2105,17 +2106,36 @@ export async function cardRoute(
   // A story's detail, from the sprint: its steps, pull requests, runs, history.
   const storyPath = /^sprint\/stories\/(\d{1,9})$/.exec(path);
   if (storyPath) {
-    if (method !== "GET") return notAllowed();
-    const [{ view, cookies }, detail] = await Promise.all([projectView(request, env, project, viewer), loadStoryDetail(env, project, Number(storyPath[1]))]);
-    const params = new URL(request.url).searchParams;
-    const pull = Number(params.get("feature"));
-    return html(
-      storyDetailPage(viewer, view, detail, {
-        ...(Number.isInteger(pull) && pull > 0 ? { pull } : {}),
-        ...(params.get("feature_failed") ? { failed: params.get("feature_failed") ?? "" } : {}),
-      }),
-      { cookies },
-    );
+    const number = Number(storyPath[1]);
+    const page = `${projectUrl(project.repo)}/sprint/stories/${number}`;
+    const show = async (message?: { text: string; kind: "ok" | "error" }, status = 200) => {
+      const [{ view, cookies }, detail] = await Promise.all([projectView(request, env, project, viewer), loadStoryDetail(env, project, number)]);
+      const params = new URL(request.url).searchParams;
+      const pull = Number(params.get("feature"));
+      const answered = params.get("answered");
+      const shown =
+        message ?? (answered === "relaunched" ? { text: "Your answer is on the issue, and Claude is relaunched on the story.", kind: "ok" as const } : answered === "1" ? { text: "Your answer is on the issue. Claude reads it when it is relaunched.", kind: "ok" as const } : undefined);
+      return html(
+        storyDetailPage(viewer, view, detail, {
+          ...(Number.isInteger(pull) && pull > 0 ? { pull } : {}),
+          ...(params.get("feature_failed") ? { failed: params.get("feature_failed") ?? "" } : {}),
+          ...(shown ? { message: shown } : {}),
+        }),
+        { cookies, status },
+      );
+    };
+    if (method === "GET") return show();
+    // Claude's stop answered by the person it waits for (C186).
+    if (method === "POST") {
+      return withForm(async (data) => {
+        if (String(data.get("action") ?? "") !== "answer_break") return redirect(page);
+        const outcome = await answerBreak(env, project, viewer, number, Number(data.get("event")), String(data.get("answer") ?? ""), data.get("relaunch") === "1");
+        if (!outcome.ok) return show({ text: outcome.message, kind: "error" }, outcome.status);
+        if (outcome.notice) return show({ text: outcome.notice, kind: "error" }, 409);
+        return redirect(`${page}?answered=${outcome.relaunched ? "relaunched" : "1"}`);
+      });
+    }
+    return notAllowed();
   }
   if (path === "sprint") {
     if (method === "GET") return sprintRoute(request, env, viewer, project, null);

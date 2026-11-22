@@ -28,6 +28,10 @@ const WORDS = {
     viaClaude: (login: string) => `Testé par Claude via le serveur MCP de La Fabrique extraordinaire, au nom de @${login}.`,
     feedbackPage: "Page :",
     feedbackRework: "La story repasse en développement jusqu'à ce que son code tienne compte de ce retour (La Fabrique extraordinaire).",
+    breakAnswer: (login: string, kind: string) => `**Réponse à l'arrêt de Claude** (${kind}), de @${login} depuis La Fabrique extraordinaire`,
+    breakKinds: { decision: "une décision à prendre", spec: "un doute sur la spec", tests: "des tests qui ne passent pas", code: "une limite du code", review: "la revue bloque encore", quota: "limite d'usage atteinte" },
+    breakWas: "Claude s'était arrêté :",
+    breakResume: "Claude reprend la story avec cette réponse quand il est relancé (La Fabrique extraordinaire).",
     criterionFails: (index: number, story: number) => `Le critère ${index} de #${story} échoue :`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude lancé sur cette demande par @${login} depuis La Fabrique extraordinaire${url ? ` : ${url}` : "."}`,
@@ -86,6 +90,10 @@ const WORDS = {
     viaClaude: (login: string) => `Tested by Claude through La Fabrique extraordinaire's MCP server, in @${login}'s name.`,
     feedbackPage: "Page:",
     feedbackRework: "The story goes back to development until its code takes this feedback into account (La Fabrique extraordinaire).",
+    breakAnswer: (login: string, kind: string) => `**Answer to Claude's stop** (${kind}), from @${login} through La Fabrique extraordinaire`,
+    breakKinds: { decision: "a decision to take", spec: "a doubt on the spec", tests: "tests that will not pass", code: "past a limit of the code", review: "the review still blocks", quota: "usage limit reached" },
+    breakWas: "Claude stopped:",
+    breakResume: "Claude resumes the story with this answer when it is relaunched (La Fabrique extraordinaire).",
     criterionFails: (index: number, story: number) => `Criterion ${index} of #${story} fails:`,
     claudeLaunched: (login: string, url: string | null) =>
       `Claude launched on this story by @${login} from La Fabrique extraordinaire${url ? `: ${url}` : "."}`,

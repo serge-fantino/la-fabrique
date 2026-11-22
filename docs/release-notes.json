@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "When Claude stops, the right person is asked",
+    "changements": [
+      "When Claude stops on a story, the right person is asked: a decision or a doubt on the spec to a Product Engineer, tests, code or the review to a tech lead. The stop is on the story's page (Claude stopped) and in Agents; they answer there with Answer and relaunch Claude or Answer only, the answer goes on the issue in their name and in the project's log, and Claude resumes the story with it."
+    ],
+    "stories": [431],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "The loop of a story, phase by phase",
     "changements": [
       "Claude's work on a story now shows its phases as they happen, on the story's page (The loop: plan, tests first, code, review, fix, checks, delivery, with their numbers) and in Agents (the phase a running run is at); when Claude stops without finishing, it says why (a decision to take, a doubt on the spec, tests that will not pass, a change past its limits), and the stop is in the project's log."
