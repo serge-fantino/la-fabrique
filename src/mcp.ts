@@ -1126,7 +1126,7 @@ const TOOLS: Tool[] = [
       const project = await projectOf(ctx, args);
       const number = integer(args, "story");
       if (!canLaunchClaude(ctx.role)) fail("Launching Claude is for tech leads and super admins.");
-      const outcome = await launchClaude(ctx.env, project, ctx.login, number);
+      const outcome = await launchClaude(ctx.env, project, ctx.login, number, { byHand: true });
       return outcome.ok ? { launched: number, sprint: absolute(ctx, `${projectUrl(project.repo)}/sprint`) } : fail(outcome.message);
     },
   },

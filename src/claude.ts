@@ -1,3 +1,4 @@
+import { budgetRefusal, budgetState } from "./claude-budget";
 import { can } from "./rights";
 import type { Role } from "./accounts";
 import { activityStatement } from "./activity-log";
@@ -68,10 +69,15 @@ export type LaunchOutcome = { ok: true; running: number } | { ok: false; message
 // of runs at once, who launched it in the log and on the issue.
 // `rework` (la-fabrique#202): the story was tested and has feedbacks; Claude
 // changes its code on a new branch of the same story, by a person's choice.
-export async function launchClaude(env: Env, project: Project, login: string, number: number, options: { rework?: boolean } = {}): Promise<LaunchOutcome> {
+// `byHand` (la-fabrique#421): a tech lead or the super admin launches it
+// themselves, past the month's budget too; the sprint's run and a relaunch
+// are refused once it is spent.
+export async function launchClaude(env: Env, project: Project, login: string, number: number, options: { rework?: boolean; byHand?: boolean } = {}): Promise<LaunchOutcome> {
   const file = claudeWorkflow(project);
   if (!file) return { ok: false, message: "This project declares no Claude workflow (workflows.claude).", status: 422 };
   const repo = project.repo;
+  const budget = await budgetState(env, project);
+  if (budget.level === "over" && !options.byHand) return { ok: false, message: budgetRefusal(budget), status: 409 };
   try {
     const token = await installationToken(env, project.installationId);
     const runs = await githubJson<{ workflow_runs: RestRun[] }>(token, `/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/runs?per_page=30`);
@@ -115,7 +121,7 @@ export async function launchClaude(env: Env, project: Project, login: string, nu
       action: options.rework ? "story_rework_launched" : "claude_launched",
       repo,
       issueNumber: number,
-      details: { workflow: file, running: running + 1, cap },
+      details: { workflow: file, running: running + 1, cap, ...(budget.level === "over" ? { past_budget: true } : {}) },
     }).run();
     await env.DB.prepare("DELETE FROM snapshots WHERE repo = ? AND kind = ?").bind(repo, CLAUDE_RUNS).run();
     return { ok: true, running: running + 1 };

@@ -1,3 +1,4 @@
+import type { BudgetState } from "./claude-budget";
 import type { RunnerUsage } from "./runner-runs";
 import { ROLE_LABELS, type Role } from "./accounts";
 import type { DecisionCounts } from "./agent-requests";
@@ -75,7 +76,26 @@ function decisionsCell(counts: DecisionCounts | undefined): string {
   return parts.length ? `<br><span class="small">Proposals: ${parts.join(" · ")}</span>` : "";
 }
 
-export function capabilitiesPage(viewer: Viewer, project: Project, rows: CapabilityRow[]): string {
+// Where the month stands (la-fabrique#421): what Claude has cost on the
+// project since the first, at the API's rates, against its budget.
+export function budgetHtml(budget: BudgetState): string {
+  const spent = `<span class="mono">${escapeHtml(formatUsd(budget.spentMicros))}</span>`;
+  const since = escapeHtml(budget.since.slice(0, 10));
+  if (budget.budgetUsd === null || budget.share === null) {
+    return `<p class="budget">This month (since ${since}): ${spent} at API rates. No monthly budget: <code>claude.budget</code> in <code>.fabrique.json</code> sets one.</p>`;
+  }
+  const share = Math.round(budget.share * 100);
+  const of = `${spent} of <span class="mono">$${escapeHtml(String(budget.budgetUsd))}</span> (${share} %)`;
+  if (budget.level === "over") {
+    return `<p class="notice error budget" role="status">This month's budget is spent: ${of} at API rates, since ${since}. Nothing is launched by itself any more (the sprint's run, a relaunch); a tech lead can still launch Claude by hand.</p>`;
+  }
+  if (budget.level === "warn") {
+    return `<p class="notice budget" role="status">This month: ${of} of the budget at API rates, since ${since}. Past 100 %, nothing is launched by itself any more.</p>`;
+  }
+  return `<p class="budget">This month (since ${since}): ${of} of the budget, at API rates.</p>`;
+}
+
+export function capabilitiesPage(viewer: Viewer, project: Project, rows: CapabilityRow[], budget?: BudgetState): string {
   const name = project.check?.config?.nom || project.repo;
   const section = (place: (typeof PLACES)[number]) => {
     const own = rows.filter((row) => row.capability.place === place);
@@ -103,6 +123,7 @@ export function capabilitiesPage(viewer: Viewer, project: Project, rows: Capabil
   return layout(
     `Capabilities · ${name} · La Fabrique extraordinaire`,
     `${projectHeader(project, "capabilities")}
+      ${budget ? budgetHtml(budget) : ""}
       <p class="lead">Everything that can be asked of Claude, or of a person, on this project, in one place: where it runs, how it ends, what it writes, who may launch it, and what it has cost here. A request that waits for a decision is never applied before a person keeps it; what is written at once keeps its earlier state, to restore.</p>
       <p class="muted small">How a request ends: ${(["decision", "pose", "report", "person"] as const).map((ending) => `<span class="pill ${ENDING_PILL[ending]} small">${ENDING_LABELS[ending]}</span>`).join(" ")} · La Fabrique's ADR 0006</p>
       ${PLACES.map(section).join("")}`,

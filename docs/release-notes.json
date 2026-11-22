@@ -2,6 +2,36 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "The loop of a story, phase by phase",
+    "changements": [
+      "Claude's work on a story now shows its phases as they happen, on the story's page (The loop: plan, tests first, code, review, fix, checks, delivery, with their numbers) and in Agents (the phase a running run is at); when Claude stops without finishing, it says why (a decision to take, a doubt on the spec, tests that will not pass, a change past its limits), and the stop is in the project's log."
+    ],
+    "stories": [424],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "The Agents page",
+    "changements": [
+      "A new Agents page (in the header, for a tech lead and the super admin) shows, across projects, what Claude is doing in La Fabrique and in the projects' runners: what runs or waits its turn, what waits for a decision and where it is decided, what ended these last 7 days with its cost and tokens (a link to the run keeps its transcript), and each project's month against its budget; filtered by project and capability."
+    ],
+    "stories": [422],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "A monthly budget for Claude",
+    "changements": [
+      "A project can set a monthly budget for Claude, in dollars at the API's rates (claude.budget in .fabrique.json): the Capabilities tab says what the month has cost so far and warns at 80 %; past the budget, nothing is launched by itself any more (the sprint that runs by itself, a relaunch), while a tech lead can still launch Claude by hand."
+    ],
+    "stories": [421],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "One release-notes tool for every project",
     "changements": [
       "La Fabrique's release-notes tool is served for the projects to copy (/kit/release-notes.js, guide at /guide/release-notes-kit): at each merge it rebuilds the release notes from the target branch's with the pull request's entries on top, kept next into production or numbered without time into an integration branch, so two pull requests never conflict on that file again; it also makes the release of a sprint.",

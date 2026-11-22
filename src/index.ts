@@ -1,3 +1,6 @@
+import { isLoopRoute, receiveLoopEvent } from "./loop-events";
+import { showAgents } from "./agents-routes";
+import { can } from "./rights";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { effectiveRole } from "./accounts";
 import { APPS_PATH, changeApps, showApps } from "./apps";
@@ -106,6 +109,9 @@ const app = {
 
     if (isAsset(pathname)) return method === "GET" || method === "HEAD" ? serveAsset(request, pathname) : methodNotAllowed();
     if (isKitFile(pathname)) return method === "GET" || method === "HEAD" ? serveKitFile(pathname) : methodNotAllowed();
+
+    // A project's runner reports the loop of a story, signed by GitHub (la-fabrique#424).
+    if (isLoopRoute(pathname)) return method === "POST" ? receiveLoopEvent(request, env) : methodNotAllowed();
 
     switch (pathname) {
       case "/favicon.svg":
@@ -479,6 +485,13 @@ const app = {
         if (!viewer) return redirect("/");
         if (method !== "GET") return methodNotAllowed();
         return html(whatsNewPage(viewer, ownReleases(), await selfRepo(env.DB, new URL(request.url).origin)));
+      }
+
+      case "/agents": {
+        if (!viewer) return redirect("/");
+        if (!can(viewer.role, "launch_claude")) return forbidden(viewer);
+        if (method !== "GET") return methodNotAllowed();
+        return showAgents(request, env, viewer);
       }
 
       case "/people": {

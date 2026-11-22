@@ -28,7 +28,9 @@ export interface FabriqueConfig {
   // labels, highest first.
   cycle?: { pret?: ReadyCheck[]; priorites?: string[] };
   // Claude launched from La Fabrique: how many runs at once, at most.
-  claude?: { plafond?: number };
+  // `budget`: dollars per month at the API's rates (ADR 0004 § 5,
+  // la-fabrique#421); past it, nothing is launched by itself.
+  claude?: { plafond?: number; budget?: number };
   // The project's own app, connected to La Fabrique to report defects:
   // its name on the consent page, the path it comes back to on each
   // environment with `signalement`, and its local address in development.
@@ -343,10 +345,13 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
   const claude = parsed["claude"];
   if (claude !== undefined) {
     const plafond = isObject(claude) ? claude["plafond"] : undefined;
+    const budget = isObject(claude) ? claude["budget"] : undefined;
     if (!isObject(claude) || (plafond !== undefined && !(Number.isInteger(plafond) && (plafond as number) >= 1 && (plafond as number) <= 10))) {
       errors.push("`claude.plafond` must be a whole number from 1 to 10.");
+    } else if (budget !== undefined && !(typeof budget === "number" && Number.isFinite(budget) && budget > 0 && budget <= 100_000)) {
+      errors.push("`claude.budget` must be dollars per month, at the API's rates: a number above 0, 100000 at most.");
     } else {
-      config.claude = plafond === undefined ? {} : { plafond: plafond as number };
+      config.claude = { ...(plafond === undefined ? {} : { plafond: plafond as number }), ...(budget === undefined ? {} : { budget: budget as number }) };
     }
   }
 
