@@ -81,7 +81,9 @@ describe("The Refinement tab", () => {
     expect(page).toContain(">Specify</button>");
     expect(page).toContain("Claude asks");
     expect(page).toContain(">Then refine</button>");
-    expect(page).toContain(">Validate</a>");
+    // Not ready: marked ready in place, never a trip to another page.
+    expect(page).not.toContain(">Validate</a>");
+    expect(page).toContain('aria-label="Mark #21 ready">Mark #21 ready</button>');
     expect(page).toContain("Not ready (not labelled ready)");
     expect(page).toContain('aria-label="Mark #21 ready">Mark ready</button>');
     expect(page).not.toContain("Elsewhere");
@@ -96,8 +98,8 @@ describe("The Refinement tab", () => {
     gh.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
     gh.intercept({ method: "POST", path: `/repos/${REPO}/issues/21/labels` }).reply(200, "[]", JSON_HEADERS);
     gh.intercept({ path: `/repos/${REPO}/issues/21` }).reply(200, JSON.stringify({ number: 21, title: "Choose the week", state: "open", html_url: "", user: null, labels: [{ name: "prete-pour-claude" }], created_at: "", updated_at: "", closed_at: null, body: "## Acceptance criteria\n- [ ] Works" }), JSON_HEADERS);
-    const done = await post(`/projects/${REPO}/refinement`, { csrf, action: "story_ready", story: "21" }, cookie);
-    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement?notice=ready`);
+    const done = await post(`/projects/${REPO}/refinement`, { csrf, action: "story_ready", story: "21", card: String(fourth) }, cookie);
+    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement?notice=ready&n=1#card-${fourth}`);
     expect((await logActions()).map((entry) => entry.action)).toContain("story_marked_ready");
   });
 });

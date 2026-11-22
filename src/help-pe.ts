@@ -99,7 +99,7 @@ const USE_CASES: UseCase[] = [
     steps: [
       { text: (h) => `On ${h.app("/refinement", "Refinement")}, the features whose next step is <em>Validate</em> are ready for you.`, ref: "refinement#page" },
       { text: `In each card, review Claude's proposed stories in the editor: keep, rewrite, mark <em>nice to have</em>, create them on GitHub.`, ref: "stories#editor" },
-      { text: `A story says it is not ready: ${b("Mark ready")} on its line, or complete it on GitHub.`, ref: "stories#ready" },
+      { text: `A story says it is not ready: ${b("Mark ready")} on its line, or, for all of them at once, ${b("Mark the N stories ready")} in the card's next step; what else one lacks (criteria, priority) is said on its line. You stay on Refinement.`, ref: "stories#ready" },
       { text: `${b("Validate the feature")}, in the card. It shows <em>Ready for the sprint</em>.`, ref: "refinement#validate" },
       { text: `Watch the meters: Features, Specified, Refined, Ready, and the stories, needed and nice to have.`, ref: "refinement#progress" },
     ],
