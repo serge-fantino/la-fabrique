@@ -2666,50 +2666,6 @@ form[data-criterion][aria-busy="true"]::after {
   min-height: 44px;
 }
 
-.split-story {
-  margin: 0 0 1.25rem;
-  padding: 0.9rem 1.1rem;
-  border: 1px solid var(--rule);
-  border-radius: 16px;
-  background: #fff;
-}
-
-.split-story.invalid {
-  border-color: color-mix(in srgb, var(--alerte) 50%, transparent);
-}
-
-.split-story details summary {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-  color: var(--accent);
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.split-story details[open] summary {
-  color: var(--encre);
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.split-keep {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  font-weight: 600;
-}
-
-.split-keep input {
-  width: 1.2rem;
-  height: 1.2rem;
-}
-
-.split-story textarea {
-  width: 100%;
-}
 
 .card-stories {
   list-style: none;
@@ -3494,49 +3450,6 @@ pre.gherkin {
 .job-state.failed { color: var(--alert, #8a2a0f); }
 .job-state.failed .claude-job-dot { animation: none; background: var(--alert, #8a2a0f); }
 .refine-launch .over { color: var(--alert, #8a2a0f); }
-
-/* The story editor (la-fabrique#228). */
-.split-story textarea[data-grow] {
-  field-sizing: content;
-  min-height: 2.75rem;
-  resize: vertical;
-}
-
-.split-story.left-out {
-  opacity: 0.75;
-  background: transparent;
-}
-
-.split-flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 1.5rem;
-}
-
-.criteria-list {
-  list-style: decimal;
-  padding-left: 1.5rem;
-  margin: 0.4rem 0;
-}
-
-/* A criterion in the story editor (not To test's button, which has the
-   same class: its text stays beside its box). */
-li.criterion {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.4rem;
-  margin-bottom: 0.4rem;
-}
-
-.criterion textarea {
-  flex: 1 1 18rem;
-}
-
-.criterion-tools {
-  display: flex;
-  gap: 0.25rem;
-}
 
 /* Refinement: one white card per feature, the drag handle beside its title (la-fabrique#223). */
 .refinement-cards {
@@ -5185,6 +5098,291 @@ a.tag-link:focus-visible {
 .grow-22 { flex: 22 1 0; }
 .grow-23 { flex: 23 1 0; }
 .grow-24 { flex: 24 1 0; }
+
+/* The story editor (la-fabrique#228): the whole width, no frame in a
+   frame; each story folded to its title and context; soft beige fields;
+   the bar with the buttons stays at the top while the stories scroll by. */
+.split-form {
+  max-width: none;
+  margin: 0.75rem 0 0;
+}
+
+.split-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0 -0.5rem 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(24, 33, 27, 0.08);
+}
+
+.split-bar-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+  margin: 0;
+}
+
+.split-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.js .split-toggle-all[hidden] {
+  display: inline-flex;
+}
+
+@media (max-width: 900px) {
+  .split-bar {
+    top: 3.6rem;
+  }
+}
+
+.split-story {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0 0.5rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.split-keep-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.split-keep-box input,
+.split-nice-box input {
+  width: 1.2rem;
+  height: 1.2rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.split-body > summary {
+  list-style: none;
+  display: grid;
+  gap: 0.15rem;
+  min-height: 44px;
+  padding: 0.55rem 0;
+  cursor: pointer;
+}
+
+.split-body > summary::-webkit-details-marker {
+  display: none;
+}
+
+.split-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
+}
+
+.split-title {
+  font-weight: 600;
+}
+
+.split-context {
+  color: var(--encre-faint);
+  font-size: 0.94rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.split-body[open] .split-context {
+  display: none;
+}
+
+.split-unfold {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.split-body:not([open]) .when-open,
+.split-body[open] .when-closed {
+  display: none;
+}
+
+.split-out,
+.split-nice[hidden] {
+  display: none;
+}
+
+.split-story.left-out .split-out {
+  display: inline-flex;
+}
+
+.split-story.left-out .split-body > summary {
+  opacity: 0.55;
+}
+
+.split-story.left-out .split-title {
+  text-decoration: line-through;
+}
+
+.split-story.invalid .split-title {
+  color: var(--alerte);
+}
+
+.split-fields {
+  padding: 0.25rem 0 0.75rem;
+}
+
+.split-fields .field {
+  margin: 0 0 1rem;
+}
+
+.split-nice-box {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  margin: 0 0 0.5rem;
+}
+
+.split-preview > summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--accent);
+}
+
+/* A field one writes in: beige, no hard border, white once focused. */
+.soft-field,
+.field .soft-field {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--fond);
+  color: var(--encre);
+  font: inherit;
+  font-family: "Archivo", system-ui, sans-serif;
+  line-height: 1.5;
+  resize: none;
+  field-sizing: content;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.soft-field:hover {
+  border-color: color-mix(in srgb, var(--encre) 14%, transparent);
+}
+
+.soft-field:focus {
+  outline: none;
+  background: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* The acceptance criteria: a handle, the text, a cross; "+ Add" below. */
+.criteria-list {
+  list-style: none;
+  margin: 0.4rem 0 0.6rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+li.criterion {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.crit-grip {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--encre-faint);
+  cursor: grab;
+  touch-action: none;
+}
+
+.js .crit-grip {
+  display: inline-flex;
+}
+
+.crit-grip:hover,
+.crit-grip:focus-visible {
+  background: var(--fond);
+}
+
+.criterion-tools {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.js .criterion-tools .crit-move {
+  display: none;
+}
+
+.crit-del {
+  min-width: 44px;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--encre-faint);
+}
+
+.crit-del:hover,
+.crit-del:focus-visible {
+  color: var(--alerte);
+  background: #fbe9e3;
+}
+
+.button.crit-add {
+  width: 100%;
+  justify-content: center;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.button.crit-add:hover,
+.button.crit-add:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+li.criterion.sorting {
+  opacity: 0.7;
+}
+
+/* After a review: the comment on each story to change, no frame. */
+.split-reviewed {
+  margin: 0;
+  padding: 0.5rem 0 0.75rem;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
 
 /* The Capabilities tab (ADR 0006, epic F15). */
 .capabilities-place h2 {

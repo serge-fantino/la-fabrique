@@ -1,7 +1,7 @@
 import { gaugeSvg } from "./charts";
 import { isNice, type StoryCards } from "./card-groups";
 import type { CardStory } from "./card-stories";
-import { EDITOR_DEFAULT_BUTTON, storyBlocks, type StoryEditorData } from "./story-editor";
+import { EDITOR_DEFAULT_BUTTON, splitBar, storyBlocks, type StoryEditorData } from "./story-editor";
 import { warningsHtml, type DependencyWarning } from "./dependency-warnings";
 import { cardRef, cardUrl, statusPill } from "./card-views";
 import { jobLabel, type Job } from "./jobs";
@@ -219,13 +219,17 @@ export function refinementPage(viewer: Viewer, project: Project, data: Refinemen
       case "refine": {
         const editor = data.editors?.get(card.id);
         if (editor && data.canWrite) {
-          return `<strong>Next:</strong> Claude proposed ${editor.split.stories.length} stor${editor.split.stories.length === 1 ? "y" : "ies"}: review them.
-            <form method="post" action="${escapeHtml(url)}/stories" class="request-form split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
+          const total = editor.split.stories.length;
+          return `<form method="post" action="${escapeHtml(url)}/stories" class="split-form" data-busy="Sending…">${csrfField(viewer)}${EDITOR_DEFAULT_BUTTON}
+              <input type="hidden" name="back" value="${escapeHtml(`${base}/refinement`)}" />
+              ${splitBar(
+                `<strong>Next:</strong> Claude proposed ${total} stor${total === 1 ? "y" : "ies"}: review them.`,
+                `<button type="submit" class="button" name="action" value="create" data-split-create${editor.kept.size ? "" : " disabled"}>Create the checked stories on GitHub</button>
+                 <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>`,
+                total,
+                editor.kept.size,
+              )}
               ${storyBlocks({ ...editor, repo: project.repo, errors: {}, prefix: `r${card.id}-` })}
-              <div class="card-actions">
-                <button type="submit" class="button" name="action" value="create"${editor.kept.size ? "" : " disabled"}>Create the checked stories on GitHub</button>
-                <button type="submit" class="button quiet" name="action" value="save">Save my edits</button>
-              </div>
             </form>`;
         }
         return `<strong>Next:</strong> spec complete, no stories. ${claude("spec_split", "Then refine")}`;

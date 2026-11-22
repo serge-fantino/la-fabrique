@@ -11,6 +11,8 @@ import { CONFIG, connect, me, REPO } from "./oauth-helpers";
 const PROD_URL = "https://widget.example.com";
 const J = { headers: { "content-type": "application/json" } };
 const SCOPES = "defects:report stories:test";
+// The tests that connect an app first (connect: register, consent, token).
+const OAUTH_TIMEOUT = 20_000;
 
 beforeAll(() => {
   fetchMock.activate();
@@ -90,7 +92,9 @@ describe("Who may report from an environment (la-fabrique#209)", () => {
     }, J);
     expect((await report(tokens.access_token, "production")).status).toBe(201);
     expect(labels).toEqual(["bug"]);
-  });
+    // A whole OAuth connection, then six calls: about 2.5 s here, past the
+    // default 5 s on the merge workflow's slower runners (seen twice).
+  }, OAUTH_TIMEOUT);
 });
 
 describe("Testing on the test environment, even production (la-fabrique#210)", () => {
@@ -106,5 +110,5 @@ describe("Testing on the test environment, even production (la-fabrique#210)", (
       [150, false],
       [151, true],
     ]);
-  });
+  }, OAUTH_TIMEOUT);
 });
