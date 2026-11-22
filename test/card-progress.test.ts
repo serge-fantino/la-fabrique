@@ -55,6 +55,17 @@ describe("A card's progress, from its stories", () => {
     expect(three).toMatchObject({ stage: "to_test", done: 3, total: 3, counts: { nice: 1 } });
     expect(progressOf(CARD, links([1], [1]), stories({ 1: "in_dev" }), NONE, null)).toMatchObject({ stage: "in_dev", done: 0, total: 1 });
     expect(progressOf(CARD, links([]), stories({}), NONE, null)).toBeNull();
+    // Stories to prepare: what the needed ones lack, by reason, for the pill's title.
+    const known = stories({ 1: "backlog", 2: "backlog", 3: "ready" });
+    known.get(1)!.missing = ["not labelled ready"];
+    known.get(2)!.missing = ["no priority", "not labelled ready"];
+    expect(progressOf(CARD, links([1, 2, 3]), known, NONE, null)).toMatchObject({
+      stage: "to_prepare",
+      lacking: [
+        { reason: "not labelled ready", stories: [1, 2] },
+        { reason: "no priority", stories: [2] },
+      ],
+    });
   });
 });
 

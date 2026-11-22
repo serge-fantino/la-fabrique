@@ -42,7 +42,7 @@ import { epicDependenciesSection, type EpicDependencies } from "./epic-dependenc
 import type { RefinementCounts } from "./to-refinement";
 import { epicProgressSection, epicProgressSummary, type EpicProgress } from "./epic-progress";
 import type { EpicIssueView } from "./epic-issue";
-import { isProgressStage, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
+import { isProgressStage, lackingText, PROGRESS_LABELS, progressDetail, progressPill, shippedNote, type Progress } from "./progress-stages";
 import { storyStatus } from "./stories-views";
 import { formatUsd, type CallRow, type Spend } from "./llm";
 import { epicActions, epicHistoryHtml, epicStatusPill } from "./epics-views";
@@ -983,7 +983,9 @@ function validationHtml(viewer: Viewer, url: string, data: CardPageData): string
       ? `<p><span class="pill ok">Validated</span> by <span class="mono">${who(v.by)}</span> on <span class="mono">${formatDate(v.at)}</span>.</p>`
       : v.state === "outdated"
         ? `<p><span class="pill alert">To validate again</span> Validated by <span class="mono">${who(v.by)}</span> on <span class="mono">${formatDate(v.at)}</span>, but ${escapeHtml(v.why.join(" and "))}. ${button}</p>`
-        : `<p><span class="pill">Not validated</span> ${data.canValidate ? `Its stories are ready. ${button}` : `<span class="muted">It can be validated once its spec is complete and all its stories are ready.</span>`}</p>`;
+        : `<p><span class="pill">Not validated</span> ${data.canValidate ? `Its stories are ready. ${button}` : `<span class="muted">It can be validated once its spec is complete and all its stories are ready${data.progress?.lacking?.length ? `. Missing: ${escapeHtml(lackingText(data.progress.lacking))}` : ""}.${
+          data.card.release === NEXT_RELEASE && data.progress?.lacking?.every((one) => one.reason === "not labelled ready") ? ` On <a href="${escapeHtml(projectUrl(data.card.repo))}/refinement#card-${data.card.id}">Refinement</a>, Validate the feature labels them ready and validates it.` : ""
+        }</span>`}</p>`;
   return `<section class="card-validation" id="validation"><h2>Validation</h2>${body}</section>`;
 }
 

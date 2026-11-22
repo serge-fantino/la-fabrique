@@ -204,6 +204,25 @@
       if (pill) pill.hidden = !box.checked;
     }
   });
+  // The editor's bar, stuck at the top: marked so it shows the feature
+  // (title, status, priority) it would otherwise leave behind.
+  let stuckFrame = 0;
+  const markStuck = () => {
+    stuckFrame = 0;
+    for (const bar of document.querySelectorAll("[data-split-bar]")) {
+      const form = bar.parentElement;
+      if (!form) continue;
+      bar.classList.toggle("is-stuck", form.getBoundingClientRect().top < bar.getBoundingClientRect().top - 2);
+    }
+  };
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!stuckFrame) stuckFrame = requestAnimationFrame(markStuck);
+    },
+    { passive: true },
+  );
+  window.addEventListener("resize", markStuck);
   // Enter in a field of the editor does not send it (its default button
   // reloads the proposal, on another page).
   document.addEventListener("keydown", (event) => {

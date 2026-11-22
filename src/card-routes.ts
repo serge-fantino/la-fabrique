@@ -1408,14 +1408,48 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       await advanceStatus(env.DB, project.repo, found.id, viewer.login, "shaping", "Claude asked");
       return redirect(`${base}?notice=launched&n=1${here}`);
     }
+    // One gesture when the stories lack only their ready label: they are
+    // labelled ready for Claude, then the feature is validated.
+    if (action === "validate_ready") {
+      const cardId = Number(form.get("card"));
+      const found = Number.isInteger(cardId) && cardId > 0 ? await findCard(env.DB, project.repo, cardId) : null;
+      if (!found || found.kind !== "feature" || found.archivedAt || found.release !== NEXT_RELEASE) return redirect(base);
+      const anchor = `#card-${found.id}`;
+      const numbers = (await cardLinks(env.DB, found.id)).filter((link) => link.kind === "story").map((link) => Number(link.ref));
+      // As Refinement shows them: the stories as La Fabrique last saw them
+      // (the webhook and markReady keep that copy up to date).
+      const before = await cardStories(env, project, numbers, "cache");
+      const step = nextStep(found, numbers, before);
+      if (step.step === "validate") {
+        const blocked = step.stories.filter((number) => (before.get(number)?.missing ?? []).some((reason) => reason !== "not labelled ready"));
+        if (blocked.length) return redirect(`${base}?failure=${encodeURIComponent(`Not validated: ${blocked.map((n) => `#${n}`).join(", ")} lack${blocked.length === 1 ? "s" : ""} more than the ready label.`)}${anchor}`);
+        for (const story of step.stories) {
+          const outcome = await markReady(env, project, story, viewer.login);
+          if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(`#${story}: ${outcome.message}`)}${anchor}`);
+        }
+      }
+      const after = nextStep(found, numbers, await cardStories(env, project, numbers, "cache"));
+      if (after.step !== "approve") {
+        return redirect(`${base}?${step.step === "validate" ? "notice=ready&n=" + step.stories.length + "&" : ""}failure=${encodeURIComponent("Not validated yet: GitHub does not show every story ready. Try again in a moment.")}${anchor}`);
+      }
+      await validateFeature(env.DB, found, numbers, viewer.login);
+      return redirect(`${base}?notice=validated&n=${step.step === "validate" ? step.stories.length : 0}${anchor}`);
+    }
+    // One story, or several of a feature at once ("Mark the 3 stories
+    // ready"); back on the feature's card.
     if (action === "story_ready") {
-      const story = Number(form.get("story"));
+      const stories = [...new Set(form.getAll("story").map(Number))].filter((n) => Number.isInteger(n) && n > 0).slice(0, 50);
       const links = await storyCards(env.DB, project.repo);
       const inNext = (await listCards(env.DB, project.repo)).filter((card) => card.release === NEXT_RELEASE && !card.archivedAt);
-      if (!Number.isInteger(story) || !inNext.some((card) => (links.order.get(card.id) ?? []).includes(story))) return redirect(base);
-      const outcome = await markReady(env, project, story, viewer.login);
-      if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(outcome.message)}`);
-      return redirect(`${base}?notice=ready`);
+      const cardId = Number(form.get("card"));
+      const anchor = Number.isInteger(cardId) && cardId > 0 ? `#card-${cardId}` : "";
+      const allowed = stories.filter((story) => inNext.some((card) => (links.order.get(card.id) ?? []).includes(story)));
+      if (!allowed.length) return redirect(`${base}${anchor}`);
+      for (const story of allowed) {
+        const outcome = await markReady(env, project, story, viewer.login);
+        if (!outcome.ok) return redirect(`${base}?failure=${encodeURIComponent(`#${story}: ${outcome.message}`)}${anchor}`);
+      }
+      return redirect(`${base}?notice=ready&n=${allowed.length}${anchor}`);
     }
     return redirect(base);
   }
@@ -1466,7 +1500,7 @@ async function refinementRoute(request: Request, env: Env, viewer: Viewer, proje
       priorities: cycleRules(project.check?.config).priorities,
       sprint: running ? { label: sprintLabel(running) } : null,
       shares: await listShareLinks(env.DB, project.repo),
-      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : notice === "stories_created" ? `${Number(params.get("created")) || 0} stor${Number(params.get("created")) === 1 ? "y" : "ies"} created on GitHub, each linked to its card.` : notice === "split_saved" ? "Your edits are saved." : params.get("notice") === "ready" ? "The story is labelled ready." : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
+      notice: notice === "revoked" ? "The share link is revoked." : notice === "launched" ? `${Number(params.get("n")) || 1} job${Number(params.get("n")) === 1 ? "" : "s"} launched: Claude takes two at a time, the others wait their turn.` : notice === "cancelled" ? "The job is cancelled." : notice === "enough" ? CARD_NOTICES["enough"] : notice === "stories_created" ? `${Number(params.get("created")) || 0} stor${Number(params.get("created")) === 1 ? "y" : "ies"} created on GitHub, each linked to its card.` : notice === "split_saved" ? "Your edits are saved." : notice === "validated" ? `Feature validated: ready for the sprint.${Number(params.get("n")) ? ` ${Number(params.get("n"))} stor${Number(params.get("n")) === 1 ? "y" : "ies"} labelled ready for Claude.` : ""}` : params.get("notice") === "ready" ? (Number(params.get("n")) > 1 ? `${Number(params.get("n"))} stories are labelled ready.` : "The story is labelled ready.") : params.get("notice") === "priority" || params.get("notice") === "unchanged" ? CARD_NOTICES[params.get("notice") as string] : undefined,
       failure: params.get("failure")?.slice(0, 300) ?? undefined,
     }),
     { cookies },

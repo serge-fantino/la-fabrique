@@ -81,7 +81,10 @@ describe("The Refinement tab", () => {
     expect(page).toContain(">Specify</button>");
     expect(page).toContain("Claude asks");
     expect(page).toContain(">Then refine</button>");
-    expect(page).toContain(">Validate</a>");
+    // Its only story lacks only the ready label: one gesture, in place.
+    expect(page).not.toContain(">Validate</a>");
+    expect(page).toContain(`aria-label="Validate C${fourth}: label #21 ready for Claude, then validate">Validate the feature</button>`);
+    expect(page).toContain("not validated (1 story to label ready, done by validating)");
     expect(page).toContain("Not ready (not labelled ready)");
     expect(page).toContain('aria-label="Mark #21 ready">Mark ready</button>');
     expect(page).not.toContain("Elsewhere");
@@ -96,9 +99,32 @@ describe("The Refinement tab", () => {
     gh.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
     gh.intercept({ method: "POST", path: `/repos/${REPO}/issues/21/labels` }).reply(200, "[]", JSON_HEADERS);
     gh.intercept({ path: `/repos/${REPO}/issues/21` }).reply(200, JSON.stringify({ number: 21, title: "Choose the week", state: "open", html_url: "", user: null, labels: [{ name: "prete-pour-claude" }], created_at: "", updated_at: "", closed_at: null, body: "## Acceptance criteria\n- [ ] Works" }), JSON_HEADERS);
-    const done = await post(`/projects/${REPO}/refinement`, { csrf, action: "story_ready", story: "21" }, cookie);
-    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement?notice=ready`);
+    const done = await post(`/projects/${REPO}/refinement`, { csrf, action: "story_ready", story: "21", card: String(fourth) }, cookie);
+    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement?notice=ready&n=1#card-${fourth}`);
     expect((await logActions()).map((entry) => entry.action)).toContain("story_marked_ready");
+  });
+
+  it("validates a feature whose stories lack only the ready label in one gesture: labelled, then validated", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO projects (repo, installation_id, added_by) VALUES (?, 99, 'admin-one')").bind(REPO),
+      env.DB.prepare("INSERT INTO project_configs (repo, branch, commit_sha, config, errors, doc_pages) VALUES (?, 'main', 'abc', ?, '[]', '[]')").bind(REPO, JSON.stringify(CONFIG)),
+      env.DB.prepare("INSERT INTO snapshots (repo, kind, data, fetched_at) VALUES (?, 'stories', ?, '2000-01-01T00:00:00.000Z')").bind(REPO, JSON.stringify([story(21, "Choose the week")])),
+    ]);
+    const id = await card("Fourth", 1, { spec: { answers: { a: "x" }, questions: [], source: "claude" } });
+    await env.DB.prepare("INSERT INTO card_links (card_id, kind, ref, position) VALUES (?, 'story', '21', 1)").bind(id).run();
+    await grantRole("pe", "product_engineer");
+    const { cookie, csrf } = await signIn("pe");
+    const gh = fetchMock.get("https://api.github.com");
+    gh.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS);
+    gh.intercept({ method: "POST", path: `/repos/${REPO}/issues/21/labels` }).reply(200, "[]", JSON_HEADERS);
+    gh.intercept({ path: `/repos/${REPO}/issues/21` }).reply(200, JSON.stringify({ number: 21, title: "Choose the week", state: "open", html_url: "", user: null, labels: [{ name: "prete-pour-claude" }], created_at: "", updated_at: "", closed_at: null, body: "## Acceptance criteria\n- [ ] Works" }), JSON_HEADERS);
+    const done = await post(`/projects/${REPO}/refinement`, { csrf, action: "validate_ready", card: String(id) }, cookie);
+    expect(done.headers.get("location")).toBe(`/projects/${REPO}/refinement?notice=validated&n=1#card-${id}`);
+    const actions = (await logActions()).map((entry) => entry.action);
+    expect(actions).toEqual(expect.arrayContaining(["story_marked_ready", "card_validated"]));
+    const page = await (await get(`/projects/${REPO}/refinement?notice=validated&n=1`, cookie)).text();
+    expect(page).toContain("Feature validated: ready for the sprint. 1 story labelled ready for Claude.");
+    expect(page).toContain("Ready for the sprint");
   });
 });
 

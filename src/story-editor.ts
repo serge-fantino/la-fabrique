@@ -154,8 +154,11 @@ export function storyBlocks(data: StoryEditorData): string {
 
 // The editor's bar: what is proposed and how many are kept, with its
 // buttons; it stays at the top while the stories scroll by, not after.
-export function splitBar(heading: string, buttons: string, total: number, kept: number): string {
-  return `<div class="split-bar">
+// `feature`: what the bar shows of the feature once it sticks (its title,
+// status, priority), hidden while the bar sits below the card's own head.
+export function splitBar(heading: string, buttons: string, total: number, kept: number, feature = ""): string {
+  return `<div class="split-bar" data-split-bar>
+      ${feature ? `<div class="split-bar-feature">${feature}</div>` : ""}
       <p class="split-bar-title">${heading} <span class="muted small" data-split-count data-total="${total}">${kept} of ${total} checked</span>
         <button type="button" class="button quiet small split-toggle-all" data-split-all hidden>Unfold all</button></p>
       <div class="split-bar-actions">${buttons}</div>
