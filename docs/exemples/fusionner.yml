@@ -1,0 +1,154 @@
+# Intègre une PR de travail dans integration (la-fabrique#113) : lancé depuis La Fabrique (« Merge » d'une PR du sprint,
+# tech lead et au-delà : integration n'est pas la production), ou à la main (Actions > Fusionner > Run workflow, numéro
+# de PR). C'est l'équivalent de scripts/integrer.sh : integration est fusionnée dans la branche de la PR (« Quoi de
+# neuf » reconstruit et renuméroté par l'outil de notes de version de La Fabrique, jamais en conflit ; tout autre
+# conflit arrête tout,
+# avec la liste des fichiers : « Update with Claude » d'abord), les tests tournent (unitaires et bout en
+# bout, comme la CI), puis la PR est fusionnée dans integration par un commit de fusion ; le push déploie int.
+# La production reste au go (promouvoir.yml).
+# Secret du dépôt : FABRIQUE_TOKEN (le même que Claude et la promotion) : sa fusion déclenche le déploiement d'int, ce que
+# le GITHUB_TOKEN ne ferait pas.
+name: Fusionner
+run-name: "Merge #${{ inputs.pr }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Numéro de la PR à intégrer"
+        required: true
+      par:
+        description: "Qui l'intègre (identifiant GitHub, renseigné par La Fabrique)"
+        required: false
+
+# Une fusion dans integration à la fois.
+concurrency:
+  group: fusion-integration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  fusionner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      # La raison d'un refus, en une phrase : annotation « Merge refused » du run (La Fabrique la lit) et commentaire sur la PR.
+      REASON_FILE: /tmp/merge-reason
+      NOTES: site/static/nouveautes.json
+    steps:
+      - name: Entrées
+        env:
+          FABRIQUE_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+        run: |
+          [ -n "$FABRIQUE_TOKEN" ] || { echo "Secret FABRIQUE_TOKEN absent (voir l'en-tête de ce workflow)." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
+          case "$PR" in ''|*[!0-9]*) echo "Numéro de PR invalide : $PR" > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          ref: integration
+          fetch-depth: 0
+          token: ${{ secrets.FABRIQUE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Identité des commits
+        run: |
+          git config user.name "La Fabrique"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: integration fusionnée dans la PR
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+        run: |
+          refuse() { echo "$1" > "$REASON_FILE"; echo "::error title=Merge refused::$1"; exit 1; }
+          info=$(gh pr view "$PR" --json headRefName,baseRefName,state,isDraft,title)
+          [ "$(jq -r .state <<<"$info")" = "OPEN" ] || refuse "La PR #$PR n'est pas ouverte."
+          [ "$(jq -r .baseRefName <<<"$info")" = "integration" ] || refuse "La PR #$PR ne vise pas integration."
+          [ "$(jq -r .isDraft <<<"$info")" = "false" ] || refuse "La PR #$PR est un brouillon."
+          branch=$(jq -r .headRefName <<<"$info")
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "TITLE=$(jq -r .title <<<"$info")" >> "$GITHUB_ENV"
+          git fetch origin "$branch"
+          git checkout -B "$branch" "origin/$branch"
+          base=$(git merge-base HEAD origin/integration)
+          git merge --no-commit --no-ff origin/integration >/dev/null 2>&1 || true
+          # « Quoi de neuf » n'est pas fusionné ligne à ligne : deux stories écrites en même temps y prennent le même
+          # numéro, en tête. Il est reconstruit (celui d'integration, les entrées propres à la branche en tête,
+          # renumérotées après la plus récente, sans heure) par l'outil de notes de version de La Fabrique, le même pour
+          # tous ses projets (copie : .fabrique.json > version.outil ; docs/release-notes-kit.md de La Fabrique), pris sur
+          # integration : la branche peut dater d'avant lui.
+          tool=$(git show origin/integration:.fabrique.json | jq -r '.version.outil // empty' 2>/dev/null)
+          if ! git diff --quiet "$base" "origin/$branch" -- "$NOTES" && [ -n "$tool" ] && git cat-file -e "origin/integration:$tool" 2>/dev/null; then
+            tmp=$(mktemp -d)
+            git show "origin/integration:$tool" > "$tmp/release-notes.mjs"
+            git show "$base:$NOTES" > "$tmp/base.json"
+            git show "origin/$branch:$NOTES" > "$tmp/branche.json"
+            git show "origin/integration:$NOTES" > "$tmp/integration.json"
+            versions=$(node "$tmp/release-notes.mjs" merge "$tmp/base.json" "$tmp/branche.json" "$tmp/integration.json" "$NOTES" --mode number 2>"$tmp/err") \
+              || refuse "« Quoi de neuf » : $(cat "$tmp/err"). Remettre la PR à jour d'abord (Update with Claude), puis fusionner à nouveau."
+            cat "$tmp/err" >&2
+            git add "$NOTES"
+            if [ -n "$versions" ]; then echo "Quoi de neuf : entrées de la branche numérotées v$versions."; fi
+          fi
+          left=$(git diff --name-only --diff-filter=U | tr '\n' ' ' | sed 's/ $//')
+          [ -z "$left" ] || refuse "Conflits avec integration dans : $left. Remettre la PR à jour d'abord (Update with Claude), puis fusionner à nouveau."
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git commit -q --no-edit -m "Fusion d'integration dans $branch${versions:+ ; Quoi de neuf : v$versions}"
+          fi
+
+      - name: Dépendances
+        run: npm ci
+
+      - name: Tests unitaires
+        run: |
+          npm test || { echo "Les tests unitaires échouent une fois integration fusionnée dans la PR : voir le run." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
+
+      - name: Bout en bout
+        run: |
+          npm run e2e || { echo "Les tests de bout en bout échouent une fois integration fusionnée dans la PR : voir le run." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
+
+      - name: Pousser, puis fusionner dans integration
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+          PAR: ${{ inputs.par }}
+        run: |
+          head=$(git rev-parse HEAD)
+          git push origin "HEAD:$BRANCH"
+          # Juste après un push, GitHub calcule encore si la PR peut être fusionnée : attendre qu'il ait vu le nouveau
+          # commit et dise MERGEABLE, puis fusionner (commit de fusion, comme scripts/integrer.sh).
+          for attempt in 1 2 3 4 5 6; do
+            state=$(gh pr view "$PR" --json headRefOid,mergeable --jq '.headRefOid + " " + .mergeable')
+            if [ "$state" = "$head MERGEABLE" ] && gh pr merge "$PR" --merge --match-head-commit "$head" --subject "Intégration : $BRANCH (#$PR)"; then
+              merged=yes
+              break
+            fi
+            [ "$state" = "$head CONFLICTING" ] && { echo "La PR #$PR est de nouveau en conflit avec integration (elle a bougé entre-temps) : relancer Merge." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
+            echo "GitHub n'est pas encore prêt à fusionner #$PR ($state) : nouvel essai dans 10 secondes."
+            sleep 10
+          done
+          [ "${merged:-}" = yes ] || { echo "GitHub n'a pas fusionné #$PR à temps ; la branche est poussée et vérifiée : relancer Merge." > "$REASON_FILE"; echo "::error title=Merge refused::$(cat "$REASON_FILE")"; exit 1; }
+          gh pr comment "$PR" --body "Intégrée dans integration${PAR:+ à la demande de @$PAR}, depuis La Fabrique : elle part sur int."
+
+      # Refusée : la raison sur la PR aussi, avec le run.
+      - name: Dire pourquoi sur la PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.FABRIQUE_TOKEN }}
+          PR: ${{ inputs.pr }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          reason=$(cat "$REASON_FILE" 2>/dev/null || echo "Le workflow de fusion s'est arrêté : voir le run.")
+          gh pr comment "$PR" --body "Fusion refusée : $reason ([le run]($RUN))"

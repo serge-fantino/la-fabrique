@@ -14,7 +14,9 @@ export interface FabriqueConfig {
   // `coulisses`: the marker a commit carries when it changes nothing a user
   // sees, so the project's checks do not ask it for a release-notes entry
   // (La Fabrique's own pull requests carry it).
-  version?: { fichier?: string; forme?: string; coulisses?: string };
+  // `outil`: where the project keeps its copy of La Fabrique's release-notes
+  // tool (kit/release-notes.js), run by its merge and release workflows.
+  version?: { fichier?: string; forme?: string; coulisses?: string; outil?: string };
   documentation?: { titre: string; chemin: string }[];
   demandes?: {
     etiquettes?: Record<string, string>;
@@ -263,6 +265,12 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
       if (coulisses !== undefined) {
         if (typeof coulisses === "string" && coulisses.trim() && coulisses.length <= 40) config.version.coulisses = coulisses.trim();
         else errors.push("`version.coulisses` must be a short marker, such as \"[coulisses]\".");
+      }
+      const outil = version["outil"];
+      if (outil !== undefined) {
+        if (!isText(outil) || !/\.m?js$/.test(outil) || outil.split("/").includes("..")) errors.push("`version.outil` must be the path of the project's copy of La Fabrique's release-notes tool, such as scripts/fabrique/release-notes.js.");
+        else if (!fileExists(outil)) errors.push(`\`version.outil\`: \`${outil}\` does not exist.`);
+        else config.version.outil = outil;
       }
     }
   }

@@ -142,3 +142,19 @@ describe("The report kit", () => {
     expect(await setup()).toContain('<a href="/guide/report-kit">How, step by step</a>');
   });
 });
+
+describe("The release-notes tool", () => {
+  it("is served for the projects to copy, with its version, and has its guide and example workflows", async () => {
+    const script = await get("/kit/release-notes.js");
+    expect(script.status).toBe(200);
+    expect(script.headers.get("content-type")).toContain("javascript");
+    expect(await script.text()).toMatch(/^\/\/ FabriqueReleaseNotes \d+\.\d+\.\d+ /);
+    const { cookie } = await signIn("admin-one");
+    const guide = await (await get("/guide/release-notes-kit", cookie)).text();
+    expect(guide).toContain("The release-notes tool");
+    expect(guide).toContain('href="/kit/release-notes.js"');
+    expect(await (await get("/guide/exemples/merge.yml", cookie)).text()).toContain("release-notes.js merge");
+    expect(await (await get("/guide/exemples/release.yml", cookie)).text()).toContain("release-notes.js publish");
+    expect(await (await get("/guide/exemples/fusionner.yml", cookie)).text()).toContain("--mode number");
+  });
+});

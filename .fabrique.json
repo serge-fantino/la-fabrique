@@ -18,7 +18,7 @@
     "revue": "review.yml"
   },
   "revue": { "active": false, "exigence": "souple" },
-  "version": { "fichier": "docs/release-notes.json", "forme": "0.N" },
+  "version": { "fichier": "docs/release-notes.json", "forme": "0.N", "outil": "kit/release-notes.js" },
   "documentation": [
     { "titre": "The project (principles, roles, architecture)", "chemin": "CLAUDE.md" },
     { "titre": "Read me", "chemin": "README.md" },
