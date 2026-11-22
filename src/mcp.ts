@@ -41,8 +41,17 @@ import { installationToken } from "./github-app";
 import { cycleRules, projectRules, reworkLabelOf } from "./lifecycle";
 import { setPriority } from "./backlog";
 import type { GrantProps } from "./oauth";
-import { findProject, listProjects, productionBranch, type Project } from "./projects";
-import { syncEpicLink } from "./card-epics";
+import { checkProject, findProject, isBranchName, listProjects, productionBranch, type Project } from "./projects";
+import { readSetup } from "./setup-read";
+import { HOW_TO, OPTIONAL } from "./setup-views";
+import onboardingGuide from "../docs/onboarding.md";
+import integrationClaudeExample from "../docs/exemples/claude.yml";
+import ownClaudeWorkflow from "../.github/workflows/claude.yml";
+import ownMergeWorkflow from "../.github/workflows/merge.yml";
+import ownReleaseWorkflow from "../.github/workflows/release.yml";
+import fusionExample from "../docs/exemples/fusionner.yml";
+import { RELEASE_NOTES_KIT_VERSION, RELEASE_NOTES_TOOL } from "./kit";
+import { followEpicRename, syncEpicLink } from "./card-epics";
 import { ensureEpicIssue, fileUnderEpic } from "./epic-github";
 import { createIssue } from "./requests";
 import { can, type Action } from "./rights";
@@ -79,7 +88,7 @@ const INSTRUCTIONS =
   "GitHub (stories_create, each linked to its card), goes into Next release, then into the sprint (sprint_start); Claude Code is launched " +
   "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested, and the go to production is given by a " +
   "person on La Fabrique's sprint page (never through this server). The sprint can run by itself (sprint_run: read the plan, then confirm it with its fingerprint): for each card, its stories one after the other (Claude launched, its pull request merged), several cards side by side within the project's cap; on a project without an integration branch, each merge puts the work online. A run never validates, never ships to production and never closes the sprint. A card's status follows its stories once validated. Before testing, read the stories to test " +
-  "(to_test), then record one story's whole test in one call (test_story: validated when everything passes, sent back with feedback otherwise; one verdict per criterion, the steps you played; it is written in the person's name and marked \"via Claude\"). Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
+  "(to_test), then record one story's whole test in one call (test_story: validated when everything passes, sent back with feedback otherwise; one verdict per criterion, the steps you played; it is written in the person's name and marked \"via Claude\"). To bring a project into La Fabrique (onboarding), read setup: its missing items and the onboarding guide to follow, in one pull request on the project, never a push onto its production branch. Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
   "write is in the person's name and in La Fabrique's log.";
 
 interface Context {
@@ -110,6 +119,32 @@ class ToolError extends Error {}
 const fail = (message: string): never => {
   throw new ToolError(message);
 };
+
+// Setup's explanations are written for the page: the same text for Claude,
+// code blocks kept, links absolute.
+export function htmlText(html: string, origin: string): string {
+  const entities = (value: string) =>
+    value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  const text = entities(
+    html
+      .replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_all, code: string) => `\n\`\`\`\n${code}\n\`\`\`\n`)
+      .replace(/<code>([\s\S]*?)<\/code>/g, "`$1`")
+      .replace(/<a href="([^"]*)">([\s\S]*?)<\/a>/g, (_all, href: string, label: string) => `${label} (${href.startsWith("/") ? origin + href : href})`)
+      .replace(/<li>/g, "\n- ")
+      .replace(/<\/(p|ol|ul)>/g, "\n")
+      .replace(/<[^>]+>/g, ""),
+  );
+  // The page's indentation goes; a code block keeps its own.
+  let fenced = false;
+  const lines = text.split("\n").map((line) => {
+    if (line.trim() === "```") {
+      fenced = !fenced;
+      return "```";
+    }
+    return fenced ? line.trimEnd() : line.trim();
+  });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 // ---- Arguments -----------------------------------------------------------
 
@@ -316,6 +351,70 @@ const TOOLS: Tool[] = [
             url: absolute(ctx, projectUrl(project.repo)),
           })),
         ),
+      };
+    },
+  },
+  {
+    name: "setup",
+    title: "A project's setup",
+    description:
+      "Read only. What La Fabrique needs to follow a project, as its Setup tab lists it: each item with its state (done, missing, optional, unknown), what La Fabrique found, why it matters and how to do it. " +
+      "Also the onboarding guide for Claude Code (how to bring a project into La Fabrique in one pull request: read the repository, ask the person, write what is missing, keep the code and the hosting), the example workflows that fit the project (claude, merge, release) and La Fabrique's release-notes tool to copy. " +
+      "With branch, reads that branch instead of the production branch: a pull request's, to see what it turns green before its merge. Needs the tech lead role.",
+    inputSchema: {
+      type: "object",
+      properties: { ...PROJECT, branch: { type: "string", description: "A branch to read instead of the production branch (e.g. claude/onboarding)" } },
+      required: ["project"],
+    },
+    needs: null,
+    write: false,
+    async run(ctx, args) {
+      let project = await projectOf(ctx, args);
+      if (!can(ctx.role, "launch_claude")) fail("Your role does not let you set a project up: tech lead and above.");
+      const branch = text(args, "branch", 200)?.trim() || null;
+      if (branch && !isBranchName(branch)) fail("branch is not a branch name.");
+      if (!branch) {
+        // The production branch as it is now, not as the last webhook left it.
+        const checked = await checkProject(ctx.env, project);
+        if (checked.ok) project = { ...project, check: checked.check };
+      }
+      const reading = await readSetup(ctx.env, project, ctx.origin, branch);
+      const required = reading.items.filter((item) => !OPTIONAL.has(item.key));
+      return {
+        project: project.repo,
+        branch: branch ?? reading.check?.branch ?? productionBranch(project),
+        commit: reading.check?.commitSha ?? null,
+        ...(reading.failure ? { failure: reading.failure } : {}),
+        summary: {
+          required_done: required.filter((item) => item.state === "done").length,
+          required: required.length,
+          missing: reading.items.filter((item) => item.state === "missing").map((item) => item.key),
+        },
+        items: reading.items.map((item) => ({
+          key: item.key,
+          state: item.state,
+          optional: OPTIONAL.has(item.key),
+          title: HOW_TO[item.key].title,
+          found: item.found,
+          why: HOW_TO[item.key].why,
+          how: htmlText(HOW_TO[item.key].how, ctx.origin),
+        })),
+        guide: onboardingGuide,
+        // What fits the project: with an integration branch, L'épicerie's;
+        // without, La Fabrique's own. The release-notes tool is the same for all.
+        examples: hasIntegration(project)
+          ? {
+              "claude.yml": { from: "L'épicerie extraordinaire (pull requests to integration)", text: integrationClaudeExample },
+              "fusionner.yml": { from: "L'épicerie extraordinaire (merge into integration, release notes numbered: --mode number)", text: fusionExample },
+              "release-notes.js": { from: `La Fabrique's release-notes tool ${RELEASE_NOTES_KIT_VERSION}, copied as it is (version.outil)`, text: RELEASE_NOTES_TOOL },
+            }
+          : {
+              "claude.yml": { from: "La Fabrique extraordinaire (no integration branch: pull requests to the production branch)", text: ownClaudeWorkflow },
+              "merge.yml": { from: "La Fabrique extraordinaire (merge into production, entries kept next: --mode next)", text: ownMergeWorkflow },
+              "release.yml": { from: "La Fabrique extraordinaire (the release at the close of the sprint: publish)", text: ownReleaseWorkflow },
+              "release-notes.js": { from: `La Fabrique's release-notes tool ${RELEASE_NOTES_KIT_VERSION}, copied as it is (version.outil)`, text: RELEASE_NOTES_TOOL },
+            },
+        url: absolute(ctx, `${projectUrl(project.repo)}/setup`),
       };
     },
   },
@@ -803,6 +902,7 @@ const TOOLS: Tool[] = [
         });
         const outcome = await updateCard(ctx.env.DB, card, ctx.login, input, card.rev);
         if (outcome === "conflict") fail("The card changed while writing: read it again.");
+        if (outcome === "saved") await followEpicRename(ctx.env.DB, card, input.title, ctx.login);
         if (outcome === "saved") {
           if (epicChanges) changes.push("epic");
           if (title !== undefined || body !== undefined || kind !== undefined) changes.push("text");
@@ -882,10 +982,12 @@ const TOOLS: Tool[] = [
       const input = await cardInput(ctx, project, { title: title || found.title, body: document ?? found.body, kind: "epic", status: found.status, epic: found.epic, domain: found.domain, segment: found.segment, release: found.release });
       const outcome = await updateCard(ctx.env.DB, found, ctx.login, input, found.rev);
       if (outcome === "conflict") fail("The card changed while writing: read it again.");
+      if (outcome === "saved") await followEpicRename(ctx.env.DB, found, input.title, ctx.login);
       const current = (await findCard(ctx.env.DB, project.repo, found.id)) ?? found;
+      const changed = outcome === "saved" ? [...(input.title !== found.title ? ["title"] : []), ...(input.body !== found.body ? ["document"] : [])] : [];
       const technical = text(args, "technical", 50_000)?.trim();
       const issue = technical ? await writeEpicIssue(ctx.env, project, ctx.env.DB, current, technical, absolute(ctx, cardPermalink(current.id, current.rev)), ctx.login) : undefined;
-      return { changed: outcome === "saved" ? ["document"] : [], epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) }, ...(issue ? { github_issue: issue } : {}) };
+      return { changed, epic: { id: current.id, ref: cardRef(current.id), title: current.title, revision: current.rev, url: absolute(ctx, cardUrl(project.repo, current.id)) }, ...(issue ? { github_issue: issue } : {}) };
     },
   },
   {

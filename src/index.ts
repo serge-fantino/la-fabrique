@@ -16,7 +16,7 @@ import { showComponent, showComponents } from "./components-routes";
 import { showDecision, showDecisions } from "./decisions-routes";
 import { showCapabilities } from "./capabilities-routes";
 import { roadmapAction, showRoadmap } from "./roadmap-routes";
-import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
+import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, proposeReleaseTool, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
 import { handleWebhook } from "./webhook";
 import { showDoc } from "./docs";
@@ -30,7 +30,7 @@ import { cardUrl } from "./card-views";
 import { findCardById } from "./cards";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/components|\/components\/[a-z0-9-]{1,63}|\/decisions|\/decisions\/(?:\d{1,5}|open)|\/capabilities|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/release-tool|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/components|\/components\/[a-z0-9-]{1,63}|\/decisions|\/decisions\/(?:\d{1,5}|open)|\/capabilities|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { SELF_RELAY_PATH, selfRelay } from "./self-kit";
@@ -40,6 +40,7 @@ import { WHATS_NEW_PATH } from "./urls";
 import { ownReleases, selfRepo, whatsNewPage } from "./whats-new";
 import { onlineVersion, setCommit } from "./build";
 import fabriqueJsonGuide from "../docs/fabrique-json.md";
+import onboardingGuide from "../docs/onboarding.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
 import promotionExample from "../docs/exemples/promouvoir.yml";
 import claudeExample from "../docs/exemples/claude.yml";
@@ -47,7 +48,7 @@ import fusionExample from "../docs/exemples/fusionner.yml";
 import ownMergeWorkflow from "../.github/workflows/merge.yml";
 import ownReleaseWorkflow from "../.github/workflows/release.yml";
 import { renderMarkdown } from "./markdown";
-import { GUIDE_PATH, guidePage } from "./setup-views";
+import { GUIDE_PATH, guidePage, ONBOARDING_PATH } from "./setup-views";
 import { HELP_PROJECT_COOKIE, HELP_ROUTE, showHelp } from "./help";
 
 import { SHARE_PATH, showSharedDocument } from "./share-links";
@@ -242,6 +243,11 @@ const app = {
         const form = await protectedForm(request, viewer);
         return form ? proposeKit(request, env, viewer, repo) : forbidden(viewer);
       }
+      if (projectRoute[2] === "/release-tool") {
+        if (method !== "POST") return methodNotAllowed();
+        const form = await protectedForm(request, viewer);
+        return form ? proposeReleaseTool(request, env, viewer, repo) : forbidden(viewer);
+      }
       if (projectRoute[2] === "/app") {
         if (method !== "POST") return methodNotAllowed();
         const form = await protectedForm(request, viewer);
@@ -374,6 +380,22 @@ const app = {
       case GUIDE_PATH:
         if (!viewer) return redirect("/");
         return method === "GET" ? html(guidePage(viewer, renderGuide())) : methodNotAllowed();
+
+      case ONBOARDING_PATH:
+        if (!viewer) return redirect("/");
+        return method === "GET"
+          ? html(
+              guidePage(
+                viewer,
+                renderMarkdown(onboardingGuide, {
+                  path: "docs/onboarding.md",
+                  isPage: (candidate) => candidate.startsWith("guide/"),
+                  pageUrl: (candidate) => `/${candidate}`,
+                  githubUrl: () => ONBOARDING_PATH,
+                }),
+              ),
+            )
+          : methodNotAllowed();
 
       case KIT_GUIDE_PATH:
         if (!viewer) return redirect("/");

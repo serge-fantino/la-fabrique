@@ -73,6 +73,8 @@ export const KIT_CHANGES: { version: string; relay: string | null }[] = [
 ];
 
 // The version of the release-notes tool, on its first line.
+// The tool itself, as a project copies it (version.outil).
+export const RELEASE_NOTES_TOOL: string = releaseNotesJs;
 export const RELEASE_NOTES_KIT_VERSION = /FabriqueReleaseNotes (\d+\.\d+\.\d+)/.exec(releaseNotesJs)?.[1] ?? "unknown";
 
 export const KIT_VERSION = /FabriqueReport (\d+\.\d+\.\d+)/.exec(reportJs)?.[1] ?? "unknown";

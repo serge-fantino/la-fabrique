@@ -18,14 +18,15 @@ import {
 } from "./projects";
 import { groupStories, loadStories, type Story, type StoryFilters } from "./stories";
 import { storiesPage } from "./stories-views";
-import { loadProduction, PRODUCTION, productionReady, type ProductionStatus } from "./production";
-import { readSnapshot } from "./snapshots";
+import { loadProduction, productionReady } from "./production";
 import { defectPage, defectHistory, readDefectLive } from "./defect-page";
 import { defectRows, defectsPage, filterDefects, readDefectFilters } from "./defects-tab";
 import { defectTargets } from "./defect-targets";
 import { triageDefect } from "./defect-triage";
-import { appLink, appSection, changeProjectApp, type AppActionFailure } from "./project-app";
-import { projectKit, proposeKitUpdate, relayChanges } from "./kit-update";
+import { appSection, changeProjectApp, type AppActionFailure } from "./project-app";
+import { readSetup } from "./setup-read";
+import { proposeReleaseToolUpdate } from "./release-tool";
+import { proposeKitUpdate, relayChanges } from "./kit-update";
 import { productionPage } from "./production-views";
 import { canRequest, createRequest, missingFields, myRequests, readDraft, type Rubrique } from "./requests";
 import { requestFormPage, requestsPage } from "./requests-views";
@@ -56,8 +57,7 @@ import { inDevContent, inDevLoading, inDevPage } from "./in-dev-views";
 import { proposeFeature, recordedByStory } from "./gherkin";
 import { toTestContent, toTestLoading, toTestPage, type ToTestData } from "./to-test-views";
 import { cycleRules, isStage, projectRules, stageOf, stagesOf, storiesOnInt } from "./lifecycle";
-import { setupChecklist } from "./setup";
-import { setupPage } from "./setup-views";
+import { releaseToolSection, setupPage } from "./setup-views";
 
 export async function showProjects(env: Env, viewer: Viewer): Promise<Response> {
   return html(projectsPage(viewer, await listProjects(env.DB)));
@@ -370,6 +370,7 @@ export async function showReleases(request: Request, env: Env, viewer: Viewer, r
 // What the project needs for La Fabrique, read on the reference branch.
 const SETUP_NOTICES: Record<string, string> = {
   unchanged: "Nothing to change: the file already says this.",
+  release_tool_current: "The release-notes tool is already up to date.",
   app_returns: "The app's return addresses now follow .fabrique.json.",
   app_removed: "App removed: every connection to it was revoked.",
   kit_current: "The project's kit is already up to date.",
@@ -403,27 +404,7 @@ export async function showSetup(
   const project = await findProject(env.DB, repo);
   if (!project) return notFound(viewer);
   const { view, cookies } = await projectView(request, env, project, viewer);
-  let check = project.check;
-  let failure: string | undefined;
-  if (view.ref) {
-    const branch = await checkOtherBranch(env, project, view.ref);
-    if (branch.ok) check = branch.check;
-    else failure = branch.message;
-  }
-  const [releases, stories] = await Promise.all([
-    loadReleases(env, project, check, view.ref),
-    loadStories(env, project),
-  ]);
-  const production = await readSnapshot<ProductionStatus>(env.DB, project.repo, PRODUCTION);
-  const [link, kit] = await Promise.all([appLink(env, project, new URL(request.url).origin), projectKit(env, project)]);
-  const items = setupChecklist({
-    check,
-    app: { reporting: Object.keys(link.reporting), registered: link.app !== null, missing: link.missing.length, connections: link.connections },
-    versions: production?.data.versions ?? null,
-    releases: releases.failure ? null : releases.releases,
-    stories: stories.failure && !stories.stories.length ? null : stories.stories,
-    branches: view.knownBranches,
-  });
+  const { items, check, link, kit, releaseTool, failure } = await readSetup(env, project, new URL(request.url).origin, view.ref, view.knownBranches);
   const params = new URL(request.url).searchParams;
   const pull = Number(params.get("pull"));
   const proposed =
@@ -444,8 +425,17 @@ export async function showSetup(
             ? { number: pull, url: `https://github.com/${project.repo}/pull/${pull}` }
             : undefined,
       }),
+      releaseTool: releaseToolSection(
+        viewer,
+        view,
+        releaseTool,
+        canEditConfig(viewer.role),
+        params.get("notice") === "release_tool_proposed" && Number.isInteger(pull) && pull > 0
+          ? { number: pull, url: `https://github.com/${project.repo}/pull/${pull}` }
+          : undefined,
+      ),
       notice: noticeKey ? SETUP_NOTICES[noticeKey] : undefined,
-      failure: outcome?.failure ?? failure ?? releases.failure ?? stories.failure,
+      failure: outcome?.failure ?? failure,
       lifecycle: {
         canEdit: canEditConfig(viewer.role),
         cycle: { pret: rules.checks, priorites: rules.priorities },
@@ -817,6 +807,24 @@ const KIT_FAILURES: Record<string, string> = {
   undeclared: "Declare application.kit in .fabrique.json first: the folder where the project keeps its copy.",
   versioned: "The kit's files carry their version in their name: rename them fabrique-report.js, .css and -early.js first.",
 };
+
+const RELEASE_TOOL_FAILURES: Record<string, string> = {
+  signed_out: KIT_FAILURES["signed_out"] ?? "",
+  refused: KIT_FAILURES["refused"] ?? "",
+  undeclared: "Declare version.outil in .fabrique.json first: where the project keeps its copy of the release-notes tool.",
+};
+
+// Bring the project's copy of the release-notes tool up to date, as a pull request.
+export async function proposeReleaseTool(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {
+  if (!can(viewer.role, "launch_claude")) return forbidden(viewer);
+  const project = await findProject(env.DB, repo);
+  if (!project) return notFound(viewer);
+  const outcome = await proposeReleaseToolUpdate(request, env, project, viewer.login);
+  if (outcome.ok) return redirect(`${projectUrl(project.repo)}/setup?notice=release_tool_proposed&pull=${outcome.number}#release-tool`);
+  if (outcome.reason === "current") return redirect(`${projectUrl(project.repo)}/setup?notice=release_tool_current`);
+  const message = RELEASE_TOOL_FAILURES[outcome.reason] ?? "The update could not be proposed.";
+  return showSetup(request, env, viewer, repo, { failure: outcome.status ? `${message} (HTTP ${outcome.status})` : message, status: 422 });
+}
 
 // Bring the project's copy of the report kit up to date, as a pull request.
 export async function proposeKit(request: Request, env: Env, viewer: Viewer, repo: string): Promise<Response> {

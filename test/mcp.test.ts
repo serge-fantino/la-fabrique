@@ -284,6 +284,74 @@ describe("La Fabrique's MCP server", () => {
     expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toEqual(["epic_create", "epic_update"]);
   });
 
+  it("reads a project's setup for onboarding: items with how to do them, the guide and the fitting claude workflow; tech lead and above", async () => {
+    await seedProject({ nom: "Widget", langue: "en" });
+    await grantRole("lead", "tech_lead");
+    await grantRole("tester", "tester");
+    const { access_token: lead } = await connectClaude("lead");
+    const read = await call(lead, "setup", { project: "widget" });
+    expect(read.isError).toBe(false);
+    const data = read.data as {
+      project: string;
+      summary: { required_done: number; required: number; missing: string[] };
+      items: { key: string; state: string; optional: boolean; title: string; found: string; why: string; how: string }[];
+      guide: string;
+      examples: Record<string, { from: string; text: string }>;
+      url: string;
+    };
+    expect(data.project).toBe(REPO);
+    expect(data.summary.missing).toEqual(expect.arrayContaining(["release_notes", "ci", "environments"]));
+    expect(data.summary.required_done).toBeLessThan(data.summary.required);
+    const notes = data.items.find((item) => item.key === "release_notes");
+    expect(notes).toMatchObject({ state: "missing", optional: false, title: "Release notes in the Fabrique format", found: "No `version.fichier`." });
+    // The page's explanation as text: code kept and indented, links absolute.
+    expect(notes?.how).toContain('```\n"version": { "fichier": "docs/release-notes.json", "forme": "0.N" }\n```');
+    expect(notes?.how).toContain('    "version": "0.2",');
+    expect(notes?.how).toContain("(https://");
+    expect(notes?.how).not.toMatch(/<[a-z]/);
+    expect(data.items.find((item) => item.key === "integration")?.optional).toBe(true);
+    expect(data.guide).toContain("# Onboarding a project with Claude Code");
+    // No integration branch: La Fabrique's own workflow, pull requests to the production branch.
+    expect(data.examples["claude.yml"]?.from).toContain("no integration branch");
+    expect(data.examples["claude.yml"]?.text).toContain("workflow_dispatch");
+    // And the merge and release workflows, with the release-notes tool to copy.
+    expect(Object.keys(data.examples).sort()).toEqual(["claude.yml", "merge.yml", "release-notes.js", "release.yml"]);
+    expect(data.examples["merge.yml"]?.text).toContain("--mode next");
+    expect(data.examples["release-notes.js"]?.text).toContain("FabriqueReleaseNotes");
+    expect(data.guide).toContain("`version.outil`");
+    expect(data.url).toBe(`${BASE}/projects/${REPO}/setup`);
+
+    const { access_token: tester } = await connectClaude("tester");
+    const refused = await call(tester, "setup", { project: REPO });
+    expect(refused.isError).toBe(true);
+    expect(refused.data["error"]).toContain("tech lead and above");
+  });
+
+  it("renames an epic with a new document and keeps its features", async () => {
+    await seedProject();
+    await grantRole("pe", "product_engineer");
+    const { access_token: access } = await connectClaude("pe");
+    const epic = (await call(access, "epic_create", { project: REPO, title: "F13 A new product", document: "## Features\n\nC2" })).data["created"] as { id: number };
+    const make = async (title: string) => ((await call(access, "card_create", { project: REPO, title, epic: epic.id })).data["created"] as { id: number }).id;
+    const a = await make("Add a project");
+    const b = await make("The starter");
+
+    const renamed = await call(access, "epic_update", { project: REPO, card: epic.id, rev: 1, title: "F13 Onboard a product", document: "## Features\n\nC99" });
+    expect(renamed.data).toMatchObject({ changed: ["title", "document"], epic: { title: "F13 Onboard a product" } });
+
+    const read = await call(access, "epic", { project: REPO, epic: epic.id });
+    expect((read.data["features"] as { number: number }[]).map((f) => f.number).sort()).toEqual([a, b].sort());
+    const feature = await call(access, "card", { project: REPO, card: a });
+    expect(feature.data["epic"]).toBe("F13 Onboard a product");
+    const board = await call(access, "board", { project: REPO, epic: "F13 Onboard a product" });
+    expect((board.data["cards"] as { id: number }[]).map((card) => card.id).sort()).toEqual([a, b].sort());
+
+    const renames = (await logActions()).filter((entry) => entry.action === "epic_renamed");
+    expect(renames).toHaveLength(1);
+    const details = JSON.parse(renames[0]?.details ?? "{}") as { card: number; from: string; to: string; features: number[] };
+    expect({ ...details, features: details.features.sort() }).toEqual({ card: epic.id, from: "F13 A new product", to: "F13 Onboard a product", features: [a, b].sort() });
+  });
+
   it("writes an epic's technical GitHub issue on create and update, and survives a GitHub refusal", async () => {
     await seedProject();
     await grantRole("pe", "product_engineer");

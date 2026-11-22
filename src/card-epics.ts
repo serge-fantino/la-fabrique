@@ -135,6 +135,59 @@ async function writeFeatureInDocument(db: D1Database, epicCard: Card, feature: C
   await updateCard(db, epic, login, { title: epic.title, body, tags: tagsOf(epic) }, epic.rev);
 }
 
+// A renamed epic keeps its features. The link is by id, but each feature
+// also carries the epic's title as its Epic value, which progress,
+// dependencies, the board's Epic dimension and the MCP read: it follows the
+// new title (a new version of each feature, logged), and so does a
+// dependency on the epic. A feature that only named the old title, without
+// the link, is linked now. `before` is the epic as it was; call this once
+// its new title is saved.
+export async function followEpicRename(db: D1Database, before: Card, title: string, login: string): Promise<number[]> {
+  if (before.kind !== "epic" || before.title === title) return [];
+  const old = before.title.trim().toLowerCase();
+  const cards = await listCards(db, before.repo);
+  const links = await db
+    .prepare("SELECT l.card_id AS card_id, l.ref AS ref FROM card_links l JOIN cards c ON c.id = l.card_id WHERE l.kind = 'feature' AND c.repo = ?")
+    .bind(before.repo)
+    .all<{ card_id: number; ref: string }>();
+  const owner = new Map(links.results.map((row) => [Number(row.ref), row.card_id]));
+  const features = cards.filter((card) => {
+    if (card.kind !== "feature" || card.id === before.id) return false;
+    const linked = owner.get(card.id);
+    return linked === before.id || (linked === undefined && (card.epic ?? "").trim().toLowerCase() === old);
+  });
+  const known = await dimensionValues(db, before.repo, cards);
+  for (const feature of features) {
+    await moveCard(db, feature, login, { set: { epic: title }, before: null, after: null }, known, `its epic C${before.id} was renamed`);
+  }
+  await db.batch([
+    ...features
+      .filter((feature) => !owner.has(feature.id))
+      .map((feature) => db.prepare("INSERT OR IGNORE INTO card_links (card_id, kind, ref) VALUES (?, 'feature', ?)").bind(before.id, String(feature.id))),
+    db
+      .prepare(
+        "UPDATE OR IGNORE card_links SET ref = ? WHERE kind = 'depends_epic' AND lower(trim(ref)) = ? AND card_id IN (SELECT id FROM cards WHERE repo = ?)",
+      )
+      .bind(title, old, before.repo),
+    // A card that already depended on both names keeps one (unless only
+    // the case changed: then every row is already the new name).
+    ...(title.trim().toLowerCase() === old
+      ? []
+      : [
+          db
+            .prepare("DELETE FROM card_links WHERE kind = 'depends_epic' AND lower(trim(ref)) = ? AND card_id IN (SELECT id FROM cards WHERE repo = ?)")
+            .bind(old, before.repo),
+        ]),
+    activityStatement(db, {
+      actor: login,
+      action: "epic_renamed",
+      repo: before.repo,
+      details: { card: before.id, from: before.title, to: title, features: features.map((feature) => feature.id) },
+    }),
+  ]);
+  return features.map((feature) => feature.id);
+}
+
 // After a change of the Epic value from elsewhere (the board, the edit
 // form): the same link, read from both sides.
 export async function syncEpicLink(db: D1Database, feature: Card, login: string): Promise<void> {

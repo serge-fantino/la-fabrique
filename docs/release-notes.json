@@ -2,6 +2,28 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "Setup follows each project's release-notes tool",
+    "changements": [
+      "Setup now checks each project's copy of the release-notes tool: declared, there, and up to date with La Fabrique's. When it is behind or missing, Propose the update opens a pull request under your name that replaces it, as for the report kit.",
+      "The onboarding guide now installs the release-notes tool and the merge workflow from the first pull request, and writes its entry as next: no more release notes dated by hand. Claude (MCP setup) gets the merge and release workflows that fit the project, and the tool to copy."
+    ],
+    "stories": [430],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
+    "titre": "Onboard a project with Claude Code",
+    "changements": [
+      "A project's Setup now says how to let Claude Code do what is missing, and links to a new onboarding guide: Claude Code, open on the repository and connected to La Fabrique, reads the project's setup, asks what it cannot find, and proposes everything in one pull request, keeping the code and the hosting.",
+      "Claude (MCP) can read a project's setup: each item, its state, what was found and how to do it, on the production branch or another one, with the onboarding guide and the example Claude workflow that fits the project."
+    ],
+    "stories": [420],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "One release-notes tool for every project",
     "changements": [
       "La Fabrique's release-notes tool is served for the projects to copy (/kit/release-notes.js, guide at /guide/release-notes-kit): at each merge it rebuilds the release notes from the target branch's with the pull request's entries on top, kept next into production or numbered without time into an integration branch, so two pull requests never conflict on that file again; it also makes the release of a sprint.",
@@ -41,6 +63,16 @@
       "A project's Capabilities tab, under Project, lists everything that can be asked of Claude, or of a person: what it does, where it runs (La Fabrique with its own key, the project's runner with its secrets), how it ends (waits for a decision, written at once, a report, a person's task), what it writes, who launches it, whether the project can run it now, and what La Fabrique's own have cost on the project. Claude connected to La Fabrique reads the same catalogue (capabilities)."
     ],
     "stories": [414],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-21",
+    "titre": "A renamed epic keeps its features",
+    "changements": [
+      "Renaming an epic, from its page, through Claude (MCP) or by bringing back an older version, keeps all its features: each feature's Epic follows the new name, and so does a feature that depends on the epic."
+    ],
+    "stories": [409],
     "liens": null
   },
   {

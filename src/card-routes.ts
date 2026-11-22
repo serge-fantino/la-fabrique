@@ -14,7 +14,7 @@ import { nextVersion as sprintNextVersion } from "./next-release";
 import { isFixedLane, knownValues, NEXT_RELEASE, nextVersion, plannedSpelling, planningProblem, SPRINT_LANE } from "./card-releases";
 import { cardStories } from "./card-stories";
 import { convertEpics, pendingEpics, type EpicChoice } from "./epic-conversion";
-import { epicCardsOf, epicFeatures, featureEpicTitles, setFeatureEpic, syncEpicLink } from "./card-epics";
+import { epicCardsOf, epicFeatures, featureEpicTitles, followEpicRename, setFeatureEpic, syncEpicLink } from "./card-epics";
 import { validateFeature, validationOf } from "./feature-validation";
 import { buildDoc, fileName, readFormat, readLevel, renderHtml, renderPdf } from "./preparation";
 import { recordedByStory } from "./gherkin";
@@ -704,8 +704,9 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     const revision = (await cardRevisions(env.DB, card.id)).find((candidate) => candidate.rev === wanted);
     if (!revision || revision.rev === card.rev) return redirect(url);
     await restoreRevision(env.DB, card, revision, viewer.login);
+    await followEpicRename(env.DB, card, revision.title, viewer.login);
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "an older version came back");
-    const warnings = await syncEpicText(env.DB, card, card.body, revision.body, viewer.login);
+    const warnings = await syncEpicText(env.DB, { ...card, title: revision.title }, card.body, revision.body, viewer.login);
     return redirect(`${url}?notice=version_restored${warnings.length ? `&warn=${encodeWarnings(warnings)}` : ""}`);
   }
   if (action === "spec_draft" || action === "spec_revise" || action === "spec_answer") {
@@ -883,6 +884,7 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
     return html(cardFormPage(viewer, view, { card, input, known, conflict: current }), { status: 409, cookies });
   }
   if (outcome === "saved" && input.tags.epic !== card.epic) await syncEpicLink(env.DB, { ...card, epic: input.tags.epic, kind: input.tags.kind }, viewer.login);
+  if (outcome === "saved") await followEpicRename(env.DB, card, input.title, viewer.login);
   if (outcome === "saved" && (input.tags.release !== card.release || input.tags.epic !== card.epic)) {
     const saved = await findCard(env.DB, project.repo, id);
     if (saved) await ensureEpicIssue(env, project, saved, viewer.login, new URL(request.url).origin);
@@ -891,7 +893,8 @@ export async function changeCard(request: Request, form: FormData, env: Env, vie
   if (outcome === "saved" && (input.title !== card.title || input.body !== card.body) && input.tags.status === card.status) {
     await reopenStatus(env.DB, project.repo, card.id, viewer.login, "the card changed");
   }
-  const warnings = outcome === "saved" ? await syncEpicText(env.DB, card, card.body, input.body, viewer.login) : [];
+  // With its new title, so a feature named in the text joins this epic.
+  const warnings = outcome === "saved" ? await syncEpicText(env.DB, { ...card, title: input.title }, card.body, input.body, viewer.login) : [];
   return redirect(`${url}?notice=${outcome}${warnings.length ? `&warn=${encodeWarnings(warnings)}` : ""}`);
 }
 
