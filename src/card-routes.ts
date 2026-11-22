@@ -1010,7 +1010,7 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const links = await storyCards(env.DB, project.repo);
       const inSprint = running ? (await listCards(env.DB, project.repo)).filter((card) => card.release === running.release && !card.archivedAt) : [];
       if (!Number.isInteger(number) || !inSprint.some((card) => (links.order.get(card.id) ?? []).includes(number))) return redirect(base);
-      const outcome = await launchClaude(env, project, viewer.login, number);
+      const outcome = await launchClaude(env, project, viewer.login, number, { byHand: true });
       if (outcome.ok) return redirect(`${base}?notice=launched&story=${number}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }
@@ -1045,7 +1045,7 @@ export async function sprintRoute(request: Request, env: Env, viewer: Viewer, pr
       const story = (await cardStories(env, project, [number])).get(number);
       if (!story?.rework) return showSprint(request, env, viewer, project, `#${number} has no feedback to take into account.`, 409);
       if (story.pulls.some((pull) => pull.state === "open")) return showSprint(request, env, viewer, project, `#${number} already has a pull request open: update or merge it first.`, 409);
-      const outcome = await launchClaude(env, project, viewer.login, number, { rework: true });
+      const outcome = await launchClaude(env, project, viewer.login, number, { rework: true, byHand: true });
       if (outcome.ok) return redirect(`${base}?notice=reworking&story=${number}`);
       return showSprint(request, env, viewer, project, outcome.message, outcome.status);
     }

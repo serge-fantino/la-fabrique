@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "A monthly budget for Claude",
+    "changements": [
+      "A project can set a monthly budget for Claude, in dollars at the API's rates (claude.budget in .fabrique.json): the Capabilities tab says what the month has cost so far and warns at 80 %; past the budget, nothing is launched by itself any more (the sprint that runs by itself, a relaunch), while a tech lead can still launch Claude by hand."
+    ],
+    "stories": [421],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "Claude's runs in a project, counted",
     "changements": [
       "The runs of Claude in a project (code a story, rework, update a pull request, review) are now counted when they end: tokens per model (new, read from cache, out) and what they would cost on the API, even on the subscription, shown per capability in the Capabilities tab, with what was really paid on an API key.",
