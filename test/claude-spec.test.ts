@@ -572,8 +572,8 @@ describe("Split into stories", () => {
   it("shows each story as a block: growing sections, criteria one per line, what GitHub will receive", async () => {
     const { cookie, id } = await withSplit();
     const page = await (await get(`/projects/${REPO}/cards/${id}/stories`, cookie)).text();
-    expect(page).toContain('name="s_0_besoin" rows="2" data-grow');
-    expect(page).toContain('name="c_0" rows="1" data-grow');
+    expect(page).toContain('name="s_0_besoin" rows="2" class="soft-field" data-grow');
+    expect(page).toContain('name="c_0" rows="1" class="soft-field" data-grow');
     expect(page).toContain("Quand je touche « Reprendre », la liste se remplit.</textarea>");
     expect(page).toContain('value="crit_down:0:0"');
     expect(page).toContain("<summary>What GitHub will receive</summary>");
@@ -591,7 +591,7 @@ describe("Split into stories", () => {
     expect(removed).not.toContain("First</textarea>");
     expect(removed).toContain("Second</textarea>");
     // Left out: no preview for story 2, "- [ ] First" in the body of story 1.
-    expect(moved).toContain("Left out: nothing will be created for it.");
+    expect(moved).toContain('<section class="split-story left-out" data-split-story aria-label="Story 2">');
     expect(moved).toMatch(/story-preview">[\s\S]*?<li>\[ \] Second<\/li>|story-preview">[\s\S]*?Second/);
     // Nothing was saved.
     expect(JSON.parse((await env.DB.prepare("SELECT data FROM cards WHERE id = ?").bind(id).first<{ data: string }>())?.data ?? "{}").split.stories[0].answers.criteres).toContain("Quand je touche");
@@ -617,8 +617,28 @@ describe("Split into stories", () => {
     await env.DB.prepare("UPDATE cards SET release = 'Next release' WHERE id = ?").bind(id).run();
     const page = await (await get(`/projects/${REPO}/refinement`, cookie)).text();
     expect(page).toContain(`action="/projects/${REPO}/cards/${id}/stories"`);
-    expect(page).toContain('name="c_1" rows="1" data-grow');
+    expect(page).toContain('name="c_1" rows="1" class="soft-field" data-grow');
     expect(page).toContain("What GitHub will receive");
+    // The buttons sit in the bar at the top, and the form comes back here.
+    expect(page).toMatch(/class="split-bar"[\s\S]*?value="create" data-split-create/);
+    expect(page).toContain(`name="back" value="/projects/${REPO}/refinement"`);
+  });
+
+  it("comes back to Refinement after creating, saving, or what is missing", async () => {
+    const { cookie, csrf, id } = await withSplit();
+    const back = `/projects/${REPO}/refinement`;
+    const saved = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "save", back, keep_0: "1", title_0: "Edited", title_1: "B" }, cookie);
+    expect(saved.headers.get("location")).toBe(`${back}?notice=split_saved#card-${id}`);
+    const missing = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "create", back, keep_0: "1", title_0: "", title_1: "B" }, cookie);
+    expect(decodeURIComponent(missing.headers.get("location") ?? "")).toContain("Nothing sent to GitHub. Story 1: Fill in: Title.");
+    // An address outside the project is not followed.
+    const away = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "save", back: "https://example.com/x", keep_0: "1", title_0: "A", title_1: "B" }, cookie);
+    expect(away.headers.get("location")).toBe(`/projects/${REPO}/cards/${id}/stories?notice=saved`);
+    const sent: Record<string, unknown>[] = [];
+    mockIssues(sent, [301]);
+    const created = await post(`/projects/${REPO}/cards/${id}/stories`, { csrf, action: "create", back, keep_0: "1", title_0: "Reprendre ma semaine", title_1: "B" }, cookie);
+    expect(created.headers.get("location")).toBe(`${back}?notice=stories_created&created=1#card-${id}`);
+    expect(await (await get(`${back}?notice=stories_created&created=1`, cookie)).text()).toContain("1 story created on GitHub, each linked to its card.");
   });
 
   it("creates the checked stories, as edited, each linked to the card and its spec's version", async () => {

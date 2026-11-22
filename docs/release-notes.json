@@ -1,6 +1,16 @@
 [
   {
     "version": "next",
+    "date": "2026-11-22",
+    "titre": "The stories editor, easier to review",
+    "changements": [
+      "The stories Claude proposes are easier to review: each story folded to its title and context (Edit unfolds it), soft beige fields across the whole width, criteria dragged by their handle, removed by a cross or added with + Add a criterion, and the buttons in a bar that stays at the top while you scroll the stories. Creating them, or saving, keeps you on Refinement, the card in sight."
+    ],
+    "stories": [412],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-21",
     "titre": "Refinement: true gauges and two columns",
     "changements": [
