@@ -2,6 +2,16 @@
   {
     "version": "next",
     "date": "2026-11-22",
+    "titre": "The loop of a story, phase by phase",
+    "changements": [
+      "Claude's work on a story now shows its phases as they happen, on the story's page (The loop: plan, tests first, code, review, fix, checks, delivery, with their numbers) and in Agents (the phase a running run is at); when Claude stops without finishing, it says why (a decision to take, a doubt on the spec, tests that will not pass, a change past its limits), and the stop is in the project's log."
+    ],
+    "stories": [424],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-22",
     "titre": "The Agents page",
     "changements": [
       "A new Agents page (in the header, for a tech lead and the super admin) shows, across projects, what Claude is doing in La Fabrique and in the projects' runners: what runs or waits its turn, what waits for a decision and where it is decided, what ended these last 7 days with its cost and tokens (a link to the run keeps its transcript), and each project's month against its budget; filtered by project and capability."

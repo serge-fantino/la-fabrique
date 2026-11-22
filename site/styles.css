@@ -5484,3 +5484,17 @@ table.agents td {
 .agents-budgets li p {
   display: inline;
 }
+
+/* The loop of a story (ADR 0003, la-fabrique#424). */
+ol.loop {
+  padding-left: 1.25rem;
+  margin: 0.25rem 0 1rem;
+}
+
+ol.loop li {
+  margin: 0.35rem 0;
+}
+
+ol.loop li.loop-break {
+  color: var(--alerte, #8a2a0f);
+}

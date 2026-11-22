@@ -1,3 +1,4 @@
+import { isLoopRoute, receiveLoopEvent } from "./loop-events";
 import { showAgents } from "./agents-routes";
 import { can } from "./rights";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
@@ -105,6 +106,9 @@ const app = {
 
     if (isAsset(pathname)) return method === "GET" || method === "HEAD" ? serveAsset(request, pathname) : methodNotAllowed();
     if (isKitFile(pathname)) return method === "GET" || method === "HEAD" ? serveKitFile(pathname) : methodNotAllowed();
+
+    // A project's runner reports the loop of a story, signed by GitHub (la-fabrique#424).
+    if (isLoopRoute(pathname)) return method === "POST" ? receiveLoopEvent(request, env) : methodNotAllowed();
 
     switch (pathname) {
       case "/favicon.svg":

@@ -73,7 +73,7 @@ function row(task: AgentTask, columns: "active" | "decision" | "ended"): string 
   return `<tr>
       <td class="small">${project}</td>
       <td><strong>${escapeHtml(task.label)}</strong> <span class="muted small">${where}</span><br>${subject(task)}</td>
-      <td><span class="pill ${state.pill} small">${state.label}</span>${task.who ? `<br><span class="small">by @${escapeHtml(task.who)}</span>` : ""}</td>
+      <td><span class="pill ${state.pill} small">${state.label}</span>${task.phase ? ` <span class="small">${escapeHtml(task.phase)}</span>` : ""}${task.who ? `<br><span class="small">by @${escapeHtml(task.who)}</span>` : ""}</td>
       <td>${when(columns === "ended" ? task.ended : task.since)}</td>
       ${columns === "ended" ? `<td class="small">${cost}${usage}</td>` : ""}
       <td class="small">${link}</td>

@@ -1,3 +1,4 @@
+import { lastPhases, PHASE_LABELS } from "./loop-events";
 import { CAPABILITIES, capability } from "./capabilities";
 import { budgetState, type BudgetState } from "./claude-budget";
 import type { Env } from "./env";
@@ -31,6 +32,8 @@ export interface AgentTask {
   auth: string | null;
   tokens: { newIn: number; cacheRead: number; out: number } | null;
   url: string | null;
+  // A run's last phase of the loop (la-fabrique#424).
+  phase?: string | null;
 }
 
 export interface AgentsView {
@@ -146,11 +149,18 @@ export async function loadAgents(env: Env, now: Date = new Date()): Promise<Agen
     listProjects(env.DB),
   ]);
   const deciding = new Set(decidingJobs.results.map((row) => row.id));
+  const phases = await lastPhases(env.DB, activeRuns.results.map((row) => row.run_id));
   const decisions = decidingJobs.results.map((row) => ({ ...fromJob(row), state: "decision" as const }));
   const ended = [...endedJobs.results.filter((row) => !deciding.has(row.id)).map(fromJob), ...endedRuns.results.map(fromRun)].sort((a, b) => (b.ended ?? "").localeCompare(a.ended ?? ""));
   const budgets = await Promise.all(projects.map(async (project) => ({ repo: project.repo, name: project.check?.config?.nom || project.repo, budget: await budgetState(env, project, now) })));
   return {
-    active: [...activeJobs.results.map(fromJob), ...activeRuns.results.map(fromRun)],
+    active: [
+      ...activeJobs.results.map(fromJob),
+      ...activeRuns.results.map((row) => {
+        const last = phases.get(row.run_id);
+        return { ...fromRun(row), phase: last ? `${PHASE_LABELS[last.phase]}${last.iteration > 1 ? ` (${last.iteration})` : ""}` : null };
+      }),
+    ],
     decisions,
     ended,
     budgets,

@@ -1,3 +1,5 @@
+import { loopHtml } from "./loop-views";
+import { storyLoop, type LoopEvent } from "./loop-events";
 import { recordedCriteria, type Recorded } from "./gherkin";
 import { scenarioBlock } from "./gherkin-views";
 import { cardRef, cardUrl } from "./card-views";
@@ -33,6 +35,8 @@ export interface StoryDetail {
   launched: { by: string; at: string } | null;
   history: LogEntry[];
   scenarios: Recorded[];
+  // The loop's phases, every run (la-fabrique#424).
+  loop?: LoopEvent[];
 }
 
 export async function loadStoryDetail(env: Env, project: Project, number: number): Promise<StoryDetail> {
@@ -44,6 +48,7 @@ export async function loadStoryDetail(env: Env, project: Project, number: number
     claudeRuns(env, project).catch(() => [] as ClaudeRun[]),
     lastMergeAttempts(env.DB, project.repo),
   ]);
+  const loop = await storyLoop(env.DB, project.repo, number);
   const state = states.get(number) ?? null;
   const numbers = (state?.pulls ?? []).map((pull) => pull.number);
   const details = await pullDetails(env, project, numbers);
@@ -72,6 +77,7 @@ export async function loadStoryDetail(env: Env, project: Project, number: number
     cards,
     pulls: numbers.map((pull) => details.get(pull)).filter((pull): pull is PullDetail => Boolean(pull)),
     merges,
+    loop,
     runs: runs.filter((run) => run.issue === number),
     launched: launches.get(number) ?? null,
     history,
@@ -205,6 +211,7 @@ export function storyDetailPage(viewer: Viewer, project: Project, detail: StoryD
         ${pulls}
         <h2>Claude's runs</h2>
         ${runs}
+        ${loopHtml(detail.loop ?? [])}
         <h2>History</h2>
         ${history}
       </section>`,
