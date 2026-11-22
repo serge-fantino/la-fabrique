@@ -7,7 +7,7 @@ import type { Env } from "./env";
 import { html, json, readCookie, redirect, svg, text } from "./http";
 import { LOGO_SVG } from "./logo";
 import { isAsset, serveAsset } from "./assets";
-import { isKitFile, KIT_GUIDE_PATH, reportKitGuide, serveKitFile } from "./kit";
+import { isKitFile, KIT_GUIDE_PATH, RELEASE_NOTES_GUIDE_PATH, releaseNotesKitGuide, reportKitGuide, serveKitFile } from "./kit";
 import { CLAUDE_CHECK_PATH, REFRESH_PATH, refreshHeaders, SETTINGS_PATH, settingsPage, SLOW_PATH, slowPage } from "./settings";
 import { checkKey, claudeSettings, usageReport } from "./llm";
 import { consumeJobs } from "./jobs";
@@ -43,6 +43,9 @@ import fabriqueJsonGuide from "../docs/fabrique-json.md";
 import guideExample from "../docs/exemples/epicerie.fabrique.json";
 import promotionExample from "../docs/exemples/promouvoir.yml";
 import claudeExample from "../docs/exemples/claude.yml";
+import fusionExample from "../docs/exemples/fusionner.yml";
+import ownMergeWorkflow from "../.github/workflows/merge.yml";
+import ownReleaseWorkflow from "../.github/workflows/release.yml";
 import { renderMarkdown } from "./markdown";
 import { GUIDE_PATH, guidePage } from "./setup-views";
 import { HELP_PROJECT_COOKIE, HELP_ROUTE, showHelp } from "./help";
@@ -389,12 +392,39 @@ const app = {
             )
           : methodNotAllowed();
 
-      case "/guide/exemples/promouvoir.yml":
-      case "/guide/exemples/claude.yml":
+      case RELEASE_NOTES_GUIDE_PATH:
         if (!viewer) return redirect("/");
         return method === "GET"
-          ? text(pathname.endsWith("claude.yml") ? claudeExample : promotionExample, 200)
+          ? html(
+              guidePage(
+                viewer,
+                renderMarkdown(releaseNotesKitGuide, {
+                  path: "docs/release-notes-kit.md",
+                  isPage: (candidate) => candidate.startsWith("kit/") || candidate.startsWith("guide/"),
+                  pageUrl: (candidate) => `/${candidate}`,
+                  githubUrl: () => RELEASE_NOTES_GUIDE_PATH,
+                }),
+              ),
+            )
           : methodNotAllowed();
+
+      case "/guide/exemples/promouvoir.yml":
+      case "/guide/exemples/claude.yml":
+      case "/guide/exemples/fusionner.yml":
+      case "/guide/exemples/merge.yml":
+      case "/guide/exemples/release.yml": {
+        if (!viewer) return redirect("/");
+        const examples: Record<string, string> = {
+          "promouvoir.yml": promotionExample,
+          "claude.yml": claudeExample,
+          // The merge into an integration branch (L'épicerie's), and La Fabrique's own merge and release workflows,
+          // served as they run: the examples of docs/release-notes-kit.md.
+          "fusionner.yml": fusionExample,
+          "merge.yml": ownMergeWorkflow,
+          "release.yml": ownReleaseWorkflow,
+        };
+        return method === "GET" ? text(examples[pathname.slice("/guide/exemples/".length)] ?? "", 200) : methodNotAllowed();
+      }
 
       case GUIDE_EXAMPLE_PATH:
         if (!viewer) return redirect("/");

@@ -2,24 +2,47 @@
   "id": "release-notes",
   "nom": "Release notes and What's new",
   "nature": "produit",
-  "version": "1.1.0",
-  "resume": "One file of release notes, versioned with the code: each change written in its pull request without a number, numbered and dated when it is merged or released, with the stories it ships; shown to the users as « What's new ».",
+  "version": "1.2.0",
+  "resume": "One file of release notes, versioned with the code, and one tool that writes it, the same for every project: each change written in its pull request without a number, rebuilt at the merge (never a conflict), numbered and dated when it ships, with the stories it ships; shown to the users as « What's new ».",
   "apporte": [
     "A release-notes file in the repository, one entry per version: number, date and time, title, changes, stories",
-    "Entries written in each pull request as « next », without number nor time: no conflict between pull requests",
-    "The number and the time given at the merge, or at the release that groups the « next » entries",
+    "Entries written in each pull request as « next », without number nor time, rebuilt at the merge by La Fabrique's tool: never a conflict between pull requests",
+    "The number given at the merge into an integration branch (without time), or at the release that groups the « next » entries (with the time)",
     "A « What's new » page, newest first, each story linked to its issue",
     "Changes behind the scenes (coulisses), for the team only, kept out of « What's new »",
     "Checks that refuse an entry without its stories, or a « next » entry on the production branch"
   ],
   "demande": [
-    { "type": "file", "description": "The release-notes file declared in .fabrique.json (version.fichier) and the form of its numbers (version.forme)" },
-    { "type": "workflow", "description": "A merge workflow that numbers the entries of the pull request (workflows.fusionner), and a release workflow for a project without integration branch (workflows.publier)" },
-    { "type": "check", "description": "The project's tests or CI run the check on each pull request" }
+    {
+      "type": "file",
+      "description": "The release-notes file declared in .fabrique.json (version.fichier), the form of its numbers (version.forme), and the project's copy of La Fabrique's release-notes tool (version.outil)"
+    },
+    {
+      "type": "workflow",
+      "description": "A merge workflow that numbers the entries of the pull request (workflows.fusionner), and a release workflow for a project without integration branch (workflows.publier)"
+    },
+    {
+      "type": "check",
+      "description": "The project's tests or CI run the check on each pull request"
+    }
   ],
   "dependances": [],
   "implementations": [
-    { "stack": { "langage": "typescript", "outil": "node", "hebergement": "cloudflare-workers" }, "chemin": "/scripts" }
+    {
+      "stack": {
+        "langage": "javascript",
+        "outil": "node"
+      },
+      "chemin": "/kit/release-notes.js"
+    },
+    {
+      "stack": {
+        "langage": "typescript",
+        "outil": "node",
+        "hebergement": "cloudflare-workers"
+      },
+      "chemin": "/scripts"
+    }
   ],
   "donnees_personnelles": null,
   "origine": null
