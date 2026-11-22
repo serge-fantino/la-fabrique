@@ -1,6 +1,6 @@
 # 0004. Agents are observed, counted and steered from La Fabrique: one queue, their logs, their tokens, their model
 
-- Status: Proposed
+- Status: Accepted (validated by serge-fantino on 2026-11-22, by [a comment on #419](https://github.com/serge-fantino/la-fabrique/pull/419#issuecomment-7072674090))
 - Date: 2026-11-21
 - Deciders: serge-fantino
 - Serves: epic F15 (C179, #410); C182, C183, C184, C187

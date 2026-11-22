@@ -10,7 +10,7 @@ A coding agent (Claude, launched from La Fabrique or not) proposes a decision an
 | --- | --- | --- |
 | [0001](0001-claude-in-the-background.md) | Claude works in the background | Accepted |
 | [0002](0002-next-release-and-the-sprint.md) | Next release, and a sprint without a version | Accepted |
-| [0003](0003-the-engineering-loop-of-a-story.md) | The engineering loop of a story: one agent session, explicit phases, typed breaks, from the epic to production | Proposed |
-| [0004](0004-agents-observed-counted-and-steered-from-la-fabrique.md) | Agents are observed, counted and steered from La Fabrique: one queue, their logs, their tokens, their model | Proposed |
-| [0005](0005-decisions-are-adrs-proposed-by-agents-validated-by-a-person.md) | Decisions are ADRs in the project's repository, proposed by agents, validated by a person in La Fabrique | Proposed |
-| [0006](0006-capabilities-requests-and-plans-the-generic-agent-mechanism.md) | Capabilities, requests and plans: one generic mechanism for every agent task, taken from LimaLibri | Proposed |
+| [0003](0003-the-engineering-loop-of-a-story.md) | The engineering loop of a story: one agent session, explicit phases, typed breaks, from the epic to production | Accepted |
+| [0004](0004-agents-observed-counted-and-steered-from-la-fabrique.md) | Agents are observed, counted and steered from La Fabrique: one queue, their logs, their tokens, their model | Accepted |
+| [0005](0005-decisions-are-adrs-proposed-by-agents-validated-by-a-person.md) | Decisions are ADRs in the project's repository, proposed by agents, validated by a person in La Fabrique | Accepted |
+| [0006](0006-capabilities-requests-and-plans-the-generic-agent-mechanism.md) | Capabilities, requests and plans: one generic mechanism for every agent task, taken from LimaLibri | Accepted |

@@ -1,6 +1,6 @@
 # 0005. Decisions are ADRs in the project's repository, proposed by agents, validated by a person in La Fabrique
 
-- Status: Proposed
+- Status: Accepted (validated by serge-fantino on 2026-11-22, by [a comment on #419](https://github.com/serge-fantino/la-fabrique/pull/419#issuecomment-7072674090))
 - Date: 2026-11-21
 - Deciders: serge-fantino
 - Serves: epic F15 (C179, #410); C180, C181

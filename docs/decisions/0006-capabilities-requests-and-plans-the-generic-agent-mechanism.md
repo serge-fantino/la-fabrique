@@ -1,6 +1,6 @@
 # 0006. Capabilities, requests and plans: one generic mechanism for every agent task, taken from LimaLibri
 
-- Status: Proposed
+- Status: Accepted (validated by serge-fantino on 2026-11-22, by [a comment on #419](https://github.com/serge-fantino/la-fabrique/pull/419#issuecomment-7072674090))
 - Date: 2026-11-21
 - Deciders: serge-fantino
 - Serves: epic F15 (C179, #410); C190

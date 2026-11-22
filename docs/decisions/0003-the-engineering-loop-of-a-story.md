@@ -1,6 +1,6 @@
 # 0003. The engineering loop of a story: one agent session, explicit phases, typed breaks, from the epic to production
 
-- Status: Proposed
+- Status: Accepted (validated by serge-fantino on 2026-11-22, by [a comment on #419](https://github.com/serge-fantino/la-fabrique/pull/419#issuecomment-7072674090))
 - Date: 2026-11-21
 - Deciders: serge-fantino
 - Serves: epic F15 (C179, #410); C185, C186, C188, C189
