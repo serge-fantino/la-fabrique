@@ -1,3 +1,5 @@
+import { showAgents } from "./agents-routes";
+import { can } from "./rights";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { effectiveRole } from "./accounts";
 import { APPS_PATH, changeApps, showApps } from "./apps";
@@ -449,6 +451,13 @@ const app = {
         if (!viewer) return redirect("/");
         if (method !== "GET") return methodNotAllowed();
         return html(whatsNewPage(viewer, ownReleases(), await selfRepo(env.DB, new URL(request.url).origin)));
+      }
+
+      case "/agents": {
+        if (!viewer) return redirect("/");
+        if (!can(viewer.role, "launch_claude")) return forbidden(viewer);
+        if (method !== "GET") return methodNotAllowed();
+        return showAgents(request, env, viewer);
       }
 
       case "/people": {

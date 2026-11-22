@@ -69,6 +69,7 @@ export function layout(title: string, body: string, viewer?: Viewer, scripts: st
     ? `<nav class="nav">
         <a class="nav-home" href="/">Dashboard</a>
         <a href="/projects">Projects</a>
+        ${viewer.role === "tech_lead" || viewer.role === "super_admin" ? `<a href="/agents">Agents</a>` : ""}
         ${viewer.role === "super_admin" ? `<a href="/people">People</a>` : ""}
         <a href="/settings">Settings</a>
         <a href="/help">Help</a>

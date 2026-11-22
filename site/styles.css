@@ -5465,3 +5465,22 @@ table.capabilities ul.plain li + li {
 table.capabilities tr.planned {
   opacity: 0.75;
 }
+
+/* The Agents page (ADR 0004, epic F15). */
+table.agents td {
+  vertical-align: top;
+}
+
+.agents-budgets {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.agents-budgets li {
+  margin: 0.5rem 0;
+}
+
+.agents-budgets li p {
+  display: inline;
+}
