@@ -5185,3 +5185,30 @@ a.tag-link:focus-visible {
 .grow-22 { flex: 22 1 0; }
 .grow-23 { flex: 23 1 0; }
 .grow-24 { flex: 24 1 0; }
+
+/* The Capabilities tab (ADR 0006, epic F15). */
+.capabilities-place h2 {
+  margin-top: 1.5rem;
+}
+
+table.capabilities td {
+  vertical-align: top;
+}
+
+table.capabilities td p {
+  margin: 0.25rem 0 0;
+}
+
+table.capabilities ul.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+table.capabilities ul.plain li + li {
+  margin-top: 0.25rem;
+}
+
+table.capabilities tr.planned {
+  opacity: 0.75;
+}

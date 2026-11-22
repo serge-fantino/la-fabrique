@@ -1,6 +1,16 @@
 [
   {
     "version": "next",
+    "date": "2026-11-22",
+    "titre": "Capabilities: what can be asked of Claude, in one place",
+    "changements": [
+      "A project's Capabilities tab, under Project, lists everything that can be asked of Claude, or of a person: what it does, where it runs (La Fabrique with its own key, the project's runner with its secrets), how it ends (waits for a decision, written at once, a report, a person's task), what it writes, who launches it, whether the project can run it now, and what La Fabrique's own have cost on the project. Claude connected to La Fabrique reads the same catalogue (capabilities)."
+    ],
+    "stories": [414],
+    "liens": null
+  },
+  {
+    "version": "next",
     "date": "2026-11-21",
     "titre": "Decisions: a project's ADRs in La Fabrique",
     "changements": [

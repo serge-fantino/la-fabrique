@@ -14,6 +14,7 @@ import { consumeJobs } from "./jobs";
 import { changePeople, showPeople } from "./people";
 import { showComponent, showComponents } from "./components-routes";
 import { showDecision, showDecisions } from "./decisions-routes";
+import { showCapabilities } from "./capabilities-routes";
 import { roadmapAction, showRoadmap } from "./roadmap-routes";
 import { createProject, recheckProject, showActivity, showBranches, showDelivery, showReleases, showNewProject, showProject, showProduction, showProjects, showRequestForm, showRequests, goToProduction, launchClaudeOn, prioritize, proposeLifecycle, projectAppAction, proposeKit, triage, showDefect, showDefects, showLog, showBacklog, showCard, showDashboard, showInDev, showSetup, showStories, showToTest, toTestAction, submitRequest } from "./project-routes";
 import { isRepoName } from "./projects";
@@ -29,7 +30,7 @@ import { cardUrl } from "./card-views";
 import { findCardById } from "./cards";
 import { availablePerspectives, choosePerspective, currentPerspective, isPerspective } from "./perspectives";
 
-const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/components|\/components\/[a-z0-9-]{1,63}|\/decisions|\/decisions\/(?:\d{1,5}|open)|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
+const PROJECT_ROUTE = /^\/projects\/([^/]+\/[^/]+?)(\/check|\/app|\/kit|\/branches|\/card|\/log|\/backlog\/claude|\/production\/go|\/to-test\/criterion|\/to-test\/validate|\/to-test\/defect|\/to-test\/feature|\/backlog|\/setup|\/to-test|\/defects\/\d+|\/defects|\/in-development|\/stories|\/roadmap|\/releases|\/components|\/components\/[a-z0-9-]{1,63}|\/decisions|\/decisions\/(?:\d{1,5}|open)|\/capabilities|\/production|\/delivery|\/activity|\/requests|\/requests\/new)?$/;
 const DOC_ROUTE = /^\/projects\/([^/]+\/[^/]+)\/docs\/(.+)$/;
 import { destroySession, readSession } from "./session";
 import { SELF_RELAY_PATH, selfRelay } from "./self-kit";
@@ -287,6 +288,9 @@ const app = {
       }
       if (projectRoute[2]?.startsWith("/components/")) {
         return method === "GET" ? showComponent(request, env, viewer, repo, projectRoute[2].slice("/components/".length)) : methodNotAllowed();
+      }
+      if (projectRoute[2] === "/capabilities") {
+        return method === "GET" ? showCapabilities(request, env, viewer, repo) : methodNotAllowed();
       }
       if (projectRoute[2] === "/decisions") {
         return method === "GET" ? showDecisions(request, env, viewer, repo) : methodNotAllowed();

@@ -61,6 +61,9 @@ const LABELS: Record<JobKind, string> = {
   epic_review: "Claude is reviewing the epic against its features",
 };
 
+// Every kind of background job, for the catalogue of capabilities to cover.
+export const JOB_KINDS = Object.keys(LABELS) as JobKind[];
+
 export function ordinal(n: number): string {
   const tens = n % 100;
   const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
