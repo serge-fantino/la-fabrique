@@ -35,6 +35,9 @@ export interface FabriqueConfig {
   // The project's components (la-fabrique#197): the folder holding them, one
   // self-described sub-folder each (component.json).
   composants?: { dossier: string };
+  // The project's decisions (ADRs, epic F15): the folder holding them, one
+  // `NNNN-slug.md` file each. Absent: La Fabrique looks in the usual places.
+  decisions?: { dossier: string };
   // The test environment (la-fabrique#209): where the stories wait for
   // their validation. Absent: the `integration` environment, else the
   // production one for a project without an integration branch.
@@ -387,6 +390,19 @@ export function validateFabriqueConfig(raw: string, tree: RepoTree): ConfigCheck
       errors.push(`\`composants.dossier\`: \`${folder}\` does not exist.`);
     } else {
       config.composants = { dossier: folder };
+    }
+  }
+
+  const decisions = parsed["decisions"];
+  if (decisions !== undefined) {
+    const raw = isObject(decisions) ? decisions["dossier"] : undefined;
+    const folder = raw === undefined ? "docs/decisions" : typeof raw === "string" ? raw.replace(/^\.?\//, "").replace(/\/$/, "") : "";
+    if (!isObject(decisions) || !folder || folder.split("/").includes("..") || !/^[\w./-]+$/.test(folder)) {
+      errors.push("`decisions` must be an object, with `dossier` a folder of the repository (docs/decisions by default).");
+    } else if (!folderExists(folder)) {
+      errors.push(`\`decisions.dossier\`: \`${folder}\` does not exist.`);
+    } else {
+      config.decisions = { dossier: folder };
     }
   }
 

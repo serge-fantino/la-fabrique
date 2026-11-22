@@ -74,6 +74,7 @@ Version complète, telle qu'elle est dans le dépôt de l'épicerie : [`exemples
 | `claude.plafond` | Combien de Claude lancés depuis La Fabrique peuvent tourner en même temps sur le projet (1 à 10 ; 2 par défaut). |
 | `cycle.pret`, `cycle.priorites` | Le cycle de vie d'une story (ci-dessous) : sa *Definition of Ready* et les étiquettes de priorité, de la plus haute à la plus basse. |
 | `composants.dossier` | Le dossier des composants du projet (ci-dessous) ; `components` par défaut. Sans `composants` : pas de composants. |
+| `decisions.dossier` | Le dossier des décisions du projet, une par fichier (ci-dessous) ; `docs/decisions` par défaut. Sans `decisions` : La Fabrique les cherche dans `docs/adr`, `docs/decisions`, `docs/architecture/decisions`, `adr` et `decisions`. |
 | `epiques.rubriques[]` | Les sections du document d'une fiche de type *Epic* : `cle`, `titre`, `aide` (texte d'aide). Elles remplacent les sections par défaut (Why, Scope, Out of scope, Decisions, Features, Dependencies, Open questions). Le document est le texte de la fiche, un titre `##` par section. Absent : les sections par défaut. |
 | `demandes.rubriques[]` | Le formulaire d'une demande : `cle`, `titre`, `obligatoire`, `aide` (texte d'aide affiché). L'issue créée reprend les rubriques en titres de section, dans l'ordre. |
 | `epiques.rubriques[]` | Les rubriques du document d'une épique (même forme que `demandes.rubriques[]`) ; sans `epiques`, celles par défaut de La Fabrique : *Why*, *Decisions*, *Features*, *Open questions*. Pas de critères : ils sont aux features. |
@@ -169,6 +170,46 @@ components/
 | `origine` | Repris d'un autre projet (le partage passe par git) : `depot` (adresse https), `chemin`, `version`, `commit`. |
 
 La Fabrique lit les composants à chaque commit (comme la documentation) et les montre dans l'onglet *Components* du projet ; un `component.json` invalide y est listé avec ses raisons. Elle ne garde rien d'autre que ce cache.
+
+## Décisions
+
+Une décision qui surprendrait le prochain lecteur s'écrit une fois, dans le dépôt du projet : un fichier par décision (un ADR, *architecture decision record*), numéroté, dans le dossier que déclare `decisions` (épique F15) :
+
+```json
+"decisions": { "dossier": "docs/decisions" }
+```
+
+```
+docs/decisions/
+  README.md                 ← l'index : une ligne par décision, avec son statut
+  0000-template.md          ← le modèle (jamais lu comme une décision)
+  0001-claude-in-the-background.md
+  open-decisions.md         ← facultatif : les décisions pas encore prises
+```
+
+Un fichier `NNNN-titre.md` commence par son titre et ses champs, avant la première rubrique :
+
+```markdown
+# 0003. The engineering loop of a story
+
+- Status: Proposed
+- Date: 2026-11-21
+- Deciders: serge-fantino
+- Serves: C12, #384
+
+## Context
+```
+
+| Champ | Sert à |
+|---|---|
+| `Status` | `Proposed`, `Accepted`, `Rejected`, `Superseded by NNNN`, `Deprecated` (le premier mot compte ; la suite est montrée telle quelle : « Accepted, amended by 0055 »). Une rubrique `## Status` (format de Nygard) est lue aussi. |
+| `Date` | Le jour où elle a été proposée ou prise. |
+| `Deciders` | Les identifiants GitHub de ceux qui la valident. Sans eux, personne ne peut la valider. |
+| `Serves` | Facultatif : l'épique, la fiche ou l'issue qu'elle sert (`#74`, `C12`). Les fiches et les issues nommées ailleurs dans le texte sont reliées aussi. |
+
+Un agent de code (Claude, lancé depuis La Fabrique ou non) propose une décision et ne la prend jamais : il l'écrit `Proposed`. Un de ses `Deciders` la valide.
+
+La Fabrique lit les décisions à chaque commit (comme la documentation) et les montre dans l'onglet *Decisions* du projet : leur statut, leurs décideurs, ce qu'elles servent, les décisions qu'elles nomment et celles qui les nomment. Elle ne garde rien d'autre que ce cache.
 
 ## Revue
 

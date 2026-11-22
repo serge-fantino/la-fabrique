@@ -1,6 +1,9 @@
-# 0001 · Claude works in the background
+# 0001. Claude works in the background
 
-October 30, 2026 · decided by the owner · epic #74
+- Status: Accepted
+- Date: 2026-10-30
+- Deciders: serge-fantino
+- Serves: epic #74
 
 ## Context
 
