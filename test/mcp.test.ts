@@ -720,6 +720,46 @@ describe("MCP: run the sprint (sprint_run)", () => {
     expect((await call(tester, "sprint_run", { project: REPO })).data["error"]).toContain("does not let you run the sprint");
   });
 
+  it("steers the run: pause, resume, stop, resume a stopped card, with refusals", async () => {
+    persistedGithub = true;
+    await seedSprint();
+    await grantRole("pe", "product_engineer");
+    await grantRole("tester", "tester");
+    const { access_token: access } = await connectClaude("pe");
+    const github = fetchMock.get("https://api.github.com");
+    github.intercept({ method: "POST", path: "/app/installations/99/access_tokens" }).reply(201, JSON.stringify({ token: "t" }), JSON_HEADERS).persist();
+    github.intercept({ path: `/repos/${REPO}/actions/workflows/claude.yml/runs?per_page=30` }).reply(200, JSON.stringify({ workflow_runs: [] }), JSON_HEADERS).persist();
+    github.intercept({ method: "POST", path: `/repos/${REPO}/actions/workflows/claude.yml/dispatches` }).reply(204, "").persist();
+    github.intercept({ method: "POST", path: `/repos/${REPO}/issues/12/comments` }).reply(201, "{}", JSON_HEADERS).persist();
+
+    const none = await call(access, "sprint_run_control", { project: REPO, action: "pause" });
+    expect(none.isError).toBe(true);
+    expect(none.data["error"]).toContain("no run to steer");
+
+    const plan = await call(access, "sprint_run", { project: REPO });
+    await call(access, "sprint_run", { project: REPO, confirm: true, fingerprint: plan.data["fingerprint"] });
+
+    expect((await call(access, "sprint_run_control", { project: REPO, action: "pause" })).data).toMatchObject({ done: "pause", status: "paused" });
+    expect((await call(access, "sprint_run_control", { project: REPO, action: "resume" })).data["status"]).toBe("running");
+    expect((await call(access, "sprint_run_control", { project: REPO, action: "pause" })).data["status"]).toBe("paused");
+
+    expect((await call(access, "sprint_run_control", { project: REPO, action: "resume_card" })).isError).toBe(true);
+    const notStopped = await call(access, "sprint_run_control", { project: REPO, action: "resume_card", card: 1 });
+    expect(notStopped.isError).toBe(true);
+    expect(notStopped.data["error"]).toContain("not stopped");
+    expect((await call(access, "sprint_run_control", { project: REPO, action: "bogus" })).isError).toBe(true);
+
+    expect((await call(access, "sprint_run_control", { project: REPO, action: "stop" })).data["status"]).toBe("stopped");
+    const actions = await logActions();
+    const names = actions.map((entry) => entry.action);
+    expect(names).toEqual(expect.arrayContaining(["sprint_run_paused", "sprint_run_resumed", "sprint_run_stopped"]));
+    expect(actions.filter((entry) => entry.action === "sprint_run_paused").every((entry) => entry.actor === "pe")).toBe(true);
+    expect(actions.filter((entry) => entry.action === "mcp_write").map((entry) => JSON.parse(entry.details ?? "{}").tool)).toContain("sprint_run_control");
+
+    const { access_token: tester } = await connectClaude("tester");
+    expect((await call(tester, "sprint_run_control", { project: REPO, action: "pause" })).data["error"]).toContain("does not let you steer");
+  });
+
   it("refuses when the project declares no merge workflow", async () => {
     persistedGithub = true;
     await seedSprint({ nom: "Widget", workflows: { claude: "claude.yml" } });

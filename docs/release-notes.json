@@ -166,6 +166,16 @@
   {
     "version": "next",
     "date": "2026-11-18",
+    "titre": "MCP: steer the sprint's run",
+    "changements": [
+      "From a conversation with Claude, you can now pause, resume or stop the sprint's run, and resume a card once its problem is fixed."
+    ],
+    "stories": [397],
+    "liens": null
+  },
+  {
+    "version": "next",
+    "date": "2026-11-18",
     "titre": "MCP: run the sprint",
     "changements": [
       "From a conversation with Claude, La Fabrique's MCP now shows the sprint's run plan and starts the run once you confirm it."

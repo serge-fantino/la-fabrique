@@ -78,7 +78,7 @@ const INSTRUCTIONS =
   "spec, and the sprint. The cycle: a card (draft) gets a spec in the project's sections (card_spec), is validated, becomes stories on " +
   "GitHub (stories_create, each linked to its card), goes into Next release, then into the sprint (sprint_start); Claude Code is launched " +
   "on each ready story (launch_claude), its pull request is merged (merge), the stories are tested, and the go to production is given by a " +
-  "person on La Fabrique's sprint page (never through this server). The sprint can run by itself (sprint_run: read the plan, then confirm it with its fingerprint): for each card, its stories one after the other (Claude launched, its pull request merged), several cards side by side within the project's cap; on a project without an integration branch, each merge puts the work online. A run never validates, never ships to production and never closes the sprint. A card's status follows its stories once validated. Before testing, read the stories to test " +
+  "person on La Fabrique's sprint page (never through this server). The sprint can run by itself (sprint_run: read the plan, then confirm it with its fingerprint): for each card, its stories one after the other (Claude launched, its pull request merged), several cards side by side within the project's cap; on a project without an integration branch, each merge puts the work online. Once running, steer it with sprint_run_control (pause, resume, stop, resume_card). A run never validates, never ships to production and never closes the sprint. A card's status follows its stories once validated. Before testing, read the stories to test " +
   "(to_test), then record one story's whole test in one call (test_story: validated when everything passes, sent back with feedback otherwise; one verdict per criterion, the steps you played; it is written in the person's name and marked \"via Claude\"). Read before writing (projects, board, card, sprint, story); say what you are about to write, and give the links the results carry. Everything you " +
   "write is in the person's name and in La Fabrique's log.";
 
@@ -1096,6 +1096,42 @@ const TOOLS: Tool[] = [
       if (!state.cards.length) fail("Nothing to run: every story of the sprint is merged.");
       await run?.start(state);
       return { started: true, cards: state.cards.map((c) => c.id), sprint: sprintUrl };
+    },
+  },
+  {
+    name: "sprint_run_control",
+    title: "Pause, resume or stop the sprint's run",
+    description:
+      "Steers the sprint's automatic run as the page's buttons do, in your name: action pause, resume or stop; or resume_card with card (its number) for a card stopped by a problem, once fixed. A Claude run in progress is never cancelled (stop waits for it). Answers the run's state. Refused when there is no run. Product Engineer and super admin.",
+    inputSchema: {
+      type: "object",
+      properties: { ...PROJECT, action: { type: "string", enum: ["pause", "resume", "stop", "resume_card"] }, card: { type: "number", description: "For resume_card: the card's number" } },
+      required: ["project", "action"],
+    },
+    needs: null,
+    write: true,
+    async run(ctx, args) {
+      if (!can(ctx.role, "promote")) fail(`Your role (${ctx.role}) does not let you steer the sprint's run: it is for Product Engineers and super admins.`);
+      const project = await projectOf(ctx, args);
+      const action = String(args["action"] ?? "");
+      if (action !== "pause" && action !== "resume" && action !== "stop" && action !== "resume_card") fail("action must be pause, resume, stop or resume_card.");
+      const run = sprintRunFor(ctx.env, project.repo);
+      const before = await run?.state();
+      if (!run || !before) fail("There is no run to steer on this sprint.");
+      const card = Number(args["card"]);
+      if (action === "resume_card") {
+        if (!Number.isInteger(card) || card <= 0) fail("resume_card needs the card's number (card).");
+        const found = before?.cards.find((candidate) => candidate.id === card);
+        if (!found || found.step !== "stopped") fail(`Card ${cardRef(card)} is not stopped: nothing to resume.`);
+        if (before?.status === "stopped" || before?.status === "done") fail("The run is over: nothing to resume.");
+      }
+      const state = await run?.control(ctx.login, action as "pause" | "resume" | "stop" | "resume_card", action === "resume_card" ? card : undefined);
+      return {
+        done: action,
+        status: state?.status ?? null,
+        cards: (state?.cards ?? []).map((c) => ({ card: cardRef(c.id), step: c.step, ...(c.reason ? { why: c.reason } : {}) })),
+        sprint: absolute(ctx, `${projectUrl(project.repo)}/sprint`),
+      };
     },
   },
   {
